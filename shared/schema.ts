@@ -90,3 +90,18 @@ export const servicos = pgTable("servicos", {
 export const insertServicoSchema = createInsertSchema(servicos).omit({ id: true });
 export type InsertServico = z.infer<typeof insertServicoSchema>;
 export type Servico = typeof servicos.$inferSelect;
+
+export const metas = pgTable("metas", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  nome: text("nome").notNull(),
+  descricao: text("descricao"),
+  valorAlvo: decimal("valor_alvo", { precision: 12, scale: 2 }).notNull(),
+  valorAtual: decimal("valor_atual", { precision: 12, scale: 2 }).notNull().default("0"),
+  prazo: text("prazo").notNull(),
+  status: text("status").notNull().default("ativa"),
+});
+
+export const insertMetaSchema = createInsertSchema(metas).omit({ id: true });
+export type InsertMeta = z.infer<typeof insertMetaSchema>;
+export type Meta = typeof metas.$inferSelect;

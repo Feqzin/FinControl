@@ -17,7 +17,11 @@ import PrevisaoPage from "@/pages/previsao-page";
 import ServicosPage from "@/pages/servicos-page";
 import RelatoriosPage from "@/pages/relatorios-page";
 import ImportarPage from "@/pages/importar-page";
+import MetasPage from "@/pages/metas-page";
+import HistoricoPage from "@/pages/historico-page";
+import SimuladorPage from "@/pages/simulador-page";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ThemeProvider } from "@/components/theme-provider";
 
 function Router() {
   return (
@@ -30,6 +34,9 @@ function Router() {
       <Route path="/servicos" component={ServicosPage} />
       <Route path="/relatorios" component={RelatoriosPage} />
       <Route path="/importar" component={ImportarPage} />
+      <Route path="/metas" component={MetasPage} />
+      <Route path="/historico" component={HistoricoPage} />
+      <Route path="/simulador" component={SimuladorPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -81,12 +88,14 @@ function AppContent() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <AppContent />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <AppContent />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 

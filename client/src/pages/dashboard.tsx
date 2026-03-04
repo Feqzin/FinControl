@@ -5,10 +5,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   TrendingUp, TrendingDown, Wallet, CalendarClock,
   ArrowUpRight, ArrowDownRight, Receipt, Bell,
-  AlertTriangle, CreditCard, CheckCircle, ShieldAlert, ShieldCheck, Shield,
+  AlertTriangle, CreditCard, CheckCircle, Lightbulb,
+  Trophy, Star, RotateCcw, Target,
 } from "lucide-react";
 import type { Divida, Servico, Pessoa, Cartao, CompraCartao } from "@shared/schema";
 import { format, differenceInDays, parseISO } from "date-fns";
+import { calcularScore, gerarInsights } from "@/utils/financialEngine";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -44,6 +46,16 @@ function StatCard({ title, value, icon: Icon, trend, color }: {
   );
 }
 
+const insightIconMap: Record<string, any> = {
+  trophy: Trophy,
+  alert: AlertTriangle,
+  money: ArrowUpRight,
+  repeat: RotateCcw,
+  card: CreditCard,
+  trend: TrendingDown,
+  star: Star,
+};
+
 export default function Dashboard() {
   const { data: dividas = [], isLoading: l1 } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [], isLoading: l2 } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
@@ -69,7 +81,6 @@ export default function Dashboard() {
 
   const today = format(new Date(), "yyyy-MM-dd");
   const in5Days = format(new Date(Date.now() + 5 * 86400000), "yyyy-MM-dd");
-  const in7Days = format(new Date(Date.now() + 7 * 86400000), "yyyy-MM-dd");
 
   const proximosVencimentos = dividas
     .filter((d) => d.status === "pendente")
@@ -83,10 +94,9 @@ export default function Dashboard() {
     (d) => d.status === "pendente" && d.dataVencimento < today
   );
 
-  const getCardUsage = (cartaoId: string) => {
-    const total = compras.filter((c) => c.cartaoId === cartaoId).reduce((s, c) => s + Number(c.valorParcela), 0);
-    return total;
-  };
+  const getCardUsage = (cartaoId: string) =>
+    compras.filter((c) => c.cartaoId === cartaoId).reduce((s, c) => s + Number(c.valorParcela), 0);
+
   const alertCartoes = cartoes.filter((c) => {
     const usado = getCardUsage(c.id);
     return (usado / Number(c.limite)) >= 0.8;
@@ -95,7 +105,6 @@ export default function Dashboard() {
   const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "Desconhecido";
 
   const alertas: { icon: any; color: string; bgColor: string; texto: string }[] = [];
-
   if (vencidos.length > 0) {
     alertas.push({
       icon: AlertTriangle,
@@ -139,27 +148,20 @@ export default function Dashboard() {
     });
   }
 
-  const overdueCount = vencidos.length;
-  const highCardUsage = alertCartoes.length;
-  const negativeBalance = saldoPrevisto < 0 ? 1 : 0;
-  const riskScore = overdueCount + highCardUsage + negativeBalance;
+  const score = calcularScore(dividas, servicos, cartoes, compras);
+  const insights = gerarInsights(dividas, servicos, cartoes, compras);
 
-  let scoreLabel: string;
-  let scoreColor: string;
-  let ScoreIcon: any;
-  if (riskScore === 0) {
-    scoreLabel = "Saude financeira: Otima";
-    scoreColor = "text-emerald-600";
-    ScoreIcon = ShieldCheck;
-  } else if (riskScore <= 1) {
-    scoreLabel = "Saude financeira: Atencao";
-    scoreColor = "text-amber-600";
-    ScoreIcon = Shield;
-  } else {
-    scoreLabel = "Saude financeira: Risco";
-    scoreColor = "text-red-600";
-    ScoreIcon = ShieldAlert;
-  }
+  const scoreBarColor =
+    score.valor >= 80 ? "bg-emerald-500" :
+    score.valor >= 60 ? "bg-primary" :
+    score.valor >= 40 ? "bg-amber-500" :
+    "bg-red-500";
+
+  const scoreLabelColor =
+    score.valor >= 80 ? "text-emerald-600" :
+    score.valor >= 60 ? "text-primary" :
+    score.valor >= 40 ? "text-amber-600" :
+    "text-red-600";
 
   if (isLoading) {
     return (
@@ -180,15 +182,25 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold tracking-tight">Painel</h1>
           <p className="text-muted-foreground">Resumo financeiro geral</p>
         </div>
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${
-          riskScore === 0
-            ? "border-emerald-500/20 bg-emerald-500/5"
-            : riskScore <= 1
-            ? "border-amber-500/20 bg-amber-500/5"
-            : "border-red-500/20 bg-red-500/5"
-        }`} data-testid="score-financeiro">
-          <ScoreIcon className={`w-4 h-4 ${scoreColor}`} />
-          <span className={`text-sm font-medium ${scoreColor}`}>{scoreLabel}</span>
+        <div
+          className="flex items-center gap-3 px-4 py-2 rounded-xl border bg-card min-w-[200px]"
+          data-testid="score-financeiro"
+        >
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-muted-foreground">Score financeiro</span>
+              <span className={`text-xs font-bold ${scoreLabelColor}`}>{score.classificacao}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${scoreBarColor}`}
+                  style={{ width: `${score.valor}%` }}
+                />
+              </div>
+              <span className={`text-sm font-bold ${scoreLabelColor}`}>{score.valor}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -223,27 +235,66 @@ export default function Dashboard() {
         />
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Bell className="w-4 h-4" /> Alertas importantes
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2" data-testid="alertas-section">
-            {alertas.map((alerta, i) => (
-              <div
-                key={i}
-                className={`flex items-start gap-3 p-3 rounded-md border ${alerta.bgColor}`}
-                data-testid={`alerta-${i}`}
-              >
-                <alerta.icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${alerta.color}`} />
-                <p className={`text-sm font-medium ${alerta.color}`}>{alerta.texto}</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Bell className="w-4 h-4" /> Alertas importantes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2" data-testid="alertas-section">
+              {alertas.map((alerta, i) => (
+                <div
+                  key={i}
+                  className={`flex items-start gap-3 p-3 rounded-md border ${alerta.bgColor}`}
+                  data-testid={`alerta-${i}`}
+                >
+                  <alerta.icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${alerta.color}`} />
+                  <p className={`text-sm font-medium ${alerta.color}`}>{alerta.texto}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Lightbulb className="w-4 h-4 text-amber-500" /> Insights automaticos
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {insights.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">
+                <Target className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Adicione dados para ver insights personalizados</p>
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            ) : (
+              <div className="space-y-2" data-testid="insights-section">
+                {insights.map((insight, i) => {
+                  const IconComp = insightIconMap[insight.icone] || Lightbulb;
+                  const styles = {
+                    positivo: "bg-emerald-500/5 border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
+                    negativo: "bg-red-500/5 border-red-500/20 text-red-700 dark:text-red-400",
+                    neutro: "bg-muted/40 border-border text-muted-foreground",
+                  };
+                  return (
+                    <div
+                      key={i}
+                      className={`flex items-start gap-3 p-3 rounded-md border ${styles[insight.tipo]}`}
+                      data-testid={`insight-${i}`}
+                    >
+                      <IconComp className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      <p className="text-sm font-medium">{insight.texto}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
@@ -299,43 +350,36 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" /> Resumo geral
+              <TrendingUp className="w-4 h-4" /> Score detalhado
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 rounded-md bg-muted/40">
+                <span className="text-sm text-muted-foreground">Pontuacao geral</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
+                    <div className={`h-full rounded-full ${scoreBarColor}`} style={{ width: `${score.valor}%` }} />
+                  </div>
+                  <span className={`font-bold text-sm ${scoreLabelColor}`}>{score.valor}/100</span>
+                </div>
+              </div>
+              {score.fatores.map((f, i) => (
+                <div key={i} className="flex items-center justify-between p-2.5 rounded-md bg-muted/30 text-sm">
+                  <span className="text-muted-foreground truncate mr-2">{f.label}</span>
+                  <span className={`font-semibold flex-shrink-0 ${f.tipo === "positivo" ? "text-emerald-600" : f.tipo === "negativo" ? "text-red-600" : "text-muted-foreground"}`}>
+                    {f.impacto > 0 ? "+" : ""}{f.impacto}
+                  </span>
+                </div>
+              ))}
               <div className="flex justify-between items-center p-3 rounded-md bg-muted/40">
                 <span className="text-sm text-muted-foreground">Pessoas cadastradas</span>
                 <span className="font-semibold">{pessoas.length}</span>
               </div>
               <div className="flex justify-between items-center p-3 rounded-md bg-muted/40">
-                <span className="text-sm text-muted-foreground">Dividas em aberto</span>
-                <span className="font-semibold">
-                  {dividas.filter((d) => d.status === "pendente").length}
-                </span>
-              </div>
-              {vencidos.length > 0 && (
-                <div className="flex justify-between items-center p-3 rounded-md bg-red-500/5 border border-red-500/10">
-                  <span className="text-sm text-red-600 font-medium">Vencidas</span>
-                  <span className="font-bold text-red-600">{vencidos.length}</span>
-                </div>
-              )}
-              <div className="flex justify-between items-center p-3 rounded-md bg-muted/40">
                 <span className="text-sm text-muted-foreground">Dividas quitadas</span>
                 <span className="font-semibold text-emerald-600">
                   {dividas.filter((d) => d.status === "pago").length}
-                </span>
-              </div>
-              <div className="flex justify-between items-center p-3 rounded-md bg-muted/40">
-                <span className="text-sm text-muted-foreground">Servicos ativos</span>
-                <span className="font-semibold">{servicos.filter((s) => s.status === "ativo").length}</span>
-              </div>
-              <div className={`flex justify-between items-center p-3 rounded-md ${
-                saldoPrevisto >= 0 ? "bg-emerald-500/5 border border-emerald-500/10" : "bg-red-500/5 border border-red-500/10"
-              }`}>
-                <span className="text-sm font-medium">Balanco geral</span>
-                <span className={`font-bold ${saldoPrevisto >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                  {formatCurrency(saldoPrevisto)}
                 </span>
               </div>
             </div>

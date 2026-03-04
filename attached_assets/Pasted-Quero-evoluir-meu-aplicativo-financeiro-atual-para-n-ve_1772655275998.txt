@@ -1,0 +1,134 @@
+Quero evoluir meu aplicativo financeiro atual para nível premium 10/10, mantendo o design clean e moderno, mas adicionando inteligência financeira avançada, histórico analítico, metas e simulações.
+
+IMPORTANTE:
+- Não remover nenhuma funcionalidade existente.
+- Manter a identidade visual clean.
+- Código organizado, escalável e modular.
+- Separar lógica de cálculo da interface (criar serviços financeiros isolados).
+
+Implementar as seguintes melhorias:
+
+========================
+1) HISTÓRICO ANALÍTICO COMPLETO
+========================
+
+Criar uma página "Histórico Financeiro" com:
+
+- Evolução mensal do saldo final (gráfico de linha)
+- Evolução mensal do Score financeiro
+- Evolução do uso médio dos cartões por mês
+- Comparação Receita vs Despesa por mês (gráfico de barras)
+- Mostrar variação percentual mês a mês
+
+Criar estrutura persistente para armazenar snapshot mensal automático.
+
+========================
+2) SCORE FINANCEIRO 2.0 (MAIS INTELIGENTE)
+========================
+
+Melhorar algoritmo atual incluindo:
+
+Fatores:
+- Dívidas vencidas (peso alto)
+- Uso de cartão (peso médio)
+- Percentual da renda comprometida
+- Tendência de crescimento de gastos
+- Saldo previsto negativo
+
+Gerar:
+- Nota numérica (0 a 100)
+- Classificação textual (Ótima / Boa / Atenção / Risco)
+- Indicador de tendência (↑ melhorando / ↓ piorando)
+
+========================
+3) SISTEMA DE METAS FINANCEIRAS
+========================
+
+Criar funcionalidade para:
+
+- Criar meta (ex: Guardar R$ 30.000 até Dezembro)
+- Informar valor atual
+- Informar prazo
+- Calcular quanto precisa economizar por mês
+- Mostrar progresso percentual
+- Indicar se está dentro do ritmo ou atrasado
+
+Exibir gráfico de progresso da meta.
+
+========================
+4) ORÇAMENTO POR CATEGORIA
+========================
+
+Permitir:
+
+- Definir limite mensal por categoria
+- Mostrar barra de progresso por categoria
+- Alerta automático ao atingir 80% do orçamento
+- Alerta crítico ao ultrapassar
+
+Incluir isso no Dashboard.
+
+========================
+5) INSIGHTS AUTOMÁTICOS
+========================
+
+Criar motor simples de insights que gere frases automáticas como:
+
+- "Seus gastos com Lazer aumentaram 23% este mês."
+- "Você reduziu suas dívidas em 18% comparado ao mês passado."
+- "Mantendo esse ritmo, você ficará negativo em 2 meses."
+
+Gerar insights com base em comparação de períodos.
+
+========================
+6) SIMULADOR FINANCEIRO
+========================
+
+Criar ferramenta onde o usuário pode simular:
+
+- Quitar dívida agora
+- Aumentar renda
+- Reduzir gasto fixo
+- Alterar valor de parcela
+
+Sistema recalcula automaticamente:
+- Forecast mensal
+- Score
+- Alertas
+
+Sem alterar dados reais (modo simulação isolado).
+
+========================
+7) MELHORIAS DE UX PREMIUM
+========================
+
+Adicionar:
+
+- Microinterações suaves
+- Animações leves em gráficos
+- Dark mode bem ajustado
+- Transições suaves entre páginas
+- Feedback visual ao salvar dados
+
+========================
+8) ESTRUTURA TÉCNICA
+========================
+
+Organizar código em:
+
+- financialEngine.ts (cálculos de score, forecast, insights)
+- simulationEngine.ts
+- goalsService.ts
+- budgetService.ts
+
+Separar lógica da interface.
+
+Garantir que:
+- Cálculos não dependam de renderização.
+- Dados sejam facilmente exportáveis.
+- Estrutura preparada para futuro login multiusuário.
+
+========================
+
+Objetivo final:
+Transformar o sistema em uma plataforma financeira analítica, preditiva e estratégica, com aparência profissional e arquitetura pronta para escalar como SaaS.

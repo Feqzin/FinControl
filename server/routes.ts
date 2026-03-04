@@ -211,5 +211,42 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  const metaBody = z.object({
+    nome: z.string().min(1),
+    descricao: z.string().optional().nullable(),
+    valorAlvo: z.string().or(z.number()).transform(String),
+    valorAtual: z.string().or(z.number()).transform(String).optional().default("0"),
+    prazo: z.string().min(1),
+    status: z.string().optional().default("ativa"),
+  });
+
+  app.get("/api/metas", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const result = await storage.getMetas(userId);
+    res.json(result);
+  });
+
+  app.post("/api/metas", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const parsed = metaBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const meta = await storage.createMeta({ ...parsed.data, userId });
+    res.json(meta);
+  });
+
+  app.patch("/api/metas/:id", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const meta = await storage.updateMeta(req.params.id, userId, req.body);
+    if (!meta) return res.status(404).json({ message: "Not found" });
+    res.json(meta);
+  });
+
+  app.delete("/api/metas/:id", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const deleted = await storage.deleteMeta(req.params.id, userId);
+    if (!deleted) return res.status(404).json({ message: "Not found" });
+    res.json({ success: true });
+  });
+
   return httpServer;
 }

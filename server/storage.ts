@@ -1,13 +1,14 @@
 import { eq, and } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, pessoas, dividas, cartoes, comprasCartao, servicos,
+  users, pessoas, dividas, cartoes, comprasCartao, servicos, metas,
   type User, type InsertUser,
   type Pessoa, type InsertPessoa,
   type Divida, type InsertDivida,
   type Cartao, type InsertCartao,
   type CompraCartao, type InsertCompraCartao,
   type Servico, type InsertServico,
+  type Meta, type InsertMeta,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -44,6 +45,12 @@ export interface IStorage {
   createServico(servico: InsertServico): Promise<Servico>;
   updateServico(id: string, userId: string, data: Partial<InsertServico>): Promise<Servico | undefined>;
   deleteServico(id: string, userId: string): Promise<boolean>;
+
+  getMetas(userId: string): Promise<Meta[]>;
+  getMeta(id: string, userId: string): Promise<Meta | undefined>;
+  createMeta(meta: InsertMeta): Promise<Meta>;
+  updateMeta(id: string, userId: string, data: Partial<InsertMeta>): Promise<Meta | undefined>;
+  deleteMeta(id: string, userId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -177,6 +184,30 @@ export class DatabaseStorage implements IStorage {
 
   async deleteServico(id: string, userId: string): Promise<boolean> {
     const result = await db.delete(servicos).where(and(eq(servicos.id, id), eq(servicos.userId, userId))).returning();
+    return result.length > 0;
+  }
+
+  async getMetas(userId: string): Promise<Meta[]> {
+    return db.select().from(metas).where(eq(metas.userId, userId));
+  }
+
+  async getMeta(id: string, userId: string): Promise<Meta | undefined> {
+    const [m] = await db.select().from(metas).where(and(eq(metas.id, id), eq(metas.userId, userId)));
+    return m;
+  }
+
+  async createMeta(meta: InsertMeta): Promise<Meta> {
+    const [m] = await db.insert(metas).values(meta).returning();
+    return m;
+  }
+
+  async updateMeta(id: string, userId: string, data: Partial<InsertMeta>): Promise<Meta | undefined> {
+    const [m] = await db.update(metas).set(data).where(and(eq(metas.id, id), eq(metas.userId, userId))).returning();
+    return m;
+  }
+
+  async deleteMeta(id: string, userId: string): Promise<boolean> {
+    const result = await db.delete(metas).where(and(eq(metas.id, id), eq(metas.userId, userId))).returning();
     return result.length > 0;
   }
 }

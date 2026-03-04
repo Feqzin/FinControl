@@ -1,8 +1,10 @@
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "@/components/theme-provider";
 import {
   LayoutDashboard, Users, Receipt, CreditCard, Calendar,
-  BarChart3, Repeat, LogOut, FileUp,
+  BarChart3, Repeat, LogOut, FileUp, Target, History, Calculator,
+  Sun, Moon,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -12,13 +14,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
-const menuItems = [
+const mainItems = [
   { title: "Painel", url: "/", icon: LayoutDashboard },
   { title: "Pessoas", url: "/pessoas", icon: Users },
   { title: "Dividas", url: "/dividas", icon: Receipt },
   { title: "Cartoes", url: "/cartoes", icon: CreditCard },
-  { title: "Previsao", url: "/previsao", icon: Calendar },
   { title: "Servicos", url: "/servicos", icon: Repeat },
+];
+
+const planejamentoItems = [
+  { title: "Metas", url: "/metas", icon: Target },
+  { title: "Previsao", url: "/previsao", icon: Calendar },
+  { title: "Historico", url: "/historico", icon: History },
+  { title: "Simulador", url: "/simulador", icon: Calculator },
+];
+
+const ferramentasItems = [
   { title: "Relatorios", url: "/relatorios", icon: BarChart3 },
   { title: "Importar", url: "/importar", icon: FileUp },
 ];
@@ -26,6 +37,31 @@ const menuItems = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+  const { theme, toggle } = useTheme();
+
+  const renderGroup = (label: string, items: typeof mainItems) => (
+    <SidebarGroup>
+      <SidebarGroupLabel>{label}</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map((item) => (
+            <SidebarMenuItem key={item.title}>
+              <SidebarMenuButton
+                asChild
+                isActive={location === item.url}
+                data-testid={`nav-${item.url.replace("/", "") || "dashboard"}`}
+              >
+                <Link href={item.url}>
+                  <item.icon className="w-4 h-4" />
+                  <span>{item.title}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
 
   return (
     <Sidebar>
@@ -39,39 +75,32 @@ export function AppSidebar() {
       </SidebarHeader>
       <Separator />
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Menu</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {menuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={location === item.url}
-                    data-testid={`nav-${item.url.replace("/", "") || "dashboard"}`}
-                  >
-                    <Link href={item.url}>
-                      <item.icon className="w-4 h-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {renderGroup("Geral", mainItems)}
+        {renderGroup("Planejamento", planejamentoItems)}
+        {renderGroup("Ferramentas", ferramentasItems)}
       </SidebarContent>
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-4 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm text-muted-foreground truncate">{user?.username}</span>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => logout.mutate()}
-            data-testid="button-logout"
-          >
-            <LogOut className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggle}
+              data-testid="button-theme-toggle"
+              title={theme === "dark" ? "Modo claro" : "Modo escuro"}
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => logout.mutate()}
+              data-testid="button-logout"
+            >
+              <LogOut className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </SidebarFooter>
     </Sidebar>
