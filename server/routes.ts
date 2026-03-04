@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, requireAuth } from "./auth";
 import { z } from "zod";
+import { addMonths, format } from "date-fns";
 
 const pessoaBody = z.object({
   nome: z.string().min(1),
@@ -20,13 +21,34 @@ const dividaBody = z.object({
   dataPagamento: z.string().optional().nullable(),
   formaPagamento: z.string().optional().nullable(),
   descricao: z.string().optional().nullable(),
+  totalParcelas: z.coerce.number().int().optional().nullable(),
+  valorTotal: z.string().or(z.number()).transform(String).optional().nullable(),
+});
+
+const dividaParceladoBody = z.object({
+  pessoaId: z.string().min(1),
+  tipo: z.enum(["receber", "pagar"]),
+  valorTotal: z.string().or(z.number()).transform(Number),
+  totalParcelas: z.coerce.number().int().min(1).max(360),
+  primeiroVencimento: z.string().min(1),
+  descricao: z.string().optional().nullable(),
+  formaPagamento: z.string().optional().nullable(),
 });
 
 const dividaUpdate = z.object({
   status: z.string().optional(),
   dataPagamento: z.string().optional().nullable(),
   formaPagamento: z.string().optional().nullable(),
+  descricao: z.string().optional().nullable(),
 }).passthrough();
+
+const parcelaUpdate = z.object({
+  status: z.string().optional(),
+  dataPagamento: z.string().optional().nullable(),
+  formaPagamento: z.string().optional().nullable(),
+  valor: z.string().or(z.number()).transform(String).optional(),
+  dataVencimento: z.string().optional(),
+});
 
 const cartaoBody = z.object({
   nome: z.string().min(1),
@@ -76,7 +98,9 @@ export async function registerRoutes(
 
   app.patch("/api/pessoas/:id", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
-    const pessoa = await storage.updatePessoa(req.params.id, userId, req.body);
+    const parsed = pessoaBody.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const pessoa = await storage.updatePessoa(req.params.id, userId, parsed.data);
     if (!pessoa) return res.status(404).json({ message: "Not found" });
     res.json(pessoa);
   });
@@ -110,6 +134,52 @@ export async function registerRoutes(
     res.json(divida);
   });
 
+  app.post("/api/dividas/parcelado", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const parsed = dividaParceladoBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+
+    const { pessoaId, tipo, valorTotal, totalParcelas, primeiroVencimento, descricao, formaPagamento } = parsed.data;
+
+    const pessoa = await storage.getPessoa(pessoaId, userId);
+    if (!pessoa) return res.status(400).json({ message: "Pessoa not found" });
+
+    const valorParcela = Number((valorTotal / totalParcelas).toFixed(2));
+    const firstDate = new Date(primeiroVencimento + "T12:00:00");
+
+    const divida = await storage.createDivida({
+      userId,
+      pessoaId,
+      tipo,
+      valor: String(valorParcela),
+      dataVencimento: primeiroVencimento,
+      status: "pendente",
+      descricao: descricao ?? null,
+      formaPagamento: formaPagamento ?? null,
+      totalParcelas,
+      valorTotal: String(valorTotal),
+    });
+
+    const parcelasData = Array.from({ length: totalParcelas }, (_, i) => {
+      const dueDate = addMonths(firstDate, i);
+      return {
+        userId,
+        dividaId: divida.id,
+        numero: i + 1,
+        valor: i === totalParcelas - 1
+          ? String(Number((valorTotal - valorParcela * (totalParcelas - 1)).toFixed(2)))
+          : String(valorParcela),
+        dataVencimento: format(dueDate, "yyyy-MM-dd"),
+        status: "pendente",
+        dataPagamento: null,
+        formaPagamento: null,
+      };
+    });
+
+    const parcelas = await storage.createParcelasBulk(parcelasData);
+    res.json({ divida, parcelas });
+  });
+
   app.patch("/api/dividas/:id", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
     const parsed = dividaUpdate.safeParse(req.body);
@@ -121,7 +191,71 @@ export async function registerRoutes(
 
   app.delete("/api/dividas/:id", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
+    await storage.deleteParcelasByDivida(req.params.id, userId);
     const deleted = await storage.deleteDivida(req.params.id, userId);
+    if (!deleted) return res.status(404).json({ message: "Not found" });
+    res.json({ success: true });
+  });
+
+  app.get("/api/parcelas", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const result = await storage.getParcelas(userId);
+    res.json(result);
+  });
+
+  app.get("/api/parcelas/divida/:dividaId", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const result = await storage.getParcelasByDivida(req.params.dividaId, userId);
+    res.json(result.sort((a, b) => a.numero - b.numero));
+  });
+
+  app.patch("/api/parcelas/:id", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const parsed = parcelaUpdate.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const parcela = await storage.updateParcela(req.params.id, userId, parsed.data);
+    if (!parcela) return res.status(404).json({ message: "Not found" });
+    res.json(parcela);
+  });
+
+  app.post("/api/parcelas/antecipar", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const { dividaId, quantidade, formaPagamento } = req.body;
+    if (!dividaId || !quantidade) return res.status(400).json({ message: "dividaId e quantidade obrigatorios" });
+
+    const all = await storage.getParcelasByDivida(dividaId, userId);
+    const pendentes = all
+      .filter((p) => p.status === "pendente")
+      .sort((a, b) => a.numero - b.numero)
+      .slice(0, quantidade);
+
+    const hoje = format(new Date(), "yyyy-MM-dd");
+    const updated = await Promise.all(
+      pendentes.map((p) =>
+        storage.updateParcela(p.id, userId, {
+          status: "pago",
+          dataPagamento: hoje,
+          formaPagamento: formaPagamento || "pix",
+        })
+      )
+    );
+
+    const allUpdated = await storage.getParcelasByDivida(dividaId, userId);
+    const todasPagas = allUpdated.every((p) => p.status === "pago");
+    if (todasPagas) {
+      await storage.updateDivida(dividaId, userId, {
+        status: "pago",
+        dataPagamento: hoje,
+        formaPagamento: formaPagamento || "pix",
+      });
+    }
+
+    res.json({ updated: updated.length, todasPagas });
+  });
+
+  app.delete("/api/parcelas/:id", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const deleted = await storage.deleteParcela(req.params.id, userId);
     if (!deleted) return res.status(404).json({ message: "Not found" });
     res.json({ success: true });
   });

@@ -12,8 +12,8 @@ A comprehensive personal finance management application in Brazilian Portuguese,
 
 ## Features
 - User authentication (register/login)
-- People management (who owes you / who you owe) with payment history
-- Debt tracking with month filter and totals
+- People management with edit support (nome, tipo, telefone, observacao)
+- Structured installment debt tracking with per-parcela payment, anticipation, and auto-schedule generation
 - Credit card management with installment purchases and next-invoice display
 - Financial forecast (monthly area chart with cumulative balance)
 - Services/subscriptions management

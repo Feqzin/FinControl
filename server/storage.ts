@@ -1,10 +1,11 @@
 import { eq, and } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, pessoas, dividas, cartoes, comprasCartao, servicos, metas,
+  users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos, metas,
   type User, type InsertUser,
   type Pessoa, type InsertPessoa,
   type Divida, type InsertDivida,
+  type Parcela, type InsertParcela,
   type Cartao, type InsertCartao,
   type CompraCartao, type InsertCompraCartao,
   type Servico, type InsertServico,
@@ -30,6 +31,14 @@ export interface IStorage {
   createDivida(divida: InsertDivida): Promise<Divida>;
   updateDivida(id: string, userId: string, data: Partial<InsertDivida>): Promise<Divida | undefined>;
   deleteDivida(id: string, userId: string): Promise<boolean>;
+
+  getParcelas(userId: string): Promise<Parcela[]>;
+  getParcelasByDivida(dividaId: string, userId: string): Promise<Parcela[]>;
+  createParcela(parcela: InsertParcela): Promise<Parcela>;
+  createParcelasBulk(parcelas: InsertParcela[]): Promise<Parcela[]>;
+  updateParcela(id: string, userId: string, data: Partial<InsertParcela>): Promise<Parcela | undefined>;
+  deleteParcela(id: string, userId: string): Promise<boolean>;
+  deleteParcelasByDivida(dividaId: string, userId: string): Promise<void>;
 
   getCartoes(userId: string): Promise<Cartao[]>;
   getCartao(id: string, userId: string): Promise<Cartao | undefined>;
@@ -131,6 +140,38 @@ export class DatabaseStorage implements IStorage {
   async deleteDivida(id: string, userId: string): Promise<boolean> {
     const result = await db.delete(dividas).where(and(eq(dividas.id, id), eq(dividas.userId, userId))).returning();
     return result.length > 0;
+  }
+
+  async getParcelas(userId: string): Promise<Parcela[]> {
+    return db.select().from(parcelas).where(eq(parcelas.userId, userId));
+  }
+
+  async getParcelasByDivida(dividaId: string, userId: string): Promise<Parcela[]> {
+    return db.select().from(parcelas)
+      .where(and(eq(parcelas.dividaId, dividaId), eq(parcelas.userId, userId)));
+  }
+
+  async createParcela(parcela: InsertParcela): Promise<Parcela> {
+    const [p] = await db.insert(parcelas).values(parcela).returning();
+    return p;
+  }
+
+  async createParcelasBulk(parcelasData: InsertParcela[]): Promise<Parcela[]> {
+    return db.insert(parcelas).values(parcelasData).returning();
+  }
+
+  async updateParcela(id: string, userId: string, data: Partial<InsertParcela>): Promise<Parcela | undefined> {
+    const [p] = await db.update(parcelas).set(data).where(and(eq(parcelas.id, id), eq(parcelas.userId, userId))).returning();
+    return p;
+  }
+
+  async deleteParcela(id: string, userId: string): Promise<boolean> {
+    const result = await db.delete(parcelas).where(and(eq(parcelas.id, id), eq(parcelas.userId, userId))).returning();
+    return result.length > 0;
+  }
+
+  async deleteParcelasByDivida(dividaId: string, userId: string): Promise<void> {
+    await db.delete(parcelas).where(and(eq(parcelas.dividaId, dividaId), eq(parcelas.userId, userId)));
   }
 
   async getCartoes(userId: string): Promise<Cartao[]> {

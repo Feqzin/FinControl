@@ -1,0 +1,126 @@
+Quero melhorar o sistema de pessoas e dívidas do meu aplicativo financeiro.
+
+OBJETIVO:
+Permitir editar pessoas já cadastradas e implementar controle completo de dívidas parceladas com registro individual de cada parcela paga.
+
+IMPORTANTE:
+- Não remover funcionalidades existentes.
+- Manter compatibilidade com dívidas antigas.
+- Código modular e organizado.
+
+========================
+1) EDIÇÃO DE PESSOAS
+========================
+
+Na lista de pessoas:
+
+Adicionar botão "Editar".
+
+Permitir alterar:
+- Nome
+- Tipo (Me deve / Eu devo)
+- Telefone
+- Observação
+
+Atualizar automaticamente todas as referências vinculadas.
+
+Adicionar botão "Salvar alterações" com feedback visual.
+
+========================
+2) DÍVIDA PARCELADA ESTRUTURADA
+========================
+
+Modificar estrutura de dívida para permitir:
+
+- Valor total
+- Número total de parcelas
+- Lista individual de parcelas
+
+Nova estrutura exemplo:
+
+{
+  id,
+  userId,
+  pessoaId,
+  valorTotal: 1200,
+  totalParcelas: 6,
+  parcelas: [
+    {
+      numero: 1,
+      valor: 200,
+      vencimento: "2026-04-10",
+      status: "pago" | "pendente",
+      dataPagamento: "2026-04-08"
+    }
+  ],
+  statusGeral: "pendente" | "quitado"
+}
+
+========================
+3) REGISTRO DE PAGAMENTO POR PARCELA
+========================
+
+Na visualização da dívida:
+
+Mostrar tabela/lista:
+
+Parcela 1 - R$200 - Vence 10/04 - Pago 08/04
+Parcela 2 - R$200 - Vence 10/05 - Pendente
+Parcela 3 - R$200 - Pendente
+...
+
+Cada parcela deve ter botão:
+
+- "Marcar como pago"
+- Ao clicar:
+    - Registrar data de pagamento (automática ou editável)
+    - Atualizar status
+    - Atualizar saldo pendente automaticamente
+    - Atualizar relatórios
+
+Se todas parcelas estiverem pagas:
+→ statusGeral = quitado
+
+========================
+4) RESUMO AUTOMÁTICO NA PESSOA
+========================
+
+Na página da pessoa mostrar:
+
+- Total original da dívida
+- Total já pago
+- Total restante
+- Percentual quitado (barra de progresso)
+
+========================
+5) COMPATIBILIDADE COM DÍVIDAS ANTIGAS
+========================
+
+Se dívida não tiver campo "parcelas":
+→ Considerar como parcela única automática.
+
+========================
+6) RELATÓRIOS
+========================
+
+Relatórios devem considerar:
+
+- Apenas parcelas pagas como entrada real
+- Parcelas pendentes como valor futuro
+- Atualizar forecast com base nas datas de cada parcela
+
+========================
+7) UX MELHORADA
+========================
+
+Adicionar:
+
+- Barra de progresso visual por dívida
+- Indicador de próxima parcela a vencer
+- Destaque em vermelho se parcela estiver vencida
+- Modal elegante para editar número de parcelas
+
+========================
+
+Objetivo final:
+Transformar dívidas simples em sistema completo de controle parcelado, com histórico detalhado de pagamento por parcela, atualização automática de saldo e relatórios inteligentes.

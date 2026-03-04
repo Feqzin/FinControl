@@ -21,7 +21,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Users, Phone, Trash2, Search, Receipt, Check,
-  Clock, ChevronRight, ArrowUpRight, ArrowDownRight,
+  Clock, ChevronRight, ArrowUpRight, ArrowDownRight, Pencil,
 } from "lucide-react";
 import type { Pessoa, Divida } from "@shared/schema";
 import { format } from "date-fns";
@@ -41,6 +41,9 @@ export default function PessoasPage() {
   const [payOpen, setPayOpen] = useState(false);
   const [payingDivida, setPayingDivida] = useState<Divida | null>(null);
   const [payForm, setPayForm] = useState({ formaPagamento: "pix" });
+
+  const [editingPessoa, setEditingPessoa] = useState<Pessoa | null>(null);
+  const [editForm, setEditForm] = useState({ nome: "", tipo: "me_deve", telefone: "", observacao: "" });
 
   const [pessoaForm, setPessoaForm] = useState({
     nome: "", tipo: "me_deve", telefone: "", observacao: "",
@@ -88,6 +91,19 @@ export default function PessoasPage() {
       setPayingDivida(null);
       toast({ title: "Marcado como pago" });
     },
+  });
+
+  const updatePessoaMutation = useMutation({
+    mutationFn: async ({ id, ...data }: any) => {
+      const res = await apiRequest("PATCH", `/api/pessoas/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      setEditingPessoa(null);
+      toast({ title: "Pessoa atualizada" });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -309,6 +325,17 @@ export default function PessoasPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      onClick={() => {
+                        setEditingPessoa(p);
+                        setEditForm({ nome: p.nome, tipo: p.tipo, telefone: p.telefone || "", observacao: p.observacao || "" });
+                      }}
+                      data-testid={`button-edit-pessoa-${p.id}`}
+                    >
+                      <Pencil className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => deleteMutation.mutate(p.id)}
                       data-testid={`button-delete-pessoa-${p.id}`}
                     >
@@ -321,6 +348,64 @@ export default function PessoasPage() {
           })}
         </div>
       )}
+
+      <Dialog open={!!editingPessoa} onOpenChange={(v) => { if (!v) setEditingPessoa(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar pessoa</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!editingPessoa) return;
+              updatePessoaMutation.mutate({ id: editingPessoa.id, ...editForm });
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input
+                data-testid="input-edit-pessoa-nome"
+                value={editForm.nome}
+                onChange={(e) => setEditForm({ ...editForm, nome: e.target.value })}
+                placeholder="Nome da pessoa"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Tipo</Label>
+              <Select value={editForm.tipo} onValueChange={(v) => setEditForm({ ...editForm, tipo: v })}>
+                <SelectTrigger data-testid="select-edit-pessoa-tipo"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="me_deve">Me deve</SelectItem>
+                  <SelectItem value="eu_devo">Eu devo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Telefone (opcional)</Label>
+              <Input
+                data-testid="input-edit-pessoa-telefone"
+                value={editForm.telefone}
+                onChange={(e) => setEditForm({ ...editForm, telefone: e.target.value })}
+                placeholder="(00) 00000-0000"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Observacao</Label>
+              <Textarea
+                data-testid="input-edit-pessoa-obs"
+                value={editForm.observacao}
+                onChange={(e) => setEditForm({ ...editForm, observacao: e.target.value })}
+                placeholder="Notas sobre essa pessoa"
+              />
+            </div>
+            <Button type="submit" className="w-full" data-testid="button-save-edit-pessoa" disabled={updatePessoaMutation.isPending}>
+              {updatePessoaMutation.isPending ? "Salvando..." : "Salvar alteracoes"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={openDivida} onOpenChange={setOpenDivida}>
         <DialogContent>

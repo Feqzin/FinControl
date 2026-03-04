@@ -7,70 +7,249 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Receipt, Search, Check, Trash2 } from "lucide-react";
-import type { Divida, Pessoa } from "@shared/schema";
-import { format, subMonths } from "date-fns";
+import {
+  Plus, Receipt, Search, Check, Trash2, ChevronDown, ChevronUp,
+  Pencil, FastForward, Calendar, AlertCircle,
+} from "lucide-react";
+import type { Divida, Parcela, Pessoa } from "@shared/schema";
+import { format, isPast, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
-const months = Array.from({ length: 13 }, (_, i) => {
-  const d = i === 0 ? null : subMonths(new Date(), i - 1);
-  return {
-    value: i === 0 ? "todos" : format(d!, "yyyy-MM"),
-    label: i === 0 ? "Todos os meses" : format(d!, "MMMM yyyy"),
-  };
-});
+function formatDate(d: string) {
+  try { return format(parseISO(d), "dd/MM/yyyy", { locale: ptBR }); } catch { return d; }
+}
+
+function isOverdueDate(d: string) {
+  try { return isPast(parseISO(d + "T23:59:59")); } catch { return false; }
+}
+
+const FORMAS = [
+  { value: "pix", label: "PIX" },
+  { value: "dinheiro", label: "Dinheiro" },
+  { value: "cartao", label: "Cartao" },
+  { value: "transferencia", label: "Transferencia" },
+  { value: "boleto", label: "Boleto" },
+];
+
+type DividaWithParcelas = Divida & { parcelas: Parcela[] };
+
+function ParcelaRow({
+  parcela,
+  onPay,
+  onEdit,
+  isPaying,
+}: {
+  parcela: Parcela;
+  onPay: (parcela: Parcela) => void;
+  onEdit: (parcela: Parcela) => void;
+  isPaying: boolean;
+}) {
+  const overdue = parcela.status === "pendente" && isOverdueDate(parcela.dataVencimento);
+  return (
+    <div
+      className={`flex items-center gap-3 p-2.5 rounded-md text-sm ${
+        parcela.status === "pago"
+          ? "bg-emerald-500/5"
+          : overdue
+          ? "bg-red-500/5 border border-red-500/20"
+          : "bg-muted/30"
+      }`}
+      data-testid={`row-parcela-${parcela.id}`}
+    >
+      <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
+        parcela.status === "pago" ? "bg-emerald-500 text-white" : overdue ? "bg-red-500 text-white" : "bg-muted-foreground/20 text-muted-foreground"
+      }`}>
+        {parcela.status === "pago" ? <Check className="w-3 h-3" /> : parcela.numero}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium">{formatCurrency(Number(parcela.valor))}</span>
+          <span className="text-muted-foreground">
+            {parcela.status === "pago"
+              ? `Pago em ${formatDate(parcela.dataPagamento!)}${parcela.formaPagamento ? ` via ${parcela.formaPagamento}` : ""}`
+              : `Venc. ${formatDate(parcela.dataVencimento)}${overdue ? " · ATRASADO" : ""}`
+            }
+          </span>
+        </div>
+      </div>
+      {parcela.status === "pendente" && (
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => onEdit(parcela)}
+            data-testid={`button-edit-parcela-${parcela.id}`}
+          >
+            <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => onPay(parcela)}
+            disabled={isPaying}
+            data-testid={`button-pay-parcela-${parcela.id}`}
+          >
+            <Check className="w-3.5 h-3.5 text-emerald-600" />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function DividasPage() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [payOpen, setPayOpen] = useState(false);
-  const [payingDivida, setPayingDivida] = useState<Divida | null>(null);
-  const [payForm, setPayForm] = useState({ formaPagamento: "pix" });
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("todos");
   const [filterTipo, setFilterTipo] = useState<string>("todos");
-  const [filterMes, setFilterMes] = useState<string>("todos");
-  const [form, setForm] = useState({
+
+  const [createTab, setCreateTab] = useState<"simples" | "parcelado">("simples");
+  const [simpleForm, setSimpleForm] = useState({
     pessoaId: "", tipo: "receber", valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
   });
+  const [parceladoForm, setParceladoForm] = useState({
+    pessoaId: "", tipo: "receber", valorTotal: "", totalParcelas: "2", primeiroVencimento: "", descricao: "", formaPagamento: "pix",
+  });
+
+  const [payingParcela, setPayingParcela] = useState<Parcela | null>(null);
+  const [payParcelaForm, setPayParcelaForm] = useState({ formaPagamento: "pix", dataPagamento: format(new Date(), "yyyy-MM-dd") });
+  const [editingParcela, setEditingParcela] = useState<Parcela | null>(null);
+  const [editParcelaForm, setEditParcelaForm] = useState({ valor: "", dataVencimento: "" });
+
+  const [anteciparOpen, setAnteciparOpen] = useState(false);
+  const [anteciparDivida, setAnteciparDivida] = useState<DividaWithParcelas | null>(null);
+  const [anteciparForm, setAnteciparForm] = useState({ quantidade: "1", formaPagamento: "pix" });
 
   const { data: dividas = [], isLoading } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
+  const { data: parcelas = [] } = useQuery<Parcela[]>({ queryKey: ["/api/parcelas"] });
   const { data: pessoas = [] } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
 
-  const createMutation = useMutation({
+  const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "—";
+
+  const dividasComParcelas: DividaWithParcelas[] = dividas.map((d) => ({
+    ...d,
+    parcelas: parcelas.filter((p) => p.dividaId === d.id).sort((a, b) => a.numero - b.numero),
+  }));
+
+  const filtered = dividasComParcelas
+    .filter((d) => {
+      const nome = getPessoaNome(d.pessoaId).toLowerCase();
+      return nome.includes(search.toLowerCase()) || (d.descricao || "").toLowerCase().includes(search.toLowerCase());
+    })
+    .filter((d) => {
+      if (filterStatus === "todos") return true;
+      if (d.parcelas.length > 0) {
+        if (filterStatus === "pendente") return d.parcelas.some((p) => p.status === "pendente");
+        if (filterStatus === "pago") return d.parcelas.every((p) => p.status === "pago");
+      }
+      return d.status === filterStatus;
+    })
+    .filter((d) => filterTipo === "todos" || d.tipo === filterTipo)
+    .sort((a, b) => a.dataVencimento.localeCompare(b.dataVencimento));
+
+  const getDividaStatus = (d: DividaWithParcelas) => {
+    if (d.parcelas.length === 0) return d.status;
+    if (d.parcelas.every((p) => p.status === "pago")) return "pago";
+    return "pendente";
+  };
+
+  const getDividaValorPendente = (d: DividaWithParcelas) => {
+    if (d.parcelas.length === 0) return d.status === "pendente" ? Number(d.valor) : 0;
+    return d.parcelas.filter((p) => p.status === "pendente").reduce((s, p) => s + Number(p.valor), 0);
+  };
+
+  const getDividaValorPago = (d: DividaWithParcelas) => {
+    if (d.parcelas.length === 0) return d.status === "pago" ? Number(d.valor) : 0;
+    return d.parcelas.filter((p) => p.status === "pago").reduce((s, p) => s + Number(p.valor), 0);
+  };
+
+  const totalReceber = filtered
+    .filter((d) => d.tipo === "receber")
+    .reduce((s, d) => s + getDividaValorPendente(d), 0);
+  const totalPagar = filtered
+    .filter((d) => d.tipo === "pagar")
+    .reduce((s, d) => s + getDividaValorPendente(d), 0);
+
+  const createSimpleMutation = useMutation({
     mutationFn: async (data: any) => { await apiRequest("POST", "/api/dividas", data); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
       setOpen(false);
-      setForm({ pessoaId: "", tipo: "receber", valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix" });
+      setSimpleForm({ pessoaId: "", tipo: "receber", valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix" });
       toast({ title: "Divida registrada" });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
-  const payMutation = useMutation({
-    mutationFn: async ({ id, formaPagamento }: { id: string; formaPagamento: string }) => {
-      await apiRequest("PATCH", `/api/dividas/${id}`, {
+  const createParceladoMutation = useMutation({
+    mutationFn: async (data: any) => { await apiRequest("POST", "/api/dividas/parcelado", data); },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+      setOpen(false);
+      setParceladoForm({ pessoaId: "", tipo: "receber", valorTotal: "", totalParcelas: "2", primeiroVencimento: "", descricao: "", formaPagamento: "pix" });
+      toast({ title: `Divida parcelada criada com ${vars.totalParcelas} parcelas` });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const payParcelaMutation = useMutation({
+    mutationFn: async ({ id, formaPagamento, dataPagamento }: { id: string; formaPagamento: string; dataPagamento: string }) => {
+      const res = await apiRequest("PATCH", `/api/parcelas/${id}`, {
         status: "pago",
-        dataPagamento: format(new Date(), "yyyy-MM-dd"),
+        dataPagamento,
         formaPagamento,
       });
+      return res.json();
+    },
+    onSuccess: async () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+      setPayingParcela(null);
+      toast({ title: "Parcela marcada como paga" });
+    },
+  });
+
+  const editParcelaMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; valor?: string; dataVencimento?: string }) => {
+      const res = await apiRequest("PATCH", `/api/parcelas/${id}`, data);
+      return res.json();
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+      setEditingParcela(null);
+      toast({ title: "Parcela atualizada" });
+    },
+  });
+
+  const anteciparMutation = useMutation({
+    mutationFn: async (data: { dividaId: string; quantidade: number; formaPagamento: string }) => {
+      const res = await apiRequest("POST", "/api/parcelas/antecipar", data);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
-      setPayOpen(false);
-      setPayingDivida(null);
-      toast({ title: "Divida marcada como paga" });
+      setAnteciparOpen(false);
+      setAnteciparDivida(null);
+      toast({ title: `${data.updated} parcela(s) antecipada(s)${data.todasPagas ? " · Divida quitada!" : ""}` });
     },
   });
 
@@ -78,24 +257,10 @@ export default function DividasPage() {
     mutationFn: async (id: string) => { await apiRequest("DELETE", `/api/dividas/${id}`); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
       toast({ title: "Divida removida" });
     },
   });
-
-  const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "—";
-
-  const filtered = dividas
-    .filter((d) => {
-      const nome = getPessoaNome(d.pessoaId).toLowerCase();
-      return nome.includes(search.toLowerCase()) || (d.descricao || "").toLowerCase().includes(search.toLowerCase());
-    })
-    .filter((d) => filterStatus === "todos" || d.status === filterStatus)
-    .filter((d) => filterTipo === "todos" || d.tipo === filterTipo)
-    .filter((d) => filterMes === "todos" || d.dataVencimento.startsWith(filterMes))
-    .sort((a, b) => a.dataVencimento.localeCompare(b.dataVencimento));
-
-  const totalReceber = filtered.filter((d) => d.tipo === "receber" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
-  const totalPagar = filtered.filter((d) => d.tipo === "pagar" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
 
   if (isLoading) {
     return (
@@ -113,7 +278,7 @@ export default function DividasPage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Dividas</h1>
-          <p className="text-muted-foreground">Controle de valores a receber e a pagar</p>
+          <p className="text-muted-foreground">Controle parcelado de valores a receber e a pagar</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -121,93 +286,137 @@ export default function DividasPage() {
               <Plus className="w-4 h-4 mr-2" /> Nova divida
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Registrar Divida</DialogTitle>
             </DialogHeader>
-            <form
-              onSubmit={(e) => { e.preventDefault(); createMutation.mutate(form); }}
-              className="space-y-4"
-            >
-              <div className="space-y-2">
-                <Label>Pessoa</Label>
-                <Select value={form.pessoaId} onValueChange={(v) => setForm({ ...form, pessoaId: v })}>
-                  <SelectTrigger data-testid="select-divida-pessoa">
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pessoas.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Tipo</Label>
-                  <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
-                    <SelectTrigger data-testid="select-divida-tipo">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="receber">A receber</SelectItem>
-                      <SelectItem value="pagar">A pagar</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Valor</Label>
-                  <Input
-                    data-testid="input-divida-valor"
-                    type="number"
-                    step="0.01"
-                    value={form.valor}
-                    onChange={(e) => setForm({ ...form, valor: e.target.value })}
-                    placeholder="0,00"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Vencimento</Label>
-                  <Input
-                    data-testid="input-divida-vencimento"
-                    type="date"
-                    value={form.dataVencimento}
-                    onChange={(e) => setForm({ ...form, dataVencimento: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Forma de pagamento</Label>
-                  <Select value={form.formaPagamento} onValueChange={(v) => setForm({ ...form, formaPagamento: v })}>
-                    <SelectTrigger data-testid="select-divida-pagamento">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pix">PIX</SelectItem>
-                      <SelectItem value="dinheiro">Dinheiro</SelectItem>
-                      <SelectItem value="cartao">Cartao</SelectItem>
-                      <SelectItem value="transferencia">Transferencia</SelectItem>
-                      <SelectItem value="boleto">Boleto</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Descricao (opcional)</Label>
-                <Input
-                  data-testid="input-divida-descricao"
-                  value={form.descricao}
-                  onChange={(e) => setForm({ ...form, descricao: e.target.value })}
-                  placeholder="Descricao breve"
-                />
-              </div>
-              <Button type="submit" className="w-full" data-testid="button-save-divida" disabled={createMutation.isPending}>
-                {createMutation.isPending ? "Salvando..." : "Registrar"}
-              </Button>
-            </form>
+            <Tabs value={createTab} onValueChange={(v) => setCreateTab(v as any)}>
+              <TabsList className="w-full">
+                <TabsTrigger value="simples" className="flex-1" data-testid="tab-simples">Simples</TabsTrigger>
+                <TabsTrigger value="parcelado" className="flex-1" data-testid="tab-parcelado">Parcelado</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="simples" className="space-y-4 mt-4">
+                <form onSubmit={(e) => { e.preventDefault(); createSimpleMutation.mutate(simpleForm); }} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Pessoa</Label>
+                    <Select value={simpleForm.pessoaId} onValueChange={(v) => setSimpleForm({ ...simpleForm, pessoaId: v })}>
+                      <SelectTrigger data-testid="select-divida-pessoa"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      <SelectContent>{pessoas.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Tipo</Label>
+                      <Select value={simpleForm.tipo} onValueChange={(v) => setSimpleForm({ ...simpleForm, tipo: v })}>
+                        <SelectTrigger data-testid="select-divida-tipo"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="receber">A receber</SelectItem>
+                          <SelectItem value="pagar">A pagar</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Valor</Label>
+                      <Input data-testid="input-divida-valor" type="number" step="0.01" value={simpleForm.valor}
+                        onChange={(e) => setSimpleForm({ ...simpleForm, valor: e.target.value })} placeholder="0,00" required />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Vencimento</Label>
+                      <Input data-testid="input-divida-vencimento" type="date" value={simpleForm.dataVencimento}
+                        onChange={(e) => setSimpleForm({ ...simpleForm, dataVencimento: e.target.value })} required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Forma</Label>
+                      <Select value={simpleForm.formaPagamento} onValueChange={(v) => setSimpleForm({ ...simpleForm, formaPagamento: v })}>
+                        <SelectTrigger data-testid="select-divida-pagamento"><SelectValue /></SelectTrigger>
+                        <SelectContent>{FORMAS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Descricao (opcional)</Label>
+                    <Input data-testid="input-divida-descricao" value={simpleForm.descricao}
+                      onChange={(e) => setSimpleForm({ ...simpleForm, descricao: e.target.value })} placeholder="Descricao breve" />
+                  </div>
+                  <Button type="submit" className="w-full" data-testid="button-save-divida" disabled={createSimpleMutation.isPending}>
+                    {createSimpleMutation.isPending ? "Salvando..." : "Registrar"}
+                  </Button>
+                </form>
+              </TabsContent>
+
+              <TabsContent value="parcelado" className="space-y-4 mt-4">
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  createParceladoMutation.mutate({
+                    ...parceladoForm,
+                    valorTotal: Number(parceladoForm.valorTotal),
+                    totalParcelas: Number(parceladoForm.totalParcelas),
+                  });
+                }} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Pessoa</Label>
+                    <Select value={parceladoForm.pessoaId} onValueChange={(v) => setParceladoForm({ ...parceladoForm, pessoaId: v })}>
+                      <SelectTrigger data-testid="select-parcelado-pessoa"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      <SelectContent>{pessoas.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Tipo</Label>
+                      <Select value={parceladoForm.tipo} onValueChange={(v) => setParceladoForm({ ...parceladoForm, tipo: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="receber">A receber</SelectItem>
+                          <SelectItem value="pagar">A pagar</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Valor total</Label>
+                      <Input data-testid="input-parcelado-valor" type="number" step="0.01" value={parceladoForm.valorTotal}
+                        onChange={(e) => setParceladoForm({ ...parceladoForm, valorTotal: e.target.value })} placeholder="0,00" required />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Numero de parcelas</Label>
+                      <Input data-testid="input-parcelado-parcelas" type="number" min="2" max="360" value={parceladoForm.totalParcelas}
+                        onChange={(e) => setParceladoForm({ ...parceladoForm, totalParcelas: e.target.value })} required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>1° vencimento</Label>
+                      <Input data-testid="input-parcelado-vencimento" type="date" value={parceladoForm.primeiroVencimento}
+                        onChange={(e) => setParceladoForm({ ...parceladoForm, primeiroVencimento: e.target.value })} required />
+                    </div>
+                  </div>
+                  {parceladoForm.valorTotal && parceladoForm.totalParcelas && Number(parceladoForm.totalParcelas) > 0 && (
+                    <div className="p-3 rounded-md bg-primary/5 border border-primary/10 text-sm">
+                      <span className="text-muted-foreground">Valor por parcela: </span>
+                      <span className="font-semibold">{formatCurrency(Number(parceladoForm.valorTotal) / Number(parceladoForm.totalParcelas))}</span>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Forma</Label>
+                      <Select value={parceladoForm.formaPagamento} onValueChange={(v) => setParceladoForm({ ...parceladoForm, formaPagamento: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>{FORMAS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Descricao (opcional)</Label>
+                      <Input value={parceladoForm.descricao} onChange={(e) => setParceladoForm({ ...parceladoForm, descricao: e.target.value })} placeholder="Descricao" />
+                    </div>
+                  </div>
+                  <Button type="submit" className="w-full" data-testid="button-save-parcelado" disabled={createParceladoMutation.isPending}>
+                    {createParceladoMutation.isPending ? "Gerando cronograma..." : "Gerar cronograma"}
+                  </Button>
+                </form>
+              </TabsContent>
+            </Tabs>
           </DialogContent>
         </Dialog>
       </div>
@@ -215,28 +424,11 @@ export default function DividasPage() {
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative min-w-[200px] max-w-xs flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            data-testid="input-search-divida"
-            className="pl-9"
-            placeholder="Buscar pessoa ou descricao..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <Input data-testid="input-search-divida" className="pl-9" placeholder="Buscar pessoa ou descricao..."
+            value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <Select value={filterMes} onValueChange={setFilterMes}>
-          <SelectTrigger className="w-[180px]" data-testid="filter-mes-divida">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {months.map((m) => (
-              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         <Select value={filterTipo} onValueChange={setFilterTipo}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
+          <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos tipos</SelectItem>
             <SelectItem value="receber">A receber</SelectItem>
@@ -244,13 +436,11 @@ export default function DividasPage() {
           </SelectContent>
         </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
+          <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos status</SelectItem>
             <SelectItem value="pendente">Pendente</SelectItem>
-            <SelectItem value="pago">Pago</SelectItem>
+            <SelectItem value="pago">Quitado</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -258,58 +448,15 @@ export default function DividasPage() {
       {filtered.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-md bg-emerald-500/5 border border-emerald-500/10 p-3">
-            <p className="text-xs text-muted-foreground mb-1">Total a receber (filtrado)</p>
+            <p className="text-xs text-muted-foreground mb-1">Total a receber (pendente)</p>
             <p className="text-lg font-bold text-emerald-600">{formatCurrency(totalReceber)}</p>
           </div>
           <div className="rounded-md bg-red-500/5 border border-red-500/10 p-3">
-            <p className="text-xs text-muted-foreground mb-1">Total a pagar (filtrado)</p>
+            <p className="text-xs text-muted-foreground mb-1">Total a pagar (pendente)</p>
             <p className="text-lg font-bold text-red-600">{formatCurrency(totalPagar)}</p>
           </div>
         </div>
       )}
-
-      <Dialog open={payOpen} onOpenChange={setPayOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirmar pagamento</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            {payingDivida && (
-              <div className="p-4 rounded-md bg-muted/50">
-                <p className="text-sm text-muted-foreground">Valor</p>
-                <p className="text-2xl font-bold">{formatCurrency(Number(payingDivida.valor))}</p>
-                <p className="text-sm text-muted-foreground mt-1">Pessoa: {getPessoaNome(payingDivida.pessoaId)}</p>
-                {payingDivida.descricao && (
-                  <p className="text-sm text-muted-foreground">{payingDivida.descricao}</p>
-                )}
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label>Forma de pagamento</Label>
-              <Select value={payForm.formaPagamento} onValueChange={(v) => setPayForm({ formaPagamento: v })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pix">PIX</SelectItem>
-                  <SelectItem value="dinheiro">Dinheiro</SelectItem>
-                  <SelectItem value="cartao">Cartao</SelectItem>
-                  <SelectItem value="transferencia">Transferencia</SelectItem>
-                  <SelectItem value="boleto">Boleto</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              className="w-full"
-              onClick={() => { if (payingDivida) payMutation.mutate({ id: payingDivida.id, formaPagamento: payForm.formaPagamento }); }}
-              disabled={payMutation.isPending}
-              data-testid="button-confirm-pay"
-            >
-              {payMutation.isPending ? "Processando..." : "Confirmar pagamento"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {filtered.length === 0 ? (
         <div className="text-center py-16" data-testid="empty-dividas">
@@ -318,64 +465,246 @@ export default function DividasPage() {
           <p className="text-sm text-muted-foreground mt-1">Registre uma nova divida ou ajuste os filtros</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {filtered.map((d) => {
-            const isOverdue = d.status === "pendente" && d.dataVencimento < format(new Date(), "yyyy-MM-dd");
+            const status = getDividaStatus(d);
+            const valorPendente = getDividaValorPendente(d);
+            const valorPago = getDividaValorPago(d);
+            const valorTotal = d.parcelas.length > 0
+              ? d.parcelas.reduce((s, p) => s + Number(p.valor), 0)
+              : Number(d.valor);
+            const progresso = valorTotal > 0 ? (valorPago / valorTotal) * 100 : 0;
+            const isExpanded = expandedId === d.id;
+            const hasParce = d.parcelas.length > 0;
+            const proximaParcela = d.parcelas.find((p) => p.status === "pendente");
+            const parcelasVencidas = d.parcelas.filter((p) => p.status === "pendente" && isOverdueDate(p.dataVencimento)).length;
+            const parcelasPagas = d.parcelas.filter((p) => p.status === "pago").length;
+
+            const simpleOverdue = !hasParce && status === "pendente" && isOverdueDate(d.dataVencimento);
+
             return (
-              <Card key={d.id} className="hover-elevate" data-testid={`card-divida-${d.id}`}>
-                <CardContent className="p-4">
+              <Card key={d.id} className={`hover-elevate transition-all ${parcelasVencidas > 0 || simpleOverdue ? "border-red-500/30" : ""}`}
+                data-testid={`card-divida-${d.id}`}>
+                <CardContent className="p-4 space-y-3">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className={`w-1.5 self-stretch rounded-full flex-shrink-0 ${
-                        d.status === "pago" ? "bg-emerald-500" : isOverdue ? "bg-red-500" : "bg-amber-400"
+                        status === "pago" ? "bg-emerald-500" : parcelasVencidas > 0 || simpleOverdue ? "bg-red-500" : "bg-amber-400"
                       }`} />
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-semibold">{getPessoaNome(d.pessoaId)}</p>
                           <Badge variant={d.tipo === "receber" ? "default" : "destructive"}>
                             {d.tipo === "receber" ? "Receber" : "Pagar"}
                           </Badge>
-                          <Badge variant={d.status === "pago" ? "secondary" : "outline"}>
-                            {d.status === "pago" ? "Pago" : isOverdue ? "Vencido" : "Pendente"}
-                          </Badge>
+                          {hasParce ? (
+                            <Badge variant={status === "pago" ? "secondary" : "outline"}>
+                              {parcelasPagas}/{d.parcelas.length} parcelas
+                            </Badge>
+                          ) : (
+                            <Badge variant={status === "pago" ? "secondary" : "outline"}>
+                              {status === "pago" ? "Pago" : simpleOverdue ? "Vencido" : "Pendente"}
+                            </Badge>
+                          )}
+                          {parcelasVencidas > 0 && (
+                            <Badge variant="destructive" className="text-xs">
+                              <AlertCircle className="w-3 h-3 mr-1" />
+                              {parcelasVencidas} atrasada{parcelasVencidas > 1 ? "s" : ""}
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground mt-0.5">
-                          {d.status === "pago"
+                          {hasParce
+                            ? proximaParcela
+                              ? `Proxima: ${formatDate(proximaParcela.dataVencimento)} · ${formatCurrency(Number(proximaParcela.valor))}`
+                              : "Todas pagas"
+                            : status === "pago"
                             ? `Pago em ${d.dataPagamento}${d.formaPagamento ? ` via ${d.formaPagamento}` : ""}`
-                            : `Venc: ${d.dataVencimento}${isOverdue ? " · ATRASADO" : ""}`
+                            : `Venc: ${formatDate(d.dataVencimento)}${simpleOverdue ? " · ATRASADO" : ""}`
                           }
                           {d.descricao && ` · ${d.descricao}`}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-lg font-bold">{formatCurrency(Number(d.valor))}</span>
-                      {d.status === "pendente" && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => { setPayingDivida(d); setPayOpen(true); }}
-                          data-testid={`button-pay-${d.id}`}
-                        >
-                          <Check className="w-4 h-4 text-emerald-600" />
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <div className="text-right mr-1">
+                        <div className="text-lg font-bold">{formatCurrency(hasParce ? valorTotal : Number(d.valor))}</div>
+                        {hasParce && valorPendente > 0 && (
+                          <div className="text-xs text-muted-foreground">Pendente: {formatCurrency(valorPendente)}</div>
+                        )}
+                      </div>
+                      {hasParce && status !== "pago" && (
+                        <Button variant="ghost" size="icon" onClick={() => { setAnteciparDivida(d); setAnteciparOpen(true); }}
+                          title="Antecipar parcelas" data-testid={`button-antecipar-${d.id}`}>
+                          <FastForward className="w-4 h-4 text-primary" />
                         </Button>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => deleteMutation.mutate(d.id)}
-                        data-testid={`button-delete-divida-${d.id}`}
-                      >
+                      {hasParce && (
+                        <Button variant="ghost" size="icon" onClick={() => setExpandedId(isExpanded ? null : d.id)}
+                          data-testid={`button-expand-${d.id}`}>
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(d.id)}
+                        data-testid={`button-delete-divida-${d.id}`}>
                         <Trash2 className="w-4 h-4 text-muted-foreground" />
                       </Button>
                     </div>
                   </div>
+
+                  {hasParce && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{parcelasPagas} de {d.parcelas.length} pagas</span>
+                        <span>{Math.round(progresso)}%</span>
+                      </div>
+                      <Progress value={progresso} className="h-1.5" />
+                    </div>
+                  )}
+
+                  {isExpanded && hasParce && (
+                    <div className="space-y-1.5 pt-1 border-t border-border/50">
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Cronograma de parcelas</p>
+                      {d.parcelas.map((p) => (
+                        <ParcelaRow
+                          key={p.id}
+                          parcela={p}
+                          onPay={(parcela) => {
+                            setPayingParcela(parcela);
+                            setPayParcelaForm({ formaPagamento: "pix", dataPagamento: format(new Date(), "yyyy-MM-dd") });
+                          }}
+                          onEdit={(parcela) => {
+                            setEditingParcela(parcela);
+                            setEditParcelaForm({ valor: String(parcela.valor), dataVencimento: parcela.dataVencimento });
+                          }}
+                          isPaying={payParcelaMutation.isPending}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );
           })}
         </div>
       )}
+
+      <Dialog open={!!payingParcela} onOpenChange={(v) => { if (!v) setPayingParcela(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Registrar pagamento de parcela</DialogTitle></DialogHeader>
+          {payingParcela && (
+            <div className="space-y-4">
+              <div className="p-3 rounded-md bg-muted/50 text-sm">
+                <p className="font-medium">Parcela {payingParcela.numero} · {formatCurrency(Number(payingParcela.valor))}</p>
+                <p className="text-muted-foreground">Vencimento: {formatDate(payingParcela.dataVencimento)}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Data do pagamento</Label>
+                  <Input type="date" value={payParcelaForm.dataPagamento}
+                    onChange={(e) => setPayParcelaForm({ ...payParcelaForm, dataPagamento: e.target.value })}
+                    data-testid="input-pay-parcela-data" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Forma</Label>
+                  <Select value={payParcelaForm.formaPagamento} onValueChange={(v) => setPayParcelaForm({ ...payParcelaForm, formaPagamento: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{FORMAS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <Button className="w-full" data-testid="button-confirm-pay-parcela"
+                onClick={() => payParcelaMutation.mutate({ id: payingParcela.id, ...payParcelaForm })}
+                disabled={payParcelaMutation.isPending}>
+                {payParcelaMutation.isPending ? "Registrando..." : "Confirmar pagamento"}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingParcela} onOpenChange={(v) => { if (!v) setEditingParcela(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Editar parcela</DialogTitle></DialogHeader>
+          {editingParcela && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Valor</Label>
+                  <Input type="number" step="0.01" value={editParcelaForm.valor}
+                    onChange={(e) => setEditParcelaForm({ ...editParcelaForm, valor: e.target.value })}
+                    data-testid="input-edit-parcela-valor" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Vencimento</Label>
+                  <Input type="date" value={editParcelaForm.dataVencimento}
+                    onChange={(e) => setEditParcelaForm({ ...editParcelaForm, dataVencimento: e.target.value })}
+                    data-testid="input-edit-parcela-data" />
+                </div>
+              </div>
+              <Button className="w-full" data-testid="button-save-edit-parcela"
+                onClick={() => editParcelaMutation.mutate({ id: editingParcela.id, ...editParcelaForm })}
+                disabled={editParcelaMutation.isPending}>
+                {editParcelaMutation.isPending ? "Salvando..." : "Salvar alteracoes"}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={anteciparOpen} onOpenChange={(v) => { if (!v) { setAnteciparOpen(false); setAnteciparDivida(null); } }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Antecipar parcelas</DialogTitle></DialogHeader>
+          {anteciparDivida && (
+            <div className="space-y-4">
+              <div className="p-3 rounded-md bg-muted/50 text-sm">
+                <p className="font-medium">{getPessoaNome(anteciparDivida.pessoaId)}</p>
+                <p className="text-muted-foreground">
+                  {anteciparDivida.parcelas.filter((p) => p.status === "pendente").length} parcelas pendentes
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Quantas parcelas antecipar?</Label>
+                <Input type="number" min="1"
+                  max={anteciparDivida.parcelas.filter((p) => p.status === "pendente").length}
+                  value={anteciparForm.quantidade}
+                  onChange={(e) => setAnteciparForm({ ...anteciparForm, quantidade: e.target.value })}
+                  data-testid="input-antecipar-quantidade" />
+              </div>
+              <div className="space-y-2">
+                <Label>Forma de pagamento</Label>
+                <Select value={anteciparForm.formaPagamento} onValueChange={(v) => setAnteciparForm({ ...anteciparForm, formaPagamento: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{FORMAS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              {anteciparForm.quantidade && Number(anteciparForm.quantidade) > 0 && (
+                <div className="p-3 rounded-md bg-primary/5 border border-primary/10 text-sm">
+                  <p className="text-muted-foreground">Total a pagar agora:</p>
+                  <p className="font-bold text-lg">
+                    {formatCurrency(
+                      anteciparDivida.parcelas
+                        .filter((p) => p.status === "pendente")
+                        .sort((a, b) => a.numero - b.numero)
+                        .slice(0, Number(anteciparForm.quantidade))
+                        .reduce((s, p) => s + Number(p.valor), 0)
+                    )}
+                  </p>
+                </div>
+              )}
+              <Button className="w-full" data-testid="button-confirm-antecipar"
+                onClick={() => anteciparMutation.mutate({
+                  dividaId: anteciparDivida.id,
+                  quantidade: Number(anteciparForm.quantidade),
+                  formaPagamento: anteciparForm.formaPagamento,
+                })}
+                disabled={anteciparMutation.isPending}>
+                {anteciparMutation.isPending ? "Processando..." : `Antecipar ${anteciparForm.quantidade} parcela(s)`}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

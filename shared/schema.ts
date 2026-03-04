@@ -44,11 +44,29 @@ export const dividas = pgTable("dividas", {
   dataPagamento: text("data_pagamento"),
   formaPagamento: text("forma_pagamento"),
   descricao: text("descricao"),
+  totalParcelas: integer("total_parcelas"),
+  valorTotal: decimal("valor_total", { precision: 12, scale: 2 }),
 });
 
 export const insertDividaSchema = createInsertSchema(dividas).omit({ id: true });
 export type InsertDivida = z.infer<typeof insertDividaSchema>;
 export type Divida = typeof dividas.$inferSelect;
+
+export const parcelas = pgTable("parcelas", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  dividaId: varchar("divida_id").notNull(),
+  numero: integer("numero").notNull(),
+  valor: decimal("valor", { precision: 12, scale: 2 }).notNull(),
+  dataVencimento: text("data_vencimento").notNull(),
+  status: text("status").notNull().default("pendente"),
+  dataPagamento: text("data_pagamento"),
+  formaPagamento: text("forma_pagamento"),
+});
+
+export const insertParcelaSchema = createInsertSchema(parcelas).omit({ id: true });
+export type InsertParcela = z.infer<typeof insertParcelaSchema>;
+export type Parcela = typeof parcelas.$inferSelect;
 
 export const cartoes = pgTable("cartoes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
