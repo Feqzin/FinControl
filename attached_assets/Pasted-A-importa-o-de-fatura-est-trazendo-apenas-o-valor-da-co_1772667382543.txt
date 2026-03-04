@@ -1,0 +1,154 @@
+A importação de fatura está trazendo apenas o valor da compra.
+Preciso que o sistema extraia TODAS as informações possíveis automaticamente.
+
+OBJETIVO:
+Melhorar o parser para identificar corretamente:
+
+- Descrição da compra
+- Valor
+- Data da compra
+- Data de vencimento da fatura
+- Número da parcela atual
+- Total de parcelas
+- Quantas parcelas faltam
+
+========================================
+1) EXTRAÇÃO ESTRUTURADA POR TIPO DE ARQUIVO
+========================================
+
+OFX:
+- Mapear:
+   <DTPOSTED> → dataCompra
+   <TRNAMT> → valor
+   <MEMO> → descricao
+
+CSV:
+- Detectar automaticamente colunas por nome semelhante:
+   data, date, lançamento
+   descrição, historico, memo
+   valor, amount
+
+PDF:
+- Extrair texto bruto
+- Aplicar regex para identificar padrões como:
+
+Data:
+(\d{2}/\d{2}/\d{4})
+
+Valor:
+(-?\d+[.,]\d{2})
+
+Parcelamento:
+(\d{1,2})\/(\d{1,2})
+
+Exemplo detectado:
+"Magazine Luiza 03/10 12/12/2025 R$ 199,90"
+
+Extrair:
+parcelaAtual = 3
+totalParcelas = 10
+
+========================================
+2) IDENTIFICAÇÃO DE PARCELAMENTO
+========================================
+
+Se detectar padrão "3/10":
+
+- totalParcelas = 10
+- parcelaAtual = 3
+- parcelasRestantes = totalParcelas - parcelaAtual
+
+Criar automaticamente:
+
+parcelas = [
+  { numero: 1, statusCartao: pago },
+  { numero: 2, statusCartao: pago },
+  { numero: 3, statusCartao: pendente },
+  ...
+]
+
+Se não houver padrão:
+→ considerar como parcela única.
+
+========================================
+3) IDENTIFICAR DATA DE COMPRA E VENCIMENTO
+========================================
+
+Se houver múltiplas datas:
+
+Regra:
+- Primeira data próxima à descrição → dataCompra
+- Data no topo da fatura → vencimentoFatura
+
+Se não encontrar vencimento:
+→ deixar null (opcional)
+
+========================================
+4) NORMALIZAÇÃO DE DESCRIÇÃO
+========================================
+
+Limpar:
+
+- Números extras
+- Código de autorização
+- Espaços duplicados
+
+Exemplo:
+"AMAZON.COM*MKTP US 123456"
+
+Virar:
+"Amazon Marketplace"
+
+========================================
+5) VALIDAÇÃO ANTES DE SALVAR
+========================================
+
+Antes de inserir no banco:
+
+Mostrar prévia:
+
+Descrição
+Data
+Valor
+Parcela 3/10
+Total de parcelas
+Vencimento
+
+Permitir editar antes de confirmar.
+
+========================================
+6) ESTRUTURA FINAL SALVA
+========================================
+
+cartaoTransacao {
+  descricao,
+  valorTotal,
+  dataCompra,
+  vencimentoFatura,
+  totalParcelas,
+  parcelaAtual,
+  parcelasRestantes,
+  parcelas: [],
+  origemImportacao: true
+}
+
+========================================
+7) PERFORMANCE
+========================================
+
+- Processar linha por linha
+- Ignorar linhas que não tenham valor monetário
+- Validar formato antes de salvar
+
+========================================
+
+Objetivo final:
+
+Criar importação inteligente que reconheça automaticamente:
+- Descrição
+- Parcelamento
+- Datas
+- Valor
+- Vencimento
+
+Sem exigir edição manual após importar.
