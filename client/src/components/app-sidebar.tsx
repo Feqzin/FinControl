@@ -4,7 +4,7 @@ import { useTheme } from "@/components/theme-provider";
 import {
   LayoutDashboard, Users, Receipt, CreditCard, Calendar,
   BarChart3, Repeat, LogOut, FileUp, Target, History, Calculator,
-  Sun, Moon,
+  Sun, Moon, UserCircle,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -32,6 +32,7 @@ const planejamentoItems = [
 const ferramentasItems = [
   { title: "Relatorios", url: "/relatorios", icon: BarChart3 },
   { title: "Importar", url: "/importar", icon: FileUp },
+  { title: "Perfil", url: "/perfil", icon: UserCircle },
 ];
 
 export function AppSidebar() {

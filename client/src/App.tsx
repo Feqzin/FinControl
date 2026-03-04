@@ -20,6 +20,8 @@ import ImportarPage from "@/pages/importar-page";
 import MetasPage from "@/pages/metas-page";
 import HistoricoPage from "@/pages/historico-page";
 import SimuladorPage from "@/pages/simulador-page";
+import PerfilPage from "@/pages/perfil-page";
+import RedefinirSenhaPage from "@/pages/redefinir-senha-page";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeProvider } from "@/components/theme-provider";
 
@@ -37,6 +39,7 @@ function Router() {
       <Route path="/metas" component={MetasPage} />
       <Route path="/historico" component={HistoricoPage} />
       <Route path="/simulador" component={SimuladorPage} />
+      <Route path="/perfil" component={PerfilPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -67,6 +70,11 @@ function AuthenticatedLayout() {
 
 function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
+  const isResetPage = window.location.pathname === "/redefinir-senha";
+
+  if (isResetPage) {
+    return <RedefinirSenhaPage />;
+  }
 
   if (isLoading) {
     return (

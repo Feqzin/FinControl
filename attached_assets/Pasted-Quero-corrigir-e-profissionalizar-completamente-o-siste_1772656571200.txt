@@ -1,0 +1,168 @@
+Quero corrigir e profissionalizar completamente o sistema de autenticação do meu aplicativo financeiro.
+
+PROBLEMA CRÍTICO:
+Usuários novos estão vendo dados já cadastrados (como se estivessem na conta demo).
+Isso significa que os dados não estão isolados por usuário.
+
+OBJETIVO:
+Implementar autenticação real com isolamento total de dados por usuário e melhorar a experiência de login/registro.
+
+========================
+1) ISOLAMENTO DE DADOS POR USUÁRIO (OBRIGATÓRIO)
+========================
+
+- Cada usuário deve possuir um ID único.
+- Todas as entidades (pessoas, dívidas, cartões, metas, orçamento, histórico, etc.) devem conter userId.
+- Todas as queries devem filtrar obrigatoriamente por userId.
+- Garantir que um usuário nunca consiga acessar dados de outro.
+- Remover qualquer carga automática de dados demo após login.
+- Se for primeiro login, iniciar banco vazio.
+
+Se necessário, criar middleware de proteção de rotas que valide o usuário autenticado antes de acessar qualquer dado.
+
+========================
+2) VERIFICAÇÃO DE EMAIL OBRIGATÓRIA
+========================
+
+- Após cadastro, usuário NÃO pode acessar o sistema até confirmar email.
+- Enviar email com token de verificação.
+- Criar rota de confirmação de email.
+- Bloquear login enquanto emailVerified = false.
+- Exibir mensagem clara:
+  "Verifique seu email antes de acessar sua conta."
+
+========================
+3) BOTÃO "MOSTRAR SENHA"
+========================
+
+No campo de senha:
+
+- Adicionar ícone de olho.
+- Alternar entre type="password" e type="text".
+- UX moderna e discreta.
+
+Aplicar no:
+- Cadastro
+- Login
+- Reset de senha
+
+========================
+4) ESQUECI MINHA SENHA
+========================
+
+Implementar fluxo completo:
+
+- Link "Esqueci minha senha"
+- Usuário informa email
+- Enviar link com token seguro
+- Tela para redefinir senha
+- Token expira em 1 hora
+- Após redefinir, invalidar sessões anteriores
+
+========================
+5) SESSÕES SEGURAS
+========================
+
+- Usar JWT ou sessão segura com httpOnly cookies
+- Token com expiração
+- Refresh token se necessário
+- Logout deve invalidar token
+
+========================
+6) PROTEÇÃO DE ROTAS
+========================
+
+- Dashboard só acessível se autenticado
+- Bloquear acesso direto via URL
+- Redirecionar para login se não autenticado
+
+========================
+7) SEGURANÇA EXTRA
+========================
+
+- Senhas com hash forte (bcrypt ou equivalente)
+- Mínimo 8 caracteres
+- Validação de força de senha
+- Rate limit em login (evitar brute force)
+- Sanitização de inputs
+
+========================
+8) UX MELHORADA
+========================
+
+Adicionar:
+
+- Mensagens claras de erro (ex: senha incorreta)
+- Feedback visual ao enviar email
+- Loading states nos botões
+- Confirmação de email enviado
+
+========================
+
+IMPORTANTE:
+Organizar código separando:
+
+- authController
+- authService
+- authMiddleware
+- userModel
+- tokenService
+
+Objetivo final:
+Sistema de autenticação seguro, escalável e pronto para SaaS real, com isolamento total de dados por usuário.
+🔎 OUTROS PONTOS IMPORTANTES QUE VOCÊ DEVE MELHORAR
+
+Além disso, recomendo fortemente:
+
+🔐 1️⃣ Criar Conta Demo separada
+
+Em vez de deixar dados misturados:
+
+Criar botão: “Testar versão demo”
+
+Logar com usuário fixo demo
+
+Banco separado
+
+Nunca misturar com usuários reais.
+
+📦 2️⃣ Criar Backup Automático
+
+Permitir:
+
+Exportar dados do usuário
+
+Restaurar backup
+
+Isso aumenta confiança.
+
+🛡️ 3️⃣ Adicionar indicador de segurança
+
+Exemplo no perfil:
+
+✔ Email verificado
+✔ Senha segura
+✔ Último login
+
+Isso transmite profissionalismo.
+
+🚀 4️⃣ Adicionar campo “Nome completo” e “Foto de perfil”
+
+Pequeno detalhe.
+Grande impacto de produto.
+
+🎯 Nível Atual vs Nível SaaS Real
+
+Depois dessas melhorias você terá:
+
+Isolamento real de dados
+
+Segurança profissional
+
+Fluxo de recuperação de senha
+
+Verificação de email obrigatória
+
+Base pronta para multiusuário
+
+Isso já coloca você em padrão de produto comercial real.
