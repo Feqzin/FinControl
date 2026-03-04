@@ -13,8 +13,11 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, CreditCard, Trash2, CalendarClock, ShoppingBag } from "lucide-react";
-import type { Cartao, CompraCartao } from "@shared/schema";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Plus, CreditCard, Trash2, CalendarClock, ShoppingBag, User } from "lucide-react";
+import type { Cartao, CompraCartao, Pessoa } from "@shared/schema";
 import { format, addMonths, getDaysInMonth } from "date-fns";
 
 function formatCurrency(value: number): string {
@@ -47,10 +50,11 @@ export default function CartoesPage() {
   const [openCompra, setOpenCompra] = useState(false);
   const [selectedCartao, setSelectedCartao] = useState<string>("");
   const [cardForm, setCardForm] = useState({ nome: "", limite: "", melhorDiaCompra: "", diaVencimento: "" });
-  const [compraForm, setCompraForm] = useState({ descricao: "", valorTotal: "", parcelas: "1", dataCompra: "" });
+  const [compraForm, setCompraForm] = useState({ descricao: "", valorTotal: "", parcelas: "1", dataCompra: "", pessoaId: "" });
 
   const { data: cartoes = [], isLoading } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
+  const { data: pessoas = [] } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
 
   const createCardMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -78,6 +82,7 @@ export default function CartoesPage() {
         cartaoId: selectedCartao,
         descricao: data.descricao,
         valorTotal: data.valorTotal,
+        pessoaId: data.pessoaId || null,
         parcelas,
         parcelaAtual: 1,
         valorParcela,
@@ -87,7 +92,7 @@ export default function CartoesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
       setOpenCompra(false);
-      setCompraForm({ descricao: "", valorTotal: "", parcelas: "1", dataCompra: "" });
+      setCompraForm({ descricao: "", valorTotal: "", parcelas: "1", dataCompra: "", pessoaId: "" });
       toast({ title: "Compra registrada" });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
@@ -274,6 +279,25 @@ export default function CartoesPage() {
                 required
               />
             </div>
+            {pessoas.length > 0 && (
+              <div className="space-y-2">
+                <Label>Vincular a uma pessoa (opcional)</Label>
+                <Select
+                  value={compraForm.pessoaId || "__none__"}
+                  onValueChange={(v) => setCompraForm({ ...compraForm, pessoaId: v === "__none__" ? "" : v })}
+                >
+                  <SelectTrigger data-testid="select-compra-pessoa">
+                    <SelectValue placeholder="Nenhuma (compra propria)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Nenhuma (compra propria)</SelectItem>
+                    {pessoas.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             {compraForm.valorTotal && compraForm.parcelas && (
               <div className="p-3 rounded-md bg-muted/50">
                 <p className="text-sm">
@@ -394,7 +418,15 @@ export default function CartoesPage() {
                           data-testid={`compra-${compra.id}`}
                         >
                           <div className="min-w-0">
-                            <p className="truncate font-medium">{compra.descricao}</p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="truncate font-medium">{compra.descricao}</p>
+                              {compra.pessoaId && (
+                                <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 flex-shrink-0">
+                                  <User className="w-2.5 h-2.5" />
+                                  {pessoas.find((p) => p.id === compra.pessoaId)?.nome ?? "Pessoa"}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-muted-foreground">
                               {compra.parcelaAtual}/{compra.parcelas}x de {formatCurrency(Number(compra.valorParcela))}
                               {" · "}total: {formatCurrency(Number(compra.valorTotal))}

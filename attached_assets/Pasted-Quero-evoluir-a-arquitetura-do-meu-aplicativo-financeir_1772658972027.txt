@@ -1,0 +1,184 @@
+Quero evoluir a arquitetura do meu aplicativo financeiro para permitir relacionamento flexível entre:
+
+- Pessoas
+- Dívidas de cartão
+- Serviços recorrentes
+- Parcelas
+- Pagamentos mensais
+
+OBJETIVO:
+Permitir que uma dívida do cartão seja vinculada opcionalmente a uma pessoa.
+Permitir que serviços recorrentes tenham múltiplas pessoas que devem pagar mensalmente.
+Permitir editar dívidas diretamente dentro da área da pessoa.
+
+========================
+1) VÍNCULO OPCIONAL ENTRE CARTÃO E PESSOA
+========================
+
+Ao cadastrar uma compra no cartão:
+
+Adicionar campo opcional:
+[ Vincular a uma pessoa ]
+
+Se selecionado:
+- Escolher pessoa existente
+- Criar vínculo pessoaId dentro da dívida do cartão
+
+Estrutura sugerida:
+
+cartaoTransacao {
+  id,
+  userId,
+  cartaoId,
+  descricao,
+  valorTotal,
+  totalParcelas,
+  parcelas: [],
+  pessoaId (opcional),
+  tipo: "individual" | "vinculada"
+}
+
+Se tiver pessoaId:
+→ Aparecer automaticamente dentro da página da pessoa.
+
+========================
+2) EDITAR DÍVIDA DENTRO DA ÁREA DA PESSOA
+========================
+
+Na página da pessoa:
+
+Mostrar:
+
+- Dívidas diretas
+- Dívidas de cartão vinculadas
+- Serviços recorrentes vinculados
+
+Cada item deve ter botão:
+- Editar
+- Ajustar número de parcelas
+- Alterar valor
+- Registrar pagamento
+- Remover vínculo
+
+========================
+3) PARCELAMENTO FLEXÍVEL POR PESSOA
+========================
+
+Mesmo que a compra no cartão seja parcelada em 6x,
+a pessoa pode pagar em:
+
+- Mesmo número de parcelas
+OU
+- Parcelamento diferente (ex: ela vai pagar em 3x)
+
+Então precisamos de:
+
+pessoaDivida {
+  id,
+  pessoaId,
+  origemId (cartaoTransacaoId ou servicoId),
+  valorTotal,
+  totalParcelas,
+  parcelas: [
+    {
+      numero,
+      valor,
+      vencimento,
+      status,
+      dataPagamento
+    }
+  ]
+}
+
+IMPORTANTE:
+O parcelamento da pessoa pode ser independente do parcelamento do cartão.
+
+========================
+4) SERVIÇOS RECORRENTES COM MÚLTIPLAS PESSOAS
+========================
+
+Exemplo:
+Netflix pago R$ 60
+3 pessoas devem R$ 20 cada todo mês.
+
+Estrutura sugerida:
+
+servico {
+  id,
+  userId,
+  nome,
+  valorTotal,
+  recorrencia: "mensal",
+  pessoasVinculadas: [
+    {
+      pessoaId,
+      valorDevido,
+      historicoPagamentos: [
+        {
+          mes: "2026-03",
+          status: "pago" | "pendente",
+          dataPagamento
+        }
+      ]
+    }
+  ]
+}
+
+Na aba de serviços mostrar:
+
+- Quem precisa pagar esse mês
+- Quem já pagou
+- Quem está atrasado
+- Total que já recebi
+- Total pendente
+
+========================
+5) VISUAL NA ÁREA DE SERVIÇOS
+========================
+
+Para cada serviço:
+
+Mostrar tabela:
+
+Pessoa | Valor | Março | Abril | Maio
+
+Com botão:
+- Marcar como pago
+- Editar valor individual
+- Remover pessoa do serviço
+
+========================
+6) CÁLCULO AUTOMÁTICO
+========================
+
+Atualizar automaticamente:
+
+- Total que você tem a receber
+- Previsão de entrada mensal
+- Valor pendente
+- Dívidas atrasadas
+
+Parcelas vencidas devem aparecer destacadas em vermelho.
+
+========================
+7) EDIÇÃO COMPLETA
+========================
+
+Permitir:
+
+- Alterar número de parcelas da pessoa
+- Ajustar vencimentos
+- Editar valores individuais
+- Corrigir pagamento errado
+- Desvincular pessoa sem apagar a compra original do cartão
+
+========================
+
+Objetivo final:
+Criar sistema flexível onde:
+
+- Uma compra do cartão pode ser sua ou vinculada a alguém
+- Serviços recorrentes podem ter múltiplos devedores
+- Parcelamento pode ser personalizado por pessoa
+- Tudo editável dentro da área da pessoa
+- Relatórios atualizam automaticamente

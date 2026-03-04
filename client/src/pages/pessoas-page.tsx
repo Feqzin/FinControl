@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,9 +21,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Users, Phone, Trash2, Search, Receipt, Check,
-  Clock, ChevronRight, ArrowUpRight, ArrowDownRight, Pencil,
+  Clock, ArrowUpRight, ArrowDownRight, Pencil, CreditCard, Repeat,
 } from "lucide-react";
-import type { Pessoa, Divida } from "@shared/schema";
+import type { Pessoa, Divida, CompraCartao, Cartao, ServicoPessoa, ServicoPagamento, Servico } from "@shared/schema";
 import { format } from "date-fns";
 
 function formatCurrency(value: number): string {
@@ -45,15 +45,18 @@ export default function PessoasPage() {
   const [editingPessoa, setEditingPessoa] = useState<Pessoa | null>(null);
   const [editForm, setEditForm] = useState({ nome: "", tipo: "me_deve", telefone: "", observacao: "" });
 
-  const [pessoaForm, setPessoaForm] = useState({
-    nome: "", tipo: "me_deve", telefone: "", observacao: "",
-  });
+  const [pessoaForm, setPessoaForm] = useState({ nome: "", tipo: "me_deve", telefone: "", observacao: "" });
   const [dividaForm, setDividaForm] = useState({
     tipo: "receber", valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
   });
 
   const { data: pessoas = [], isLoading } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
+  const { data: comprasCartao = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
+  const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
+  const { data: servicoPessoas = [] } = useQuery<ServicoPessoa[]>({ queryKey: ["/api/servico-pessoas"] });
+  const { data: servicoPagamentos = [] } = useQuery<ServicoPagamento[]>({ queryKey: ["/api/servico-pagamentos"] });
+  const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
 
   const createPessoaMutation = useMutation({
     mutationFn: async (data: any) => { await apiRequest("POST", "/api/pessoas", data); },
@@ -115,6 +118,40 @@ export default function PessoasPage() {
     },
   });
 
+  const marcarServicoPagoMutation = useMutation({
+    mutationFn: async ({ servicoPessoaId, mes }: { servicoPessoaId: string; mes: string }) => {
+      await apiRequest("POST", "/api/servico-pagamentos", {
+        servicoPessoaId,
+        mes,
+        status: "pago",
+        dataPagamento: format(new Date(), "yyyy-MM-dd"),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/servico-pagamentos"] });
+      toast({ title: "Pagamento de servico registrado" });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const reverterServicoPagoMutation = useMutation({
+    mutationFn: async (pagamentoId: string) => { await apiRequest("DELETE", `/api/servico-pagamentos/${pagamentoId}`); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/servico-pagamentos"] });
+      toast({ title: "Pagamento revertido" });
+    },
+  });
+
+  const desvincularCompraMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("PATCH", `/api/compras-cartao/${id}`, { pessoaId: null });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      toast({ title: "Vinculo removido" });
+    },
+  });
+
   const getPessoaStats = (pessoaId: string) => {
     const list = dividas.filter((d) => d.pessoaId === pessoaId);
     const pendente = list.filter((d) => d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
@@ -145,6 +182,13 @@ export default function PessoasPage() {
 
   const historyDividas = historyPessoa ? getPessoaDividas(historyPessoa.id) : [];
   const historyStats = historyPessoa ? getPessoaStats(historyPessoa.id) : null;
+  const historyCompras = historyPessoa
+    ? comprasCartao.filter((c) => c.pessoaId === historyPessoa.id)
+    : [];
+  const historyServicoPessoas = historyPessoa
+    ? servicoPessoas.filter((sp) => sp.pessoaId === historyPessoa.id)
+    : [];
+  const meAtual = format(new Date(), "yyyy-MM");
 
   return (
     <div className="p-6 space-y-6" data-testid="pessoas-page">
@@ -180,9 +224,7 @@ export default function PessoasPage() {
               <div className="space-y-2">
                 <Label>Tipo</Label>
                 <Select value={pessoaForm.tipo} onValueChange={(v) => setPessoaForm({ ...pessoaForm, tipo: v })}>
-                  <SelectTrigger data-testid="select-pessoa-tipo">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger data-testid="select-pessoa-tipo"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="me_deve">Me deve</SelectItem>
                     <SelectItem value="eu_devo">Eu devo</SelectItem>
@@ -248,6 +290,8 @@ export default function PessoasPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((p) => {
             const stats = getPessoaStats(p.id);
+            const comprasVinculadas = comprasCartao.filter((c) => c.pessoaId === p.id).length;
+            const servicosVinculados = servicoPessoas.filter((sp) => sp.pessoaId === p.id).length;
             return (
               <Card key={p.id} className="hover-elevate" data-testid={`card-pessoa-${p.id}`}>
                 <CardContent className="p-5 space-y-4">
@@ -291,7 +335,19 @@ export default function PessoasPage() {
                     <Badge variant={stats.emAberto ? "outline" : "secondary"}>
                       {stats.emAberto ? "Em aberto" : "Quitado"}
                     </Badge>
-                    <span className="text-xs text-muted-foreground">{stats.total} divida(s)</span>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{stats.total} divida(s)</span>
+                      {comprasVinculadas > 0 && (
+                        <span className="flex items-center gap-1">
+                          <CreditCard className="w-3 h-3" /> {comprasVinculadas}
+                        </span>
+                      )}
+                      {servicosVinculados > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Repeat className="w-3 h-3" /> {servicosVinculados}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <Separator />
@@ -410,9 +466,7 @@ export default function PessoasPage() {
       <Dialog open={openDivida} onOpenChange={setOpenDivida}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              Nova divida — {selectedPessoa?.nome}
-            </DialogTitle>
+            <DialogTitle>Nova divida — {selectedPessoa?.nome}</DialogTitle>
           </DialogHeader>
           <form
             onSubmit={(e) => {
@@ -426,9 +480,7 @@ export default function PessoasPage() {
               <div className="space-y-2">
                 <Label>Tipo</Label>
                 <Select value={dividaForm.tipo} onValueChange={(v) => setDividaForm({ ...dividaForm, tipo: v })}>
-                  <SelectTrigger data-testid="select-pessoa-divida-tipo">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger data-testid="select-pessoa-divida-tipo"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="receber">A receber</SelectItem>
                     <SelectItem value="pagar">A pagar</SelectItem>
@@ -462,9 +514,7 @@ export default function PessoasPage() {
               <div className="space-y-2">
                 <Label>Forma de pagamento</Label>
                 <Select value={dividaForm.formaPagamento} onValueChange={(v) => setDividaForm({ ...dividaForm, formaPagamento: v })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="pix">PIX</SelectItem>
                     <SelectItem value="dinheiro">Dinheiro</SelectItem>
@@ -492,7 +542,7 @@ export default function PessoasPage() {
       </Dialog>
 
       <Sheet open={!!historyPessoa} onOpenChange={(v) => { if (!v) setHistoryPessoa(null); }}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
           {historyPessoa && historyStats && (
             <>
               <SheetHeader className="mb-6">
@@ -537,9 +587,7 @@ export default function PessoasPage() {
                     <div className="space-y-2">
                       <Label>Forma de pagamento</Label>
                       <Select value={payForm.formaPagamento} onValueChange={(v) => setPayForm({ formaPagamento: v })}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="pix">PIX</SelectItem>
                           <SelectItem value="dinheiro">Dinheiro</SelectItem>
@@ -566,8 +614,8 @@ export default function PessoasPage() {
               </Dialog>
 
               {historyDividas.length === 0 ? (
-                <div className="text-center py-10">
-                  <Receipt className="w-10 h-10 mx-auto mb-2 text-muted-foreground/40" />
+                <div className="text-center py-6">
+                  <Receipt className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
                   <p className="text-sm text-muted-foreground">Nenhuma divida registrada</p>
                 </div>
               ) : (
@@ -620,6 +668,108 @@ export default function PessoasPage() {
                     );
                   })}
                 </div>
+              )}
+
+              {historyCompras.length > 0 && (
+                <>
+                  <Separator className="my-5" />
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                    Compras de Cartao ({historyCompras.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {historyCompras.map((c) => {
+                      const cartao = cartoes.find((ct) => ct.id === c.cartaoId);
+                      return (
+                        <div
+                          key={c.id}
+                          className="p-3 rounded-md border bg-card"
+                          data-testid={`history-compra-${c.id}`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <CreditCard className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{c.descricao}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {cartao?.nome ?? "Cartao"} · {c.parcelaAtual}/{c.parcelas}x · {c.dataCompra}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <div className="text-right">
+                                <p className="text-sm font-bold text-blue-600">{formatCurrency(Number(c.valorParcela))}/mes</p>
+                                <p className="text-xs text-muted-foreground">Total: {formatCurrency(Number(c.valorTotal))}</p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                title="Remover vinculo"
+                                onClick={() => desvincularCompraMutation.mutate(c.id)}
+                                data-testid={`button-desvincular-compra-${c.id}`}
+                              >
+                                <Trash2 className="w-3 h-3 text-muted-foreground" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              {historyServicoPessoas.length > 0 && (
+                <>
+                  <Separator className="my-5" />
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                    Servicos Compartilhados ({historyServicoPessoas.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {historyServicoPessoas.map((sp) => {
+                      const servico = servicos.find((s) => s.id === sp.servicoId);
+                      const pagAtual = servicoPagamentos.find((p) => p.servicoPessoaId === sp.id && p.mes === meAtual);
+                      return (
+                        <div
+                          key={sp.id}
+                          className="p-3 rounded-md border bg-card"
+                          data-testid={`history-servico-pessoa-${sp.id}`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Repeat className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{servico?.nome ?? "Servico"}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {formatCurrency(Number(sp.valorDevido))}/mes
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {pagAtual ? (
+                                <button
+                                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                                  onClick={() => reverterServicoPagoMutation.mutate(pagAtual.id)}
+                                  data-testid={`button-reverter-servico-pag-${sp.id}`}
+                                >
+                                  <Check className="w-3 h-3" /> Pago
+                                </button>
+                              ) : (
+                                <button
+                                  className="inline-flex items-center text-xs px-2 py-1 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
+                                  onClick={() => marcarServicoPagoMutation.mutate({ servicoPessoaId: sp.id, mes: meAtual })}
+                                  data-testid={`button-pagar-servico-${sp.id}`}
+                                >
+                                  Pendente
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
 
               <div className="mt-6 pt-4 border-t flex gap-2">

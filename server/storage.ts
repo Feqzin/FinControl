@@ -1,7 +1,8 @@
 import { eq, and } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos, metas,
+  users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos,
+  servicoPessoas, servicoPagamentos, metas,
   type User, type InsertUser,
   type Pessoa, type InsertPessoa,
   type Divida, type InsertDivida,
@@ -9,6 +10,8 @@ import {
   type Cartao, type InsertCartao,
   type CompraCartao, type InsertCompraCartao,
   type Servico, type InsertServico,
+  type ServicoPessoa, type InsertServicoPessoa,
+  type ServicoPagamento, type InsertServicoPagamento,
   type Meta, type InsertMeta,
 } from "@shared/schema";
 
@@ -48,7 +51,9 @@ export interface IStorage {
 
   getComprasCartao(userId: string): Promise<CompraCartao[]>;
   getComprasByCartao(cartaoId: string, userId: string): Promise<CompraCartao[]>;
+  getComprasByPessoa(pessoaId: string, userId: string): Promise<CompraCartao[]>;
   createCompraCartao(compra: InsertCompraCartao): Promise<CompraCartao>;
+  updateCompraCartao(id: string, userId: string, data: Partial<InsertCompraCartao>): Promise<CompraCartao | undefined>;
   deleteCompraCartao(id: string, userId: string): Promise<boolean>;
 
   getServicos(userId: string): Promise<Servico[]>;
@@ -56,6 +61,19 @@ export interface IStorage {
   createServico(servico: InsertServico): Promise<Servico>;
   updateServico(id: string, userId: string, data: Partial<InsertServico>): Promise<Servico | undefined>;
   deleteServico(id: string, userId: string): Promise<boolean>;
+
+  getServicoPessoas(userId: string): Promise<ServicoPessoa[]>;
+  getServicoPessoasByServico(servicoId: string, userId: string): Promise<ServicoPessoa[]>;
+  getServicoPessoasByPessoa(pessoaId: string, userId: string): Promise<ServicoPessoa[]>;
+  createServicoPessoa(sp: InsertServicoPessoa): Promise<ServicoPessoa>;
+  updateServicoPessoa(id: string, userId: string, data: Partial<InsertServicoPessoa>): Promise<ServicoPessoa | undefined>;
+  deleteServicoPessoa(id: string, userId: string): Promise<boolean>;
+
+  getServicoPagamentos(userId: string): Promise<ServicoPagamento[]>;
+  getServicoPagamentosByServicoPessoa(servicoPessoaId: string): Promise<ServicoPagamento[]>;
+  createServicoPagamento(sp: InsertServicoPagamento): Promise<ServicoPagamento>;
+  deleteServicoPagamento(id: string, userId: string): Promise<boolean>;
+  deleteServicoPagamentosByServicoPessoa(servicoPessoaId: string, userId: string): Promise<void>;
 
   getMetas(userId: string): Promise<Meta[]>;
   getMeta(id: string, userId: string): Promise<Meta | undefined>;
@@ -65,201 +83,195 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  async getUser(id: string): Promise<User | undefined> {
+  async getUser(id: string) {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
+  async getUserByUsername(username: string) {
     const [user] = await db.select().from(users).where(eq(users.username, username));
     return user;
   }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async createUser(insertUser: InsertUser) {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
-
-  async updateUser(id: string, data: Partial<User>): Promise<User | undefined> {
+  async updateUser(id: string, data: Partial<User>) {
     const [user] = await db.update(users).set(data).where(eq(users.id, id)).returning();
     return user;
   }
-
-  async getUserByResetToken(token: string): Promise<User | undefined> {
+  async getUserByResetToken(token: string) {
     const [user] = await db.select().from(users).where(eq(users.resetToken, token));
     return user;
   }
 
-  async getPessoas(userId: string): Promise<Pessoa[]> {
-    return db.select().from(pessoas).where(eq(pessoas.userId, userId));
-  }
-
-  async getPessoa(id: string, userId: string): Promise<Pessoa | undefined> {
+  async getPessoas(userId: string) { return db.select().from(pessoas).where(eq(pessoas.userId, userId)); }
+  async getPessoa(id: string, userId: string) {
     const [p] = await db.select().from(pessoas).where(and(eq(pessoas.id, id), eq(pessoas.userId, userId)));
     return p;
   }
-
-  async createPessoa(pessoa: InsertPessoa): Promise<Pessoa> {
+  async createPessoa(pessoa: InsertPessoa) {
     const [p] = await db.insert(pessoas).values(pessoa).returning();
     return p;
   }
-
-  async updatePessoa(id: string, userId: string, data: Partial<InsertPessoa>): Promise<Pessoa | undefined> {
+  async updatePessoa(id: string, userId: string, data: Partial<InsertPessoa>) {
     const [p] = await db.update(pessoas).set(data).where(and(eq(pessoas.id, id), eq(pessoas.userId, userId))).returning();
     return p;
   }
-
-  async deletePessoa(id: string, userId: string): Promise<boolean> {
+  async deletePessoa(id: string, userId: string) {
     const result = await db.delete(pessoas).where(and(eq(pessoas.id, id), eq(pessoas.userId, userId))).returning();
     return result.length > 0;
   }
 
-  async getDividas(userId: string): Promise<Divida[]> {
-    return db.select().from(dividas).where(eq(dividas.userId, userId));
-  }
-
-  async getDividasByPessoa(pessoaId: string, userId: string): Promise<Divida[]> {
+  async getDividas(userId: string) { return db.select().from(dividas).where(eq(dividas.userId, userId)); }
+  async getDividasByPessoa(pessoaId: string, userId: string) {
     return db.select().from(dividas).where(and(eq(dividas.pessoaId, pessoaId), eq(dividas.userId, userId)));
   }
-
-  async getDivida(id: string, userId: string): Promise<Divida | undefined> {
+  async getDivida(id: string, userId: string) {
     const [d] = await db.select().from(dividas).where(and(eq(dividas.id, id), eq(dividas.userId, userId)));
     return d;
   }
-
-  async createDivida(divida: InsertDivida): Promise<Divida> {
+  async createDivida(divida: InsertDivida) {
     const [d] = await db.insert(dividas).values(divida).returning();
     return d;
   }
-
-  async updateDivida(id: string, userId: string, data: Partial<InsertDivida>): Promise<Divida | undefined> {
+  async updateDivida(id: string, userId: string, data: Partial<InsertDivida>) {
     const [d] = await db.update(dividas).set(data).where(and(eq(dividas.id, id), eq(dividas.userId, userId))).returning();
     return d;
   }
-
-  async deleteDivida(id: string, userId: string): Promise<boolean> {
+  async deleteDivida(id: string, userId: string) {
     const result = await db.delete(dividas).where(and(eq(dividas.id, id), eq(dividas.userId, userId))).returning();
     return result.length > 0;
   }
 
-  async getParcelas(userId: string): Promise<Parcela[]> {
-    return db.select().from(parcelas).where(eq(parcelas.userId, userId));
+  async getParcelas(userId: string) { return db.select().from(parcelas).where(eq(parcelas.userId, userId)); }
+  async getParcelasByDivida(dividaId: string, userId: string) {
+    return db.select().from(parcelas).where(and(eq(parcelas.dividaId, dividaId), eq(parcelas.userId, userId)));
   }
-
-  async getParcelasByDivida(dividaId: string, userId: string): Promise<Parcela[]> {
-    return db.select().from(parcelas)
-      .where(and(eq(parcelas.dividaId, dividaId), eq(parcelas.userId, userId)));
-  }
-
-  async createParcela(parcela: InsertParcela): Promise<Parcela> {
+  async createParcela(parcela: InsertParcela) {
     const [p] = await db.insert(parcelas).values(parcela).returning();
     return p;
   }
-
-  async createParcelasBulk(parcelasData: InsertParcela[]): Promise<Parcela[]> {
+  async createParcelasBulk(parcelasData: InsertParcela[]) {
     return db.insert(parcelas).values(parcelasData).returning();
   }
-
-  async updateParcela(id: string, userId: string, data: Partial<InsertParcela>): Promise<Parcela | undefined> {
+  async updateParcela(id: string, userId: string, data: Partial<InsertParcela>) {
     const [p] = await db.update(parcelas).set(data).where(and(eq(parcelas.id, id), eq(parcelas.userId, userId))).returning();
     return p;
   }
-
-  async deleteParcela(id: string, userId: string): Promise<boolean> {
+  async deleteParcela(id: string, userId: string) {
     const result = await db.delete(parcelas).where(and(eq(parcelas.id, id), eq(parcelas.userId, userId))).returning();
     return result.length > 0;
   }
-
-  async deleteParcelasByDivida(dividaId: string, userId: string): Promise<void> {
+  async deleteParcelasByDivida(dividaId: string, userId: string) {
     await db.delete(parcelas).where(and(eq(parcelas.dividaId, dividaId), eq(parcelas.userId, userId)));
   }
 
-  async getCartoes(userId: string): Promise<Cartao[]> {
-    return db.select().from(cartoes).where(eq(cartoes.userId, userId));
-  }
-
-  async getCartao(id: string, userId: string): Promise<Cartao | undefined> {
+  async getCartoes(userId: string) { return db.select().from(cartoes).where(eq(cartoes.userId, userId)); }
+  async getCartao(id: string, userId: string) {
     const [c] = await db.select().from(cartoes).where(and(eq(cartoes.id, id), eq(cartoes.userId, userId)));
     return c;
   }
-
-  async createCartao(cartao: InsertCartao): Promise<Cartao> {
+  async createCartao(cartao: InsertCartao) {
     const [c] = await db.insert(cartoes).values(cartao).returning();
     return c;
   }
-
-  async updateCartao(id: string, userId: string, data: Partial<InsertCartao>): Promise<Cartao | undefined> {
+  async updateCartao(id: string, userId: string, data: Partial<InsertCartao>) {
     const [c] = await db.update(cartoes).set(data).where(and(eq(cartoes.id, id), eq(cartoes.userId, userId))).returning();
     return c;
   }
-
-  async deleteCartao(id: string, userId: string): Promise<boolean> {
+  async deleteCartao(id: string, userId: string) {
     const result = await db.delete(cartoes).where(and(eq(cartoes.id, id), eq(cartoes.userId, userId))).returning();
     return result.length > 0;
   }
 
-  async getComprasCartao(userId: string): Promise<CompraCartao[]> {
-    return db.select().from(comprasCartao).where(eq(comprasCartao.userId, userId));
-  }
-
-  async getComprasByCartao(cartaoId: string, userId: string): Promise<CompraCartao[]> {
+  async getComprasCartao(userId: string) { return db.select().from(comprasCartao).where(eq(comprasCartao.userId, userId)); }
+  async getComprasByCartao(cartaoId: string, userId: string) {
     return db.select().from(comprasCartao).where(and(eq(comprasCartao.cartaoId, cartaoId), eq(comprasCartao.userId, userId)));
   }
-
-  async createCompraCartao(compra: InsertCompraCartao): Promise<CompraCartao> {
+  async getComprasByPessoa(pessoaId: string, userId: string) {
+    return db.select().from(comprasCartao).where(and(eq(comprasCartao.pessoaId, pessoaId), eq(comprasCartao.userId, userId)));
+  }
+  async createCompraCartao(compra: InsertCompraCartao) {
     const [c] = await db.insert(comprasCartao).values(compra).returning();
     return c;
   }
-
-  async deleteCompraCartao(id: string, userId: string): Promise<boolean> {
+  async updateCompraCartao(id: string, userId: string, data: Partial<InsertCompraCartao>) {
+    const [c] = await db.update(comprasCartao).set(data).where(and(eq(comprasCartao.id, id), eq(comprasCartao.userId, userId))).returning();
+    return c;
+  }
+  async deleteCompraCartao(id: string, userId: string) {
     const result = await db.delete(comprasCartao).where(and(eq(comprasCartao.id, id), eq(comprasCartao.userId, userId))).returning();
     return result.length > 0;
   }
 
-  async getServicos(userId: string): Promise<Servico[]> {
-    return db.select().from(servicos).where(eq(servicos.userId, userId));
-  }
-
-  async getServico(id: string, userId: string): Promise<Servico | undefined> {
+  async getServicos(userId: string) { return db.select().from(servicos).where(eq(servicos.userId, userId)); }
+  async getServico(id: string, userId: string) {
     const [s] = await db.select().from(servicos).where(and(eq(servicos.id, id), eq(servicos.userId, userId)));
     return s;
   }
-
-  async createServico(servico: InsertServico): Promise<Servico> {
+  async createServico(servico: InsertServico) {
     const [s] = await db.insert(servicos).values(servico).returning();
     return s;
   }
-
-  async updateServico(id: string, userId: string, data: Partial<InsertServico>): Promise<Servico | undefined> {
+  async updateServico(id: string, userId: string, data: Partial<InsertServico>) {
     const [s] = await db.update(servicos).set(data).where(and(eq(servicos.id, id), eq(servicos.userId, userId))).returning();
     return s;
   }
-
-  async deleteServico(id: string, userId: string): Promise<boolean> {
+  async deleteServico(id: string, userId: string) {
     const result = await db.delete(servicos).where(and(eq(servicos.id, id), eq(servicos.userId, userId))).returning();
     return result.length > 0;
   }
 
-  async getMetas(userId: string): Promise<Meta[]> {
-    return db.select().from(metas).where(eq(metas.userId, userId));
+  async getServicoPessoas(userId: string) { return db.select().from(servicoPessoas).where(eq(servicoPessoas.userId, userId)); }
+  async getServicoPessoasByServico(servicoId: string, userId: string) {
+    return db.select().from(servicoPessoas).where(and(eq(servicoPessoas.servicoId, servicoId), eq(servicoPessoas.userId, userId)));
+  }
+  async getServicoPessoasByPessoa(pessoaId: string, userId: string) {
+    return db.select().from(servicoPessoas).where(and(eq(servicoPessoas.pessoaId, pessoaId), eq(servicoPessoas.userId, userId)));
+  }
+  async createServicoPessoa(sp: InsertServicoPessoa) {
+    const [p] = await db.insert(servicoPessoas).values(sp).returning();
+    return p;
+  }
+  async updateServicoPessoa(id: string, userId: string, data: Partial<InsertServicoPessoa>) {
+    const [p] = await db.update(servicoPessoas).set(data).where(and(eq(servicoPessoas.id, id), eq(servicoPessoas.userId, userId))).returning();
+    return p;
+  }
+  async deleteServicoPessoa(id: string, userId: string) {
+    const result = await db.delete(servicoPessoas).where(and(eq(servicoPessoas.id, id), eq(servicoPessoas.userId, userId))).returning();
+    return result.length > 0;
   }
 
-  async getMeta(id: string, userId: string): Promise<Meta | undefined> {
+  async getServicoPagamentos(userId: string) { return db.select().from(servicoPagamentos).where(eq(servicoPagamentos.userId, userId)); }
+  async getServicoPagamentosByServicoPessoa(servicoPessoaId: string) {
+    return db.select().from(servicoPagamentos).where(eq(servicoPagamentos.servicoPessoaId, servicoPessoaId));
+  }
+  async createServicoPagamento(sp: InsertServicoPagamento) {
+    const [p] = await db.insert(servicoPagamentos).values(sp).returning();
+    return p;
+  }
+  async deleteServicoPagamento(id: string, userId: string) {
+    const result = await db.delete(servicoPagamentos).where(and(eq(servicoPagamentos.id, id), eq(servicoPagamentos.userId, userId))).returning();
+    return result.length > 0;
+  }
+  async deleteServicoPagamentosByServicoPessoa(servicoPessoaId: string, userId: string) {
+    await db.delete(servicoPagamentos).where(and(eq(servicoPagamentos.servicoPessoaId, servicoPessoaId), eq(servicoPagamentos.userId, userId)));
+  }
+
+  async getMetas(userId: string) { return db.select().from(metas).where(eq(metas.userId, userId)); }
+  async getMeta(id: string, userId: string) {
     const [m] = await db.select().from(metas).where(and(eq(metas.id, id), eq(metas.userId, userId)));
     return m;
   }
-
-  async createMeta(meta: InsertMeta): Promise<Meta> {
+  async createMeta(meta: InsertMeta) {
     const [m] = await db.insert(metas).values(meta).returning();
     return m;
   }
-
-  async updateMeta(id: string, userId: string, data: Partial<InsertMeta>): Promise<Meta | undefined> {
+  async updateMeta(id: string, userId: string, data: Partial<InsertMeta>) {
     const [m] = await db.update(metas).set(data).where(and(eq(metas.id, id), eq(metas.userId, userId))).returning();
     return m;
   }
-
-  async deleteMeta(id: string, userId: string): Promise<boolean> {
+  async deleteMeta(id: string, userId: string) {
     const result = await db.delete(metas).where(and(eq(metas.id, id), eq(metas.userId, userId))).returning();
     return result.length > 0;
   }

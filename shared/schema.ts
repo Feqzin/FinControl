@@ -12,11 +12,7 @@ export const users = pgTable("users", {
   resetTokenExpiry: timestamp("reset_token_expiry"),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-});
-
+export const insertUserSchema = createInsertSchema(users).pick({ username: true, password: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
@@ -91,6 +87,7 @@ export const comprasCartao = pgTable("compras_cartao", {
   parcelaAtual: integer("parcela_atual").notNull().default(1),
   valorParcela: decimal("valor_parcela", { precision: 12, scale: 2 }).notNull(),
   dataCompra: text("data_compra").notNull(),
+  pessoaId: varchar("pessoa_id"),
 });
 
 export const insertCompraCartaoSchema = createInsertSchema(comprasCartao).omit({ id: true });
@@ -111,6 +108,31 @@ export const servicos = pgTable("servicos", {
 export const insertServicoSchema = createInsertSchema(servicos).omit({ id: true });
 export type InsertServico = z.infer<typeof insertServicoSchema>;
 export type Servico = typeof servicos.$inferSelect;
+
+export const servicoPessoas = pgTable("servico_pessoas", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  servicoId: varchar("servico_id").notNull(),
+  pessoaId: varchar("pessoa_id").notNull(),
+  valorDevido: decimal("valor_devido", { precision: 12, scale: 2 }).notNull(),
+});
+
+export const insertServicoPessoaSchema = createInsertSchema(servicoPessoas).omit({ id: true });
+export type InsertServicoPessoa = z.infer<typeof insertServicoPessoaSchema>;
+export type ServicoPessoa = typeof servicoPessoas.$inferSelect;
+
+export const servicoPagamentos = pgTable("servico_pagamentos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  servicoPessoaId: varchar("servico_pessoa_id").notNull(),
+  mes: text("mes").notNull(),
+  status: text("status").notNull().default("pago"),
+  dataPagamento: text("data_pagamento"),
+});
+
+export const insertServicoPagamentoSchema = createInsertSchema(servicoPagamentos).omit({ id: true });
+export type InsertServicoPagamento = z.infer<typeof insertServicoPagamentoSchema>;
+export type ServicoPagamento = typeof servicoPagamentos.$inferSelect;
 
 export const metas = pgTable("metas", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
