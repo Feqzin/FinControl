@@ -1,0 +1,256 @@
+🔎 ANÁLISE GERAL
+✅ Pontos muito fortes
+
+Interface limpa e organizada
+
+Separação clara entre:
+
+Pessoas
+
+Dívidas
+
+Cartões
+
+Previsão
+
+Indicadores visuais bons (verde receber / vermelho pagar)
+
+Preview de saldo previsto
+
+Estrutura lógica consistente
+
+Parcelamento funcionando
+
+Importação já integrada (pessoa criada via importação 👏)
+
+Você já está acima de 80% dos apps pessoais feitos por dev solo.
+
+Agora vamos para o que vai transformar isso em produto de alto nível.
+
+🚀 MELHORIAS ESTRATÉGICAS
+1️⃣ Dashboard está informativo… mas não é estratégico
+
+Hoje ele mostra números.
+
+Ele deveria mostrar alertas inteligentes.
+
+Sugestão:
+
+Adicionar seção:
+
+🔔 Alertas importantes
+
+"Você tem 3 contas vencendo nos próximos 5 dias"
+
+"Seu saldo previsto está negativo este mês"
+
+"Cartão Nubank está usando 85% do limite"
+
+Isso transforma números em decisão.
+
+2️⃣ Falta um indicador de urgência visual
+
+Na lista de vencimentos:
+
+Hoje todos parecem iguais.
+
+Sugestão:
+
+🟢 Verde → vence depois de 7 dias
+🟡 Amarelo → vence em até 7 dias
+🔴 Vermelho → vencido
+
+Isso ativa urgência psicológica.
+
+3️⃣ Página de Pessoas pode evoluir muito
+
+Hoje mostra:
+
+Pendência
+
+Já pago
+
+Status
+
+Mas poderia mostrar:
+
+📊 Mini gráfico de histórico da pessoa
+📅 Última movimentação
+📈 Média mensal com essa pessoa
+
+Isso vira análise relacional.
+
+4️⃣ Dívidas – Melhorar UX de ação
+
+Hoje tem botão “Pagar” e “Receber”.
+
+Sugestão mais fluida:
+
+Ao clicar → abrir mini modal:
+
+Valor pago (editável)
+
+Forma de pagamento
+
+Data
+
+Observação
+
+Isso evita erros e melhora controle.
+
+5️⃣ Cartões – Falta risco visual
+
+Você mostra:
+
+Limite
+
+Disponível
+
+Mas falta:
+
+⚠ Indicador de risco:
+
+Até 30% usado → verde
+
+30–70% → amarelo
+
+70%+ → vermelho
+
+Isso ajuda controle emocional.
+
+6️⃣ Previsão está muito boa… mas pode virar diferencial
+
+Adicionar:
+
+📈 Gráfico de linha:
+Saldo previsto ao longo do mês
+
+Hoje você mostra o total.
+Mas visualizar a curva muda tudo.
+
+7️⃣ Falta categoria nas dívidas
+
+Hoje aparece descrição livre.
+
+Sugestão:
+Adicionar categoria:
+
+Empréstimo
+
+Mercado
+
+Lazer
+
+Assinatura
+
+Transporte
+
+Outros
+
+Depois usar isso no relatório.
+
+8️⃣ Relatórios podem virar sua feature mais forte
+
+Se você adicionar:
+
+Gráfico por categoria
+
+Gráfico de evolução mensal
+
+Total pago vs pendente
+
+Ranking de pessoas que mais movimentam dinheiro
+
+Você cria um sistema quase empresarial.
+
+9️⃣ UX Mobile
+
+Pelo layout parece desktop-first.
+
+Você precisa garantir:
+
+Cards empilhados no mobile
+
+Menu colapsável
+
+Botões grandes
+
+Espaçamento confortável
+
+Se ele ficar bom no celular, vira app de verdade.
+
+🔥 MELHORIAS DE PRODUTO (nível SaaS)
+
+Agora o que faria isso virar algo comercial:
+
+💡 1. Sistema de metas
+
+Ex:
+"Quero guardar 30k até dezembro"
+
+Ele calcula quanto precisa sobrar por mês.
+
+(Isso conecta com seu objetivo real 👀 Irlanda)
+
+💡 2. Score financeiro interno
+
+Mostrar:
+
+🟢 Controle saudável
+🟡 Atenção
+🔴 Risco financeiro
+
+Baseado em:
+
+Saldo previsto
+
+Uso do cartão
+
+Dívidas abertas
+
+Isso cria gamificação.
+
+💡 3. Histórico de crescimento
+
+Mostrar evolução:
+
+Janeiro: -2.000
+
+Fevereiro: -500
+
+Março: +800
+
+Isso gera motivação.
+
+🎯 PRIORIDADE DE MELHORIA
+
+Se fosse meu produto, eu faria nessa ordem:
+
+Indicadores de urgência nas dívidas
+
+Alertas inteligentes no dashboard
+
+Gráfico de previsão mensal
+
+Sistema de categorias
+
+Score financeiro
+
+Metas
+
+💬 Minha avaliação sincera
+
+Isso não parece mais um projetinho.
+Está virando um sistema financeiro pessoal bem estruturado.
+
+Se você organizar bem:
+
+Importação inteligente
+
+Alertas
+
+Gráficos
+
+Metas
+
+Isso vira produto vendável.
