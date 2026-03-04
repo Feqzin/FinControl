@@ -2,7 +2,7 @@ import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import {
   LayoutDashboard, Users, Receipt, CreditCard, Calendar,
-  BarChart3, Repeat, LogOut,
+  BarChart3, Repeat, LogOut, FileUp,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -20,6 +20,7 @@ const menuItems = [
   { title: "Previsao", url: "/previsao", icon: Calendar },
   { title: "Servicos", url: "/servicos", icon: Repeat },
   { title: "Relatorios", url: "/relatorios", icon: BarChart3 },
+  { title: "Importar", url: "/importar", icon: FileUp },
 ];
 
 export function AppSidebar() {

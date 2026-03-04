@@ -1,0 +1,258 @@
+✅ PROMPT – IMPLEMENTAR IMPORTAÇÃO INTELIGENTE POR COPIAR E COLAR
+
+Atualize o aplicativo financeiro já existente adicionando uma nova funcionalidade chamada:
+
+📥 "Importar por Texto"
+
+Sem alterar as funcionalidades já existentes.
+Apenas adicionar essa nova feature integrada ao sistema atual.
+
+🎯 OBJETIVO
+
+Permitir que o usuário cole textos escritos manualmente (ex: bloco de notas do celular) e o sistema:
+
+Interprete automaticamente
+
+Identifique tipo de registro
+
+Vincule às pessoas corretas
+
+Crie registros automaticamente
+
+Mostre preview antes de salvar
+
+🖥 IMPLEMENTAÇÃO VISUAL
+
+Adicionar uma nova aba ou seção chamada:
+
+"Importar"
+
+Ela deve conter:
+
+Um <textarea> grande
+
+Placeholder com exemplo de uso
+
+Botão: Analisar
+
+Área de preview organizada em cards
+
+Botão: Confirmar Importação
+
+Botão: Cancelar
+
+Design deve seguir o padrão visual já existente no app (clean, minimalista).
+
+🧠 FUNCIONAMENTO DA LÓGICA
+
+Criar um arquivo novo:
+
+/utils/financialTextParser.js
+
+Criar função:
+
+export function parseFinancialText(text) {}
+
+Essa função deve:
+
+Separar o texto por linha
+
+Ignorar linhas vazias
+
+Usar regex para identificar:
+
+Valores (ex: 250, 39,90, R$120)
+
+Datas (10/04, 01/03/2026, hoje, amanhã)
+
+Parcelas (3/10, 2x, parcela)
+
+Palavras-chave
+
+🔎 PALAVRAS-CHAVE PARA IDENTIFICAÇÃO
+Dívida a receber:
+
+"me deve"
+
+"vai me pagar"
+
+Dívida a pagar:
+
+"devo"
+
+"vou pagar"
+
+Pagamento realizado:
+
+"paguei"
+
+"me pagou"
+
+Serviço:
+
+"mensal"
+
+"todo dia"
+
+nomes como Netflix, Spotify etc.
+
+Cartão:
+
+"cartão"
+
+"parcela"
+
+"x/"
+
+"fatura"
+
+📦 ESTRUTURA DE RETORNO DA FUNÇÃO
+
+A função deve retornar um array estruturado assim:
+
+[
+  {
+    tipo: "divida",
+    subtipo: "receber" | "pagar",
+    pessoa: "João",
+    valor: 250,
+    vencimento: "2026-04-10",
+    status: "pendente"
+  }
+]
+
+ou
+
+{
+  tipo: "servico",
+  nome: "Netflix",
+  valor: 39.90,
+  diaCobranca: 15
+}
+
+ou
+
+{
+  tipo: "cartao",
+  cartao: "Nubank",
+  parcelaAtual: 3,
+  totalParcelas: 10,
+  valor: 120
+}
+👤 INTEGRAÇÃO COM BANCO (FIRESTORE)
+
+Ao confirmar importação:
+
+Para cada item:
+
+Se for pessoa:
+
+Verificar se já existe
+
+Se não existir → criar automaticamente
+
+Se for dívida:
+
+Criar registro na coleção dividas
+
+Se for pagamento:
+
+Criar em pagamentos
+
+Atualizar status da dívida relacionada
+
+Se for serviço:
+
+Criar na coleção servicos
+
+Se for cartão:
+
+Criar em compras_cartao
+
+Todos os registros devem conter:
+
+userId
+
+dataCriacao
+
+origem: "importacao"
+
+👁 PREVIEW OBRIGATÓRIO
+
+Antes de salvar:
+
+Mostrar lista organizada:
+
+Ícone por tipo
+
+Nome
+
+Valor
+
+Tipo identificado
+
+Data
+
+Permitir:
+
+Remover item individual antes de confirmar
+
+🛡 REGRAS IMPORTANTES
+
+Não quebrar se texto estiver bagunçado
+
+Ignorar linhas inválidas
+
+Mostrar aviso:
+"Linha X não pôde ser interpretada"
+
+Converter automaticamente:
+
+"hoje"
+
+"amanhã"
+
+"mês que vem"
+
+📊 ATUALIZAÇÃO AUTOMÁTICA
+
+Após confirmação:
+
+Atualizar dashboard
+
+Atualizar relatórios mensais
+
+Atualizar totais
+
+Mostrar notificação:
+"Importação concluída com sucesso"
+
+🧱 ORGANIZAÇÃO DO CÓDIGO
+
+Criar:
+
+/components/ImportadorTexto.jsx
+
+/utils/financialTextParser.js
+
+Manter arquitetura atual do projeto.
+
+Não alterar outras funcionalidades.
+
+🎯 RESULTADO FINAL
+
+Eu devo conseguir:
+
+Escrever tudo no bloco de notas
+
+Copiar
+
+Colar
+
+Clicar em analisar
+
+Ver preview organizado
+
+Confirmar
+
+Tudo ser distribuído automaticamente no sistema

@@ -16,6 +16,7 @@ import CartoesPage from "@/pages/cartoes-page";
 import PrevisaoPage from "@/pages/previsao-page";
 import ServicosPage from "@/pages/servicos-page";
 import RelatoriosPage from "@/pages/relatorios-page";
+import ImportarPage from "@/pages/importar-page";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 function Router() {
@@ -28,6 +29,7 @@ function Router() {
       <Route path="/previsao" component={PrevisaoPage} />
       <Route path="/servicos" component={ServicosPage} />
       <Route path="/relatorios" component={RelatoriosPage} />
+      <Route path="/importar" component={ImportarPage} />
       <Route component={NotFound} />
     </Switch>
   );
