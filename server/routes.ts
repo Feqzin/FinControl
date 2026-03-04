@@ -16,7 +16,7 @@ const dividaBody = z.object({
   pessoaId: z.string().min(1),
   tipo: z.enum(["receber", "pagar"]),
   valor: z.string().or(z.number()).transform(String),
-  dataVencimento: z.string().min(1),
+  dataVencimento: z.string().nullable().optional(),
   status: z.string().optional().default("pendente"),
   dataPagamento: z.string().optional().nullable(),
   formaPagamento: z.string().optional().nullable(),

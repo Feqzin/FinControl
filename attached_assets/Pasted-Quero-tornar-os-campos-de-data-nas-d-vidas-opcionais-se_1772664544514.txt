@@ -1,0 +1,97 @@
+Quero tornar os campos de data nas dívidas opcionais, sem quebrar funcionalidades existentes.
+
+OBJETIVO:
+Permitir que ao cadastrar ou editar uma dívida:
+
+- A data de início seja opcional
+- A data de vencimento seja opcional
+
+Isso deve funcionar para:
+- Dívidas diretas
+- Dívidas vinculadas a cartão
+- Dívidas dentro da aba Pessoas
+- Serviços (quando aplicável)
+
+========================
+1) ALTERAÇÃO NA ESTRUTURA
+========================
+
+Atualizar modelo de dívida para:
+
+{
+  id,
+  userId,
+  pessoaId (opcional),
+  descricao,
+  valorTotal,
+  dataInicio: null | "YYYY-MM-DD",
+  dataVencimento: null | "YYYY-MM-DD",
+  totalParcelas,
+  parcelas: [],
+  status
+}
+
+Permitir null nesses campos.
+
+========================
+2) FORMULÁRIO DE CADASTRO
+========================
+
+No formulário:
+
+- Remover obrigatoriedade das datas
+- Adicionar texto auxiliar:
+  "Opcional"
+
+Se usuário não preencher:
+→ salvar como null
+
+========================
+3) COMPORTAMENTO DO SISTEMA
+========================
+
+Regras:
+
+Se dataInicio = null:
+→ Não usar para cálculos históricos
+
+Se dataVencimento = null:
+→ Não considerar como atrasada
+→ Não exibir alerta de vencimento
+
+Se parcela tiver vencimento null:
+→ Não considerar no forecast automático
+
+========================
+4) VISUAL NA INTERFACE
+========================
+
+Se não houver data:
+
+Mostrar:
+"Sem data definida"
+
+Não exibir alerta vermelho.
+
+========================
+5) RELATÓRIOS E SAÚDE FINANCEIRA
+========================
+
+- Dívidas sem vencimento não entram como atrasadas
+- Só entram no cálculo de saldo se tiverem parcela com data definida
+- Não afetar score negativamente por ausência de data
+
+========================
+6) EDIÇÃO POSTERIOR
+========================
+
+Permitir que:
+
+- Usuário adicione data depois
+- Usuário remova data depois
+- Atualizar automaticamente alertas e forecast
+
+========================
+
+Objetivo final:
+Tornar o sistema mais flexível permitindo dívidas sem data obrigatória, sem prejudicar cálculos, alertas ou saúde financeira.

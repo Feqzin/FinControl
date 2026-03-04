@@ -1,0 +1,172 @@
+Quero implementar melhorias estruturais no sistema de Cartões, Pessoas e Serviços para torná-lo mais flexível, editável e performático.
+
+IMPORTANTE:
+- Não quebrar dados existentes.
+- Não exigir apagar e recriar registros.
+- Manter performance e organização do banco.
+
+========================
+1) EDITAR DADOS DOS CARTÕES
+========================
+
+Na aba Cartões:
+
+Adicionar botão "Editar cartão" permitindo alterar:
+
+- Nome do cartão
+- Limite
+- Dia de vencimento
+- Dia de fechamento
+- Cor/identificação visual
+
+Atualizar sem afetar histórico de compras.
+
+========================
+2) EDITAR COMPRAS PARCELADAS DO CARTÃO
+========================
+
+Na aba Cartões → Lista de Compras:
+
+Cada compra deve ter botão:
+
+- Editar
+- Ajustar valor total
+- Ajustar número de parcelas
+- Ajustar vencimentos
+- Alterar descrição
+- Alterar vínculo com pessoa
+- Marcar parcelas como pagas
+- Recalcular parcelas automaticamente se alterar totalParcelas
+
+IMPORTANTE:
+Não apagar registro antigo.
+Atualizar parcelas mantendo histórico consistente.
+
+========================
+3) MARCAR PARCELAS PAGAS POR MIM (CASO SEJA PARA OUTRA PESSOA)
+========================
+
+Problema:
+Às vezes eu pago a parcela no cartão,
+mas a pessoa ainda não me pagou.
+
+Solução:
+
+Cada parcela precisa ter dois status separados:
+
+{
+  statusCartao: "pago" | "pendente",
+  statusPessoa: "pago" | "pendente",
+  dataPagamentoCartao,
+  dataPagamentoPessoa
+}
+
+Regras:
+
+- Se statusCartao = pago → impacta minha fatura normalmente
+- Se statusPessoa = pendente → entra como valor que tenho a receber
+- NÃO impactar negativamente minha saúde financeira
+- Criar indicador visual:
+  "Valor pago por você, aguardando reembolso"
+
+========================
+4) ABA PESSOAS — MOSTRAR VALORES PENDENTES COMPLETOS
+========================
+
+Na página da pessoa mostrar separado:
+
+1) Dívidas diretas
+2) Compras vinculadas ao cartão
+3) Serviços recorrentes
+
+Mostrar:
+
+- Total pendente
+- Total pago
+- Total atrasado
+- Próximo vencimento
+
+Separar visualmente:
+
+[ Contas Pessoais ]
+[ Compras no Cartão ]
+[ Serviços Recorrentes ]
+
+========================
+5) DETECTAR PESSOA DUPLICADA AO IMPORTAR
+========================
+
+Ao importar ou cadastrar pessoa nova:
+
+Se nome for igual ou muito parecido com existente:
+
+Exibir alerta:
+
+"Já existe uma pessoa com nome semelhante. Deseja vincular ou criar nova?"
+
+Implementar:
+
+- Comparação case insensitive
+- Ignorar espaços extras
+- Sugestão automática de vínculo
+
+========================
+6) EDITAR SERVIÇOS
+========================
+
+Na aba Serviços:
+
+Adicionar botão "Editar Serviço" permitindo alterar:
+
+- Nome
+- Valor total
+- Recorrência
+- Pessoas vinculadas
+- Valor individual de cada pessoa
+
+Permitir também:
+
+- Remover pessoa do serviço
+- Ajustar valor individual
+- Corrigir pagamentos passados
+- Editar mês específico
+
+========================
+7) PERFORMANCE
+========================
+
+Garantir:
+
+- Atualizações parciais (não recriar registros)
+- Atualizar apenas campos modificados
+- Evitar recalcular tudo desnecessariamente
+- Índice por userId e pessoaId no banco
+
+========================
+8) EXPERIÊNCIA VISUAL
+========================
+
+Adicionar:
+
+- Ícones diferentes para:
+   - Pago por você
+   - Pago pela pessoa
+   - Atrasado
+- Filtro:
+   - Mostrar apenas pendentes
+   - Mostrar apenas cartão
+   - Mostrar apenas serviços
+- Barra de progresso por pessoa
+
+========================
+
+Objetivo final:
+
+Criar sistema financeiro inteligente onde:
+
+- Posso editar qualquer dado sem apagar
+- Posso marcar parcelas pagas por mim
+- Posso acompanhar reembolso separado
+- Pessoas mostram valores organizados por categoria
+- Serviços são totalmente editáveis
+- Sistema evita duplicidade de cadastro

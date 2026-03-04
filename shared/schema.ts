@@ -35,7 +35,7 @@ export const dividas = pgTable("dividas", {
   pessoaId: varchar("pessoa_id").notNull(),
   tipo: text("tipo").notNull(),
   valor: decimal("valor", { precision: 12, scale: 2 }).notNull(),
-  dataVencimento: text("data_vencimento").notNull(),
+  dataVencimento: text("data_vencimento"),
   status: text("status").notNull().default("pendente"),
   dataPagamento: text("data_pagamento"),
   formaPagamento: text("forma_pagamento"),
@@ -88,6 +88,8 @@ export const comprasCartao = pgTable("compras_cartao", {
   valorParcela: decimal("valor_parcela", { precision: 12, scale: 2 }).notNull(),
   dataCompra: text("data_compra").notNull(),
   pessoaId: varchar("pessoa_id"),
+  statusPessoa: varchar("status_pessoa"),
+  dataPagamentoPessoa: text("data_pagamento_pessoa"),
 });
 
 export const insertCompraCartaoSchema = createInsertSchema(comprasCartao).omit({ id: true });

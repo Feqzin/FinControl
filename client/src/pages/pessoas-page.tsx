@@ -44,6 +44,7 @@ export default function PessoasPage() {
 
   const [editingPessoa, setEditingPessoa] = useState<Pessoa | null>(null);
   const [editForm, setEditForm] = useState({ nome: "", tipo: "me_deve", telefone: "", observacao: "" });
+  const [historyFilter, setHistoryFilter] = useState<"todos" | "pendente">("todos");
 
   const [pessoaForm, setPessoaForm] = useState({ nome: "", tipo: "me_deve", telefone: "", observacao: "" });
   const [dividaForm, setDividaForm] = useState({
@@ -180,15 +181,40 @@ export default function PessoasPage() {
     );
   }
 
-  const historyDividas = historyPessoa ? getPessoaDividas(historyPessoa.id) : [];
-  const historyStats = historyPessoa ? getPessoaStats(historyPessoa.id) : null;
-  const historyCompras = historyPessoa
+  const meAtual = format(new Date(), "yyyy-MM");
+
+  const normalizeName = (s: string) =>
+    s.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  const duplicatePessoa = pessoaForm.nome.trim().length >= 2
+    ? pessoas.find((p) => {
+        const a = normalizeName(p.nome);
+        const b = normalizeName(pessoaForm.nome);
+        return a === b || a.includes(b) || b.includes(a);
+      })
+    : null;
+
+  const allHistoryDividas = historyPessoa ? getPessoaDividas(historyPessoa.id) : [];
+  const allHistoryCompras = historyPessoa
     ? comprasCartao.filter((c) => c.pessoaId === historyPessoa.id)
     : [];
-  const historyServicoPessoas = historyPessoa
+  const allHistoryServicoPessoas = historyPessoa
     ? servicoPessoas.filter((sp) => sp.pessoaId === historyPessoa.id)
     : [];
-  const meAtual = format(new Date(), "yyyy-MM");
+
+  const historyDividas = historyFilter === "pendente"
+    ? allHistoryDividas.filter((d) => d.status !== "pago")
+    : allHistoryDividas;
+  const historyStats = historyPessoa ? getPessoaStats(historyPessoa.id) : null;
+  const historyCompras = historyFilter === "pendente"
+    ? allHistoryCompras.filter((c) => !c.statusPessoa || c.statusPessoa !== "pago")
+    : allHistoryCompras;
+  const historyServicoPessoas = historyFilter === "pendente"
+    ? allHistoryServicoPessoas.filter((sp) => {
+        const pago = servicoPagamentos.find((p) => p.servicoPessoaId === sp.id && p.mes === meAtual);
+        return !pago;
+      })
+    : allHistoryServicoPessoas;
 
   return (
     <div className="p-6 space-y-6" data-testid="pessoas-page">
@@ -220,6 +246,11 @@ export default function PessoasPage() {
                   placeholder="Nome da pessoa"
                   required
                 />
+                {duplicatePessoa && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400" data-testid="warning-duplicate-pessoa">
+                    Atencao: ja existe uma pessoa com nome similar: <strong>{duplicatePessoa.nome}</strong>
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Tipo</Label>
@@ -541,13 +572,32 @@ export default function PessoasPage() {
         </DialogContent>
       </Dialog>
 
-      <Sheet open={!!historyPessoa} onOpenChange={(v) => { if (!v) setHistoryPessoa(null); }}>
+      <Sheet open={!!historyPessoa} onOpenChange={(v) => { if (!v) { setHistoryPessoa(null); setHistoryFilter("todos"); } }}>
         <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
           {historyPessoa && historyStats && (
             <>
-              <SheetHeader className="mb-6">
+              <SheetHeader className="mb-4">
                 <SheetTitle>Historico — {historyPessoa.nome}</SheetTitle>
               </SheetHeader>
+
+              <div className="flex items-center gap-2 mb-5">
+                <Button
+                  variant={historyFilter === "todos" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setHistoryFilter("todos")}
+                  data-testid="button-history-filter-todos"
+                >
+                  Todos
+                </Button>
+                <Button
+                  variant={historyFilter === "pendente" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setHistoryFilter("pendente")}
+                  data-testid="button-history-filter-pendente"
+                >
+                  Pendentes
+                </Button>
+              </div>
 
               <div className="grid grid-cols-2 gap-3 mb-6">
                 <div className="rounded-md bg-muted/40 p-3">

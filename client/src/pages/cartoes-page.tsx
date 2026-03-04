@@ -16,9 +16,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, CreditCard, Trash2, CalendarClock, ShoppingBag, User } from "lucide-react";
+import { Plus, CreditCard, Trash2, CalendarClock, ShoppingBag, User, Pencil, RefreshCw } from "lucide-react";
 import type { Cartao, CompraCartao, Pessoa } from "@shared/schema";
-import { format, addMonths, getDaysInMonth } from "date-fns";
+import { format, addMonths } from "date-fns";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -28,9 +28,7 @@ function getNextInvoiceDate(diaVencimento: number): string {
   const now = new Date();
   const currentDay = now.getDate();
   let targetDate = new Date(now.getFullYear(), now.getMonth(), diaVencimento);
-  if (currentDay >= diaVencimento) {
-    targetDate = addMonths(targetDate, 1);
-  }
+  if (currentDay >= diaVencimento) targetDate = addMonths(targetDate, 1);
   return format(targetDate, "dd/MM/yyyy");
 }
 
@@ -38,19 +36,24 @@ function getDaysUntilInvoice(diaVencimento: number): number {
   const now = new Date();
   const currentDay = now.getDate();
   let targetDate = new Date(now.getFullYear(), now.getMonth(), diaVencimento);
-  if (currentDay >= diaVencimento) {
-    targetDate = addMonths(targetDate, 1);
-  }
+  if (currentDay >= diaVencimento) targetDate = addMonths(targetDate, 1);
   return Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 export default function CartoesPage() {
   const { toast } = useToast();
+
   const [openCard, setOpenCard] = useState(false);
   const [openCompra, setOpenCompra] = useState(false);
   const [selectedCartao, setSelectedCartao] = useState<string>("");
   const [cardForm, setCardForm] = useState({ nome: "", limite: "", melhorDiaCompra: "", diaVencimento: "" });
   const [compraForm, setCompraForm] = useState({ descricao: "", valorTotal: "", parcelas: "1", dataCompra: "", pessoaId: "" });
+
+  const [editingCard, setEditingCard] = useState<Cartao | null>(null);
+  const [editCardForm, setEditCardForm] = useState({ nome: "", limite: "", melhorDiaCompra: "", diaVencimento: "" });
+
+  const [editingCompra, setEditingCompra] = useState<CompraCartao | null>(null);
+  const [editCompraForm, setEditCompraForm] = useState({ descricao: "", valorTotal: "", parcelas: "", pessoaId: "", statusPessoa: "" });
 
   const { data: cartoes = [], isLoading } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
@@ -73,6 +76,23 @@ export default function CartoesPage() {
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
+  const updateCardMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      await apiRequest("PATCH", `/api/cartoes/${id}`, {
+        nome: data.nome,
+        limite: data.limite,
+        melhorDiaCompra: parseInt(data.melhorDiaCompra),
+        diaVencimento: parseInt(data.diaVencimento),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cartoes"] });
+      setEditingCard(null);
+      toast({ title: "Cartao atualizado" });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
   const createCompraMutation = useMutation({
     mutationFn: async (data: any) => {
       const parcelas = parseInt(data.parcelas);
@@ -83,6 +103,7 @@ export default function CartoesPage() {
         descricao: data.descricao,
         valorTotal: data.valorTotal,
         pessoaId: data.pessoaId || null,
+        statusPessoa: data.pessoaId ? "pendente" : null,
         parcelas,
         parcelaAtual: 1,
         valorParcela,
@@ -96,6 +117,42 @@ export default function CartoesPage() {
       toast({ title: "Compra registrada" });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const updateCompraMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const parcelas = parseInt(data.parcelas);
+      const valorTotal = parseFloat(data.valorTotal);
+      const valorParcela = (valorTotal / parcelas).toFixed(2);
+      const pessoaId = data.pessoaId || null;
+      await apiRequest("PATCH", `/api/compras-cartao/${id}`, {
+        descricao: data.descricao,
+        valorTotal: String(valorTotal),
+        parcelas,
+        valorParcela,
+        pessoaId,
+        statusPessoa: pessoaId ? (data.statusPessoa || "pendente") : null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      setEditingCompra(null);
+      toast({ title: "Compra atualizada" });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const marcarReembolsoMutation = useMutation({
+    mutationFn: async ({ id, pago }: { id: string; pago: boolean }) => {
+      await apiRequest("PATCH", `/api/compras-cartao/${id}`, {
+        statusPessoa: pago ? "pago" : "pendente",
+        dataPagamentoPessoa: pago ? format(new Date(), "yyyy-MM-dd") : null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      toast({ title: "Status de reembolso atualizado" });
+    },
   });
 
   const deleteCardMutation = useMutation({
@@ -119,6 +176,9 @@ export default function CartoesPage() {
     getCardCompras(cartaoId).reduce((s, c) => s + Number(c.valorParcela), 0);
 
   const totalFaturas = cartoes.reduce((s, c) => s + getCardTotal(c.id), 0);
+  const totalAguardandoReembolso = compras
+    .filter((c) => c.pessoaId && (!c.statusPessoa || c.statusPessoa === "pendente"))
+    .reduce((s, c) => s + Number(c.valorParcela), 0);
 
   if (isLoading) {
     return (
@@ -209,19 +269,36 @@ export default function CartoesPage() {
       </div>
 
       {cartoes.length > 0 && (
-        <Card className="hover-elevate">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm text-muted-foreground">Total de faturas abertas</p>
-                <p className="text-2xl font-bold">{formatCurrency(totalFaturas)}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Card className="hover-elevate">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total de faturas abertas</p>
+                  <p className="text-2xl font-bold">{formatCurrency(totalFaturas)}</p>
+                </div>
+                <div className="flex items-center justify-center w-10 h-10 rounded-md bg-primary/10">
+                  <CreditCard className="w-5 h-5 text-primary" />
+                </div>
               </div>
-              <div className="flex items-center justify-center w-10 h-10 rounded-md bg-primary/10">
-                <CreditCard className="w-5 h-5 text-primary" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+          {totalAguardandoReembolso > 0 && (
+            <Card className="hover-elevate border-amber-500/20">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Aguardando reembolso</p>
+                    <p className="text-2xl font-bold text-amber-600">{formatCurrency(totalAguardandoReembolso)}</p>
+                  </div>
+                  <div className="flex items-center justify-center w-10 h-10 rounded-md bg-amber-500/10">
+                    <RefreshCw className="w-5 h-5 text-amber-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       )}
 
       <Dialog open={openCompra} onOpenChange={setOpenCompra}>
@@ -316,6 +393,173 @@ export default function CartoesPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!editingCard} onOpenChange={(v) => { if (!v) setEditingCard(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Cartao</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!editingCard) return;
+              updateCardMutation.mutate({ id: editingCard.id, data: editCardForm });
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label>Nome do cartao</Label>
+              <Input
+                data-testid="input-edit-cartao-nome"
+                value={editCardForm.nome}
+                onChange={(e) => setEditCardForm({ ...editCardForm, nome: e.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Limite total</Label>
+              <Input
+                data-testid="input-edit-cartao-limite"
+                type="number"
+                step="0.01"
+                value={editCardForm.limite}
+                onChange={(e) => setEditCardForm({ ...editCardForm, limite: e.target.value })}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Melhor dia de compra</Label>
+                <Input
+                  data-testid="input-edit-cartao-melhordia"
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={editCardForm.melhorDiaCompra}
+                  onChange={(e) => setEditCardForm({ ...editCardForm, melhorDiaCompra: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Dia de vencimento</Label>
+                <Input
+                  data-testid="input-edit-cartao-vencimento"
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={editCardForm.diaVencimento}
+                  onChange={(e) => setEditCardForm({ ...editCardForm, diaVencimento: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+            <Button type="submit" className="w-full" data-testid="button-save-edit-cartao" disabled={updateCardMutation.isPending}>
+              {updateCardMutation.isPending ? "Salvando..." : "Salvar alteracoes"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingCompra} onOpenChange={(v) => { if (!v) setEditingCompra(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Compra</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!editingCompra) return;
+              updateCompraMutation.mutate({ id: editingCompra.id, data: editCompraForm });
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label>Descricao</Label>
+              <Input
+                data-testid="input-edit-compra-descricao"
+                value={editCompraForm.descricao}
+                onChange={(e) => setEditCompraForm({ ...editCompraForm, descricao: e.target.value })}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Valor total</Label>
+                <Input
+                  data-testid="input-edit-compra-valor"
+                  type="number"
+                  step="0.01"
+                  value={editCompraForm.valorTotal}
+                  onChange={(e) => setEditCompraForm({ ...editCompraForm, valorTotal: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Numero de parcelas</Label>
+                <Input
+                  data-testid="input-edit-compra-parcelas"
+                  type="number"
+                  min="1"
+                  max="48"
+                  value={editCompraForm.parcelas}
+                  onChange={(e) => setEditCompraForm({ ...editCompraForm, parcelas: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+            {editCompraForm.valorTotal && editCompraForm.parcelas && (
+              <div className="p-3 rounded-md bg-muted/50 text-sm">
+                <span className="text-muted-foreground">Nova parcela: </span>
+                <span className="font-semibold">
+                  {formatCurrency(parseFloat(editCompraForm.valorTotal) / parseInt(editCompraForm.parcelas || "1"))}
+                </span>
+                <span className="text-muted-foreground"> x {editCompraForm.parcelas}x</span>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Pessoa vinculada (opcional)</Label>
+              <Select
+                value={editCompraForm.pessoaId || "__none__"}
+                onValueChange={(v) => setEditCompraForm({
+                  ...editCompraForm,
+                  pessoaId: v === "__none__" ? "" : v,
+                  statusPessoa: v === "__none__" ? "" : (editCompraForm.statusPessoa || "pendente"),
+                })}
+              >
+                <SelectTrigger data-testid="select-edit-compra-pessoa">
+                  <SelectValue placeholder="Nenhuma" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nenhuma (compra propria)</SelectItem>
+                  {pessoas.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {editCompraForm.pessoaId && (
+              <div className="space-y-2">
+                <Label>Status do reembolso</Label>
+                <Select
+                  value={editCompraForm.statusPessoa || "pendente"}
+                  onValueChange={(v) => setEditCompraForm({ ...editCompraForm, statusPessoa: v })}
+                >
+                  <SelectTrigger data-testid="select-edit-compra-status-pessoa">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pendente">Aguardando reembolso</SelectItem>
+                    <SelectItem value="pago">Reembolsado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <Button type="submit" className="w-full" data-testid="button-save-edit-compra" disabled={updateCompraMutation.isPending}>
+              {updateCompraMutation.isPending ? "Salvando..." : "Salvar alteracoes"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {cartoes.length === 0 ? (
         <div className="text-center py-16" data-testid="empty-cartoes">
           <CreditCard className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
@@ -344,18 +588,36 @@ export default function CartoesPage() {
                       <div>
                         <CardTitle className="text-base">{c.nome}</CardTitle>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          Melhor compra: dia {c.melhorDiaCompra}
+                          Melhor compra: dia {c.melhorDiaCompra} · Venc: dia {c.diaVencimento}
                         </p>
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => deleteCardMutation.mutate(c.id)}
-                      data-testid={`button-delete-cartao-${c.id}`}
-                    >
-                      <Trash2 className="w-4 h-4 text-muted-foreground" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setEditingCard(c);
+                          setEditCardForm({
+                            nome: c.nome,
+                            limite: String(c.limite),
+                            melhorDiaCompra: String(c.melhorDiaCompra),
+                            diaVencimento: String(c.diaVencimento),
+                          });
+                        }}
+                        data-testid={`button-edit-cartao-${c.id}`}
+                      >
+                        <Pencil className="w-4 h-4 text-muted-foreground" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => deleteCardMutation.mutate(c.id)}
+                        data-testid={`button-delete-cartao-${c.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-muted-foreground" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
 
@@ -411,40 +673,87 @@ export default function CartoesPage() {
 
                   {cardCompras.length > 0 && (
                     <div className="space-y-2">
-                      {cardCompras.map((compra) => (
-                        <div
-                          key={compra.id}
-                          className="flex items-center justify-between p-2.5 rounded-md bg-muted/30 text-sm"
-                          data-testid={`compra-${compra.id}`}
-                        >
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="truncate font-medium">{compra.descricao}</p>
-                              {compra.pessoaId && (
-                                <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 flex-shrink-0">
-                                  <User className="w-2.5 h-2.5" />
-                                  {pessoas.find((p) => p.id === compra.pessoaId)?.nome ?? "Pessoa"}
-                                </span>
-                              )}
+                      {cardCompras.map((compra) => {
+                        const aguardandoReembolso = compra.pessoaId && (!compra.statusPessoa || compra.statusPessoa === "pendente");
+                        const reembolsado = compra.pessoaId && compra.statusPessoa === "pago";
+                        return (
+                          <div
+                            key={compra.id}
+                            className="p-2.5 rounded-md bg-muted/30 text-sm"
+                            data-testid={`compra-${compra.id}`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="truncate font-medium">{compra.descricao}</p>
+                                  {compra.pessoaId && (
+                                    <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 flex-shrink-0">
+                                      <User className="w-2.5 h-2.5" />
+                                      {pessoas.find((p) => p.id === compra.pessoaId)?.nome ?? "Pessoa"}
+                                    </span>
+                                  )}
+                                  {aguardandoReembolso && (
+                                    <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 flex-shrink-0">
+                                      <RefreshCw className="w-2.5 h-2.5" /> Ag. reembolso
+                                    </span>
+                                  )}
+                                  {reembolsado && (
+                                    <span className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+                                      Reembolsado
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {compra.parcelaAtual}/{compra.parcelas}x de {formatCurrency(Number(compra.valorParcela))}
+                                  {" · "}total: {formatCurrency(Number(compra.valorTotal))}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <span className="font-semibold text-sm">{formatCurrency(Number(compra.valorParcela))}</span>
+                                {aguardandoReembolso && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    title="Marcar como reembolsado"
+                                    onClick={() => marcarReembolsoMutation.mutate({ id: compra.id, pago: true })}
+                                    data-testid={`button-reembolso-${compra.id}`}
+                                  >
+                                    <RefreshCw className="w-3 h-3 text-amber-600" />
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={() => {
+                                    setEditingCompra(compra);
+                                    setEditCompraForm({
+                                      descricao: compra.descricao,
+                                      valorTotal: String(compra.valorTotal),
+                                      parcelas: String(compra.parcelas),
+                                      pessoaId: compra.pessoaId ?? "",
+                                      statusPessoa: compra.statusPessoa ?? "pendente",
+                                    });
+                                  }}
+                                  data-testid={`button-edit-compra-${compra.id}`}
+                                >
+                                  <Pencil className="w-3 h-3 text-muted-foreground" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={() => deleteCompraMutation.mutate(compra.id)}
+                                  data-testid={`button-delete-compra-${compra.id}`}
+                                >
+                                  <Trash2 className="w-3 h-3 text-muted-foreground" />
+                                </Button>
+                              </div>
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                              {compra.parcelaAtual}/{compra.parcelas}x de {formatCurrency(Number(compra.valorParcela))}
-                              {" · "}total: {formatCurrency(Number(compra.valorTotal))}
-                            </p>
                           </div>
-                          <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-                            <span className="font-semibold">{formatCurrency(Number(compra.valorParcela))}</span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => deleteCompraMutation.mutate(compra.id)}
-                              data-testid={`button-delete-compra-${compra.id}`}
-                            >
-                              <Trash2 className="w-3 h-3 text-muted-foreground" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 

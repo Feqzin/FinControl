@@ -12,11 +12,11 @@ A comprehensive personal finance management application in Brazilian Portuguese,
 
 ## Features
 - User authentication (register/login)
-- People management with edit support (nome, tipo, telefone, observacao)
+- People management with edit support (nome, tipo, telefone, observacao), duplicate name detection warning, and history sheet with Todos/Pendentes filter
 - Structured installment debt tracking with per-parcela payment, anticipation, and auto-schedule generation
-- Credit card management with installment purchases and next-invoice display
+- Credit card management with installment purchases, next-invoice display, edit card/compra dialogs, and reembolso status tracking
 - Financial forecast (monthly area chart with cumulative balance)
-- Services/subscriptions management
+- Services/subscriptions management with edit dialog and inline per-person valor editing in DivisaoPanel
 - Monthly and weekly reports with charts
 - Dashboard with financial health score (0-100), smart alerts, and auto-generated insights
 - **Financial Goals (Metas)**: Create goals with progress tracking and monthly savings calculator

@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Repeat, Trash2, X, Check, Users, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Repeat, Trash2, X, Check, Users, ChevronUp, Pencil } from "lucide-react";
 import { format, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { Servico, ServicoPessoa, ServicoPagamento, Pessoa } from "@shared/schema";
@@ -58,7 +58,21 @@ function DivisaoPanel({ servico, servicoPessoas, servicoPagamentos, pessoas }: D
   const { toast } = useToast();
   const [openAdd, setOpenAdd] = useState(false);
   const [addForm, setAddForm] = useState({ pessoaId: "", valorDevido: "" });
+  const [editingValorId, setEditingValorId] = useState<string | null>(null);
+  const [editingValor, setEditingValor] = useState("");
   const meses = getMeses();
+
+  const updateValorMutation = useMutation({
+    mutationFn: async ({ id, valorDevido }: { id: string; valorDevido: string }) => {
+      await apiRequest("PATCH", `/api/servico-pessoas/${id}`, { valorDevido });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/servico-pessoas"] });
+      setEditingValorId(null);
+      toast({ title: "Valor atualizado" });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
 
   const vinculados = servicoPessoas.filter((sp) => sp.servicoId === servico.id);
 
@@ -219,7 +233,41 @@ function DivisaoPanel({ servico, servicoPessoas, servicoPagamentos, pessoas }: D
                 return (
                   <tr key={sp.id} data-testid={`row-servico-pessoa-${sp.id}`}>
                     <td className="py-2 pr-3 font-medium">{pessoa?.nome ?? "—"}</td>
-                    <td className="py-2 pr-3 text-right text-muted-foreground">{formatCurrency(Number(sp.valorDevido))}</td>
+                    <td className="py-2 pr-3 text-right">
+                      {editingValorId === sp.id ? (
+                        <div className="flex items-center gap-1 justify-end">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            className="h-6 w-20 text-xs p-1"
+                            value={editingValor}
+                            onChange={(e) => setEditingValor(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") updateValorMutation.mutate({ id: sp.id, valorDevido: editingValor });
+                              if (e.key === "Escape") setEditingValorId(null);
+                            }}
+                            autoFocus
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5"
+                            onClick={() => updateValorMutation.mutate({ id: sp.id, valorDevido: editingValor })}
+                          >
+                            <Check className="w-3 h-3 text-emerald-600" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <button
+                          className="text-muted-foreground hover:text-foreground transition-colors group flex items-center gap-1 ml-auto"
+                          onClick={() => { setEditingValorId(sp.id); setEditingValor(String(sp.valorDevido)); }}
+                          data-testid={`button-edit-valor-${sp.id}`}
+                        >
+                          {formatCurrency(Number(sp.valorDevido))}
+                          <Pencil className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </button>
+                      )}
+                    </td>
                     {meses.map((mes) => {
                       const pag = getPagamento(sp.id, mes);
                       return (
@@ -274,6 +322,10 @@ export default function ServicosPage() {
   const [form, setForm] = useState({
     nome: "", categoria: "streaming", valorMensal: "", dataCobranca: "", formaPagamento: "cartao",
   });
+  const [editingServico, setEditingServico] = useState<Servico | null>(null);
+  const [editForm, setEditForm] = useState({
+    nome: "", categoria: "streaming", valorMensal: "", dataCobranca: "", formaPagamento: "cartao",
+  });
 
   const { data: servicos = [], isLoading } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
   const { data: servicoPessoas = [] } = useQuery<ServicoPessoa[]>({ queryKey: ["/api/servico-pessoas"] });
@@ -312,6 +364,24 @@ export default function ServicosPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/servicos"] });
       toast({ title: "Servico removido" });
     },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      await apiRequest("PATCH", `/api/servicos/${id}`, {
+        nome: data.nome,
+        categoria: data.categoria,
+        valorMensal: data.valorMensal,
+        dataCobranca: parseInt(data.dataCobranca),
+        formaPagamento: data.formaPagamento,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/servicos"] });
+      setEditingServico(null);
+      toast({ title: "Servico atualizado" });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
   const toggleDivisao = (id: string) => {
@@ -543,6 +613,23 @@ export default function ServicosPage() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              onClick={() => {
+                                setEditingServico(s);
+                                setEditForm({
+                                  nome: s.nome,
+                                  categoria: s.categoria,
+                                  valorMensal: String(s.valorMensal),
+                                  dataCobranca: String(s.dataCobranca),
+                                  formaPagamento: s.formaPagamento,
+                                });
+                              }}
+                              data-testid={`button-edit-servico-${s.id}`}
+                            >
+                              <Pencil className="w-4 h-4 text-muted-foreground" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               onClick={() => toggleStatusMutation.mutate({ id: s.id, status: s.status })}
                               data-testid={`button-toggle-servico-${s.id}`}
                             >
@@ -576,6 +663,89 @@ export default function ServicosPage() {
           ))}
         </div>
       )}
+
+      <Dialog open={!!editingServico} onOpenChange={(v) => { if (!v) setEditingServico(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Servico</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!editingServico) return;
+              updateMutation.mutate({ id: editingServico.id, data: editForm });
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label>Nome do servico</Label>
+              <Input
+                data-testid="input-edit-servico-nome"
+                value={editForm.nome}
+                onChange={(e) => setEditForm({ ...editForm, nome: e.target.value })}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Categoria</Label>
+                <Select value={editForm.categoria} onValueChange={(v) => setEditForm({ ...editForm, categoria: v })}>
+                  <SelectTrigger data-testid="select-edit-servico-categoria">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categorias.map((cat) => (
+                      <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Valor mensal</Label>
+                <Input
+                  data-testid="input-edit-servico-valor"
+                  type="number"
+                  step="0.01"
+                  value={editForm.valorMensal}
+                  onChange={(e) => setEditForm({ ...editForm, valorMensal: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Dia de cobranca</Label>
+                <Input
+                  data-testid="input-edit-servico-datacobranca"
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={editForm.dataCobranca}
+                  onChange={(e) => setEditForm({ ...editForm, dataCobranca: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Forma de pagamento</Label>
+                <Select value={editForm.formaPagamento} onValueChange={(v) => setEditForm({ ...editForm, formaPagamento: v })}>
+                  <SelectTrigger data-testid="select-edit-servico-pagamento">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cartao">Cartao</SelectItem>
+                    <SelectItem value="debito">Debito automatico</SelectItem>
+                    <SelectItem value="boleto">Boleto</SelectItem>
+                    <SelectItem value="pix">Pix</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <Button type="submit" className="w-full" data-testid="button-save-edit-servico" disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? "Salvando..." : "Salvar alteracoes"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
