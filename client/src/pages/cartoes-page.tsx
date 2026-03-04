@@ -64,6 +64,7 @@ interface ParsedItem {
   parcelasRestantes: number;
   dataCompra: string;
   vencimentoFatura: string | null;
+  tipo: "compra" | "taxa";
   duplicata: any;
   action: "import" | "skip";
 }
@@ -86,6 +87,16 @@ function extractAllISODates(str: string): { iso: string; raw: string; index: num
 }
 
 function extractInstallment(str: string): { parcelaAtual: number; totalParcelas: number; raw: string } | null {
+  // Priority 1: explicit "Parcela X/Y" keyword (Portuguese CSV format)
+  const kwRe = /\bparcela\s+(\d{1,2})\/(\d{1,2})\b/gi;
+  let km: RegExpExecArray | null;
+  while ((km = kwRe.exec(str)) !== null) {
+    const x = parseInt(km[1]); const y = parseInt(km[2]);
+    if (x >= 1 && y >= 1 && x <= y && y <= 48) {
+      return { parcelaAtual: x, totalParcelas: y, raw: km[0] };
+    }
+  }
+  // Priority 2: generic X/Y (where Y >= 2 to avoid date confusion)
   const re = /\b(\d{1,2})\/(\d{1,2})\b/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(str)) !== null) {
@@ -117,14 +128,29 @@ function extractMonetaryValue(str: string): { valor: number; raw: string } | nul
   return null;
 }
 
+function detectarTipo(titulo: string): "taxa" | "compra" {
+  if (/\b(IOF|seguro|tarifa|encargo|juros|anuidade)\b/i.test(titulo)) return "taxa";
+  return "compra";
+}
+
 function normalizarDescricao(raw: string): string {
   let s = raw;
-  s = s.replace(/\bPARC(?:ELA)?\s+\d+\/\d+\b/gi, "");
+  // Remove " - Parcela X/Y" and "- PARC X/Y" patterns (with surrounding dash)
+  s = s.replace(/\s*[-–]\s*Parcela\s+\d{1,2}\/\d{1,2}/gi, "");
+  s = s.replace(/\s*[-–]\s*PARC(?:ELA)?\s+\d{1,2}\/\d{1,2}/gi, "");
+  // Remove bare "Parcela X/Y" at end of string
+  s = s.replace(/\bPARC(?:ELA)?\s+\d{1,2}\/\d{1,2}\b/gi, "");
+  // Remove long digit sequences (auth codes)
   s = s.replace(/\b\d{7,}\b/g, "");
-  s = s.replace(/[*]+/g, " ");
-  s = s.replace(/[R$]/g, " ");
+  // Replace asterisks with space (e.g. "AMAZON*MKTPL")
+  s = s.replace(/\*/g, " ");
+  // Remove R$ symbols
+  s = s.replace(/R\$\s*/g, "");
+  // Collapse whitespace and trim
   s = s.trim().replace(/\s+/g, " ");
+  // Remove leading/trailing non-alphanumeric
   s = s.replace(/^[\s\W]+|[\s\W]+$/g, "").trim();
+  // Convert ALL-CAPS to Title Case
   const uppers = (s.match(/[A-Z]/g) || []).length;
   const lowers = (s.match(/[a-z]/g) || []).length;
   if (uppers > 2 && lowers === 0) {
@@ -170,8 +196,9 @@ function parseLinha(linha: string, vencimentoFatura: string | null): Omit<Parsed
   const dataCompra = fullDates.length > 0 ? fullDates[0].iso : format(new Date(), "yyyy-MM-dd");
   const valor = Number((valorParcela * totalParcelas).toFixed(2)); // true total
   const parcelasRestantes = totalParcelas - parcelaAtual;
+  const tipo = detectarTipo(linha);
 
-  return { descricao, valor, valorParcela, parcelas: totalParcelas, parcelaAtual, parcelasRestantes, dataCompra, vencimentoFatura };
+  return { descricao, valor, valorParcela, parcelas: totalParcelas, parcelaAtual, parcelasRestantes, dataCompra, vencimentoFatura, tipo };
 }
 
 function checkDuplicata(item: { valorParcela: number; descricao: string }, existentes: CompraCartao[], cartaoId: string) {
@@ -192,57 +219,122 @@ function parseTexto(text: string, existentes: CompraCartao[], cartaoId: string):
     const parsed = parseLinha(linha, vencimentoFatura);
     if (!parsed) continue;
     const duplicata = checkDuplicata(parsed, existentes, cartaoId);
-    items.push({ id: String(idx++), ...parsed, vencimentoFatura, duplicata, action: duplicata ? "skip" : "import" });
+    items.push({ id: String(idx++), ...parsed, tipo: parsed.tipo ?? "compra", vencimentoFatura, duplicata, action: duplicata ? "skip" : "import" });
   }
   return items;
 }
 
+function parseCsvValue(raw: string): number {
+  // Handles both American "53.01" and Brazilian "53,01" / "1.234,56"
+  const s = raw.replace(/[R$\s]/g, "");
+  // American format: has dot as decimal separator, no trailing comma
+  if (/^-?\d{1,3}(?:,\d{3})*\.\d{2}$/.test(s)) return parseFloat(s.replace(/,/g, ""));
+  if (/^-?\d+\.\d{1,2}$/.test(s)) return parseFloat(s);
+  // Brazilian format: "1.234,56" or "1234,56"
+  if (s.includes(",")) return parseFloat(s.replace(/\./g, "").replace(",", "."));
+  return parseFloat(s) || 0;
+}
+
+function parseCsvDate(raw: string): string {
+  const s = raw.trim().replace(/"/g, "");
+  // ISO: 2026-02-17
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // BR: 17/02/2026
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  // Short BR: 17/02/26
+  const br2 = s.match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
+  if (br2) return `20${br2[3]}-${br2[2]}-${br2[1]}`;
+  // American: 02/17/2026
+  const us = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (us) return `${us[3]}-${us[1]}-${us[2]}`;
+  return format(new Date(), "yyyy-MM-dd");
+}
+
+const PAYMENT_KEYWORDS = /pagamento\s*(recebido|de\s*fatura|efetuado)|credito\s*em\s*conta|estorno|reembolso|cashback/i;
+
 function parseCsv(content: string, existentes: CompraCartao[], cartaoId: string): ParsedItem[] {
-  const sep = content.includes(";") ? ";" : ",";
+  // Detect separator: prefer comma for simple CSV, semicolon for BR exports
+  const firstLine = content.split(/\n/)[0] ?? "";
+  const sep = firstLine.split(";").length > firstLine.split(",").length ? ";" : ",";
+
   const linhas = content.split(/\n/).map((l) => l.trim()).filter(Boolean);
   if (linhas.length < 2) return parseTexto(content, existentes, cartaoId);
+
   const rawHeaders = linhas[0].split(sep).map((h) => h.replace(/"/g, "").trim());
   const headers = rawHeaders.map((h) => h.toLowerCase());
-  const dateIdx = headers.findIndex((h) => /data|date|lança|post/i.test(h));
-  const descIdx = headers.findIndex((h) => /desc|hist|memo|nome|title|lancamento/i.test(h));
-  const valIdx = headers.findIndex((h) => /valor|amount|trnamt|debito|credito|value/i.test(h));
-  const parcIdx = headers.findIndex((h) => /parc|inst/i.test(h));
+
+  // Column detection — "title" and "amount" are explicit Nubank/inter CSV names
+  const dateIdx = headers.findIndex((h) => /^date$|^data$|data.compra|lança|post/i.test(h));
+  const descIdx = headers.findIndex((h) => /^title$|^desc|^hist|^memo|^nome$|^lancamento/i.test(h));
+  const valIdx  = headers.findIndex((h) => /^amount$|^valor$|^value$|trnamt|debito|credito/i.test(h));
+
   if (valIdx < 0 && descIdx < 0) return parseTexto(content, existentes, cartaoId);
+
   const vencimentoFatura = findVencimentoFatura(content);
   const items: ParsedItem[] = [];
   let idx = 0;
+
   for (let i = 1; i < linhas.length; i++) {
-    const cols = linhas[i].split(sep).map((c) => c.trim().replace(/"/g, ""));
-    if (cols.length < 2) continue;
-    const valorRaw = cols[valIdx] ?? "";
-    const valorClean = valorRaw.replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", ".");
-    const valor = Math.abs(parseFloat(valorClean));
-    if (isNaN(valor) || valor <= 0) continue;
-    const rawDesc = cols[descIdx] ?? "Compra importada";
-    const descricao = normalizarDescricao(rawDesc);
-    const dataRaw = cols[dateIdx] ?? "";
-    let dataCompra = format(new Date(), "yyyy-MM-dd");
-    if (dataRaw) {
-      const dates = extractAllISODates(dataRaw);
-      if (dates.length > 0) dataCompra = dates[0].iso;
-      else {
-        const iso = dataRaw.match(/(\d{4})-(\d{2})-(\d{2})/);
-        if (iso) dataCompra = iso[0];
-        else {
-          const dm = dataRaw.match(/(\d{2})\/(\d{2})/);
-          if (dm) dataCompra = `${new Date().getFullYear()}-${dm[2]}-${dm[1]}`;
-        }
-      }
+    const raw = linhas[i];
+    // Handle quoted fields with commas inside
+    const cols: string[] = [];
+    let cur = ""; let inQ = false;
+    for (const ch of raw) {
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === sep && !inQ) { cols.push(cur.trim()); cur = ""; }
+      else cur += ch;
     }
-    const parcRaw = parcIdx >= 0 ? (cols[parcIdx] ?? "") : rawDesc;
-    const instFromDesc = extractInstallment(rawDesc);
-    const parcelaAtual = instFromDesc ? instFromDesc.parcelaAtual : 1;
-    const totalParcelas = instFromDesc ? instFromDesc.totalParcelas : 1;
-    const valorParcela = Number((valor / totalParcelas).toFixed(2));
+    cols.push(cur.trim());
+
+    if (cols.length < 2) continue;
+
+    const rawDesc = (descIdx >= 0 ? cols[descIdx] : cols[1] ?? "").replace(/"/g, "").trim();
+    const valorRaw = (valIdx >= 0 ? cols[valIdx] : cols[cols.length - 1] ?? "").replace(/"/g, "").trim();
+    const dataRaw  = (dateIdx >= 0 ? cols[dateIdx] : cols[0] ?? "").replace(/"/g, "").trim();
+
+    // Skip empty rows
+    if (!rawDesc && !valorRaw) continue;
+
+    // Parse value — keep sign to detect payments
+    const valorSigned = parseCsvValue(valorRaw);
+    if (isNaN(valorSigned) || valorSigned === 0) continue;
+
+    // Skip payments received (negative = credit to account, or keyword match)
+    if (valorSigned < 0 || PAYMENT_KEYWORDS.test(rawDesc)) continue;
+
+    const valorParcela = valorSigned; // CSV amount = this installment's value
+
+    const dataCompra = parseCsvDate(dataRaw);
+
+    // Extract installments from the raw title BEFORE cleaning
+    const instResult = extractInstallment(rawDesc);
+    const parcelaAtual = instResult ? instResult.parcelaAtual : 1;
+    const totalParcelas = instResult ? instResult.totalParcelas : 1;
     const parcelasRestantes = totalParcelas - parcelaAtual;
+    const valorTotal = Number((valorParcela * totalParcelas).toFixed(2));
+
+    // Clean description after extracting installment info
+    const descricao = normalizarDescricao(rawDesc);
+    const tipo = detectarTipo(rawDesc);
+
     const duplicata = checkDuplicata({ valorParcela, descricao }, existentes, cartaoId);
-    items.push({ id: String(idx++), descricao, valor, valorParcela, parcelas: totalParcelas, parcelaAtual, parcelasRestantes, dataCompra, vencimentoFatura, duplicata, action: duplicata ? "skip" : "import" });
+    items.push({
+      id: String(idx++),
+      descricao,
+      valor: valorTotal,
+      valorParcela,
+      parcelas: totalParcelas,
+      parcelaAtual,
+      parcelasRestantes,
+      dataCompra,
+      vencimentoFatura,
+      tipo,
+      duplicata,
+      action: duplicata ? "skip" : "import",
+    });
   }
+
   return items.length > 0 ? items : parseTexto(content, existentes, cartaoId);
 }
 
@@ -281,8 +373,9 @@ function parseOfx(content: string, existentes: CompraCartao[], cartaoId: string)
     const totalParcelas = instResult ? instResult.totalParcelas : 1;
     const valorParcela = Number((valor / totalParcelas).toFixed(2));
     const parcelasRestantes = totalParcelas - parcelaAtual;
+    const tipo = detectarTipo(rawDesc);
     const duplicata = checkDuplicata({ valorParcela, descricao }, existentes, cartaoId);
-    items.push({ id: String(idx++), descricao, valor, valorParcela, parcelas: totalParcelas, parcelaAtual, parcelasRestantes, dataCompra, vencimentoFatura, duplicata, action: duplicata ? "skip" : "import" });
+    items.push({ id: String(idx++), descricao, valor, valorParcela, parcelas: totalParcelas, parcelaAtual, parcelasRestantes, dataCompra, vencimentoFatura, tipo, duplicata, action: duplicata ? "skip" : "import" });
   }
   return items;
 }
@@ -1102,6 +1195,11 @@ export default function CartoesPage() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1 flex-wrap">
                                 <p className="font-medium truncate">{item.descricao}</p>
+                                {item.tipo === "taxa" && (
+                                  <span className="inline-flex items-center text-xs px-1 py-0.5 rounded bg-blue-500/10 text-blue-600 flex-shrink-0">
+                                    Taxa
+                                  </span>
+                                )}
                                 {item.duplicata && (
                                   <span className="inline-flex items-center gap-0.5 text-xs px-1 py-0.5 rounded bg-amber-500/10 text-amber-600 flex-shrink-0">
                                     <AlertTriangle className="w-2.5 h-2.5" /> Duplicata?

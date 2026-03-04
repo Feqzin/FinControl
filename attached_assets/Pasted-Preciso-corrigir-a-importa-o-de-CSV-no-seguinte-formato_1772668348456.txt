@@ -1,0 +1,129 @@
+Preciso corrigir a importação de CSV no seguinte formato:
+
+date,title,amount
+2026-02-17,Amazonmktplc*Ikaraindu - Parcela 4/10,53.01
+
+PROBLEMAS ATUAIS:
+- Não está identificando parcelamento
+- Não está separando descrição
+- Está importando pagamentos recebidos como compra
+- Não está tratando valores negativos corretamente
+
+========================================
+1) MAPEAR CORRETAMENTE COLUNAS
+========================================
+
+date → dataCompra
+title → descricaoOriginal
+amount → valor
+
+Converter amount para float direto (já está padrão americano):
+53.01 → 53.01
+
+========================================
+2) IGNORAR PAGAMENTOS RECEBIDOS
+========================================
+
+Se amount < 0:
+→ Classificar como pagamento de fatura
+→ NÃO cadastrar como compra
+
+Se title conter:
+"Pagamento recebido"
+→ Ignorar como compra
+
+========================================
+3) DETECTAR PARCELAMENTO
+========================================
+
+Se title contiver padrão:
+
+Parcela X/Y
+
+Regex:
+Parcela\s+(\d{1,2})\/(\d{1,2})
+
+Extrair:
+parcelaAtual
+totalParcelas
+
+Exemplo:
+"Amazonmktplc*Ikaraindu - Parcela 4/10"
+
+parcelaAtual = 4
+totalParcelas = 10
+
+========================================
+4) LIMPAR DESCRIÇÃO
+========================================
+
+Remover:
+
+- " - Parcela X/Y"
+
+Resultado:
+"Amazonmktplc*Ikaraindu"
+
+Opcional:
+Remover caracteres como:
+*
+Duplo espaço
+
+========================================
+5) CRIAR ESTRUTURA DE PARCELAS
+========================================
+
+Se detectar parcelamento:
+
+Criar:
+
+{
+  descricao: limpa,
+  valorParcela: amount,
+  totalParcelas: Y,
+  parcelaAtual: X,
+  dataCompra,
+  parcelas: [
+    1 → pago se < parcelaAtual
+    parcelaAtual → pendente
+    restantes → futuras
+  ]
+}
+
+========================================
+6) CLASSIFICAR TAXAS
+========================================
+
+Se title conter:
+"IOF"
+"Seguro"
+"Tarifa"
+
+Classificar como:
+tipo: "taxa"
+
+Mas ainda importar como despesa válida.
+
+========================================
+7) VALIDAÇÃO ANTES DE SALVAR
+========================================
+
+Mostrar preview:
+
+Descrição limpa
+Valor
+Parcela X/Y
+Data
+
+Antes de inserir no banco.
+
+========================================
+
+Objetivo:
+
+Importar corretamente:
+- Parcelas
+- Compras únicas
+- Ignorar pagamentos
+- Classificar taxas
+- Separar descrição limpa
