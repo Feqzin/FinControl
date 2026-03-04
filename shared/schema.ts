@@ -136,6 +136,23 @@ export const insertServicoPagamentoSchema = createInsertSchema(servicoPagamentos
 export type InsertServicoPagamento = z.infer<typeof insertServicoPagamentoSchema>;
 export type ServicoPagamento = typeof servicoPagamentos.$inferSelect;
 
+export const parcelasCompra = pgTable("parcelas_compra", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  compraCartaoId: varchar("compra_cartao_id").notNull(),
+  numero: integer("numero").notNull(),
+  valor: decimal("valor", { precision: 12, scale: 2 }).notNull(),
+  dataVencimento: text("data_vencimento"),
+  statusCartao: text("status_cartao").notNull().default("pendente"),
+  dataPagamentoCartao: text("data_pagamento_cartao"),
+  statusPessoa: text("status_pessoa"),
+  dataPagamentoPessoa: text("data_pagamento_pessoa"),
+});
+
+export const insertParcelaCompraSchema = createInsertSchema(parcelasCompra).omit({ id: true });
+export type InsertParcelaCompra = z.infer<typeof insertParcelaCompraSchema>;
+export type ParcelaCompra = typeof parcelasCompra.$inferSelect;
+
 export const metas = pgTable("metas", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),

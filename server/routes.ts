@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, requireAuth } from "./auth";
 import { z } from "zod";
-import { addMonths, format } from "date-fns";
+import { addMonths, format, parseISO, addDays } from "date-fns";
 
 const pessoaBody = z.object({
   nome: z.string().min(1),
@@ -362,6 +362,132 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const deleted = await storage.deleteMeta(req.params.id, userId);
     if (!deleted) return res.status(404).json({ message: "Not found" });
     res.json({ success: true });
+  });
+
+  app.post("/api/dividas/:id/recalcular", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const { novoTotal, primeiroVencimento } = req.body;
+    if (!novoTotal || novoTotal < 1) return res.status(400).json({ message: "novoTotal obrigatorio" });
+    const divida = await storage.getDivida(req.params.id, userId);
+    if (!divida) return res.status(404).json({ message: "Not found" });
+    const parcelasExistentes = await storage.getParcelasByDivida(req.params.id, userId);
+    const pagas = parcelasExistentes.filter((p) => p.status === "pago");
+    const pendentes = parcelasExistentes.filter((p) => p.status !== "pago");
+    for (const p of pendentes) await storage.deleteParcela(p.id, userId);
+    const valorTotal = Number(divida.valorTotal || divida.valor) * Number(divida.totalParcelas || 1);
+    const valorParcela = Number((valorTotal / novoTotal).toFixed(2));
+    const baseDate = primeiroVencimento
+      ? new Date(primeiroVencimento + "T12:00:00")
+      : new Date((divida.dataVencimento || format(new Date(), "yyyy-MM-dd")) + "T12:00:00");
+    const novasParcelas = [];
+    for (let i = pagas.length; i < novoTotal; i++) {
+      novasParcelas.push({
+        userId, dividaId: divida.id, numero: i + 1,
+        valor: i === novoTotal - 1
+          ? String(Number((valorTotal - valorParcela * (novoTotal - 1)).toFixed(2)))
+          : String(valorParcela),
+        dataVencimento: format(addMonths(baseDate, i - pagas.length), "yyyy-MM-dd"),
+        status: "pendente", dataPagamento: null, formaPagamento: null,
+      });
+    }
+    const criadas = await storage.createParcelasBulk(novasParcelas);
+    await storage.updateDivida(divida.id, userId, {
+      totalParcelas: novoTotal,
+      valorTotal: String(valorTotal),
+      valor: String(valorParcela),
+    });
+    res.json({ pagas: pagas.length, novas: criadas.length });
+  });
+
+  app.get("/api/parcelas-compra/:compraId", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const compraId = req.params.compraId;
+    let rows = await storage.getParcelasCompra(compraId, userId);
+    if (rows.length === 0) {
+      const compra = (await storage.getComprasCartao(userId)).find((c) => c.id === compraId);
+      if (!compra) return res.status(404).json({ message: "Compra not found" });
+      const valorParcela = Number(compra.valorParcela);
+      const total = Number(compra.parcelas);
+      const atual = Number(compra.parcelaAtual);
+      const baseDate = new Date(compra.dataCompra + "T12:00:00");
+      const parcelasData = Array.from({ length: total }, (_, i) => {
+        const num = i + 1;
+        return {
+          userId,
+          compraCartaoId: compraId,
+          numero: num,
+          valor: String(valorParcela),
+          dataVencimento: format(addMonths(baseDate, i), "yyyy-MM-dd"),
+          statusCartao: num < atual ? "pago" : "pendente",
+          dataPagamentoCartao: num < atual ? compra.dataCompra : null,
+          statusPessoa: num < atual ? (compra.statusPessoa || null) : (num === atual && compra.pessoaId ? (compra.statusPessoa || "pendente") : null),
+          dataPagamentoPessoa: num < atual ? (compra.dataPagamentoPessoa || null) : null,
+        };
+      });
+      rows = await storage.createParcelasCompraBulk(parcelasData);
+    }
+    res.json(rows);
+  });
+
+  app.patch("/api/parcelas-compra/:id", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const p = await storage.updateParcelaCompra(req.params.id, userId, req.body);
+    if (!p) return res.status(404).json({ message: "Not found" });
+    res.json(p);
+  });
+
+  app.post("/api/parcelas-compra/bulk", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const { compraCartaoId, parcelas: rows } = req.body;
+    if (!compraCartaoId || !Array.isArray(rows)) return res.status(400).json({ message: "Invalid" });
+    await storage.deleteParcelasCompraBulk(compraCartaoId, userId);
+    const created = await storage.createParcelasCompraBulk(rows.map((r: any) => ({ ...r, userId, compraCartaoId })));
+    res.json(created);
+  });
+
+  app.post("/api/importar-texto", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const { texto, cartaoId } = req.body;
+    if (!texto) return res.status(400).json({ message: "Texto obrigatorio" });
+    const cartao = await storage.getCartao(cartaoId, userId);
+    if (!cartao) return res.status(400).json({ message: "Cartao not found" });
+    const existentes = await storage.getComprasCartao(userId);
+    const linhas = texto.split(/\n/).map((l: string) => l.trim()).filter(Boolean);
+    const items: any[] = [];
+    for (const linha of linhas) {
+      const valorMatch = linha.match(/R?\$?\s*([\d]{1,3}(?:[.,]\d{3})*[.,]\d{2})/);
+      if (!valorMatch) continue;
+      const valorStr = valorMatch[1].replace(/\./g, "").replace(",", ".");
+      const valor = parseFloat(valorStr);
+      if (isNaN(valor) || valor <= 0) continue;
+      const parcelaMatch = linha.match(/(\d+)\/(\d+)/);
+      const parcelaAtual = parcelaMatch ? parseInt(parcelaMatch[1]) : 1;
+      const totalParcelas = parcelaMatch ? parseInt(parcelaMatch[2]) : 1;
+      const dataMatch = linha.match(/(\d{2})\/(\d{2})(?:\/(\d{4}))?/);
+      let dataCompra = format(new Date(), "yyyy-MM-dd");
+      if (dataMatch) {
+        const day = dataMatch[1]; const month = dataMatch[2]; const year = dataMatch[3] || String(new Date().getFullYear());
+        dataCompra = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+      }
+      let descricao = linha
+        .replace(valorMatch[0], "")
+        .replace(parcelaMatch ? parcelaMatch[0] : "", "")
+        .replace(dataMatch ? dataMatch[0] : "", "")
+        .replace(/[R$]/g, "")
+        .trim()
+        .replace(/\s+/g, " ");
+      if (!descricao) descricao = "Compra importada";
+      const duplicata = existentes.find((e) => {
+        const diffValor = Math.abs(Number(e.valorParcela) - valor / totalParcelas) / (valor / totalParcelas);
+        const nomeSim = e.descricao.toLowerCase().includes(descricao.toLowerCase().slice(0, 5));
+        return diffValor < 0.05 && nomeSim && e.cartaoId === cartaoId;
+      });
+      items.push({
+        descricao, valor, valorParcela: Number((valor / totalParcelas).toFixed(2)),
+        parcelas: totalParcelas, parcelaAtual, dataCompra, duplicata: duplicata || null,
+      });
+    }
+    res.json(items);
   });
 
   return httpServer;

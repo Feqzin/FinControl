@@ -18,7 +18,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Receipt, Search, Check, Trash2, ChevronDown, ChevronUp,
-  Pencil, FastForward, Calendar, AlertCircle,
+  Pencil, FastForward, Calendar, AlertCircle, X,
 } from "lucide-react";
 import type { Divida, Parcela, Pessoa } from "@shared/schema";
 import { format, isPast, parseISO } from "date-fns";
@@ -136,6 +136,13 @@ export default function DividasPage() {
   const [anteciparOpen, setAnteciparOpen] = useState(false);
   const [anteciparDivida, setAnteciparDivida] = useState<DividaWithParcelas | null>(null);
   const [anteciparForm, setAnteciparForm] = useState({ quantidade: "1", formaPagamento: "pix" });
+
+  const [editingDivida, setEditingDivida] = useState<DividaWithParcelas | null>(null);
+  const [editDividaForm, setEditDividaForm] = useState({
+    pessoaId: "", tipo: "receber", valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
+  });
+  const [recalcularForm, setRecalcularForm] = useState({ novoTotal: "", primeiroVencimento: "" });
+  const [showRecalcular, setShowRecalcular] = useState(false);
 
   const { data: dividas = [], isLoading } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: parcelas = [] } = useQuery<Parcela[]>({ queryKey: ["/api/parcelas"] });
@@ -260,6 +267,33 @@ export default function DividasPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
       toast({ title: "Divida removida" });
     },
+  });
+
+  const updateDividaMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      await apiRequest("PATCH", `/api/dividas/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+      setEditingDivida(null);
+      toast({ title: "Divida atualizada" });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const recalcularMutation = useMutation({
+    mutationFn: async ({ id, novoTotal, primeiroVencimento }: { id: string; novoTotal: number; primeiroVencimento?: string }) => {
+      const res = await apiRequest("POST", `/api/dividas/${id}/recalcular`, { novoTotal, primeiroVencimento: primeiroVencimento || undefined });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+      setEditingDivida(null);
+      setShowRecalcular(false);
+      toast({ title: `Parcelas recalculadas: ${data.pagas} pagas mantidas, ${data.novas} novas criadas` });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
   if (isLoading) {
@@ -545,6 +579,23 @@ export default function DividasPage() {
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </Button>
                       )}
+                      <Button variant="ghost" size="icon"
+                        onClick={() => {
+                          setEditingDivida(d);
+                          setEditDividaForm({
+                            pessoaId: d.pessoaId,
+                            tipo: d.tipo,
+                            valor: d.parcelas.length > 0 ? String(d.valorTotal || d.valor) : String(d.valor),
+                            dataVencimento: d.dataVencimento || "",
+                            descricao: d.descricao || "",
+                            formaPagamento: d.formaPagamento || "pix",
+                          });
+                          setRecalcularForm({ novoTotal: String(d.totalParcelas || d.parcelas.length || ""), primeiroVencimento: "" });
+                          setShowRecalcular(false);
+                        }}
+                        data-testid={`button-edit-divida-${d.id}`}>
+                        <Pencil className="w-4 h-4 text-muted-foreground" />
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(d.id)}
                         data-testid={`button-delete-divida-${d.id}`}>
                         <Trash2 className="w-4 h-4 text-muted-foreground" />
@@ -700,6 +751,138 @@ export default function DividasPage() {
                 })}
                 disabled={anteciparMutation.isPending}>
                 {anteciparMutation.isPending ? "Processando..." : `Antecipar ${anteciparForm.quantidade} parcela(s)`}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingDivida} onOpenChange={(v) => { if (!v) { setEditingDivida(null); setShowRecalcular(false); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Divida</DialogTitle>
+          </DialogHeader>
+          {editingDivida && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Pessoa</Label>
+                <Select value={editDividaForm.pessoaId} onValueChange={(v) => setEditDividaForm({ ...editDividaForm, pessoaId: v })}>
+                  <SelectTrigger data-testid="select-edit-divida-pessoa"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <SelectContent>{pessoas.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Tipo</Label>
+                  <Select value={editDividaForm.tipo} onValueChange={(v) => setEditDividaForm({ ...editDividaForm, tipo: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="receber">A receber</SelectItem>
+                      <SelectItem value="pagar">A pagar</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>{editingDivida.parcelas.length > 0 ? "Valor total" : "Valor"}</Label>
+                  <Input
+                    data-testid="input-edit-divida-valor"
+                    type="number" step="0.01"
+                    value={editDividaForm.valor}
+                    onChange={(e) => setEditDividaForm({ ...editDividaForm, valor: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Vencimento</Label>
+                  <Input
+                    data-testid="input-edit-divida-vencimento"
+                    type="date"
+                    value={editDividaForm.dataVencimento}
+                    onChange={(e) => setEditDividaForm({ ...editDividaForm, dataVencimento: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Forma</Label>
+                  <Select value={editDividaForm.formaPagamento} onValueChange={(v) => setEditDividaForm({ ...editDividaForm, formaPagamento: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{FORMAS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Descricao</Label>
+                <Input
+                  data-testid="input-edit-divida-descricao"
+                  value={editDividaForm.descricao}
+                  onChange={(e) => setEditDividaForm({ ...editDividaForm, descricao: e.target.value })}
+                  placeholder="Descricao breve"
+                />
+              </div>
+
+              {editingDivida.parcelas.length > 0 && (
+                <div className="border rounded-md p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">Recalcular parcelas pendentes</p>
+                    <Button variant="ghost" size="sm" onClick={() => setShowRecalcular(!showRecalcular)}
+                      data-testid="button-toggle-recalcular">
+                      {showRecalcular ? <X className="w-3 h-3" /> : <Pencil className="w-3 h-3" />}
+                    </Button>
+                  </div>
+                  {!showRecalcular && (
+                    <p className="text-xs text-muted-foreground">
+                      Parcelas pagas: {editingDivida.parcelas.filter((p) => p.status === "pago").length}/{editingDivida.parcelas.length}
+                    </p>
+                  )}
+                  {showRecalcular && (
+                    <div className="space-y-3">
+                      <p className="text-xs text-muted-foreground">
+                        As parcelas ja pagas ({editingDivida.parcelas.filter((p) => p.status === "pago").length}) serao mantidas.
+                        As pendentes serao recriadas.
+                      </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label>Novo total de parcelas</Label>
+                          <Input type="number" min="1" max="360" value={recalcularForm.novoTotal}
+                            onChange={(e) => setRecalcularForm({ ...recalcularForm, novoTotal: e.target.value })}
+                            data-testid="input-novo-total-parcelas" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>1o venc. pendente (opcional)</Label>
+                          <Input type="date" value={recalcularForm.primeiroVencimento}
+                            onChange={(e) => setRecalcularForm({ ...recalcularForm, primeiroVencimento: e.target.value })} />
+                        </div>
+                      </div>
+                      <Button className="w-full" variant="outline"
+                        data-testid="button-confirmar-recalcular"
+                        disabled={!recalcularForm.novoTotal || recalcularMutation.isPending}
+                        onClick={() => recalcularMutation.mutate({
+                          id: editingDivida.id,
+                          novoTotal: Number(recalcularForm.novoTotal),
+                          primeiroVencimento: recalcularForm.primeiroVencimento || undefined,
+                        })}>
+                        {recalcularMutation.isPending ? "Recalculando..." : "Recalcular parcelas"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <Button className="w-full" data-testid="button-save-edit-divida"
+                disabled={updateDividaMutation.isPending}
+                onClick={() => updateDividaMutation.mutate({
+                  id: editingDivida.id,
+                  data: {
+                    pessoaId: editDividaForm.pessoaId,
+                    tipo: editDividaForm.tipo,
+                    valor: editDividaForm.valor,
+                    dataVencimento: editDividaForm.dataVencimento || null,
+                    descricao: editDividaForm.descricao || null,
+                    formaPagamento: editDividaForm.formaPagamento || null,
+                    ...(editingDivida.parcelas.length > 0 ? { valorTotal: editDividaForm.valor } : {}),
+                  },
+                })}>
+                {updateDividaMutation.isPending ? "Salvando..." : "Salvar alteracoes"}
               </Button>
             </div>
           )}

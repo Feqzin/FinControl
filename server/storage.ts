@@ -2,7 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos,
-  servicoPessoas, servicoPagamentos, metas,
+  servicoPessoas, servicoPagamentos, metas, parcelasCompra,
   type User, type InsertUser,
   type Pessoa, type InsertPessoa,
   type Divida, type InsertDivida,
@@ -13,6 +13,7 @@ import {
   type ServicoPessoa, type InsertServicoPessoa,
   type ServicoPagamento, type InsertServicoPagamento,
   type Meta, type InsertMeta,
+  type ParcelaCompra, type InsertParcelaCompra,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -80,6 +81,11 @@ export interface IStorage {
   createMeta(meta: InsertMeta): Promise<Meta>;
   updateMeta(id: string, userId: string, data: Partial<InsertMeta>): Promise<Meta | undefined>;
   deleteMeta(id: string, userId: string): Promise<boolean>;
+
+  getParcelasCompra(compraCartaoId: string, userId: string): Promise<ParcelaCompra[]>;
+  createParcelasCompraBulk(parcelas: InsertParcelaCompra[]): Promise<ParcelaCompra[]>;
+  updateParcelaCompra(id: string, userId: string, data: Partial<InsertParcelaCompra>): Promise<ParcelaCompra | undefined>;
+  deleteParcelasCompraBulk(compraCartaoId: string, userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -274,6 +280,28 @@ export class DatabaseStorage implements IStorage {
   async deleteMeta(id: string, userId: string) {
     const result = await db.delete(metas).where(and(eq(metas.id, id), eq(metas.userId, userId))).returning();
     return result.length > 0;
+  }
+
+  async getParcelasCompra(compraCartaoId: string, userId: string) {
+    const rows = await db.select().from(parcelasCompra).where(
+      and(eq(parcelasCompra.compraCartaoId, compraCartaoId), eq(parcelasCompra.userId, userId))
+    );
+    return rows.sort((a, b) => a.numero - b.numero);
+  }
+  async createParcelasCompraBulk(rows: InsertParcelaCompra[]) {
+    if (rows.length === 0) return [];
+    return db.insert(parcelasCompra).values(rows).returning();
+  }
+  async updateParcelaCompra(id: string, userId: string, data: Partial<InsertParcelaCompra>) {
+    const [p] = await db.update(parcelasCompra).set(data).where(
+      and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId))
+    ).returning();
+    return p;
+  }
+  async deleteParcelasCompraBulk(compraCartaoId: string, userId: string) {
+    await db.delete(parcelasCompra).where(
+      and(eq(parcelasCompra.compraCartaoId, compraCartaoId), eq(parcelasCompra.userId, userId))
+    );
   }
 }
 

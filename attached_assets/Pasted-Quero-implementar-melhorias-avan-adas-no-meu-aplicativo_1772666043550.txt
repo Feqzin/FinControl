@@ -1,0 +1,188 @@
+Quero implementar melhorias avançadas no meu aplicativo financeiro.
+
+IMPORTANTE:
+- Não quebrar dados existentes
+- Não exigir apagar registros para editar
+- Manter performance
+- Manter compatibilidade com compras antigas
+
+========================================
+1) EDITAR DÍVIDA EXISTENTE
+========================================
+
+Todas as dívidas devem ter botão "Editar".
+
+Permitir alterar:
+- Descrição
+- Valor total
+- Número de parcelas
+- Datas (início e vencimento)
+- Pessoa vinculada
+- Tipo (direta, cartão, serviço)
+
+Se alterar número de parcelas:
+→ Recalcular automaticamente as parcelas
+→ Manter status das parcelas já pagas
+
+Salvar apenas campos modificados (update parcial).
+
+========================================
+2) EDITAR COMPRA PARCELADA DO CARTÃO
+========================================
+
+Na aba Cartões → Entrar em compra parcelada → Editar compra:
+
+Exibir lista completa de parcelas:
+
+Parcela 1 – R$ X – Pago
+Parcela 2 – R$ X – Pago
+Parcela 3 – R$ X – Pago
+Parcela 4 – R$ X – Pago
+Parcela 5 – R$ X – Pago
+Parcela 6 – R$ X – Vencida
+Parcela 7 – R$ X – Pendente
+...
+
+Cada parcela deve permitir:
+
+- Marcar como pago
+- Desmarcar pagamento
+- Registrar data de pagamento
+- Alterar vencimento
+- Editar valor individual
+
+IMPORTANTE:
+
+Separar status:
+
+{
+  statusCartao: pago | pendente,
+  statusPessoa: pago | pendente,
+  dataPagamentoCartao,
+  dataPagamentoPessoa
+}
+
+Regras:
+
+- Se cartão pago mas pessoa não pagou:
+  → Mostrar: "Aguardando reembolso"
+  → Não afetar negativamente saúde financeira
+  → Entrar como valor a receber
+
+========================================
+3) IMPORTAÇÃO INTELIGENTE DE FATURA
+========================================
+
+Criar função "Importar Fatura" na aba Cartões.
+
+Permitir upload de:
+
+- PDF
+- OFX
+- CSV
+- JPG
+- PNG
+
+Processamento:
+
+1) Se OFX ou CSV:
+   → Ler estrutura diretamente
+   → Mapear data, descrição, valor
+
+2) Se PDF:
+   → Extrair texto
+   → Identificar padrão de:
+      - Data
+      - Descrição
+      - Valor
+      - Parcelamento (ex: 3/10)
+
+3) Se imagem (JPG/PNG):
+   → Aplicar OCR
+   → Extrair dados da mesma forma
+
+========================================
+4) DETECÇÃO INTELIGENTE DE DUPLICIDADE
+========================================
+
+Antes de salvar cada compra importada:
+
+Comparar com compras existentes usando:
+
+- Valor igual ou diferença < 2%
+- Nome semelhante (similaridade de texto)
+- Data igual ou diferença de até 3 dias
+- Número de parcela igual (ex: 2/10)
+
+Se encontrar possível duplicata:
+
+Exibir alerta:
+
+"Possível compra já existente encontrada."
+
+Mostrar:
+
+Compra existente:
+- Data
+- Valor
+- Parcela
+
+Compra importada:
+- Data
+- Valor
+- Parcela
+
+Opções:
+
+[ Substituir existente ]
+[ Ignorar importada ]
+[ Manter ambas ]
+
+========================================
+5) PARCELAS IMPORTADAS
+========================================
+
+Se detectar padrão "3/10":
+
+- Criar automaticamente totalParcelas = 10
+- Marcar parcelaAtual = 3
+- Criar estrutura completa de 10 parcelas
+- Marcar as anteriores como pagas se data indicar isso
+
+========================================
+6) PERFORMANCE
+========================================
+
+- Processar importação em background
+- Exibir barra de progresso
+- Salvar em lote (batch insert)
+- Criar índice por:
+   userId
+   cartaoId
+   dataCompra
+   valor
+
+========================================
+7) RELATÓRIOS E FORECAST
+========================================
+
+Após importação:
+
+- Atualizar automaticamente:
+   - Uso do cartão
+   - Previsão mensal
+   - Valores a receber
+   - Parcelas futuras
+
+========================================
+
+Objetivo final:
+
+Criar sistema inteligente de importação e controle de parcelas onde:
+
+- Posso editar qualquer dívida
+- Posso controlar quais parcelas foram pagas
+- Posso importar faturas automaticamente
+- O sistema detecta duplicidade
+- Parcelas são criadas automaticamente
+- Minha saúde financeira não é afetada por valores que ainda vão me reembolsar

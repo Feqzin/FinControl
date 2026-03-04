@@ -14,7 +14,8 @@ A comprehensive personal finance management application in Brazilian Portuguese,
 - User authentication (register/login)
 - People management with edit support (nome, tipo, telefone, observacao), duplicate name detection warning, and history sheet with Todos/Pendentes filter
 - Structured installment debt tracking with per-parcela payment, anticipation, and auto-schedule generation
-- Credit card management with installment purchases, next-invoice display, edit card/compra dialogs, and reembolso status tracking
+- Credit card management with installment purchases, next-invoice display, edit card/compra dialogs, reembolso status tracking, per-parcela tracking sheet (statusCartao + statusPessoa), and text/CSV/OFX invoice import with duplicate detection
+- Divida edit dialog: change pessoa, tipo, valor, vencimento, forma, descricao; plus recalculate pending parcelas with new total while preserving paid ones
 - Financial forecast (monthly area chart with cumulative balance)
 - Services/subscriptions management with edit dialog and inline per-person valor editing in DivisaoPanel
 - Monthly and weekly reports with charts
