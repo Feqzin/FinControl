@@ -8,15 +8,37 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, CreditCard, Trash2 } from "lucide-react";
+import { Plus, CreditCard, Trash2, CalendarClock, ShoppingBag } from "lucide-react";
 import type { Cartao, CompraCartao } from "@shared/schema";
+import { format, addMonths, getDaysInMonth } from "date-fns";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+function getNextInvoiceDate(diaVencimento: number): string {
+  const now = new Date();
+  const currentDay = now.getDate();
+  let targetDate = new Date(now.getFullYear(), now.getMonth(), diaVencimento);
+  if (currentDay >= diaVencimento) {
+    targetDate = addMonths(targetDate, 1);
+  }
+  return format(targetDate, "dd/MM/yyyy");
+}
+
+function getDaysUntilInvoice(diaVencimento: number): number {
+  const now = new Date();
+  const currentDay = now.getDate();
+  let targetDate = new Date(now.getFullYear(), now.getMonth(), diaVencimento);
+  if (currentDay >= diaVencimento) {
+    targetDate = addMonths(targetDate, 1);
+  }
+  return Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 export default function CartoesPage() {
@@ -88,14 +110,17 @@ export default function CartoesPage() {
   });
 
   const getCardCompras = (cartaoId: string) => compras.filter((c) => c.cartaoId === cartaoId);
-  const getCardTotal = (cartaoId: string) => getCardCompras(cartaoId).reduce((s, c) => s + Number(c.valorParcela), 0);
+  const getCardTotal = (cartaoId: string) =>
+    getCardCompras(cartaoId).reduce((s, c) => s + Number(c.valorParcela), 0);
+
+  const totalFaturas = cartoes.reduce((s, c) => s + getCardTotal(c.id), 0);
 
   if (isLoading) {
     return (
       <div className="p-6 space-y-6">
         <Skeleton className="h-8 w-32" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2].map((i) => <Skeleton key={i} className="h-48" />)}
+          {[1, 2].map((i) => <Skeleton key={i} className="h-64" />)}
         </div>
       </div>
     );
@@ -133,7 +158,7 @@ export default function CartoesPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Limite</Label>
+                <Label>Limite total</Label>
                 <Input
                   data-testid="input-cartao-limite"
                   type="number"
@@ -177,6 +202,22 @@ export default function CartoesPage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {cartoes.length > 0 && (
+        <Card className="hover-elevate">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm text-muted-foreground">Total de faturas abertas</p>
+                <p className="text-2xl font-bold">{formatCurrency(totalFaturas)}</p>
+              </div>
+              <div className="flex items-center justify-center w-10 h-10 rounded-md bg-primary/10">
+                <CreditCard className="w-5 h-5 text-primary" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={openCompra} onOpenChange={setOpenCompra}>
         <DialogContent>
@@ -234,12 +275,14 @@ export default function CartoesPage() {
               />
             </div>
             {compraForm.valorTotal && compraForm.parcelas && (
-              <div className="p-3 rounded-md bg-muted/50 text-sm">
-                <span className="text-muted-foreground">Parcela: </span>
-                <span className="font-semibold">
-                  {formatCurrency(parseFloat(compraForm.valorTotal) / parseInt(compraForm.parcelas || "1"))}
-                </span>
-                <span className="text-muted-foreground"> x {compraForm.parcelas}</span>
+              <div className="p-3 rounded-md bg-muted/50">
+                <p className="text-sm">
+                  <span className="text-muted-foreground">Parcela: </span>
+                  <span className="font-semibold">
+                    {formatCurrency(parseFloat(compraForm.valorTotal) / parseInt(compraForm.parcelas || "1"))}
+                  </span>
+                  <span className="text-muted-foreground"> x {compraForm.parcelas}x</span>
+                </p>
               </div>
             )}
             <Button type="submit" className="w-full" data-testid="button-save-compra" disabled={createCompraMutation.isPending}>
@@ -256,25 +299,28 @@ export default function CartoesPage() {
           <p className="text-sm text-muted-foreground mt-1">Adicione seu primeiro cartao</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {cartoes.map((c) => {
             const limite = Number(c.limite);
-            const usado = getCardTotal(c.id);
-            const percentUsed = limite > 0 ? (usado / limite) * 100 : 0;
+            const faturaAtual = getCardTotal(c.id);
+            const percentUsed = limite > 0 ? (faturaAtual / limite) * 100 : 0;
             const cardCompras = getCardCompras(c.id);
+            const daysUntil = getDaysUntilInvoice(Number(c.diaVencimento));
+            const nextDate = getNextInvoiceDate(Number(c.diaVencimento));
+            const isUrgent = daysUntil <= 5;
 
             return (
-              <Card key={c.id} className="hover-elevate" data-testid={`card-cartao-${c.id}`}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between gap-2">
+              <Card key={c.id} data-testid={`card-cartao-${c.id}`}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center w-10 h-10 rounded-md bg-primary/10">
+                      <div className="flex items-center justify-center w-11 h-11 rounded-md bg-primary/10">
                         <CreditCard className="w-5 h-5 text-primary" />
                       </div>
                       <div>
                         <CardTitle className="text-base">{c.nome}</CardTitle>
-                        <p className="text-xs text-muted-foreground">
-                          Vencimento: dia {c.diaVencimento} | Melhor compra: dia {c.melhorDiaCompra}
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Melhor compra: dia {c.melhorDiaCompra}
                         </p>
                       </div>
                     </div>
@@ -288,50 +334,92 @@ export default function CartoesPage() {
                     </Button>
                   </div>
                 </CardHeader>
+
                 <CardContent className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm mb-2">
-                      <span className="text-muted-foreground">Usado: {formatCurrency(usado)}</span>
-                      <span className="text-muted-foreground">Limite: {formatCurrency(limite)}</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-md bg-muted/40 p-3">
+                      <p className="text-xs text-muted-foreground mb-1">Fatura atual</p>
+                      <p className="text-lg font-bold">{formatCurrency(faturaAtual)}</p>
                     </div>
-                    <Progress value={Math.min(percentUsed, 100)} className="h-2" />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Disponivel: {formatCurrency(limite - usado)} ({(100 - percentUsed).toFixed(0)}%)
-                    </p>
+                    <div className="rounded-md bg-muted/40 p-3">
+                      <p className="text-xs text-muted-foreground mb-1">Disponivel</p>
+                      <p className="text-lg font-bold text-emerald-600">{formatCurrency(limite - faturaAtual)}</p>
+                    </div>
                   </div>
 
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">Compras ({cardCompras.length})</span>
+                  <div>
+                    <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
+                      <span>{formatCurrency(faturaAtual)} usados</span>
+                      <span>Limite: {formatCurrency(limite)}</span>
+                    </div>
+                    <Progress
+                      value={Math.min(percentUsed, 100)}
+                      className={`h-2 ${percentUsed > 80 ? "[&>div]:bg-red-500" : percentUsed > 60 ? "[&>div]:bg-amber-500" : ""}`}
+                    />
+                  </div>
+
+                  <div className={`flex items-center gap-2 p-3 rounded-md ${isUrgent ? "bg-red-500/5 border border-red-500/10" : "bg-muted/30"}`}>
+                    <CalendarClock className={`w-4 h-4 flex-shrink-0 ${isUrgent ? "text-red-500" : "text-muted-foreground"}`} />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Proxima fatura</p>
+                      <p className={`text-sm font-semibold ${isUrgent ? "text-red-600" : ""}`}>
+                        {nextDate} · {daysUntil} dia(s)
+                      </p>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShoppingBag className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Compras parceladas ({cardCompras.length})</span>
+                    </div>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => { setSelectedCartao(c.id); setOpenCompra(true); }}
                       data-testid={`button-add-compra-${c.id}`}
                     >
-                      <Plus className="w-3 h-3 mr-1" /> Compra
+                      <Plus className="w-3 h-3 mr-1" /> Adicionar
                     </Button>
                   </div>
 
                   {cardCompras.length > 0 && (
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                    <div className="space-y-2">
                       {cardCompras.map((compra) => (
-                        <div key={compra.id} className="flex items-center justify-between p-2 rounded-md bg-muted/30 text-sm">
+                        <div
+                          key={compra.id}
+                          className="flex items-center justify-between p-2.5 rounded-md bg-muted/30 text-sm"
+                          data-testid={`compra-${compra.id}`}
+                        >
                           <div className="min-w-0">
                             <p className="truncate font-medium">{compra.descricao}</p>
                             <p className="text-xs text-muted-foreground">
                               {compra.parcelaAtual}/{compra.parcelas}x de {formatCurrency(Number(compra.valorParcela))}
+                              {" · "}total: {formatCurrency(Number(compra.valorTotal))}
                             </p>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => deleteCompraMutation.mutate(compra.id)}
-                          >
-                            <Trash2 className="w-3 h-3 text-muted-foreground" />
-                          </Button>
+                          <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                            <span className="font-semibold">{formatCurrency(Number(compra.valorParcela))}</span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => deleteCompraMutation.mutate(compra.id)}
+                              data-testid={`button-delete-compra-${compra.id}`}
+                            >
+                              <Trash2 className="w-3 h-3 text-muted-foreground" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                     </div>
+                  )}
+
+                  {cardCompras.length === 0 && (
+                    <p className="text-center py-3 text-sm text-muted-foreground">
+                      Nenhuma compra parcelada
+                    </p>
                   )}
                 </CardContent>
               </Card>

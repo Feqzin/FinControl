@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,11 +16,19 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Receipt, Search, Check, Trash2 } from "lucide-react";
 import type { Divida, Pessoa } from "@shared/schema";
-import { format } from "date-fns";
+import { format, subMonths } from "date-fns";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
+
+const months = Array.from({ length: 13 }, (_, i) => {
+  const d = i === 0 ? null : subMonths(new Date(), i - 1);
+  return {
+    value: i === 0 ? "todos" : format(d!, "yyyy-MM"),
+    label: i === 0 ? "Todos os meses" : format(d!, "MMMM yyyy"),
+  };
+});
 
 export default function DividasPage() {
   const { toast } = useToast();
@@ -31,6 +39,7 @@ export default function DividasPage() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("todos");
   const [filterTipo, setFilterTipo] = useState<string>("todos");
+  const [filterMes, setFilterMes] = useState<string>("todos");
   const [form, setForm] = useState({
     pessoaId: "", tipo: "receber", valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
   });
@@ -39,9 +48,7 @@ export default function DividasPage() {
   const { data: pessoas = [] } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
 
   const createMutation = useMutation({
-    mutationFn: async (data: any) => {
-      await apiRequest("POST", "/api/dividas", data);
-    },
+    mutationFn: async (data: any) => { await apiRequest("POST", "/api/dividas", data); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
       setOpen(false);
@@ -68,9 +75,7 @@ export default function DividasPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/dividas/${id}`);
-    },
+    mutationFn: async (id: string) => { await apiRequest("DELETE", `/api/dividas/${id}`); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
       toast({ title: "Divida removida" });
@@ -86,7 +91,11 @@ export default function DividasPage() {
     })
     .filter((d) => filterStatus === "todos" || d.status === filterStatus)
     .filter((d) => filterTipo === "todos" || d.tipo === filterTipo)
+    .filter((d) => filterMes === "todos" || d.dataVencimento.startsWith(filterMes))
     .sort((a, b) => a.dataVencimento.localeCompare(b.dataVencimento));
+
+  const totalReceber = filtered.filter((d) => d.tipo === "receber" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
+  const totalPagar = filtered.filter((d) => d.tipo === "pagar" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
 
   if (isLoading) {
     return (
@@ -171,7 +180,7 @@ export default function DividasPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Pagamento</Label>
+                  <Label>Forma de pagamento</Label>
                   <Select value={form.formaPagamento} onValueChange={(v) => setForm({ ...form, formaPagamento: v })}>
                     <SelectTrigger data-testid="select-divida-pagamento">
                       <SelectValue />
@@ -204,16 +213,26 @@ export default function DividasPage() {
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+        <div className="relative min-w-[200px] max-w-xs flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             data-testid="input-search-divida"
             className="pl-9"
-            placeholder="Buscar..."
+            placeholder="Buscar pessoa ou descricao..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        <Select value={filterMes} onValueChange={setFilterMes}>
+          <SelectTrigger className="w-[180px]" data-testid="filter-mes-divida">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {months.map((m) => (
+              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={filterTipo} onValueChange={setFilterTipo}>
           <SelectTrigger className="w-[140px]">
             <SelectValue />
@@ -236,6 +255,19 @@ export default function DividasPage() {
         </Select>
       </div>
 
+      {filtered.length > 0 && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-md bg-emerald-500/5 border border-emerald-500/10 p-3">
+            <p className="text-xs text-muted-foreground mb-1">Total a receber (filtrado)</p>
+            <p className="text-lg font-bold text-emerald-600">{formatCurrency(totalReceber)}</p>
+          </div>
+          <div className="rounded-md bg-red-500/5 border border-red-500/10 p-3">
+            <p className="text-xs text-muted-foreground mb-1">Total a pagar (filtrado)</p>
+            <p className="text-lg font-bold text-red-600">{formatCurrency(totalPagar)}</p>
+          </div>
+        </div>
+      )}
+
       <Dialog open={payOpen} onOpenChange={setPayOpen}>
         <DialogContent>
           <DialogHeader>
@@ -245,8 +277,11 @@ export default function DividasPage() {
             {payingDivida && (
               <div className="p-4 rounded-md bg-muted/50">
                 <p className="text-sm text-muted-foreground">Valor</p>
-                <p className="text-lg font-bold">{formatCurrency(Number(payingDivida.valor))}</p>
+                <p className="text-2xl font-bold">{formatCurrency(Number(payingDivida.valor))}</p>
                 <p className="text-sm text-muted-foreground mt-1">Pessoa: {getPessoaNome(payingDivida.pessoaId)}</p>
+                {payingDivida.descricao && (
+                  <p className="text-sm text-muted-foreground">{payingDivida.descricao}</p>
+                )}
               </div>
             )}
             <div className="space-y-2">
@@ -266,11 +301,7 @@ export default function DividasPage() {
             </div>
             <Button
               className="w-full"
-              onClick={() => {
-                if (payingDivida) {
-                  payMutation.mutate({ id: payingDivida.id, formaPagamento: payForm.formaPagamento });
-                }
-              }}
+              onClick={() => { if (payingDivida) payMutation.mutate({ id: payingDivida.id, formaPagamento: payForm.formaPagamento }); }}
               disabled={payMutation.isPending}
               data-testid="button-confirm-pay"
             >
@@ -284,10 +315,10 @@ export default function DividasPage() {
         <div className="text-center py-16" data-testid="empty-dividas">
           <Receipt className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
           <p className="text-lg font-medium text-muted-foreground">Nenhuma divida encontrada</p>
-          <p className="text-sm text-muted-foreground mt-1">Registre uma nova divida</p>
+          <p className="text-sm text-muted-foreground mt-1">Registre uma nova divida ou ajuste os filtros</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {filtered.map((d) => {
             const isOverdue = d.status === "pendente" && d.dataVencimento < format(new Date(), "yyyy-MM-dd");
             return (
@@ -295,8 +326,8 @@ export default function DividasPage() {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-2 h-full min-h-[40px] rounded-full flex-shrink-0 ${
-                        d.status === "pago" ? "bg-emerald-500" : isOverdue ? "bg-red-500" : "bg-amber-500"
+                      <div className={`w-1.5 self-stretch rounded-full flex-shrink-0 ${
+                        d.status === "pago" ? "bg-emerald-500" : isOverdue ? "bg-red-500" : "bg-amber-400"
                       }`} />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -309,13 +340,15 @@ export default function DividasPage() {
                           </Badge>
                         </div>
                         <p className="text-sm text-muted-foreground mt-0.5">
-                          Venc: {d.dataVencimento}
-                          {d.descricao && ` | ${d.descricao}`}
-                          {d.dataPagamento && ` | Pago em: ${d.dataPagamento}`}
+                          {d.status === "pago"
+                            ? `Pago em ${d.dataPagamento}${d.formaPagamento ? ` via ${d.formaPagamento}` : ""}`
+                            : `Venc: ${d.dataVencimento}${isOverdue ? " · ATRASADO" : ""}`
+                          }
+                          {d.descricao && ` · ${d.descricao}`}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
                       <span className="text-lg font-bold">{formatCurrency(Number(d.valor))}</span>
                       {d.status === "pendente" && (
                         <Button

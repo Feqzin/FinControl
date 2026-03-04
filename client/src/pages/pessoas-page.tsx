@@ -8,15 +8,23 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Users, Phone, Trash2, Search } from "lucide-react";
+import {
+  Plus, Users, Phone, Trash2, Search, Receipt, Check,
+  Clock, ChevronRight, ArrowUpRight, ArrowDownRight,
+} from "lucide-react";
 import type { Pessoa, Divida } from "@shared/schema";
+import { format } from "date-fns";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -24,43 +32,85 @@ function formatCurrency(value: number): string {
 
 export default function PessoasPage() {
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
+  const [openPessoa, setOpenPessoa] = useState(false);
+  const [openDivida, setOpenDivida] = useState(false);
+  const [selectedPessoa, setSelectedPessoa] = useState<Pessoa | null>(null);
+  const [historyPessoa, setHistoryPessoa] = useState<Pessoa | null>(null);
   const [search, setSearch] = useState("");
   const [filterTipo, setFilterTipo] = useState<string>("todos");
-  const [form, setForm] = useState({ nome: "", tipo: "me_deve", telefone: "", observacao: "" });
+  const [payOpen, setPayOpen] = useState(false);
+  const [payingDivida, setPayingDivida] = useState<Divida | null>(null);
+  const [payForm, setPayForm] = useState({ formaPagamento: "pix" });
+
+  const [pessoaForm, setPessoaForm] = useState({
+    nome: "", tipo: "me_deve", telefone: "", observacao: "",
+  });
+  const [dividaForm, setDividaForm] = useState({
+    tipo: "receber", valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
+  });
 
   const { data: pessoas = [], isLoading } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
 
-  const createMutation = useMutation({
-    mutationFn: async (data: any) => {
-      await apiRequest("POST", "/api/pessoas", data);
-    },
+  const createPessoaMutation = useMutation({
+    mutationFn: async (data: any) => { await apiRequest("POST", "/api/pessoas", data); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
-      setOpen(false);
-      setForm({ nome: "", tipo: "me_deve", telefone: "", observacao: "" });
+      setOpenPessoa(false);
+      setPessoaForm({ nome: "", tipo: "me_deve", telefone: "", observacao: "" });
       toast({ title: "Pessoa adicionada" });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/pessoas/${id}`);
+  const createDividaMutation = useMutation({
+    mutationFn: async (data: any) => { await apiRequest("POST", "/api/dividas", data); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+      setOpenDivida(false);
+      setDividaForm({ tipo: "receber", valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix" });
+      toast({ title: "Divida registrada" });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const payMutation = useMutation({
+    mutationFn: async ({ id, formaPagamento }: { id: string; formaPagamento: string }) => {
+      await apiRequest("PATCH", `/api/dividas/${id}`, {
+        status: "pago",
+        dataPagamento: format(new Date(), "yyyy-MM-dd"),
+        formaPagamento,
+      });
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+      setPayOpen(false);
+      setPayingDivida(null);
+      toast({ title: "Marcado como pago" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => { await apiRequest("DELETE", `/api/pessoas/${id}`); },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      if (historyPessoa) setHistoryPessoa(null);
       toast({ title: "Pessoa removida" });
     },
   });
 
   const getPessoaStats = (pessoaId: string) => {
-    const pessoaDividas = dividas.filter((d) => d.pessoaId === pessoaId);
-    const pendente = pessoaDividas.filter((d) => d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
-    const pago = pessoaDividas.filter((d) => d.status === "pago").reduce((s, d) => s + Number(d.valor), 0);
-    return { pendente, pago, total: pessoaDividas.length };
+    const list = dividas.filter((d) => d.pessoaId === pessoaId);
+    const pendente = list.filter((d) => d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
+    const pago = list.filter((d) => d.status === "pago").reduce((s, d) => s + Number(d.valor), 0);
+    const emAberto = list.filter((d) => d.status === "pendente").length > 0;
+    return { pendente, pago, total: list.length, emAberto };
   };
+
+  const getPessoaDividas = (pessoaId: string) =>
+    dividas
+      .filter((d) => d.pessoaId === pessoaId)
+      .sort((a, b) => b.dataVencimento.localeCompare(a.dataVencimento));
 
   const filtered = pessoas
     .filter((p) => p.nome.toLowerCase().includes(search.toLowerCase()))
@@ -71,11 +121,14 @@ export default function PessoasPage() {
       <div className="p-6 space-y-6">
         <Skeleton className="h-8 w-32" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-40" />)}
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-52" />)}
         </div>
       </div>
     );
   }
+
+  const historyDividas = historyPessoa ? getPessoaDividas(historyPessoa.id) : [];
+  const historyStats = historyPessoa ? getPessoaStats(historyPessoa.id) : null;
 
   return (
     <div className="p-6 space-y-6" data-testid="pessoas-page">
@@ -84,10 +137,10 @@ export default function PessoasPage() {
           <h1 className="text-2xl font-bold tracking-tight">Pessoas</h1>
           <p className="text-muted-foreground">Gerencie pessoas vinculadas as dividas</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={openPessoa} onOpenChange={setOpenPessoa}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-pessoa">
-              <Plus className="w-4 h-4 mr-2" /> Adicionar
+              <Plus className="w-4 h-4 mr-2" /> Adicionar pessoa
             </Button>
           </DialogTrigger>
           <DialogContent>
@@ -95,22 +148,22 @@ export default function PessoasPage() {
               <DialogTitle>Nova Pessoa</DialogTitle>
             </DialogHeader>
             <form
-              onSubmit={(e) => { e.preventDefault(); createMutation.mutate(form); }}
+              onSubmit={(e) => { e.preventDefault(); createPessoaMutation.mutate(pessoaForm); }}
               className="space-y-4"
             >
               <div className="space-y-2">
                 <Label>Nome</Label>
                 <Input
                   data-testid="input-pessoa-nome"
-                  value={form.nome}
-                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                  value={pessoaForm.nome}
+                  onChange={(e) => setPessoaForm({ ...pessoaForm, nome: e.target.value })}
                   placeholder="Nome da pessoa"
                   required
                 />
               </div>
               <div className="space-y-2">
                 <Label>Tipo</Label>
-                <Select value={form.tipo} onValueChange={(v) => setForm({ ...form, tipo: v })}>
+                <Select value={pessoaForm.tipo} onValueChange={(v) => setPessoaForm({ ...pessoaForm, tipo: v })}>
                   <SelectTrigger data-testid="select-pessoa-tipo">
                     <SelectValue />
                   </SelectTrigger>
@@ -124,8 +177,8 @@ export default function PessoasPage() {
                 <Label>Telefone (opcional)</Label>
                 <Input
                   data-testid="input-pessoa-telefone"
-                  value={form.telefone}
-                  onChange={(e) => setForm({ ...form, telefone: e.target.value })}
+                  value={pessoaForm.telefone}
+                  onChange={(e) => setPessoaForm({ ...pessoaForm, telefone: e.target.value })}
                   placeholder="(00) 00000-0000"
                 />
               </div>
@@ -133,13 +186,13 @@ export default function PessoasPage() {
                 <Label>Observacao</Label>
                 <Textarea
                   data-testid="input-pessoa-obs"
-                  value={form.observacao}
-                  onChange={(e) => setForm({ ...form, observacao: e.target.value })}
+                  value={pessoaForm.observacao}
+                  onChange={(e) => setPessoaForm({ ...pessoaForm, observacao: e.target.value })}
                   placeholder="Notas sobre essa pessoa"
                 />
               </div>
-              <Button type="submit" className="w-full" data-testid="button-save-pessoa" disabled={createMutation.isPending}>
-                {createMutation.isPending ? "Salvando..." : "Salvar"}
+              <Button type="submit" className="w-full" data-testid="button-save-pessoa" disabled={createPessoaMutation.isPending}>
+                {createPessoaMutation.isPending ? "Salvando..." : "Salvar"}
               </Button>
             </form>
           </DialogContent>
@@ -181,18 +234,18 @@ export default function PessoasPage() {
             const stats = getPessoaStats(p.id);
             return (
               <Card key={p.id} className="hover-elevate" data-testid={`card-pessoa-${p.id}`}>
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between gap-2 mb-3">
+                <CardContent className="p-5 space-y-4">
+                  <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 flex-shrink-0">
-                        <span className="text-sm font-bold text-primary">
+                      <div className="flex items-center justify-center w-11 h-11 rounded-full bg-primary/10 flex-shrink-0">
+                        <span className="text-base font-bold text-primary">
                           {p.nome.charAt(0).toUpperCase()}
                         </span>
                       </div>
                       <div className="min-w-0">
                         <p className="font-semibold truncate">{p.nome}</p>
                         {p.telefone && (
-                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                             <Phone className="w-3 h-3" /> {p.telefone}
                           </p>
                         )}
@@ -202,22 +255,57 @@ export default function PessoasPage() {
                       {p.tipo === "me_deve" ? "Me deve" : "Eu devo"}
                     </Badge>
                   </div>
+
                   {p.observacao && (
-                    <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{p.observacao}</p>
+                    <p className="text-sm text-muted-foreground line-clamp-2">{p.observacao}</p>
                   )}
-                  <div className="flex items-center justify-between gap-2 pt-3 border-t">
-                    <div className="space-y-0.5">
-                      <p className="text-xs text-muted-foreground">Pendente</p>
-                      <p className="text-sm font-semibold">{formatCurrency(stats.pendente)}</p>
+
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div className="rounded-md bg-muted/40 p-3">
+                      <p className="text-xs text-muted-foreground mb-1">Pendente</p>
+                      <p className="text-base font-bold">{formatCurrency(stats.pendente)}</p>
                     </div>
-                    <div className="space-y-0.5 text-right">
-                      <p className="text-xs text-muted-foreground">{stats.total} divida(s)</p>
-                      <Badge variant={stats.pendente === 0 ? "secondary" : "outline"}>
-                        {stats.pendente === 0 ? "Quitado" : "Em aberto"}
-                      </Badge>
+                    <div className="rounded-md bg-muted/40 p-3">
+                      <p className="text-xs text-muted-foreground mb-1">Ja pago</p>
+                      <p className="text-base font-bold text-emerald-600">{formatCurrency(stats.pago)}</p>
                     </div>
                   </div>
-                  <div className="mt-3 flex justify-end">
+
+                  <div className="flex items-center justify-between gap-2">
+                    <Badge variant={stats.emAberto ? "outline" : "secondary"}>
+                      {stats.emAberto ? "Em aberto" : "Quitado"}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">{stats.total} divida(s)</span>
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => {
+                        setSelectedPessoa(p);
+                        setDividaForm({
+                          tipo: p.tipo === "me_deve" ? "receber" : "pagar",
+                          valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
+                        });
+                        setOpenDivida(true);
+                      }}
+                      data-testid={`button-add-divida-pessoa-${p.id}`}
+                    >
+                      <Plus className="w-3 h-3 mr-1" /> Nova divida
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setHistoryPessoa(p)}
+                      data-testid={`button-history-pessoa-${p.id}`}
+                    >
+                      <Clock className="w-3 h-3 mr-1" /> Historico
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -233,6 +321,249 @@ export default function PessoasPage() {
           })}
         </div>
       )}
+
+      <Dialog open={openDivida} onOpenChange={setOpenDivida}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Nova divida — {selectedPessoa?.nome}
+            </DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!selectedPessoa) return;
+              createDividaMutation.mutate({ ...dividaForm, pessoaId: selectedPessoa.id });
+            }}
+            className="space-y-4"
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <Select value={dividaForm.tipo} onValueChange={(v) => setDividaForm({ ...dividaForm, tipo: v })}>
+                  <SelectTrigger data-testid="select-pessoa-divida-tipo">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="receber">A receber</SelectItem>
+                    <SelectItem value="pagar">A pagar</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Valor</Label>
+                <Input
+                  data-testid="input-pessoa-divida-valor"
+                  type="number"
+                  step="0.01"
+                  value={dividaForm.valor}
+                  onChange={(e) => setDividaForm({ ...dividaForm, valor: e.target.value })}
+                  placeholder="0,00"
+                  required
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Vencimento</Label>
+                <Input
+                  data-testid="input-pessoa-divida-vencimento"
+                  type="date"
+                  value={dividaForm.dataVencimento}
+                  onChange={(e) => setDividaForm({ ...dividaForm, dataVencimento: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Forma de pagamento</Label>
+                <Select value={dividaForm.formaPagamento} onValueChange={(v) => setDividaForm({ ...dividaForm, formaPagamento: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pix">PIX</SelectItem>
+                    <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                    <SelectItem value="cartao">Cartao</SelectItem>
+                    <SelectItem value="transferencia">Transferencia</SelectItem>
+                    <SelectItem value="boleto">Boleto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Descricao (opcional)</Label>
+              <Input
+                data-testid="input-pessoa-divida-descricao"
+                value={dividaForm.descricao}
+                onChange={(e) => setDividaForm({ ...dividaForm, descricao: e.target.value })}
+                placeholder="Descricao breve"
+              />
+            </div>
+            <Button type="submit" className="w-full" data-testid="button-save-pessoa-divida" disabled={createDividaMutation.isPending}>
+              {createDividaMutation.isPending ? "Registrando..." : "Registrar divida"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Sheet open={!!historyPessoa} onOpenChange={(v) => { if (!v) setHistoryPessoa(null); }}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          {historyPessoa && historyStats && (
+            <>
+              <SheetHeader className="mb-6">
+                <SheetTitle>Historico — {historyPessoa.nome}</SheetTitle>
+              </SheetHeader>
+
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                <div className="rounded-md bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Total pendente</p>
+                  <p className="text-lg font-bold">{formatCurrency(historyStats.pendente)}</p>
+                </div>
+                <div className="rounded-md bg-emerald-500/5 p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Total pago</p>
+                  <p className="text-lg font-bold text-emerald-600">{formatCurrency(historyStats.pago)}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                  Dividas ({historyDividas.length})
+                </h3>
+                <Badge variant={historyStats.emAberto ? "outline" : "secondary"}>
+                  {historyStats.emAberto ? "Em aberto" : "Quitado"}
+                </Badge>
+              </div>
+
+              <Dialog open={payOpen} onOpenChange={setPayOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Confirmar pagamento</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    {payingDivida && (
+                      <div className="p-4 rounded-md bg-muted/50">
+                        <p className="text-sm text-muted-foreground">Valor</p>
+                        <p className="text-lg font-bold">{formatCurrency(Number(payingDivida.valor))}</p>
+                        {payingDivida.descricao && (
+                          <p className="text-sm text-muted-foreground mt-1">{payingDivida.descricao}</p>
+                        )}
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <Label>Forma de pagamento</Label>
+                      <Select value={payForm.formaPagamento} onValueChange={(v) => setPayForm({ formaPagamento: v })}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pix">PIX</SelectItem>
+                          <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                          <SelectItem value="cartao">Cartao</SelectItem>
+                          <SelectItem value="transferencia">Transferencia</SelectItem>
+                          <SelectItem value="boleto">Boleto</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      className="w-full"
+                      data-testid="button-confirm-pay-history"
+                      onClick={() => {
+                        if (payingDivida) {
+                          payMutation.mutate({ id: payingDivida.id, formaPagamento: payForm.formaPagamento });
+                        }
+                      }}
+                      disabled={payMutation.isPending}
+                    >
+                      {payMutation.isPending ? "Processando..." : "Confirmar pagamento"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {historyDividas.length === 0 ? (
+                <div className="text-center py-10">
+                  <Receipt className="w-10 h-10 mx-auto mb-2 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">Nenhuma divida registrada</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {historyDividas.map((d) => {
+                    const isOverdue = d.status === "pendente" && d.dataVencimento < format(new Date(), "yyyy-MM-dd");
+                    return (
+                      <div
+                        key={d.id}
+                        className="p-3 rounded-md border bg-card"
+                        data-testid={`history-divida-${d.id}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {d.tipo === "receber"
+                              ? <ArrowUpRight className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                              : <ArrowDownRight className="w-4 h-4 text-red-600 flex-shrink-0" />
+                            }
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">
+                                {d.descricao || (d.tipo === "receber" ? "A receber" : "A pagar")}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {d.status === "pago"
+                                  ? `Pago em ${d.dataPagamento}`
+                                  : `Venc: ${d.dataVencimento}${isOverdue ? " · Vencido" : ""}`
+                                }
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <span className={`text-sm font-bold ${d.tipo === "receber" ? "text-emerald-600" : "text-red-600"}`}>
+                              {formatCurrency(Number(d.valor))}
+                            </span>
+                            {d.status === "pago" ? (
+                              <Badge variant="secondary">Pago</Badge>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => { setPayingDivida(d); setPayOpen(true); }}
+                                data-testid={`button-pay-history-${d.id}`}
+                              >
+                                <Check className="w-4 h-4 text-emerald-600" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="mt-6 pt-4 border-t flex gap-2">
+                <Button
+                  className="flex-1"
+                  onClick={() => {
+                    setSelectedPessoa(historyPessoa);
+                    setDividaForm({
+                      tipo: historyPessoa.tipo === "me_deve" ? "receber" : "pagar",
+                      valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
+                    });
+                    setOpenDivida(true);
+                  }}
+                  data-testid="button-add-divida-history"
+                >
+                  <Plus className="w-4 h-4 mr-2" /> Nova divida
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => deleteMutation.mutate(historyPessoa.id)}
+                  data-testid="button-delete-history"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

@@ -1,0 +1,273 @@
+🎯 OBJETIVO DO APP
+
+Controlar:
+
+Pessoas que me devem
+
+Pessoas para quem eu devo
+
+Cartões de crédito
+
+Valores futuros a receber
+
+Valores futuros a pagar
+
+Registro de valores já pagos (com data)
+
+Controle de serviços e assinaturas
+
+Relatórios semanais e mensais
+
+🧱 TECNOLOGIAS
+
+Frontend: React
+
+Backend: Firebase (Firestore)
+
+Autenticação: Firebase Auth (email e senha)
+
+Estilo: Design minimalista, tons neutros, fundo claro, bordas suaves, sombra leve, layout centralizado
+
+UI simples e intuitiva
+
+Totalmente responsivo
+
+📌 FUNCIONALIDADES
+👤 1. Cadastro de Pessoas
+
+Nome
+
+Tipo:
+
+Me deve
+
+Eu devo
+
+Telefone (opcional)
+
+Observação
+
+Botão para adicionar dívida vinculada à pessoa
+
+Cada pessoa deve ter:
+
+Histórico de pagamentos
+
+Valor total pendente
+
+Status (Em aberto / Quitado)
+
+💰 2. Registro de Dívidas
+
+Campos:
+
+Pessoa vinculada
+
+Tipo:
+
+Valor a receber
+
+Valor a pagar
+
+Valor
+
+Data de vencimento
+
+Status:
+
+Pendente
+
+Pago
+
+Data do pagamento (se pago)
+
+Forma de pagamento
+
+Quando marcar como "Pago":
+
+Registrar automaticamente no histórico
+
+Atualizar relatórios
+
+💳 3. Cartões de Crédito
+
+Campos:
+
+Nome do cartão
+
+Limite
+
+Melhor dia de compra
+
+Dia de vencimento
+
+Funções:
+
+Adicionar compras parceladas
+
+Mostrar valor total atual da fatura
+
+Mostrar quanto do limite já foi usado
+
+Mostrar próximas faturas
+
+📅 4. Valores Futuros
+
+Seção separada chamada:
+"Previsão de Entrada e Saída"
+
+Mostrar:
+
+Total a receber esse mês
+
+Total a pagar esse mês
+
+Saldo previsto
+
+📊 5. Relatórios
+
+Criar aba "Relatórios" com:
+
+📆 Relatório Mensal
+
+Total recebido
+
+Total pago
+
+Total pendente
+
+Saldo final do mês
+
+Lista detalhada
+
+📅 Relatório Semanal
+
+Entradas
+
+Saídas
+
+Comparativo visual simples (barra ou gráfico básico)
+
+🧾 6. Serviços e Assinaturas
+
+Criar cadastro de serviços:
+
+Campos:
+
+Nome do serviço
+
+Categoria (Streaming, Lazer, Software, Assinatura, Outros)
+
+Valor mensal
+
+Data de cobrança
+
+Forma de pagamento
+
+Status (Ativo / Cancelado)
+
+Mostrar:
+
+Total mensal gasto com serviços
+
+Lista organizada por categoria
+
+📊 DASHBOARD PRINCIPAL
+
+Ao entrar no app mostrar:
+
+Total que tenho a receber
+
+Total que tenho a pagar
+
+Total de gastos fixos mensais
+
+Saldo previsto do mês
+
+Próximos vencimentos (lista rápida)
+
+🎨 DESIGN
+
+Visual clean
+
+Muito espaço em branco
+
+Tipografia simples
+
+Cards organizados
+
+Botões arredondados
+
+Ícones simples
+
+Sem poluição visual
+
+Tema claro
+
+🧠 EXTRAS IMPORTANTES
+
+Filtros por:
+
+Pessoa
+
+Status
+
+Mês
+
+Campo de busca
+
+Organização automática por data
+
+Cálculo automático de totais
+
+Estrutura escalável
+
+📁 ESTRUTURA DO FIRESTORE
+
+Criar coleções:
+
+users
+
+pessoas
+
+dividas
+
+cartoes
+
+compras_cartao
+
+servicos
+
+relatorios
+
+Cada item deve estar vinculado ao userId do usuário autenticado.
+
+⚡ EXPERIÊNCIA DO USUÁRIO
+
+Cadastro rápido
+
+Fluxo simples
+
+Sem telas confusas
+
+Clique mínimo para registrar dívida
+
+Mobile friendly
+
+Crie o projeto completo com:
+
+Estrutura de pastas organizada
+
+Componentes reutilizáveis
+
+Arquivo README explicando como rodar
+
+Código limpo e bem comentado
+
+💡 EXTRA (opcional, mas forte pra você)
+
+Se você quiser deixar mais profissional ainda, adicione no prompt:
+
+Incluir exportação de relatório em PDF.
+Incluir gráfico mensal usando Chart.js.
+Incluir modo escuro futuramente.
