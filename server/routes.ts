@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, requireAuth } from "./auth";
 import { z } from "zod";
 import { addMonths, format, parseISO, addDays } from "date-fns";
+import { insertRendaSchema, insertPatrimonioSchema } from "@shared/schema";
 
 const pessoaBody = z.object({
   nome: z.string().min(1),
@@ -443,6 +444,52 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await storage.deleteParcelasCompraBulk(compraCartaoId, userId);
     const created = await storage.createParcelasCompraBulk(rows.map((r: any) => ({ ...r, userId, compraCartaoId })));
     res.json(created);
+  });
+
+  // ── Rendas ────────────────────────────────────────────────────────────────
+  app.get("/api/rendas", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    res.json(await storage.getRendas(userId));
+  });
+  app.post("/api/rendas", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const parsed = insertRendaSchema.safeParse({ ...req.body, userId });
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
+    res.json(await storage.createRenda(parsed.data));
+  });
+  app.patch("/api/rendas/:id", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const updated = await storage.updateRenda(req.params.id, userId, req.body);
+    if (!updated) return res.status(404).json({ message: "Renda nao encontrada" });
+    res.json(updated);
+  });
+  app.delete("/api/rendas/:id", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    await storage.deleteRenda(req.params.id, userId);
+    res.json({ success: true });
+  });
+
+  // ── Patrimônios ───────────────────────────────────────────────────────────
+  app.get("/api/patrimonios", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    res.json(await storage.getPatrimonios(userId));
+  });
+  app.post("/api/patrimonios", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const parsed = insertPatrimonioSchema.safeParse({ ...req.body, userId });
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message });
+    res.json(await storage.createPatrimonio(parsed.data));
+  });
+  app.patch("/api/patrimonios/:id", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    const updated = await storage.updatePatrimonio(req.params.id, userId, req.body);
+    if (!updated) return res.status(404).json({ message: "Patrimonio nao encontrado" });
+    res.json(updated);
+  });
+  app.delete("/api/patrimonios/:id", requireAuth, async (req, res) => {
+    const userId = (req.user as any).id;
+    await storage.deletePatrimonio(req.params.id, userId);
+    res.json({ success: true });
   });
 
   app.post("/api/importar-texto", requireAuth, async (req, res) => {

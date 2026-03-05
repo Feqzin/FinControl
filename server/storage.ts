@@ -2,7 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos,
-  servicoPessoas, servicoPagamentos, metas, parcelasCompra,
+  servicoPessoas, servicoPagamentos, metas, parcelasCompra, rendas, patrimonios,
   type User, type InsertUser,
   type Pessoa, type InsertPessoa,
   type Divida, type InsertDivida,
@@ -14,6 +14,8 @@ import {
   type ServicoPagamento, type InsertServicoPagamento,
   type Meta, type InsertMeta,
   type ParcelaCompra, type InsertParcelaCompra,
+  type Renda, type InsertRenda,
+  type Patrimonio, type InsertPatrimonio,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -86,6 +88,16 @@ export interface IStorage {
   createParcelasCompraBulk(parcelas: InsertParcelaCompra[]): Promise<ParcelaCompra[]>;
   updateParcelaCompra(id: string, userId: string, data: Partial<InsertParcelaCompra>): Promise<ParcelaCompra | undefined>;
   deleteParcelasCompraBulk(compraCartaoId: string, userId: string): Promise<void>;
+
+  getRendas(userId: string): Promise<Renda[]>;
+  createRenda(data: InsertRenda): Promise<Renda>;
+  updateRenda(id: string, userId: string, data: Partial<InsertRenda>): Promise<Renda | undefined>;
+  deleteRenda(id: string, userId: string): Promise<boolean>;
+
+  getPatrimonios(userId: string): Promise<Patrimonio[]>;
+  createPatrimonio(data: InsertPatrimonio): Promise<Patrimonio>;
+  updatePatrimonio(id: string, userId: string, data: Partial<InsertPatrimonio>): Promise<Patrimonio | undefined>;
+  deletePatrimonio(id: string, userId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -302,6 +314,34 @@ export class DatabaseStorage implements IStorage {
     await db.delete(parcelasCompra).where(
       and(eq(parcelasCompra.compraCartaoId, compraCartaoId), eq(parcelasCompra.userId, userId))
     );
+  }
+
+  async getRendas(userId: string) { return db.select().from(rendas).where(eq(rendas.userId, userId)); }
+  async createRenda(data: InsertRenda) {
+    const [r] = await db.insert(rendas).values(data).returning();
+    return r;
+  }
+  async updateRenda(id: string, userId: string, data: Partial<InsertRenda>) {
+    const [r] = await db.update(rendas).set(data).where(and(eq(rendas.id, id), eq(rendas.userId, userId))).returning();
+    return r;
+  }
+  async deleteRenda(id: string, userId: string) {
+    const result = await db.delete(rendas).where(and(eq(rendas.id, id), eq(rendas.userId, userId))).returning();
+    return result.length > 0;
+  }
+
+  async getPatrimonios(userId: string) { return db.select().from(patrimonios).where(eq(patrimonios.userId, userId)); }
+  async createPatrimonio(data: InsertPatrimonio) {
+    const [p] = await db.insert(patrimonios).values(data).returning();
+    return p;
+  }
+  async updatePatrimonio(id: string, userId: string, data: Partial<InsertPatrimonio>) {
+    const [p] = await db.update(patrimonios).set(data).where(and(eq(patrimonios.id, id), eq(patrimonios.userId, userId))).returning();
+    return p;
+  }
+  async deletePatrimonio(id: string, userId: string) {
+    const result = await db.delete(patrimonios).where(and(eq(patrimonios.id, id), eq(patrimonios.userId, userId))).returning();
+    return result.length > 0;
   }
 }
 

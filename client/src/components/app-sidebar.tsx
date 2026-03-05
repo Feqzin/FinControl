@@ -4,7 +4,7 @@ import { useTheme } from "@/components/theme-provider";
 import {
   LayoutDashboard, Users, Receipt, CreditCard, Calendar,
   BarChart3, Repeat, LogOut, FileUp, Target, History, Calculator,
-  Sun, Moon, UserCircle,
+  Sun, Moon, UserCircle, DollarSign, PiggyBank,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -17,20 +17,22 @@ import { Separator } from "@/components/ui/separator";
 const mainItems = [
   { title: "Painel", url: "/", icon: LayoutDashboard },
   { title: "Pessoas", url: "/pessoas", icon: Users },
-  { title: "Dividas", url: "/dividas", icon: Receipt },
-  { title: "Cartoes", url: "/cartoes", icon: CreditCard },
-  { title: "Servicos", url: "/servicos", icon: Repeat },
+  { title: "Dívidas", url: "/dividas", icon: Receipt },
+  { title: "Cartões", url: "/cartoes", icon: CreditCard },
+  { title: "Renda", url: "/renda", icon: DollarSign },
+  { title: "Patrimônio", url: "/patrimonio", icon: PiggyBank },
+  { title: "Serviços", url: "/servicos", icon: Repeat },
 ];
 
 const planejamentoItems = [
   { title: "Metas", url: "/metas", icon: Target },
-  { title: "Previsao", url: "/previsao", icon: Calendar },
-  { title: "Historico", url: "/historico", icon: History },
+  { title: "Previsão", url: "/previsao", icon: Calendar },
+  { title: "Histórico", url: "/historico", icon: History },
   { title: "Simulador", url: "/simulador", icon: Calculator },
 ];
 
 const ferramentasItems = [
-  { title: "Relatorios", url: "/relatorios", icon: BarChart3 },
+  { title: "Relatórios", url: "/relatorios", icon: BarChart3 },
   { title: "Importar", url: "/importar", icon: FileUp },
   { title: "Perfil", url: "/perfil", icon: UserCircle },
 ];

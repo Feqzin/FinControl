@@ -1,0 +1,231 @@
+Quero transformar meu aplicativo financeiro em um sistema completo, profissional e 100% adaptado ao padrão brasileiro.
+
+========================================
+1) PADRONIZAÇÃO BRASILEIRA COMPLETA
+========================================
+
+- Todas as datas no formato: DD/MM/AAAA
+- Moeda no padrão: R$ 1.234,56
+- Converter automaticamente datas ISO para formato BR
+- Criar funções globais:
+  formatarDataBR(data)
+  formatarMoedaBR(valor)
+
+========================================
+2) CORREÇÃO ORTOGRÁFICA E PADRONIZAÇÃO DE TEXTO
+========================================
+
+- Revisar todos os textos do sistema
+- Corrigir erros ortográficos
+- Padronizar termos financeiros
+- Garantir acentuação correta
+- Padronizar mensagens de erro e alertas
+
+========================================
+3) RESPONSIVIDADE TOTAL
+========================================
+
+Implementar layout mobile-first:
+
+- Grid responsivo
+- Sidebar colapsável
+- Menu inferior fixo no mobile
+- Tabelas com scroll horizontal
+- Cards empilhados no celular
+- Botões com mínimo 48px
+- Compatível com celular, tablet e desktop
+
+========================================
+4) MÓDULO DE RENDA (SALÁRIO)
+========================================
+
+Criar aba "Renda".
+
+Permitir:
+
+- Salário fixo mensal
+- Renda variável
+- Definir dia de recebimento
+
+Estrutura:
+
+renda {
+  id,
+  userId,
+  tipo,
+  descricao,
+  valor,
+  diaRecebimento
+}
+
+Cálculo automático no dashboard:
+
+Salário total do mês
+Total de gastos
+Saldo restante do salário
+
+Saldo disponível = Renda total - Gastos do mês
+
+========================================
+5) MÓDULO DE PATRIMÔNIO
+========================================
+
+Criar aba "Patrimônio".
+
+Permitir cadastrar:
+
+- Conta bancária
+- Dinheiro físico
+- Caixinha Nubank
+- Poupança
+- Investimentos
+
+Estrutura:
+
+patrimonio {
+  id,
+  userId,
+  nome,
+  tipo,
+  valorAtual
+}
+
+Mostrar:
+
+- Total guardado
+- Distribuição percentual
+- Crescimento mensal
+
+========================================
+6) SIMULADOR DE INVESTIMENTOS
+========================================
+
+Criar aba "Simulador".
+
+Permitir simular:
+
+- Tesouro Selic
+- CDB
+- CDI
+- Investimento personalizado
+
+Campos:
+
+- Valor inicial
+- Aporte mensal
+- Taxa anual (%)
+- Período (meses)
+- Inflação anual (%)
+
+Cálculo:
+
+Converter taxa anual para mensal.
+Aplicar juros compostos.
+Aplicar aportes mensais.
+
+Descontar inflação:
+
+retornoReal = ((1 + taxa) / (1 + inflacao)) - 1
+
+Mostrar:
+
+- Valor investido
+- Juros ganhos
+- Valor final bruto
+- Valor final real (descontando inflação)
+- Gráfico de evolução mensal
+
+========================================
+7) PROJEÇÃO DE PATRIMÔNIO FUTURO
+========================================
+
+Criar módulo "Projeção".
+
+Basear em:
+
+- Patrimônio atual
+- Aportes mensais
+- Taxa média estimada
+- Inflação
+
+Simular:
+
+- 1 ano
+- 5 anos
+- 10 anos
+- 20 anos
+
+Mostrar:
+
+- Crescimento bruto
+- Crescimento real
+- Evolução gráfica
+- Diferença entre cenário otimista, moderado e conservador
+
+========================================
+8) SIMULAÇÃO DE INDEPENDÊNCIA FINANCEIRA
+========================================
+
+Criar cálculo baseado na regra dos 4%.
+
+Perguntar:
+
+- Quanto você deseja receber por mês no futuro?
+- Qual sua média de gastos mensais?
+- Taxa de retorno esperada
+- Inflação
+
+Calcular:
+
+Patrimônio necessário =
+(Gasto mensal × 12) / 0.04
+
+Mostrar:
+
+- Quanto falta acumular
+- Em quantos anos alcançará
+- Quanto precisa investir por mês
+- Simulação com diferentes taxas
+
+========================================
+9) DASHBOARD AVANÇADO
+========================================
+
+Mostrar:
+
+- Renda do mês
+- Total gasto
+- Total a receber
+- Total guardado
+- Patrimônio líquido
+- Projeção futura resumida
+
+Patrimônio líquido =
+Patrimônio + Valores a receber - Dívidas
+
+========================================
+10) EXPERIÊNCIA VISUAL
+========================================
+
+- Indicadores de cores:
+  Verde → Positivo
+  Vermelho → Negativo
+  Azul → Informativo
+- Gráficos simples e limpos
+- Barra de progresso para metas
+- Interface moderna e minimalista
+
+========================================
+
+Objetivo final:
+
+Criar um sistema financeiro completo com:
+
+- Controle de renda
+- Controle de patrimônio
+- Simulador de investimentos
+- Projeção de crescimento
+- Simulação de independência financeira
+- Ajuste de inflação
+- Layout responsivo
+- Totalmente adaptado ao padrão brasileiro

@@ -20,10 +20,14 @@ import ImportarPage from "@/pages/importar-page";
 import MetasPage from "@/pages/metas-page";
 import HistoricoPage from "@/pages/historico-page";
 import SimuladorPage from "@/pages/simulador-page";
+import RendaPage from "@/pages/renda-page";
+import PatrimonioPage from "@/pages/patrimonio-page";
 import PerfilPage from "@/pages/perfil-page";
 import RedefinirSenhaPage from "@/pages/redefinir-senha-page";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeProvider } from "@/components/theme-provider";
+import { LayoutDashboard, Receipt, CreditCard, DollarSign, PiggyBank } from "lucide-react";
+import { Link, useLocation } from "wouter";
 
 function Router() {
   return (
@@ -39,6 +43,8 @@ function Router() {
       <Route path="/metas" component={MetasPage} />
       <Route path="/historico" component={HistoricoPage} />
       <Route path="/simulador" component={SimuladorPage} />
+      <Route path="/renda" component={RendaPage} />
+      <Route path="/patrimonio" component={PatrimonioPage} />
       <Route path="/perfil" component={PerfilPage} />
       <Route component={NotFound} />
     </Switch>
@@ -46,22 +52,40 @@ function Router() {
 }
 
 function AuthenticatedLayout() {
+  const [location] = useLocation();
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
   };
 
+  const navItems = [
+    { label: "Painel", icon: LayoutDashboard, path: "/" },
+    { label: "Dívidas", icon: Receipt, path: "/dividas" },
+    { label: "Cartões", icon: CreditCard, path: "/cartoes" },
+    { label: "Renda", icon: DollarSign, path: "/renda" },
+    { label: "Patrimônio", icon: PiggyBank, path: "/patrimonio" },
+  ];
+
   return (
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-screen w-full">
         <AppSidebar />
-        <div className="flex flex-col flex-1 min-w-0">
+        <div className="flex flex-col flex-1 min-w-0 pb-16 md:pb-0">
           <header className="flex items-center gap-2 p-3 border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
           </header>
           <ScrollArea className="flex-1">
             <Router />
           </ScrollArea>
+          
+          <nav className="fixed bottom-0 left-0 right-0 md:hidden border-t bg-background z-40 flex h-16 items-center justify-around px-2">
+            {navItems.map((item) => (
+              <Link key={item.path} href={item.path} className={`flex flex-col items-center gap-1 p-2 min-w-0 flex-1 ${location === item.path ? "text-primary" : "text-muted-foreground"}`}>
+                <item.icon className="h-5 w-5 flex-shrink-0" />
+                <span className="text-[10px] font-medium truncate">{item.label}</span>
+              </Link>
+            ))}
+          </nav>
         </div>
       </div>
     </SidebarProvider>

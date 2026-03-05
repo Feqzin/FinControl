@@ -19,12 +19,15 @@ A comprehensive personal finance management application in Brazilian Portuguese,
 - Financial forecast (monthly area chart with cumulative balance)
 - Services/subscriptions management with edit dialog and inline per-person valor editing in DivisaoPanel
 - Monthly and weekly reports with charts
-- Dashboard with financial health score (0-100), smart alerts, and auto-generated insights
+- Dashboard with financial health score (0-100), smart alerts, and auto-generated insights — includes Renda Mensal and Patrimônio Total stat cards
 - **Financial Goals (Metas)**: Create goals with progress tracking and monthly savings calculator
 - **Financial History (Historico)**: 6-month charts of income vs expenses, saldo evolution, and score history
-- **Financial Simulator (Simulador)**: Explore hypothetical scenarios (extra income, reduced expenses, paying off debts) without touching real data
+- **Financial Simulator (Simulador)**: 3 tabs — Score Financeiro (what-if scenarios), Investimentos (compound interest calculator with presets + area chart), Independência Financeira (4% rule calculator)
+- **Renda (Income)**: CRUD for income sources; tipo fixo/variável, dia recebimento, ativo toggle; summary totals
+- **Patrimônio (Assets)**: CRUD for assets; tipos: conta bancária, dinheiro, poupança, investimento, outros; total + percentage breakdown
 - Intelligent text import (natural language parsing → creates records automatically)
 - Dark mode toggle with localStorage persistence
+- Mobile bottom navigation bar (visible on small screens: Painel, Dívidas, Cartões, Renda, Patrimônio)
 
 ## Project Structure
 ```
@@ -63,10 +66,10 @@ shared/
 ```
 
 ## Database Tables
-- users, pessoas, dividas, cartoes, compras_cartao, servicos, metas
+- users, pessoas, dividas, cartoes, compras_cartao, servicos, metas, rendas, patrimonios
 
 ## Routes
-- / - Dashboard
+- / - Dashboard (6 stat cards incl. Renda Mensal and Patrimônio Total)
 - /pessoas - People management
 - /dividas - Debt tracking
 - /cartoes - Credit cards
@@ -76,7 +79,9 @@ shared/
 - /importar - Text import
 - /metas - Financial goals
 - /historico - Financial history charts
-- /simulador - Financial simulator
+- /simulador - Financial simulator (3 tabs: Score, Investimentos, Independência)
+- /renda - Income management
+- /patrimonio - Asset management
 
 ## API Endpoints
 - /api/pessoas (CRUD)
@@ -85,6 +90,8 @@ shared/
 - /api/compras-cartao (CRUD + /cartao/:id)
 - /api/servicos (CRUD)
 - /api/metas (CRUD)
+- /api/rendas (CRUD) — userId added from session
+- /api/patrimonios (CRUD) — userId added from session
 
 ## Demo Account
 - Username: demo

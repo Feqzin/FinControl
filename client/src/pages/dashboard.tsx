@@ -3,12 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  TrendingUp, TrendingDown, Wallet, CalendarClock,
+  TrendingUp, TrendingDown, CalendarClock,
   ArrowUpRight, ArrowDownRight, Receipt, Bell,
   AlertTriangle, CreditCard, CheckCircle, Lightbulb,
-  Trophy, Star, RotateCcw, Target,
+  Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank,
 } from "lucide-react";
-import type { Divida, Servico, Pessoa, Cartao, CompraCartao } from "@shared/schema";
+import type { Divida, Servico, Pessoa, Cartao, CompraCartao, Renda, Patrimonio } from "@shared/schema";
 import { format, differenceInDays, parseISO } from "date-fns";
 import { calcularScore, gerarInsights } from "@/utils/financialEngine";
 
@@ -62,6 +62,8 @@ export default function Dashboard() {
   const { data: pessoas = [], isLoading: l3 } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
   const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
+  const { data: rendas = [] } = useQuery<Renda[]>({ queryKey: ["/api/rendas"] });
+  const { data: patrimonios = [] } = useQuery<Patrimonio[]>({ queryKey: ["/api/patrimonios"] });
 
   const isLoading = l1 || l2 || l3;
 
@@ -77,7 +79,16 @@ export default function Dashboard() {
     .filter((s) => s.status === "ativo")
     .reduce((s, sv) => s + Number(sv.valorMensal), 0);
 
-  const saldoPrevisto = totalReceber - totalPagar - totalServicos;
+  const totalRenda = rendas
+    .filter((r) => r.ativo)
+    .reduce((s, r) => s + Number(r.valor), 0);
+
+  const totalPatrimonio = patrimonios
+    .reduce((s, p) => s + Number(p.valorAtual), 0);
+
+  const saldoPrevisto = totalRenda > 0
+    ? totalRenda - totalServicos - totalPagar
+    : totalReceber - totalPagar - totalServicos;
 
   const today = format(new Date(), "yyyy-MM-dd");
   const in5Days = format(new Date(Date.now() + 5 * 86400000), "yyyy-MM-dd");
@@ -204,7 +215,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatCard
           title="A receber"
           value={formatCurrency(totalReceber)}
@@ -223,15 +234,29 @@ export default function Dashboard() {
           title="Gastos fixos"
           value={formatCurrency(totalServicos)}
           icon={Receipt}
-          trend={`${servicos.filter((s) => s.status === "ativo").length} servicos ativos`}
+          trend={`${servicos.filter((s) => s.status === "ativo").length} ativos`}
           color="bg-amber-500/10 text-amber-600"
         />
         <StatCard
-          title="Saldo previsto"
+          title="Saldo do mês"
           value={formatCurrency(saldoPrevisto)}
           icon={saldoPrevisto >= 0 ? TrendingUp : TrendingDown}
-          trend="Receitas - Despesas"
+          trend={totalRenda > 0 ? "Renda - Gastos" : "Receitas - Despesas"}
           color={saldoPrevisto >= 0 ? "bg-primary/10 text-primary" : "bg-red-500/10 text-red-600"}
+        />
+        <StatCard
+          title="Renda mensal"
+          value={formatCurrency(totalRenda)}
+          icon={DollarSign}
+          trend={`${rendas.filter((r) => r.ativo).length} fontes ativas`}
+          color="bg-emerald-500/10 text-emerald-600"
+        />
+        <StatCard
+          title="Patrimônio total"
+          value={formatCurrency(totalPatrimonio)}
+          icon={PiggyBank}
+          trend={`${patrimonios.length} itens`}
+          color="bg-blue-500/10 text-blue-600"
         />
       </div>
 

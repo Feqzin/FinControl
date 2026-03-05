@@ -153,6 +153,32 @@ export const insertParcelaCompraSchema = createInsertSchema(parcelasCompra).omit
 export type InsertParcelaCompra = z.infer<typeof insertParcelaCompraSchema>;
 export type ParcelaCompra = typeof parcelasCompra.$inferSelect;
 
+export const rendas = pgTable("rendas", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  tipo: text("tipo").notNull().default("fixo"),
+  descricao: text("descricao").notNull(),
+  valor: decimal("valor", { precision: 12, scale: 2 }).notNull(),
+  diaRecebimento: integer("dia_recebimento").notNull().default(1),
+  ativo: boolean("ativo").notNull().default(true),
+});
+
+export const insertRendaSchema = createInsertSchema(rendas).omit({ id: true });
+export type InsertRenda = z.infer<typeof insertRendaSchema>;
+export type Renda = typeof rendas.$inferSelect;
+
+export const patrimonios = pgTable("patrimonios", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  nome: text("nome").notNull(),
+  tipo: text("tipo").notNull().default("conta_bancaria"),
+  valorAtual: decimal("valor_atual", { precision: 12, scale: 2 }).notNull().default("0"),
+});
+
+export const insertPatrimonioSchema = createInsertSchema(patrimonios).omit({ id: true });
+export type InsertPatrimonio = z.infer<typeof insertPatrimonioSchema>;
+export type Patrimonio = typeof patrimonios.$inferSelect;
+
 export const metas = pgTable("metas", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
