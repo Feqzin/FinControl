@@ -1330,7 +1330,7 @@ export default function CartoesPage() {
                       <p className="text-lg font-bold">{formatCurrency(faturaAtual)}</p>
                     </div>
                     <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Disponivel</p>
+                      <p className="text-xs text-muted-foreground mb-1">Disponível</p>
                       <p className="text-lg font-bold text-emerald-600">{formatCurrency(limite - faturaAtual)}</p>
                     </div>
                   </div>

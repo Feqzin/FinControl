@@ -248,7 +248,7 @@ export default function PessoasPage() {
                 />
                 {duplicatePessoa && (
                   <p className="text-xs text-amber-600 dark:text-amber-400" data-testid="warning-duplicate-pessoa">
-                    Atencao: ja existe uma pessoa com nome similar: <strong>{duplicatePessoa.nome}</strong>
+                    Atenção: já existe uma pessoa com nome similar: <strong>{duplicatePessoa.nome}</strong>
                   </p>
                 )}
               </div>
@@ -407,7 +407,7 @@ export default function PessoasPage() {
                       onClick={() => setHistoryPessoa(p)}
                       data-testid={`button-history-pessoa-${p.id}`}
                     >
-                      <Clock className="w-3 h-3 mr-1" /> Historico
+                      <Clock className="w-3 h-3 mr-1" /> Histórico
                     </Button>
                     <Button
                       variant="ghost"
@@ -577,7 +577,7 @@ export default function PessoasPage() {
           {historyPessoa && historyStats && (
             <>
               <SheetHeader className="mb-4">
-                <SheetTitle>Historico — {historyPessoa.nome}</SheetTitle>
+                <SheetTitle>Histórico — {historyPessoa.nome}</SheetTitle>
               </SheetHeader>
 
               <div className="flex items-center gap-2 mb-5">
@@ -612,7 +612,7 @@ export default function PessoasPage() {
 
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                  Dividas ({historyDividas.length})
+                  Dívidas ({historyDividas.length})
                 </h3>
                 <Badge variant={historyStats.emAberto ? "outline" : "secondary"}>
                   {historyStats.emAberto ? "Em aberto" : "Quitado"}
@@ -747,7 +747,7 @@ export default function PessoasPage() {
                             </div>
                             <div className="flex items-center gap-1 flex-shrink-0">
                               <div className="text-right">
-                                <p className="text-sm font-bold text-blue-600">{formatCurrency(Number(c.valorParcela))}/mes</p>
+                                <p className="text-sm font-bold text-blue-600">{formatCurrency(Number(c.valorParcela))}/mês</p>
                                 <p className="text-xs text-muted-foreground">Total: {formatCurrency(Number(c.valorTotal))}</p>
                               </div>
                               <Button
@@ -773,7 +773,7 @@ export default function PessoasPage() {
                 <>
                   <Separator className="my-5" />
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                    Servicos Compartilhados ({historyServicoPessoas.length})
+                    Serviços Compartilhados ({historyServicoPessoas.length})
                   </h3>
                   <div className="space-y-2">
                     {historyServicoPessoas.map((sp) => {
@@ -789,9 +789,9 @@ export default function PessoasPage() {
                             <div className="flex items-center gap-2 min-w-0">
                               <Repeat className="w-4 h-4 text-amber-600 flex-shrink-0" />
                               <div className="min-w-0">
-                                <p className="text-sm font-medium truncate">{servico?.nome ?? "Servico"}</p>
+                                <p className="text-sm font-medium truncate">{servico?.nome ?? "Serviço"}</p>
                                 <p className="text-xs text-muted-foreground">
-                                  {formatCurrency(Number(sp.valorDevido))}/mes
+                                  {formatCurrency(Number(sp.valorDevido))}/mês
                                 </p>
                               </div>
                             </div>

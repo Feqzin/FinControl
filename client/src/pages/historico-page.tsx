@@ -77,8 +77,8 @@ export default function HistoricoPage() {
   return (
     <div className="p-6 space-y-6" data-testid="historico-page">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Historico Financeiro</h1>
-        <p className="text-muted-foreground">Evolucao dos ultimos 6 meses</p>
+        <h1 className="text-2xl font-bold tracking-tight">Histórico Financeiro</h1>
+        <p className="text-muted-foreground">Evolução dos últimos 6 meses</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -95,7 +95,7 @@ export default function HistoricoPage() {
         </Card>
         <Card className="hover-elevate">
           <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground mb-1">Receitas (variacao)</p>
+            <p className="text-sm text-muted-foreground mb-1">Receitas (variação)</p>
             <div className="flex items-center gap-2">
               <p className="text-2xl font-bold">{formatCurrency(ultimoMes?.receitas || 0)}</p>
               {variacaoReceitas !== 0 && (
@@ -109,7 +109,7 @@ export default function HistoricoPage() {
         </Card>
         <Card className="hover-elevate">
           <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground mb-1">Despesas (variacao)</p>
+            <p className="text-sm text-muted-foreground mb-1">Despesas (variação)</p>
             <div className="flex items-center gap-2">
               <p className="text-2xl font-bold">{formatCurrency(ultimoMes?.despesas || 0)}</p>
               {variacaoDespesas !== 0 && (
@@ -126,7 +126,7 @@ export default function HistoricoPage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <BarChart3 className="w-4 h-4" /> Receitas vs Despesas por mes
+            <BarChart3 className="w-4 h-4" /> Receitas vs Despesas por mês
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -149,7 +149,7 @@ export default function HistoricoPage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" /> Evolucao do saldo mensal
+            <TrendingUp className="w-4 h-4" /> Evolução do saldo mensal
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -171,7 +171,7 @@ export default function HistoricoPage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" /> Evolucao do Score financeiro
+            <TrendingUp className="w-4 h-4" /> Evolução do Score financeiro
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -182,16 +182,16 @@ export default function HistoricoPage() {
                 <XAxis dataKey="label" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
                 <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
                 <Tooltip formatter={(v: any) => [`${v}/100`, "Score"]} />
-                <ReferenceLine y={80} stroke="hsl(var(--chart-2))" strokeDasharray="4 2" label={{ value: "Otimo", position: "right", fontSize: 10 }} />
+                <ReferenceLine y={80} stroke="hsl(var(--chart-2))" strokeDasharray="4 2" label={{ value: "Ótimo", position: "right", fontSize: 10 }} />
                 <ReferenceLine y={40} stroke="hsl(var(--chart-3))" strokeDasharray="4 2" label={{ value: "Risco", position: "right", fontSize: 10 }} />
                 <Line type="monotone" dataKey="score" name="Score" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 4, fill: "hsl(var(--primary))" }} activeDot={{ r: 6 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
           <div className="flex gap-4 mt-3 text-xs text-muted-foreground justify-center">
-            <span className="text-emerald-600">80+ Otima</span>
+            <span className="text-emerald-600">80+ Ótima</span>
             <span className="text-primary">60-79 Boa</span>
-            <span className="text-amber-600">40-59 Atencao</span>
+            <span className="text-amber-600">40-59 Atenção</span>
             <span className="text-red-600">Abaixo de 40 Risco</span>
           </div>
         </CardContent>

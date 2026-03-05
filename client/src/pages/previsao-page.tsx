@@ -126,8 +126,8 @@ export default function PrevisaoPage() {
   return (
     <div className="p-6 space-y-6" data-testid="previsao-page">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Previsao de Entrada e Saida</h1>
-        <p className="text-muted-foreground">Projecao financeira para {format(now, "MMMM yyyy")}</p>
+        <h1 className="text-2xl font-bold tracking-tight">Previsão de Entradas e Saídas</h1>
+        <p className="text-muted-foreground">Projeção financeira para {format(now, "MMMM yyyy")}</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -161,18 +161,18 @@ export default function PrevisaoPage() {
               <div className="flex items-center justify-center w-9 h-9 rounded-md bg-red-500/10 shrink-0">
                 <ArrowDownRight className="w-4 h-4 text-red-600" />
               </div>
-              <p className="text-xs text-muted-foreground">Total saidas</p>
+              <p className="text-xs text-muted-foreground">Total de saídas</p>
             </div>
             <p className="text-xl font-bold text-red-600">{mask(formatCurrency(totalSaida))}</p>
             <div className="mt-1 space-y-0.5">
               {pagarDividas > 0 && (
                 <p className="text-xs text-muted-foreground flex justify-between">
-                  <span>Dividas</span><span className="font-medium">{mask(formatCurrency(pagarDividas))}</span>
+                  <span>Dívidas</span><span className="font-medium">{mask(formatCurrency(pagarDividas))}</span>
                 </p>
               )}
               {servicosMes > 0 && (
                 <p className="text-xs text-muted-foreground flex justify-between">
-                  <span>Servicos</span><span className="font-medium">{mask(formatCurrency(servicosMes))}</span>
+                  <span>Serviços</span><span className="font-medium">{mask(formatCurrency(servicosMes))}</span>
                 </p>
               )}
             </div>
@@ -193,7 +193,7 @@ export default function PrevisaoPage() {
               {mask(formatCurrency(saldoPrevisto))}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {saldoPrevisto >= 0 ? "Financas equilibradas" : "Despesas excedem receitas"}
+              {saldoPrevisto >= 0 ? "Finanças equilibradas" : "Despesas excedem receitas"}
             </p>
           </CardContent>
         </Card>
@@ -213,9 +213,9 @@ export default function PrevisaoPage() {
               {pctComprometido === null
                 ? "Cadastre fontes de renda"
                 : pctComprometido < 50
-                  ? "Nivel saudavel"
+                  ? "Nível saudável"
                   : pctComprometido < 80
-                    ? "Atencao"
+                    ? "Atenção"
                     : "Risco elevado"}
             </p>
           </CardContent>
@@ -225,7 +225,7 @@ export default function PrevisaoPage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" /> Curva de saldo ao longo do mes
+            <TrendingUp className="w-4 h-4" /> Curva de saldo ao longo do mês
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -323,7 +323,7 @@ export default function PrevisaoPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <ArrowDownRight className="w-4 h-4 text-red-600" />
-              Saidas previstas ({saidasDividas.length + servicos.filter((s) => s.status === "ativo").length})
+              Saídas previstas ({saidasDividas.length + servicos.filter((s) => s.status === "ativo").length})
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -343,14 +343,14 @@ export default function PrevisaoPage() {
               {saidasDividas.map((d) => (
                 <div key={d.id} className="flex items-center justify-between p-3 rounded-md bg-muted/30">
                   <div>
-                    <p className="text-sm font-medium">{d.descricao || "Divida"}</p>
+                    <p className="text-sm font-medium">{d.descricao || "Dívida"}</p>
                     <p className="text-xs text-muted-foreground">Vencimento: {d.dataVencimento}</p>
                   </div>
                   <span className="font-semibold text-red-600">{mask(formatCurrency(Number(d.valor)))}</span>
                 </div>
               ))}
               {saidasDividas.length === 0 && servicos.filter((s) => s.status === "ativo").length === 0 && (
-                <p className="text-center py-8 text-muted-foreground text-sm">Nenhuma saida prevista</p>
+                <p className="text-center py-8 text-muted-foreground text-sm">Nenhuma saída prevista</p>
               )}
             </div>
           </CardContent>

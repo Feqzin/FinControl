@@ -337,16 +337,16 @@ export default function AuthPage() {
 
       <div className="hidden lg:flex flex-1 bg-primary/5 items-center justify-center p-12">
         <div className="max-w-md space-y-8">
-          <h2 className="text-3xl font-bold tracking-tight">Organize suas financas com simplicidade</h2>
+          <h2 className="text-3xl font-bold tracking-tight">Organize suas finanças com simplicidade</h2>
           <p className="text-muted-foreground text-lg">
-            Controle dividas, cartoes de credito, assinaturas e muito mais em um unico lugar.
+            Controle dívidas, cartões de crédito, assinaturas e muito mais em um único lugar.
           </p>
           <div className="space-y-4">
             {[
-              { icon: TrendingUp, title: "Previsao financeira", desc: "Saiba quanto entra e sai todo mes" },
-              { icon: Shield, title: "Dados isolados e seguros", desc: "Cada usuario tem seu proprio espaco privado" },
+              { icon: TrendingUp, title: "Previsão financeira", desc: "Saiba quanto entra e sai todo mês" },
+              { icon: Shield, title: "Dados isolados e seguros", desc: "Cada usuário tem seu próprio espaço privado" },
               { icon: Target, title: "Metas financeiras", desc: "Acompanhe seus objetivos com progresso visual" },
-              { icon: BarChart3, title: "Relatorios detalhados", desc: "Acompanhe seus gastos com graficos interativos" },
+              { icon: BarChart3, title: "Relatórios detalhados", desc: "Acompanhe seus gastos com gráficos interativos" },
             ].map(({ icon: Icon, title, desc }) => (
               <div className="flex items-start gap-3" key={title}>
                 <div className="mt-0.5 flex items-center justify-center w-8 h-8 rounded-md bg-primary/10 flex-shrink-0">

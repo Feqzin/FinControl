@@ -154,7 +154,7 @@ function DivisaoPanel({ servico, servicoPessoas, servicoPagamentos, pessoas }: D
           {vinculados.length > 0 && (
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span className="text-emerald-600 font-medium">Recebido: {formatCurrency(totalRecebido)}</span>
-              <span className="text-amber-600 font-medium">Pendente este mes: {formatCurrency(totalPendenteMes)}</span>
+              <span className="text-amber-600 font-medium">Pendente este mês: {formatCurrency(totalPendenteMes)}</span>
             </div>
           )}
           {pessoasDisponiveis.length > 0 && (
@@ -435,8 +435,8 @@ export default function ServicosPage() {
     <div className="p-6 space-y-6" data-testid="servicos-page">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Servicos e Assinaturas</h1>
-          <p className="text-muted-foreground">Gerencie seus gastos recorrentes e divisoes</p>
+          <h1 className="text-2xl font-bold tracking-tight">Serviços e Assinaturas</h1>
+          <p className="text-muted-foreground">Gerencie seus gastos recorrentes e divisões</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -548,7 +548,7 @@ export default function ServicosPage() {
             <CardContent className="p-5">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <p className="text-sm text-muted-foreground">Pendente de pessoas (mes atual)</p>
+                  <p className="text-sm text-muted-foreground">Pendente de pessoas (mês atual)</p>
                   <p className="text-2xl font-bold text-amber-600">{formatCurrency(totalPessoasPendente)}</p>
                 </div>
                 <div className="flex items-center justify-center w-10 h-10 rounded-md bg-blue-500/10">
@@ -572,7 +572,7 @@ export default function ServicosPage() {
             <div key={cat.value}>
               <div className="flex items-center justify-between gap-2 mb-3">
                 <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">{cat.label}</h3>
-                <span className="text-sm font-medium">{formatCurrency(cat.total)}/mes</span>
+                <span className="text-sm font-medium">{formatCurrency(cat.total)}/mês</span>
               </div>
               <div className="space-y-2">
                 {cat.servicos.map((s) => {
@@ -679,7 +679,7 @@ export default function ServicosPage() {
       <Dialog open={!!editingServico} onOpenChange={(v) => { if (!v) { setEditingServico(null); setEditIcone(null); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Editar Servico</DialogTitle>
+            <DialogTitle>Editar Serviço</DialogTitle>
           </DialogHeader>
           <form
             onSubmit={(e) => {

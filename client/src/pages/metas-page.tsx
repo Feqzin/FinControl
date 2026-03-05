@@ -104,7 +104,7 @@ export default function MetasPage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Metas Financeiras</h1>
-          <p className="text-muted-foreground">Acompanhe seus objetivos e veja quanto economizar por mes</p>
+          <p className="text-muted-foreground">Acompanhe seus objetivos e veja quanto economizar por mês</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -184,7 +184,7 @@ export default function MetasPage() {
                       {formatCurrency(
                         Math.max(0, (parseFloat(form.valorAlvo) - parseFloat(form.valorAtual || "0")) /
                           Math.max(1, differenceInMonths(parseISO(form.prazo), new Date())))
-                      )}/mes
+                      )}/mês
                     </span>
                   </p>
                 </div>
@@ -255,7 +255,7 @@ export default function MetasPage() {
                             <p className="text-base font-bold">{formatCurrency(Math.max(0, Number(meta.valorAlvo) - Number(meta.valorAtual)))}</p>
                           </div>
                           <div className="rounded-md bg-primary/5 p-3">
-                            <p className="text-xs text-muted-foreground">Por mes</p>
+                            <p className="text-xs text-muted-foreground">Por mês</p>
                             <p className="text-base font-bold text-primary">{formatCurrency(mensal)}</p>
                           </div>
                         </div>

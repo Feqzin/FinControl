@@ -200,7 +200,7 @@ export default function DividasPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
       setOpen(false);
       setSimpleForm({ pessoaId: "", tipo: "receber", valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix" });
-      toast({ title: "Divida registrada" });
+      toast({ title: "Dívida registrada" });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
@@ -212,7 +212,7 @@ export default function DividasPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
       setOpen(false);
       setParceladoForm({ pessoaId: "", tipo: "receber", valorTotal: "", totalParcelas: "2", primeiroVencimento: "", descricao: "", formaPagamento: "pix" });
-      toast({ title: `Divida parcelada criada com ${vars.totalParcelas} parcelas` });
+      toast({ title: `Dívida parcelada criada com ${vars.totalParcelas} parcelas` });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
@@ -256,7 +256,7 @@ export default function DividasPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
       setAnteciparOpen(false);
       setAnteciparDivida(null);
-      toast({ title: `${data.updated} parcela(s) antecipada(s)${data.todasPagas ? " · Divida quitada!" : ""}` });
+      toast({ title: `${data.updated} parcela(s) antecipada(s)${data.todasPagas ? " · Dívida quitada!" : ""}` });
     },
   });
 
@@ -265,7 +265,7 @@ export default function DividasPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
-      toast({ title: "Divida removida" });
+      toast({ title: "Dívida removida" });
     },
   });
 
@@ -276,7 +276,7 @@ export default function DividasPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
       setEditingDivida(null);
-      toast({ title: "Divida atualizada" });
+      toast({ title: "Dívida atualizada" });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
@@ -317,12 +317,12 @@ export default function DividasPage() {
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-divida">
-              <Plus className="w-4 h-4 mr-2" /> Nova divida
+              <Plus className="w-4 h-4 mr-2" /> Nova dívida
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Registrar Divida</DialogTitle>
+              <DialogTitle>Registrar Dívida</DialogTitle>
             </DialogHeader>
             <Tabs value={createTab} onValueChange={(v) => setCreateTab(v as any)}>
               <TabsList className="w-full">
@@ -371,9 +371,9 @@ export default function DividasPage() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label>Descricao (opcional)</Label>
+                    <Label>Descrição (opcional)</Label>
                     <Input data-testid="input-divida-descricao" value={simpleForm.descricao}
-                      onChange={(e) => setSimpleForm({ ...simpleForm, descricao: e.target.value })} placeholder="Descricao breve" />
+                      onChange={(e) => setSimpleForm({ ...simpleForm, descricao: e.target.value })} placeholder="Descrição breve" />
                   </div>
                   <Button type="submit" className="w-full" data-testid="button-save-divida" disabled={createSimpleMutation.isPending}>
                     {createSimpleMutation.isPending ? "Salvando..." : "Registrar"}
@@ -441,8 +441,8 @@ export default function DividasPage() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>Descricao (opcional)</Label>
-                      <Input value={parceladoForm.descricao} onChange={(e) => setParceladoForm({ ...parceladoForm, descricao: e.target.value })} placeholder="Descricao" />
+                      <Label>Descrição (opcional)</Label>
+                      <Input value={parceladoForm.descricao} onChange={(e) => setParceladoForm({ ...parceladoForm, descricao: e.target.value })} placeholder="Descrição" />
                     </div>
                   </div>
                   <Button type="submit" className="w-full" data-testid="button-save-parcelado" disabled={createParceladoMutation.isPending}>
@@ -458,7 +458,7 @@ export default function DividasPage() {
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative min-w-[200px] max-w-xs flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input data-testid="input-search-divida" className="pl-9" placeholder="Buscar pessoa ou descricao..."
+          <Input data-testid="input-search-divida" className="pl-9" placeholder="Buscar pessoa ou descrição..."
             value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select value={filterTipo} onValueChange={setFilterTipo}>
@@ -495,8 +495,8 @@ export default function DividasPage() {
       {filtered.length === 0 ? (
         <div className="text-center py-16" data-testid="empty-dividas">
           <Receipt className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
-          <p className="text-lg font-medium text-muted-foreground">Nenhuma divida encontrada</p>
-          <p className="text-sm text-muted-foreground mt-1">Registre uma nova divida ou ajuste os filtros</p>
+          <p className="text-lg font-medium text-muted-foreground">Nenhuma dívida encontrada</p>
+          <p className="text-sm text-muted-foreground mt-1">Registre uma nova dívida ou ajuste os filtros</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -696,7 +696,7 @@ export default function DividasPage() {
               <Button className="w-full" data-testid="button-save-edit-parcela"
                 onClick={() => editParcelaMutation.mutate({ id: editingParcela.id, ...editParcelaForm })}
                 disabled={editParcelaMutation.isPending}>
-                {editParcelaMutation.isPending ? "Salvando..." : "Salvar alteracoes"}
+                {editParcelaMutation.isPending ? "Salvando..." : "Salvar alterações"}
               </Button>
             </div>
           )}
@@ -760,7 +760,7 @@ export default function DividasPage() {
       <Dialog open={!!editingDivida} onOpenChange={(v) => { if (!v) { setEditingDivida(null); setShowRecalcular(false); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Editar Divida</DialogTitle>
+            <DialogTitle>Editar Dívida</DialogTitle>
           </DialogHeader>
           {editingDivida && (
             <div className="space-y-4">
@@ -811,12 +811,12 @@ export default function DividasPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Descricao</Label>
+                <Label>Descrição</Label>
                 <Input
                   data-testid="input-edit-divida-descricao"
                   value={editDividaForm.descricao}
                   onChange={(e) => setEditDividaForm({ ...editDividaForm, descricao: e.target.value })}
-                  placeholder="Descricao breve"
+                  placeholder="Descrição breve"
                 />
               </div>
 

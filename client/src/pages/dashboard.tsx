@@ -290,7 +290,7 @@ export default function Dashboard() {
       icon: AlertTriangle,
       color: "text-red-600",
       bgColor: "bg-red-500/5 border-red-500/20",
-      texto: `Voce tem ${vencidos.length} divida(s) vencida(s) que precisam de atencao`,
+      texto: `Você tem ${vencidos.length} dívida(s) vencida(s) que precisam de atenção`,
     });
   }
   if (vencendo5Dias.length > 0) {
@@ -306,7 +306,7 @@ export default function Dashboard() {
       icon: TrendingDown,
       color: "text-red-600",
       bgColor: "bg-red-500/5 border-red-500/20",
-      texto: `Saldo do mes negativo: ${maskValue(formatCurrency(saldoPrevisto), visible)}`,
+      texto: `Saldo do mês negativo: ${maskValue(formatCurrency(saldoPrevisto), visible)}`,
     });
   }
   for (const c of alertCartoes) {
@@ -645,7 +645,7 @@ export default function Dashboard() {
                 <span className="font-semibold">{pessoas.length}</span>
               </div>
               <div className="flex justify-between items-center p-3 rounded-md bg-muted/40">
-                <span className="text-sm text-muted-foreground">Dividas quitadas</span>
+                <span className="text-sm text-muted-foreground">Dívidas quitadas</span>
                 <span className="font-semibold text-emerald-600">
                   {dividas.filter((d) => d.status === "pago").length}
                 </span>
