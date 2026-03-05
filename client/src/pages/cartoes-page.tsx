@@ -24,11 +24,14 @@ import {
 import {
   Plus, CreditCard, Trash2, CalendarClock, ShoppingBag, User, Pencil,
   RefreshCw, Upload, List, Check, X, AlertTriangle, FileText, ChevronRight,
+  Eye,
 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
 import { IconPicker } from "@/components/icon-picker";
+import { useUIPreferences } from "@/context/ui-preferences";
 import type { Cartao, CompraCartao, Pessoa, ParcelaCompra } from "@shared/schema";
 import { format, addMonths, isPast, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -384,6 +387,7 @@ function parseOfx(content: string, existentes: CompraCartao[], cartaoId: string)
 
 export default function CartoesPage() {
   const { toast } = useToast();
+  const { prefs } = useUIPreferences();
 
   const [openCard, setOpenCard] = useState(false);
   const [openCompra, setOpenCompra] = useState(false);
@@ -1284,6 +1288,105 @@ export default function CartoesPage() {
           <CreditCard className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
           <p className="text-lg font-medium text-muted-foreground">Nenhum cartao cadastrado</p>
           <p className="text-sm text-muted-foreground mt-1">Adicione seu primeiro cartao</p>
+        </div>
+      ) : prefs.mobileMode ? (
+        <div className="space-y-4" data-testid="cartoes-mobile-list">
+          <div className="bg-card border rounded-2xl p-4 space-y-1">
+            <div className="flex items-center gap-1.5">
+              <p className="text-sm text-muted-foreground font-medium">
+                Faturas de {format(new Date(), "MMMM", { locale: ptBR }).replace(/^\w/, (c) => c.toUpperCase())}
+              </p>
+              <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+            </div>
+            <p className="text-2xl font-bold tracking-tight">{formatCurrency(totalFaturas)}</p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-sm font-semibold text-muted-foreground px-1">Meus cartões</p>
+            {cartoes.map((c) => {
+              const limite = Number(c.limite);
+              const faturaAtual = getCardTotal(c.id);
+              const limiteDisponivel = limite - faturaAtual;
+              const nextDate = getNextInvoiceDate(Number(c.diaVencimento));
+              const [nextDay, nextMonth] = nextDate.split("/");
+
+              return (
+                <div
+                  key={c.id}
+                  className="bg-card border rounded-2xl overflow-hidden"
+                  data-testid={`mobile-card-cartao-${c.id}`}
+                >
+                  <div className="flex items-center gap-3 p-4">
+                    <BrandIconDisplay name={c.nome} iconeId={c.iconeId} size="md" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm leading-tight">{c.nome}</p>
+                      <p className="text-xs text-muted-foreground">Cartão manual</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-8 rounded-lg flex-shrink-0"
+                      onClick={() => {
+                        setSelectedCartao(selectedCartao === c.id ? "" : c.id);
+                        setOpenCompra(false);
+                      }}
+                      data-testid={`button-ver-fatura-mobile-${c.id}`}
+                    >
+                      {selectedCartao === c.id ? "Fechar" : "Ver fatura"}
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-2 divide-x divide-border bg-muted/30 px-4 py-3">
+                    <div className="pr-4">
+                      <p className="text-xs text-muted-foreground mb-0.5">Limite Disponível</p>
+                      <p className="text-sm font-semibold text-emerald-600">{formatCurrency(limiteDisponivel)}</p>
+                    </div>
+                    <div className="pl-4">
+                      <p className="text-xs text-muted-foreground mb-0.5">
+                        Fatura atual{" "}
+                        <span className="font-normal">(Venc.{nextDay}/{nextMonth})</span>
+                      </p>
+                      <p className="text-sm font-semibold">{formatCurrency(faturaAtual)}</p>
+                    </div>
+                  </div>
+
+                  {selectedCartao === c.id && (
+                    <div className="border-t border-border/50 divide-y divide-border/30">
+                      {getCardCompras(c.id).length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">Nenhuma compra na fatura</p>
+                      ) : (
+                        getCardCompras(c.id).map((compra) => (
+                          <div key={compra.id} className="flex items-center gap-3 px-4 py-3">
+                            <BrandIconDisplay name={compra.descricao} size="sm" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{compra.descricao}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {compra.parcelaAtual}/{compra.parcelas}x
+                              </p>
+                            </div>
+                            <p className="text-sm font-semibold flex-shrink-0">
+                              {formatCurrency(Number(compra.valorParcela))}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                      <div className="px-4 py-2.5">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full text-xs text-muted-foreground"
+                          onClick={() => { setSelectedCartao(c.id); setOpenCompra(true); }}
+                          data-testid={`button-add-compra-mobile-${c.id}`}
+                        >
+                          <Plus className="w-3 h-3 mr-1" /> Adicionar compra
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

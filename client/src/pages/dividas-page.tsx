@@ -18,8 +18,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Receipt, Search, Check, Trash2, ChevronDown, ChevronUp,
-  Pencil, FastForward, Calendar, AlertCircle, X,
+  Pencil, FastForward, Calendar, AlertCircle, X, TrendingUp, TrendingDown,
 } from "lucide-react";
+import { useUIPreferences } from "@/context/ui-preferences";
 import type { Divida, Parcela, Pessoa } from "@shared/schema";
 import { format, isPast, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -114,6 +115,7 @@ function ParcelaRow({
 
 export default function DividasPage() {
   const { toast } = useToast();
+  const { prefs } = useUIPreferences();
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -497,6 +499,162 @@ export default function DividasPage() {
           <Receipt className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
           <p className="text-lg font-medium text-muted-foreground">Nenhuma dívida encontrada</p>
           <p className="text-sm text-muted-foreground mt-1">Registre uma nova dívida ou ajuste os filtros</p>
+        </div>
+      ) : prefs.mobileMode ? (
+        <div className="space-y-3" data-testid="dividas-mobile-list">
+          {filtered.map((d) => {
+            const status = getDividaStatus(d);
+            const valorPendente = getDividaValorPendente(d);
+            const valorPago = getDividaValorPago(d);
+            const valorTotal = d.parcelas.length > 0
+              ? d.parcelas.reduce((s, p) => s + Number(p.valor), 0)
+              : Number(d.valor);
+            const progresso = valorTotal > 0 ? (valorPago / valorTotal) * 100 : 0;
+            const isExpanded = expandedId === d.id;
+            const hasParce = d.parcelas.length > 0;
+            const proximaParcela = d.parcelas.find((p) => p.status === "pendente");
+            const parcelasVencidas = d.parcelas.filter((p) => p.status === "pendente" && isOverdueDate(p.dataVencimento)).length;
+            const parcelasPagas = d.parcelas.filter((p) => p.status === "pago").length;
+            const simpleOverdue = !hasParce && status === "pendente" && isOverdueDate(d.dataVencimento);
+
+            const pessoaNome = getPessoaNome(d.pessoaId);
+            const initial = pessoaNome.charAt(0).toUpperCase();
+
+            const barColor = status === "pago"
+              ? "bg-emerald-500"
+              : parcelasVencidas > 0 || simpleOverdue
+              ? "bg-red-500"
+              : d.tipo === "pagar"
+              ? "bg-red-400"
+              : "bg-emerald-400";
+
+            return (
+              <div
+                key={d.id}
+                className="bg-card border rounded-2xl overflow-hidden"
+                data-testid={`mobile-card-divida-${d.id}`}
+              >
+                <div className="flex items-stretch gap-0">
+                  <div className={`w-1 flex-shrink-0 ${barColor}`} />
+                  <div className="flex-1 p-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-white ${
+                        d.tipo === "pagar" ? "bg-red-400" : "bg-emerald-500"
+                      }`}>
+                        {initial}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-semibold text-sm leading-tight">{pessoaNome}</p>
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                            d.tipo === "receber"
+                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                              : "bg-red-500/10 text-red-700 dark:text-red-400"
+                          }`}>
+                            {d.tipo === "receber" ? "Receber" : "Pagar"}
+                          </span>
+                          {parcelasVencidas > 0 && (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-600 font-medium">
+                              {parcelasVencidas} atrasada{parcelasVencidas > 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {hasParce
+                            ? proximaParcela
+                              ? `Próx: ${formatDate(proximaParcela.dataVencimento)} · ${formatCurrency(Number(proximaParcela.valor))}`
+                              : `${parcelasPagas}/${d.parcelas.length} parcelas pagas`
+                            : status === "pago"
+                            ? `Pago em ${formatDate(d.dataVencimento)}`
+                            : `Venc: ${formatDate(d.dataVencimento)}${simpleOverdue ? " · ATRASADO" : ""}`
+                          }
+                          {d.descricao ? ` · ${d.descricao}` : ""}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className="text-right">
+                          <p className="font-bold text-sm">
+                            {formatCurrency(hasParce ? valorTotal : Number(d.valor))}
+                          </p>
+                          {hasParce && valorPendente > 0 && status !== "pago" && (
+                            <p className="text-xs text-muted-foreground">
+                              rest. {formatCurrency(valorPendente)}
+                            </p>
+                          )}
+                        </div>
+                        {hasParce && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => setExpandedId(isExpanded ? null : d.id)}
+                            data-testid={`button-expand-mobile-${d.id}`}
+                          >
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    {hasParce && (
+                      <div className="mt-2.5 space-y-1">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{parcelasPagas} de {d.parcelas.length} pagas</span>
+                          <span>{Math.round(progresso)}%</span>
+                        </div>
+                        <Progress value={progresso} className="h-1" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {isExpanded && hasParce && (
+                  <div className="border-t border-border/40 divide-y divide-border/30">
+                    {d.parcelas.map((p) => {
+                      const overdue = p.status === "pendente" && isOverdueDate(p.dataVencimento);
+                      const pago = p.status === "pago";
+                      return (
+                        <div key={p.id} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${
+                          pago ? "bg-emerald-500/5" : overdue ? "bg-red-500/5" : ""
+                        }`}>
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                            pago ? "bg-emerald-500 text-white" : overdue ? "bg-red-500 text-white" : "bg-muted text-muted-foreground"
+                          }`}>
+                            {pago ? <Check className="w-3 h-3" /> : p.numero}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium">{formatCurrency(Number(p.valor))}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {pago
+                                ? `Pago em ${formatDate(p.dataPagamento!)}`
+                                : `Venc. ${formatDate(p.dataVencimento)}${overdue ? " · ATRASADO" : ""}`
+                              }
+                            </p>
+                          </div>
+                          {p.status === "pendente" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 flex-shrink-0"
+                              onClick={() => {
+                                setPayingParcela(p);
+                                setPayParcelaForm({ formaPagamento: "pix", dataPagamento: format(new Date(), "yyyy-MM-dd") });
+                              }}
+                              data-testid={`button-pay-mobile-parcela-${p.id}`}
+                            >
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="space-y-3">
