@@ -118,7 +118,7 @@ export function AppSidebar() {
       <SidebarFooter className="p-4 space-y-2">
         <Dialog>
           <DialogTrigger asChild>
-            <Button variant="outline" className="w-full justify-start gap-2" size="sm">
+            <Button variant="outline" className="w-full justify-start gap-2" size="sm" data-testid="button-personalizar">
               <Settings2 className="w-4 h-4" />
               <span>Personalizar</span>
             </Button>
