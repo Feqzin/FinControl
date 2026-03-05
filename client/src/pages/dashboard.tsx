@@ -10,10 +10,11 @@ import {
   Settings2,
 } from "lucide-react";
 import type { Divida, Servico, Pessoa, Cartao, CompraCartao, Renda, Patrimonio } from "@shared/schema";
-import { format, differenceInDays, parseISO } from "date-fns";
+import { format, differenceInDays, parseISO, addDays } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { calcularScore, gerarInsights } from "@/utils/financialEngine";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { useUIPreferences } from "@/context/ui-preferences";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,13 @@ import {
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -86,6 +94,32 @@ function StatCard({ title, value, icon: Icon, trend, color, valueColor, tooltipL
   );
 }
 
+function DateBadge({ dateStr }: { dateStr: string }) {
+  const d = parseISO(dateStr);
+  const diff = differenceInDays(d, new Date());
+  const bg =
+    diff < 0 ? "bg-red-500" :
+    diff === 0 ? "bg-red-500" :
+    diff <= 3 ? "bg-amber-500" :
+    "bg-blue-500";
+  return (
+    <div className={`flex flex-col items-center justify-center w-11 h-12 rounded-xl ${bg} text-white flex-shrink-0 shadow-sm`}>
+      <span className="text-base font-bold leading-none">{format(d, "dd")}</span>
+      <span className="text-[9px] uppercase font-semibold mt-0.5 opacity-90 tracking-wide">
+        {format(d, "MMM", { locale: ptBR })}
+      </span>
+    </div>
+  );
+}
+
+function urgencyLabel(dateStr: string): { text: string; cls: string } {
+  const diff = differenceInDays(parseISO(dateStr), new Date());
+  if (diff < 0) return { text: `Venceu há ${Math.abs(diff)}d`, cls: "text-red-600 font-medium" };
+  if (diff === 0) return { text: "Vence Hoje", cls: "text-red-600 font-semibold" };
+  if (diff === 1) return { text: "Vence amanhã", cls: "text-amber-600 font-medium" };
+  return { text: `Vence em ${diff} dias`, cls: "text-muted-foreground" };
+}
+
 const insightIconMap: Record<string, any> = {
   trophy: Trophy,
   alert: AlertTriangle,
@@ -99,6 +133,18 @@ const insightIconMap: Record<string, any> = {
 export default function Dashboard() {
   const { visible } = useValuesVisibility();
   const { prefs, toggleDashCard, toggleCompact } = useUIPreferences();
+  const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), "yyyy-MM"));
+
+  const monthOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = [];
+    const now = new Date();
+    for (let i = 12; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const label = format(d, "MMMM 'de' yyyy", { locale: ptBR });
+      opts.push({ value: format(d, "yyyy-MM"), label: label.charAt(0).toUpperCase() + label.slice(1) });
+    }
+    return opts;
+  }, []);
 
   const { data: dividas = [], isLoading: l1 } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [], isLoading: l2 } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
@@ -110,7 +156,7 @@ export default function Dashboard() {
 
   const isLoading = l1 || l2 || l3;
 
-  const currentMonth = format(new Date(), "yyyy-MM");
+  const currentMonth = selectedMonth;
 
   // Totais gerais (para cards A receber / A pagar)
   const totalReceber = dividas
@@ -164,6 +210,7 @@ export default function Dashboard() {
 
   const today = format(new Date(), "yyyy-MM-dd");
   const in5Days = format(new Date(Date.now() + 5 * 86400000), "yyyy-MM-dd");
+  const in7Days = format(addDays(new Date(), 7), "yyyy-MM-dd");
 
   const proximosVencimentos = dividas
     .filter((d) => d.status === "pendente")
@@ -180,12 +227,61 @@ export default function Dashboard() {
   const getCardUsage = (cartaoId: string) =>
     compras.filter((c) => c.cartaoId === cartaoId).reduce((s, c) => s + Number(c.valorParcela), 0);
 
+  const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "Desconhecido";
+
+  // === A PAGAR NA SEMANA (dívidas + cartões + serviços vencendo em até 7 dias) ===
+  interface PagarSemanaItem {
+    id: string;
+    title: string;
+    dateStr: string;
+    amount: number;
+    type: "divida" | "cartao" | "servico";
+  }
+
+  const pagarSemana: PagarSemanaItem[] = useMemo(() => {
+    const items: PagarSemanaItem[] = [];
+
+    dividas
+      .filter((d) => d.tipo === "pagar" && d.status === "pendente" && d.dataVencimento && d.dataVencimento <= in7Days)
+      .forEach((d) => {
+        items.push({
+          id: `div-${d.id}`,
+          title: d.descricao || pessoas.find((p) => p.id === d.pessoaId)?.nome || "Pagamento",
+          dateStr: d.dataVencimento!,
+          amount: Number(d.valor),
+          type: "divida",
+        });
+      });
+
+    cartoes.forEach((c) => {
+      const usado = compras.filter((cc) => cc.cartaoId === c.id).reduce((s, cc) => s + Number(cc.valorParcela), 0);
+      if (usado <= 0) return;
+      const now = new Date();
+      const vencDate = new Date(now.getFullYear(), now.getMonth(), c.diaVencimento);
+      const vencStr = format(vencDate, "yyyy-MM-dd");
+      if (vencStr >= today && vencStr <= in7Days) {
+        items.push({ id: `cat-${c.id}`, title: `Fatura ${c.nome}`, dateStr: vencStr, amount: usado, type: "cartao" });
+      }
+    });
+
+    servicos.filter((s) => s.status === "ativo").forEach((s) => {
+      const now = new Date();
+      let d = new Date(now.getFullYear(), now.getMonth(), s.dataCobranca);
+      if (format(d, "yyyy-MM-dd") < today) d = new Date(now.getFullYear(), now.getMonth() + 1, s.dataCobranca);
+      const ds = format(d, "yyyy-MM-dd");
+      if (ds >= today && ds <= in7Days) {
+        items.push({ id: `svc-${s.id}`, title: s.nome, dateStr: ds, amount: Number(s.valorMensal), type: "servico" });
+      }
+    });
+
+    return items.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dividas, cartoes, servicos, compras, pessoas, today, in7Days]);
+
   const alertCartoes = cartoes.filter((c) => {
     const usado = getCardUsage(c.id);
     return (usado / Number(c.limite)) >= 0.8;
   });
-
-  const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "Desconhecido";
 
   // === TOOLTIPS ===
   const mask = (v: string) => maskValue(v, visible);
@@ -407,6 +503,17 @@ export default function Dashboard() {
             </DialogContent>
           </Dialog>
         </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+            <SelectTrigger className="h-9 w-[200px] text-sm" data-testid="select-month">
+              <SelectValue placeholder="Selecionar mês" />
+            </SelectTrigger>
+            <SelectContent>
+              {monthOptions.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         <div
           className="flex items-center gap-3 px-4 py-2 rounded-xl border bg-card min-w-[200px]"
           data-testid="score-financeiro"
@@ -426,6 +533,7 @@ export default function Dashboard() {
               <span className={`text-sm font-bold ${scoreLabelColor}`}>{score.valor}</span>
             </div>
           </div>
+        </div>
         </div>
       </div>
 
@@ -502,6 +610,45 @@ export default function Dashboard() {
           />
         )}
       </div>
+
+      {pagarSemana.length > 0 && (
+        <Card data-testid="pagar-semana-widget">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <CalendarClock className="w-4 h-4 text-amber-500" />
+              A Pagar na Semana
+              <span className="ml-auto text-xs font-normal text-muted-foreground">
+                Próximos 7 dias
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {pagarSemana.map((item) => {
+                const urg = urgencyLabel(item.dateStr);
+                return (
+                  <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors" data-testid={`pagar-semana-${item.id}`}>
+                    <DateBadge dateStr={item.dateStr} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{item.title}</p>
+                      <p className={`text-xs ${urg.cls}`}>{urg.text}</p>
+                    </div>
+                    <span className="text-sm font-semibold text-red-600 flex-shrink-0">
+                      {maskValue(formatCurrency(item.amount), visible)}
+                    </span>
+                  </div>
+                );
+              })}
+              <div className="flex items-center justify-between px-2 pt-2 border-t">
+                <span className="text-xs text-muted-foreground">Total da semana</span>
+                <span className="text-sm font-bold text-red-600">
+                  {maskValue(formatCurrency(pagarSemana.reduce((s, i) => s + i.amount, 0)), visible)}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
