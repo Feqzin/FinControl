@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,9 @@ function formatCurrency(value: number): string {
 }
 
 export default function SimuladorPage() {
+  const { visible } = useValuesVisibility();
+  const fc = (v: number) => maskValue(formatCurrency(v), visible);
+
   const { data: dividas = [], isLoading: l1 } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [], isLoading: l2 } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
   const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
@@ -307,7 +311,7 @@ export default function SimuladorPage() {
                       <div className="rounded-md bg-muted/40 p-3">
                         <p className="text-xs text-muted-foreground">Saldo previsto</p>
                         <p className={`text-lg font-bold ${baseSaldo >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                          {formatCurrency(baseSaldo)}
+                          {fc(baseSaldo)}
                         </p>
                       </div>
                       <div className="rounded-md bg-muted/40 p-3">
@@ -323,7 +327,7 @@ export default function SimuladorPage() {
                       <div className={`rounded-md p-3 ${simSaldo >= 0 ? "bg-emerald-500/5 border border-emerald-500/20" : "bg-red-500/5 border border-red-500/20"}`}>
                         <p className="text-xs text-muted-foreground">Saldo previsto</p>
                         <p className={`text-lg font-bold ${simSaldo >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                          {formatCurrency(simSaldo)}
+                          {fc(simSaldo)}
                         </p>
                       </div>
                       <div className={`rounded-md p-3 ${simScore.valor > baseScore.valor ? "bg-emerald-500/5 border border-emerald-500/20" : simScore.valor < baseScore.valor ? "bg-red-500/5 border border-red-500/20" : "bg-muted/40"}`}>
@@ -342,7 +346,7 @@ export default function SimuladorPage() {
                         <div className={`flex items-center justify-between p-2.5 rounded-md text-sm ${variacaoSaldo > 0 ? "bg-emerald-500/5" : "bg-red-500/5"}`}>
                           <span className="text-muted-foreground">Variação no saldo</span>
                           <span className={`font-bold ${variacaoSaldo > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                            {variacaoSaldo > 0 ? "+" : ""}{formatCurrency(variacaoSaldo)}
+                            {variacaoSaldo > 0 ? "+" : ""}{fc(variacaoSaldo)}
                           </span>
                         </div>
                       )}
@@ -472,26 +476,26 @@ export default function SimuladorPage() {
                 <Card>
                   <CardContent className="pt-6">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Valor Investido</p>
-                    <p className="text-xl font-bold text-primary">{formatCurrency(finalResult.investido)}</p>
+                    <p className="text-xl font-bold text-primary">{fc(finalResult.investido)}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-6">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Juros Ganhos</p>
-                    <p className="text-xl font-bold text-emerald-600">+{formatCurrency(jurosGanhos)}</p>
+                    <p className="text-xl font-bold text-emerald-600">+{fc(jurosGanhos)}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-6">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Valor Final Bruto</p>
-                    <p className="text-xl font-bold">{formatCurrency(finalResult.bruto)}</p>
+                    <p className="text-xl font-bold">{fc(finalResult.bruto)}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-6">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Valor Final Real</p>
                     <div className="flex items-center gap-2">
-                      <p className="text-xl font-bold text-amber-600">{formatCurrency(finalResult.real)}</p>
+                      <p className="text-xl font-bold text-amber-600">{fc(finalResult.real)}</p>
                       <TooltipProvider>
                         <TooltipUI>
                           <TooltipTriggerUI>
@@ -619,8 +623,8 @@ export default function SimuladorPage() {
                 <Card>
                   <CardContent className="pt-6 text-center">
                     <p className="text-sm text-muted-foreground mb-1">Patrimônio Necessário</p>
-                    <p className="text-3xl font-bold text-primary">{formatCurrency(patrimonioNecessario)}</p>
-                    <p className="text-xs text-muted-foreground mt-2">Para render {formatCurrency(gastosDesejados)}/mês</p>
+                    <p className="text-3xl font-bold text-primary">{fc(patrimonioNecessario)}</p>
+                    <p className="text-xs text-muted-foreground mt-2">Para render {fc(gastosDesejados)}/mês</p>
                   </CardContent>
                 </Card>
               </div>
@@ -633,7 +637,7 @@ export default function SimuladorPage() {
                   <div className="flex justify-between items-center p-4 rounded-lg bg-muted/40">
                     <div className="space-y-1">
                       <p className="text-sm font-medium">Quanto falta acumular</p>
-                      <p className="text-2xl font-bold text-amber-600">{formatCurrency(quantoFalta)}</p>
+                      <p className="text-2xl font-bold text-amber-600">{fc(quantoFalta)}</p>
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-medium">Progresso</p>
@@ -649,7 +653,7 @@ export default function SimuladorPage() {
                         return (
                           <div key={anos} className="p-3 border rounded-md text-center">
                             <p className="text-xs text-muted-foreground">{anos} anos</p>
-                            <p className="font-bold text-sm">{formatCurrency(aporteNec)}</p>
+                            <p className="font-bold text-sm">{fc(aporteNec)}</p>
                           </div>
                         );
                       })}

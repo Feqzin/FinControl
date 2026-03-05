@@ -26,8 +26,10 @@ import PerfilPage from "@/pages/perfil-page";
 import RedefinirSenhaPage from "@/pages/redefinir-senha-page";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeProvider } from "@/components/theme-provider";
-import { LayoutDashboard, Receipt, CreditCard, DollarSign, PiggyBank } from "lucide-react";
+import { LayoutDashboard, Receipt, CreditCard, DollarSign, PiggyBank, Eye, EyeOff } from "lucide-react";
 import { Link, useLocation } from "wouter";
+import { ValuesVisibilityProvider, useValuesVisibility } from "@/context/values-visibility";
+import { Button } from "@/components/ui/button";
 
 function Router() {
   return (
@@ -51,6 +53,22 @@ function Router() {
   );
 }
 
+function EyeToggle() {
+  const { visible, toggle } = useValuesVisibility();
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={toggle}
+      data-testid="button-toggle-visibility"
+      title={visible ? "Ocultar valores" : "Mostrar valores"}
+      className="transition-all duration-200"
+    >
+      {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4 text-muted-foreground" />}
+    </Button>
+  );
+}
+
 function AuthenticatedLayout() {
   const [location] = useLocation();
   const style = {
@@ -71,13 +89,14 @@ function AuthenticatedLayout() {
       <div className="flex h-screen w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0 pb-16 md:pb-0">
-          <header className="flex items-center gap-2 p-3 border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+          <header className="flex items-center justify-between gap-2 p-3 border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
+            <EyeToggle />
           </header>
           <ScrollArea className="flex-1">
             <Router />
           </ScrollArea>
-          
+
           <nav className="fixed bottom-0 left-0 right-0 md:hidden border-t bg-background z-40 flex h-16 items-center justify-around px-2">
             {navItems.map((item) => (
               <Link key={item.path} href={item.path} className={`flex flex-col items-center gap-1 p-2 min-w-0 flex-1 ${location === item.path ? "text-primary" : "text-muted-foreground"}`}>
@@ -122,10 +141,12 @@ function App() {
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <Toaster />
-          <AppContent />
-        </TooltipProvider>
+        <ValuesVisibilityProvider>
+          <TooltipProvider>
+            <Toaster />
+            <AppContent />
+          </TooltipProvider>
+        </ValuesVisibilityProvider>
       </QueryClientProvider>
     </ThemeProvider>
   );

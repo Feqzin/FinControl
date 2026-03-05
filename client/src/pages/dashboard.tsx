@@ -13,6 +13,7 @@ import { format, differenceInDays, parseISO } from "date-fns";
 import { calcularScore, gerarInsights } from "@/utils/financialEngine";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useMemo } from "react";
+import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -28,8 +29,14 @@ function getUrgencyStyle(dataVencimento: string | null, status: string) {
   return { dot: "bg-emerald-400", label: `${days}d`, labelClass: "text-emerald-600" };
 }
 
-function StatCard({ title, value, icon: Icon, trend, color, tooltipLines }: {
-  title: string; value: string; icon: any; trend?: string; color: string; tooltipLines?: string[];
+function StatCard({ title, value, icon: Icon, trend, color, valueColor, tooltipLines }: {
+  title: string;
+  value: string;
+  icon: any;
+  trend?: string;
+  color: string;
+  valueColor?: string;
+  tooltipLines?: string[];
 }) {
   const card = (
     <Card className="hover-elevate min-h-[100px]">
@@ -37,7 +44,7 @@ function StatCard({ title, value, icon: Icon, trend, color, tooltipLines }: {
         <div className="flex items-start justify-between gap-2 h-full">
           <div className="space-y-1 flex-1 min-w-0">
             <p className="text-sm text-muted-foreground">{title}</p>
-            <p className="text-xl font-bold tracking-tight truncate" title={value}>{value}</p>
+            <p className={`text-xl font-bold tracking-tight truncate ${valueColor || ""}`} title={value}>{value}</p>
             {trend && <p className="text-xs text-muted-foreground">{trend}</p>}
           </div>
           <div className={`flex items-center justify-center w-10 h-10 rounded-md flex-shrink-0 ${color}`}>
@@ -53,11 +60,13 @@ function StatCard({ title, value, icon: Icon, trend, color, tooltipLines }: {
   return (
     <Tooltip>
       <TooltipTrigger asChild>{card}</TooltipTrigger>
-      <TooltipContent side="bottom" align="start" className="max-w-[280px] p-3">
+      <TooltipContent side="bottom" align="start" className="max-w-[300px] p-3">
         <div className="space-y-1 text-xs">
-          {tooltipLines.map((line, i) => (
-            <div key={i} className={line.startsWith('---') ? 'border-t my-1' : ''}>{line.startsWith('---') ? '' : line}</div>
-          ))}
+          {tooltipLines.map((line, i) =>
+            line.startsWith("---")
+              ? <div key={i} className="border-t border-border my-1" />
+              : <div key={i}>{line}</div>
+          )}
         </div>
       </TooltipContent>
     </Tooltip>
@@ -75,6 +84,8 @@ const insightIconMap: Record<string, any> = {
 };
 
 export default function Dashboard() {
+  const { visible } = useValuesVisibility();
+
   const { data: dividas = [], isLoading: l1 } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [], isLoading: l2 } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
   const { data: pessoas = [], isLoading: l3 } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
@@ -85,6 +96,9 @@ export default function Dashboard() {
 
   const isLoading = l1 || l2 || l3;
 
+  const currentMonth = format(new Date(), "yyyy-MM");
+
+  // Totais gerais (para cards A receber / A pagar)
   const totalReceber = dividas
     .filter((d) => d.tipo === "receber" && d.status === "pendente")
     .reduce((s, d) => s + Number(d.valor), 0);
@@ -104,9 +118,35 @@ export default function Dashboard() {
   const totalPatrimonio = patrimonios
     .reduce((s, p) => s + Number(p.valorAtual), 0);
 
-  const saldoPrevisto = totalRenda > 0
-    ? totalRenda - totalServicos - totalPagar
-    : totalReceber - totalPagar - totalServicos;
+  // === SALDO DO MÊS — CÁLCULO COMPLETO ===
+  // Entradas do mês
+  const ReceberMes = dividas
+    .filter((d) => d.tipo === "receber" && d.status === "pendente" && d.dataVencimento?.startsWith(currentMonth))
+    .reduce((s, d) => s + Number(d.valor), 0);
+
+  const totalEntradas = totalRenda + ReceberMes;
+
+  // Saídas do mês
+  const totalCartoesMes = compras
+    .reduce((s, c) => s + Number(c.valorParcela), 0);
+
+  const totalPagarMes = dividas
+    .filter((d) => d.tipo === "pagar" && d.status === "pendente" && d.dataVencimento?.startsWith(currentMonth))
+    .reduce((s, d) => s + Number(d.valor), 0);
+
+  const totalSaidas = totalCartoesMes + totalPagarMes + totalServicos;
+
+  const saldoPrevisto = totalEntradas - totalSaidas;
+
+  const saldoColor =
+    saldoPrevisto > 0 ? "text-emerald-600"
+    : saldoPrevisto === 0 ? "text-blue-600"
+    : "text-red-600";
+
+  const saldoIconBg =
+    saldoPrevisto > 0 ? "bg-emerald-500/10 text-emerald-600"
+    : saldoPrevisto === 0 ? "bg-blue-500/10 text-blue-600"
+    : "bg-red-500/10 text-red-600";
 
   const today = format(new Date(), "yyyy-MM-dd");
   const in5Days = format(new Date(Date.now() + 5 * 86400000), "yyyy-MM-dd");
@@ -133,6 +173,9 @@ export default function Dashboard() {
 
   const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "Desconhecido";
 
+  // === TOOLTIPS ===
+  const mask = (v: string) => maskValue(v, visible);
+
   const aReceberTooltip = useMemo(() => {
     const items = dividas
       .filter((d) => d.tipo === "receber" && d.status === "pendente")
@@ -141,11 +184,12 @@ export default function Dashboard() {
     if (items.length === 0) return ["Nenhum valor a receber pendente."];
     return [
       "Principais valores a receber:",
-      ...items.map(d => `• ${getPessoaNome(d.pessoaId)} — ${formatCurrency(Number(d.valor))}`),
+      ...items.map(d => `• ${getPessoaNome(d.pessoaId)} — ${mask(formatCurrency(Number(d.valor)))}`),
       "---",
-      `Total: ${formatCurrency(totalReceber)}`
+      `Total: ${mask(formatCurrency(totalReceber))}`
     ];
-  }, [dividas, pessoas, totalReceber]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dividas, pessoas, totalReceber, visible]);
 
   const aPagarTooltip = useMemo(() => {
     const items = dividas
@@ -155,41 +199,52 @@ export default function Dashboard() {
     if (items.length === 0) return ["Nenhum vencimento pendente."];
     return [
       "Próximos vencimentos:",
-      ...items.map(d => `• ${(d.descricao || getPessoaNome(d.pessoaId)).slice(0, 25)} — ${formatCurrency(Number(d.valor))} (${d.dataVencimento ? format(parseISO(d.dataVencimento), 'dd/MM') : 'S/D'})`),
+      ...items.map(d => `• ${(d.descricao || getPessoaNome(d.pessoaId)).slice(0, 25)} — ${mask(formatCurrency(Number(d.valor)))} (${d.dataVencimento ? format(parseISO(d.dataVencimento), 'dd/MM') : 'S/D'})`),
       "---",
-      `Total: ${formatCurrency(totalPagar)}`
+      `Total: ${mask(formatCurrency(totalPagar))}`
     ];
-  }, [dividas, pessoas, totalPagar]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dividas, pessoas, totalPagar, visible]);
 
   const gastosFixosTooltip = useMemo(() => {
     const items = servicos.filter((s) => s.status === "ativo");
     if (items.length === 0) return ["Nenhum serviço ativo."];
     return [
       "Serviços ativos:",
-      ...items.map(s => `• ${s.nome} — ${formatCurrency(Number(s.valorMensal))}/mês`),
+      ...items.map(s => `• ${s.nome} — ${mask(formatCurrency(Number(s.valorMensal)))}/mês`),
       "---",
-      `Total: ${formatCurrency(totalServicos)}`
+      `Total: ${mask(formatCurrency(totalServicos))}`
     ];
-  }, [servicos, totalServicos]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servicos, totalServicos, visible]);
 
   const saldoMesTooltip = useMemo(() => [
-    totalRenda > 0 ? `Renda: ${formatCurrency(totalRenda)}` : `A receber: ${formatCurrency(totalReceber)}`,
-    `Serviços: -${formatCurrency(totalServicos)}`,
-    `A pagar: -${formatCurrency(totalPagar)}`,
+    "ENTRADAS",
+    `• Renda mensal: ${mask(formatCurrency(totalRenda))}`,
+    ...(ReceberMes > 0 ? [`• A receber (mês): ${mask(formatCurrency(ReceberMes))}`] : []),
+    `Total entradas: ${mask(formatCurrency(totalEntradas))}`,
     "---",
-    `Saldo: ${formatCurrency(saldoPrevisto)}`
-  ], [totalRenda, totalReceber, totalServicos, totalPagar, saldoPrevisto]);
+    "SAÍDAS",
+    `• Cartões: ${mask(formatCurrency(totalCartoesMes))}`,
+    `• A pagar (mês): ${mask(formatCurrency(totalPagarMes))}`,
+    `• Serviços: ${mask(formatCurrency(totalServicos))}`,
+    `Total saídas: ${mask(formatCurrency(totalSaidas))}`,
+    "---",
+    `Saldo = ${mask(formatCurrency(totalEntradas))} - ${mask(formatCurrency(totalSaidas))} = ${mask(formatCurrency(saldoPrevisto))}`,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [totalRenda, ReceberMes, totalEntradas, totalCartoesMes, totalPagarMes, totalServicos, totalSaidas, saldoPrevisto, visible]);
 
   const rendaMensalTooltip = useMemo(() => {
     const items = rendas.filter((r) => r.ativo);
     if (items.length === 0) return ["Nenhuma renda cadastrada.", "Acesse /renda para adicionar."];
     return [
       "Fontes de renda ativas:",
-      ...items.map(r => `• ${r.descricao} — ${formatCurrency(Number(r.valor))} (${r.tipo === 'fixo' ? 'Fixo' : 'Variável'})`),
+      ...items.map(r => `• ${r.descricao} — ${mask(formatCurrency(Number(r.valor)))} (${r.tipo === 'fixo' ? 'Fixo' : 'Variável'})`),
       "---",
-      `Total: ${formatCurrency(totalRenda)}`
+      `Total: ${mask(formatCurrency(totalRenda))}`
     ];
-  }, [rendas, totalRenda]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rendas, totalRenda, visible]);
 
   const patrimonioTooltip = useMemo(() => {
     if (patrimonios.length === 0) return ["Nenhum patrimônio cadastrado."];
@@ -197,7 +252,7 @@ export default function Dashboard() {
       acc[p.tipo] = (acc[p.tipo] || 0) + Number(p.valorAtual);
       return acc;
     }, {} as Record<string, number>);
-    
+
     const tipoLabels: Record<string, string> = {
       conta_bancaria: "Conta Bancária",
       dinheiro: "Dinheiro",
@@ -208,11 +263,12 @@ export default function Dashboard() {
 
     return [
       "Distribuição por tipo:",
-      ...Object.entries(grouped).map(([tipo, total]) => `• ${tipoLabels[tipo] || tipo}: ${formatCurrency(total)}`),
+      ...Object.entries(grouped).map(([tipo, total]) => `• ${tipoLabels[tipo] || tipo}: ${mask(formatCurrency(total))}`),
       "---",
-      `Total: ${formatCurrency(totalPatrimonio)}`
+      `Total: ${mask(formatCurrency(totalPatrimonio))}`
     ];
-  }, [patrimonios, totalPatrimonio]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patrimonios, totalPatrimonio, visible]);
 
   const alertas: { icon: any; color: string; bgColor: string; texto: string }[] = [];
   if (vencidos.length > 0) {
@@ -236,7 +292,7 @@ export default function Dashboard() {
       icon: TrendingDown,
       color: "text-red-600",
       bgColor: "bg-red-500/5 border-red-500/20",
-      texto: `Seu saldo previsto esta negativo: ${formatCurrency(saldoPrevisto)}`,
+      texto: `Saldo do mes negativo: ${maskValue(formatCurrency(saldoPrevisto), visible)}`,
     });
   }
   for (const c of alertCartoes) {
@@ -317,23 +373,25 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatCard
           title="A receber"
-          value={formatCurrency(totalReceber)}
+          value={maskValue(formatCurrency(totalReceber), visible)}
           icon={ArrowUpRight}
           trend={`${dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").length} pendentes`}
           color="bg-emerald-500/10 text-emerald-600"
+          valueColor="text-emerald-600"
           tooltipLines={aReceberTooltip}
         />
         <StatCard
           title="A pagar"
-          value={formatCurrency(totalPagar)}
+          value={maskValue(formatCurrency(totalPagar), visible)}
           icon={ArrowDownRight}
           trend={`${dividas.filter((d) => d.tipo === "pagar" && d.status === "pendente").length} pendentes`}
           color="bg-red-500/10 text-red-600"
+          valueColor="text-red-600"
           tooltipLines={aPagarTooltip}
         />
         <StatCard
           title="Gastos fixos"
-          value={formatCurrency(totalServicos)}
+          value={maskValue(formatCurrency(totalServicos), visible)}
           icon={Receipt}
           trend={`${servicos.filter((s) => s.status === "ativo").length} ativos`}
           color="bg-amber-500/10 text-amber-600"
@@ -341,26 +399,29 @@ export default function Dashboard() {
         />
         <StatCard
           title="Saldo do mês"
-          value={formatCurrency(saldoPrevisto)}
+          value={maskValue(formatCurrency(saldoPrevisto), visible)}
           icon={saldoPrevisto >= 0 ? TrendingUp : TrendingDown}
-          trend={totalRenda > 0 ? "Renda - Gastos" : "Receitas - Despesas"}
-          color={saldoPrevisto >= 0 ? "bg-primary/10 text-primary" : "bg-red-500/10 text-red-600"}
+          trend="Entradas - Saídas"
+          color={saldoIconBg}
+          valueColor={saldoColor}
           tooltipLines={saldoMesTooltip}
         />
         <StatCard
           title="Renda mensal"
-          value={formatCurrency(totalRenda)}
+          value={maskValue(formatCurrency(totalRenda), visible)}
           icon={DollarSign}
           trend={`${rendas.filter((r) => r.ativo).length} fontes ativas`}
           color="bg-emerald-500/10 text-emerald-600"
+          valueColor="text-emerald-600"
           tooltipLines={rendaMensalTooltip}
         />
         <StatCard
           title="Patrimônio total"
-          value={formatCurrency(totalPatrimonio)}
+          value={maskValue(formatCurrency(totalPatrimonio), visible)}
           icon={PiggyBank}
           trend={`${patrimonios.length} itens`}
           color="bg-blue-500/10 text-blue-600"
+          valueColor="text-blue-600"
           tooltipLines={patrimonioTooltip}
         />
       </div>
@@ -467,7 +528,7 @@ export default function Dashboard() {
                         <Badge variant={d.tipo === "receber" ? "default" : "destructive"} className="text-xs">
                           {d.tipo === "receber" ? "Receber" : "Pagar"}
                         </Badge>
-                        <span className="text-sm font-semibold">{formatCurrency(Number(d.valor))}</span>
+                        <span className="text-sm font-semibold">{maskValue(formatCurrency(Number(d.valor)), visible)}</span>
                       </div>
                     </div>
                   );

@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,6 +37,8 @@ type Periodo = "mes_atual" | "mes_anterior" | "ultimos_3_meses" | "ano_atual" | 
 
 export default function RelatoriosPage() {
   const [periodo, setPeriodo] = useState<Periodo>("mes_atual");
+  const { visible } = useValuesVisibility();
+  const fc = (v: number) => maskValue(formatCurrency(v), visible);
 
   const { data: rendas = [], isLoading: l1 } = useQuery<Renda[]>({ queryKey: ["/api/rendas"] });
   const { data: patrimonios = [], isLoading: l2 } = useQuery<Patrimonio[]>({ queryKey: ["/api/patrimonios"] });
@@ -301,7 +304,7 @@ export default function RelatoriosPage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Renda Total</p>
-              <p className="text-lg font-bold text-emerald-600">{formatCurrency(filteredData.totalRenda)}</p>
+              <p className="text-lg font-bold text-emerald-600">{fc(filteredData.totalRenda)}</p>
             </div>
           </CardContent>
         </Card>
@@ -312,7 +315,7 @@ export default function RelatoriosPage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total Cartões</p>
-              <p className="text-lg font-bold text-red-600">{formatCurrency(filteredData.totalCartoes)}</p>
+              <p className="text-lg font-bold text-red-600">{fc(filteredData.totalCartoes)}</p>
             </div>
           </CardContent>
         </Card>
@@ -323,7 +326,7 @@ export default function RelatoriosPage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Total Dívidas</p>
-              <p className="text-lg font-bold text-red-600">{formatCurrency(filteredData.totalDividasPagar)}</p>
+              <p className="text-lg font-bold text-red-600">{fc(filteredData.totalDividasPagar)}</p>
             </div>
           </CardContent>
         </Card>
@@ -334,7 +337,7 @@ export default function RelatoriosPage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">A Receber</p>
-              <p className="text-lg font-bold text-blue-600">{formatCurrency(filteredData.totalReceber)}</p>
+              <p className="text-lg font-bold text-blue-600">{fc(filteredData.totalReceber)}</p>
             </div>
           </CardContent>
         </Card>
@@ -345,7 +348,7 @@ export default function RelatoriosPage() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Patrimônio</p>
-              <p className="text-lg font-bold text-indigo-600">{formatCurrency(filteredData.totalPatrimonio)}</p>
+              <p className="text-lg font-bold text-indigo-600">{fc(filteredData.totalPatrimonio)}</p>
             </div>
           </CardContent>
         </Card>
@@ -357,7 +360,7 @@ export default function RelatoriosPage() {
             <div>
               <p className="text-xs text-muted-foreground">Saldo Líquido</p>
               <p className={`text-lg font-bold ${filteredData.saldoLiquido >= 0 ? "text-primary" : "text-red-600"}`}>
-                {formatCurrency(filteredData.saldoLiquido)}
+                {fc(filteredData.saldoLiquido)}
               </p>
             </div>
           </CardContent>
@@ -441,13 +444,13 @@ export default function RelatoriosPage() {
                             <TableCell className="pl-6 text-xs text-muted-foreground">{cardName}</TableCell>
                             <TableCell className="max-w-[150px] truncate" title={item.descricao}>{item.descricao}</TableCell>
                             <TableCell>{item.parcelaAtual}/{item.parcelas}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(Number(item.valorParcela))}</TableCell>
+                            <TableCell className="text-right">{fc(Number(item.valorParcela))}</TableCell>
                           </TableRow>
                         ))}
                         <TableRow className="border-t-2 font-bold">
                           <TableCell colSpan={3} className="text-right">Subtotal {cardName}</TableCell>
                           <TableCell className="text-right">
-                            {formatCurrency(items.reduce((s, i) => s + Number(i.valorParcela), 0))}
+                            {fc(items.reduce((s, i) => s + Number(i.valorParcela), 0))}
                           </TableCell>
                         </TableRow>
                       </>
@@ -497,7 +500,7 @@ export default function RelatoriosPage() {
                             </Badge>
                           </TableCell>
                           <TableCell className={`text-right font-semibold ${total >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                            {formatCurrency(Math.abs(total))}
+                            {fc(Math.abs(total))}
                           </TableCell>
                         </TableRow>
                       );
@@ -540,7 +543,7 @@ export default function RelatoriosPage() {
                         <TableCell className="font-medium">{s.nome}</TableCell>
                         <TableCell>{s.categoria}</TableCell>
                         <TableCell className="text-right font-semibold">
-                          {formatCurrency(Number(s.valorMensal))}
+                          {fc(Number(s.valorMensal))}
                         </TableCell>
                       </TableRow>
                     ))
@@ -548,7 +551,7 @@ export default function RelatoriosPage() {
                   <TableRow className="bg-muted/50 font-bold border-t-2">
                     <TableCell colSpan={2} className="text-right">Total Mensal</TableCell>
                     <TableCell className="text-right">
-                      {formatCurrency(filteredData.totalServicosMensal)}
+                      {fc(filteredData.totalServicosMensal)}
                     </TableCell>
                   </TableRow>
                 </TableBody>
@@ -596,7 +599,7 @@ export default function RelatoriosPage() {
                           <TableCell className="font-medium">{p.nome}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">{labels[p.tipo] || p.tipo}</TableCell>
                           <TableCell className="text-right font-bold text-indigo-600">
-                            {formatCurrency(Number(p.valorAtual))}
+                            {fc(Number(p.valorAtual))}
                           </TableCell>
                         </TableRow>
                       );
@@ -605,7 +608,7 @@ export default function RelatoriosPage() {
                   <TableRow className="bg-muted/50 font-bold border-t-2">
                     <TableCell colSpan={2} className="text-right">Total</TableCell>
                     <TableCell className="text-right text-indigo-600">
-                      {formatCurrency(filteredData.totalPatrimonio)}
+                      {fc(filteredData.totalPatrimonio)}
                     </TableCell>
                   </TableRow>
                 </TableBody>
