@@ -35,6 +35,8 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import type { Patrimonio, InsertPatrimonio } from "@shared/schema";
+import { BrandIconDisplay } from "@/lib/brand-icons";
+import { IconPicker } from "@/components/icon-picker";
 
 const TIPOS_PATRIMONIO = [
   { value: "conta_bancaria", label: "Conta Bancária", icon: Wallet },
@@ -122,7 +124,7 @@ export default function PatrimonioPage() {
   });
 
   const resetForm = () => {
-    setFormData({ nome: "", tipo: "conta_bancaria", valorAtual: "0" });
+    setFormData({ nome: "", tipo: "conta_bancaria", valorAtual: "0", iconeId: undefined });
     setEditingPatrimonio(null);
   };
 
@@ -184,6 +186,15 @@ export default function PatrimonioPage() {
               </DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Ícone</Label>
+                <IconPicker
+                  value={formData.iconeId || null}
+                  name={formData.nome || ""}
+                  onChange={(v) => setFormData({ ...formData, iconeId: v || undefined })}
+                  size="md"
+                />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="nome">Nome / Descrição</Label>
                 <Input
@@ -295,9 +306,13 @@ export default function PatrimonioPage() {
                   <CardContent className="p-4 flex justify-between items-start gap-4">
                     <div className="space-y-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                          <tipoInfo.icon className="w-4 h-4 text-primary" />
-                        </div>
+                        {p.iconeId ? (
+                          <BrandIconDisplay name={p.nome} iconeId={p.iconeId} size="sm" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                            <tipoInfo.icon className="w-4 h-4 text-primary" />
+                          </div>
+                        )}
                         <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
                           {tipoInfo.label}
                         </Badge>
@@ -321,6 +336,7 @@ export default function PatrimonioPage() {
                             nome: p.nome,
                             tipo: p.tipo,
                             valorAtual: p.valorAtual.toString(),
+                            iconeId: p.iconeId || undefined,
                           });
                           setOpen(true);
                         }}

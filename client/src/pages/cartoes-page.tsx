@@ -26,6 +26,7 @@ import {
   RefreshCw, Upload, List, Check, X, AlertTriangle, FileText, ChevronRight,
 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
+import { IconPicker } from "@/components/icon-picker";
 import type { Cartao, CompraCartao, Pessoa, ParcelaCompra } from "@shared/schema";
 import { format, addMonths, isPast, parseISO } from "date-fns";
 
@@ -392,6 +393,8 @@ export default function CartoesPage() {
 
   const [editingCard, setEditingCard] = useState<Cartao | null>(null);
   const [editCardForm, setEditCardForm] = useState({ nome: "", limite: "", melhorDiaCompra: "", diaVencimento: "" });
+  const [editCardIcone, setEditCardIcone] = useState<string | null>(null);
+  const [newCardIcone, setNewCardIcone] = useState<string | null>(null);
 
   const [editingCompra, setEditingCompra] = useState<CompraCartao | null>(null);
   const [editCompraForm, setEditCompraForm] = useState({ descricao: "", valorTotal: "", parcelas: "", pessoaId: "", statusPessoa: "" });
@@ -428,22 +431,25 @@ export default function CartoesPage() {
     mutationFn: async (data: any) => {
       await apiRequest("POST", "/api/cartoes", {
         ...data, melhorDiaCompra: parseInt(data.melhorDiaCompra), diaVencimento: parseInt(data.diaVencimento),
+        iconeId: newCardIcone,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cartoes"] });
       setOpenCard(false);
       setCardForm({ nome: "", limite: "", melhorDiaCompra: "", diaVencimento: "" });
+      setNewCardIcone(null);
       toast({ title: "Cartao adicionado" });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
   const updateCardMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+    mutationFn: async ({ id, data, iconeId }: { id: string; data: any; iconeId?: string | null }) => {
       await apiRequest("PATCH", `/api/cartoes/${id}`, {
         nome: data.nome, limite: data.limite,
         melhorDiaCompra: parseInt(data.melhorDiaCompra), diaVencimento: parseInt(data.diaVencimento),
+        iconeId: iconeId ?? null,
       });
     },
     onSuccess: () => {
@@ -682,6 +688,10 @@ export default function CartoesPage() {
               <DialogHeader><DialogTitle>Novo Cartao</DialogTitle></DialogHeader>
               <form onSubmit={(e) => { e.preventDefault(); createCardMutation.mutate(cardForm); }} className="space-y-4">
                 <div className="space-y-2">
+                  <Label>Icone</Label>
+                  <IconPicker value={newCardIcone} name={cardForm.nome} onChange={setNewCardIcone} size="md" />
+                </div>
+                <div className="space-y-2">
                   <Label>Nome do cartao</Label>
                   <Input data-testid="input-cartao-nome" value={cardForm.nome}
                     onChange={(e) => setCardForm({ ...cardForm, nome: e.target.value })} placeholder="Ex: Nubank, Itau..." required />
@@ -798,10 +808,14 @@ export default function CartoesPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!editingCard} onOpenChange={(v) => { if (!v) setEditingCard(null); }}>
+      <Dialog open={!!editingCard} onOpenChange={(v) => { if (!v) { setEditingCard(null); setEditCardIcone(null); } }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Editar Cartao</DialogTitle></DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); if (!editingCard) return; updateCardMutation.mutate({ id: editingCard.id, data: editCardForm }); }} className="space-y-4">
+          <form onSubmit={(e) => { e.preventDefault(); if (!editingCard) return; updateCardMutation.mutate({ id: editingCard.id, data: editCardForm, iconeId: editCardIcone }); }} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Ícone</Label>
+              <IconPicker value={editCardIcone} name={editCardForm.nome} onChange={setEditCardIcone} size="md" />
+            </div>
             <div className="space-y-2">
               <Label>Nome do cartao</Label>
               <Input data-testid="input-edit-cartao-nome" value={editCardForm.nome}
@@ -1287,7 +1301,7 @@ export default function CartoesPage() {
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
-                      <BrandIconDisplay name={c.nome} size="md" />
+                      <BrandIconDisplay name={c.nome} iconeId={c.iconeId} size="md" />
                       <div>
                         <CardTitle className="text-base">{c.nome}</CardTitle>
                         <p className="text-xs text-muted-foreground mt-0.5">
@@ -1297,7 +1311,7 @@ export default function CartoesPage() {
                     </div>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="icon"
-                        onClick={() => { setEditingCard(c); setEditCardForm({ nome: c.nome, limite: String(c.limite), melhorDiaCompra: String(c.melhorDiaCompra), diaVencimento: String(c.diaVencimento) }); }}
+                        onClick={() => { setEditingCard(c); setEditCardForm({ nome: c.nome, limite: String(c.limite), melhorDiaCompra: String(c.melhorDiaCompra), diaVencimento: String(c.diaVencimento) }); setEditCardIcone(c.iconeId || null); }}
                         data-testid={`button-edit-cartao-${c.id}`}>
                         <Pencil className="w-4 h-4 text-muted-foreground" />
                       </Button>

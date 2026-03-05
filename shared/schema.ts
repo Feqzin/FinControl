@@ -71,6 +71,7 @@ export const cartoes = pgTable("cartoes", {
   limite: decimal("limite", { precision: 12, scale: 2 }).notNull(),
   melhorDiaCompra: integer("melhor_dia_compra").notNull(),
   diaVencimento: integer("dia_vencimento").notNull(),
+  iconeId: text("icone_id"),
 });
 
 export const insertCartaoSchema = createInsertSchema(cartoes).omit({ id: true });
@@ -105,6 +106,7 @@ export const servicos = pgTable("servicos", {
   dataCobranca: integer("data_cobranca").notNull(),
   formaPagamento: text("forma_pagamento").notNull(),
   status: text("status").notNull().default("ativo"),
+  iconeId: text("icone_id"),
 });
 
 export const insertServicoSchema = createInsertSchema(servicos).omit({ id: true });
@@ -173,6 +175,7 @@ export const patrimonios = pgTable("patrimonios", {
   nome: text("nome").notNull(),
   tipo: text("tipo").notNull().default("conta_bancaria"),
   valorAtual: decimal("valor_atual", { precision: 12, scale: 2 }).notNull().default("0"),
+  iconeId: text("icone_id"),
 });
 
 export const insertPatrimonioSchema = createInsertSchema(patrimonios).omit({ id: true });

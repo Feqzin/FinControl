@@ -1,0 +1,124 @@
+========================================
+SISTEMA COMPLETO DE ÍCONES EDITÁVEIS
+========================================
+
+Permitir alterar ícones a qualquer momento para:
+
+- Cartões
+- Serviços
+- Bancos
+- Contas
+- Itens personalizados
+
+========================================
+FUNCIONALIDADES OBRIGATÓRIAS
+========================================
+
+1) Alterar ícone depois de criado
+
+Ao editar qualquer item:
+→ Mostrar botão "Alterar ícone"
+→ Abrir modal com opções
+
+2) Escolher ícone da biblioteca
+
+Biblioteca organizada por categorias:
+
+Bancos:
+- Nubank
+- Itaú
+- Banco do Brasil
+- Bradesco
+- Caixa
+- Inter
+- Santander
+- Mercado Pago
+
+Serviços:
+- Netflix
+- Spotify
+- Amazon
+- YouTube
+- Disney+
+- Apple
+- Google
+- HBO Max
+
+Carteiras:
+- PayPal
+- PicPay
+- PagSeguro
+
+Mostrar ícones em grade visual com preview.
+
+========================================
+3) IMPORTAR ÍCONE PRÓPRIO
+========================================
+
+Permitir:
+
+- Upload de PNG, JPG ou SVG
+- Recorte automático centralizado
+- Redimensionamento automático
+- Fundo transparente se possível
+- Preview antes de salvar
+
+Armazenar:
+- Caminho do arquivo
+- Nome personalizado
+
+========================================
+4) REMOVER OU RESETAR ÍCONE
+========================================
+
+Opção:
+
+- Remover ícone personalizado
+- Voltar para ícone padrão
+- Substituir por outro da biblioteca
+
+========================================
+5) PADRÃO VISUAL
+========================================
+
+Todos os ícones devem:
+
+- Ter tamanho padronizado
+- Bordas arredondadas
+- Fundo neutro opcional
+- Não distorcer proporção
+- Adaptar-se ao modo escuro
+
+========================================
+6) INTEGRAÇÃO
+========================================
+
+Ícones devem aparecer em:
+
+- Dashboard
+- Listagens
+- Relatórios
+- PDF
+- Conexões bancárias
+- Tooltip
+- Tutorial
+
+========================================
+7) EXPERIÊNCIA DO USUÁRIO
+========================================
+
+- Animação leve ao trocar ícone
+- Feedback visual ao salvar
+- Não quebrar layout
+- Responsivo para mobile
+
+========================================
+OBJETIVO FINAL
+========================================
+
+Criar um sistema totalmente flexível onde:
+
+- Posso trocar qualquer ícone quando quiser
+- Posso usar ícones da biblioteca
+- Posso importar meus próprios ícones
+- Posso remover ou substituir facilmente

@@ -17,6 +17,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Repeat, Trash2, X, Check, Users, ChevronUp, Pencil } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
+import { IconPicker } from "@/components/icon-picker";
 import { format, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { Servico, ServicoPessoa, ServicoPagamento, Pessoa } from "@shared/schema";
@@ -324,6 +325,8 @@ export default function ServicosPage() {
     nome: "", categoria: "streaming", valorMensal: "", dataCobranca: "", formaPagamento: "cartao",
   });
   const [editingServico, setEditingServico] = useState<Servico | null>(null);
+  const [editIcone, setEditIcone] = useState<string | null>(null);
+  const [newServicoIcone, setNewServicoIcone] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     nome: "", categoria: "streaming", valorMensal: "", dataCobranca: "", formaPagamento: "cartao",
   });
@@ -338,12 +341,14 @@ export default function ServicosPage() {
       await apiRequest("POST", "/api/servicos", {
         ...data,
         dataCobranca: parseInt(data.dataCobranca),
+        iconeId: newServicoIcone,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servicos"] });
       setOpen(false);
       setForm({ nome: "", categoria: "streaming", valorMensal: "", dataCobranca: "", formaPagamento: "cartao" });
+      setNewServicoIcone(null);
       toast({ title: "Servico adicionado" });
     },
     onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
@@ -368,13 +373,14 @@ export default function ServicosPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+    mutationFn: async ({ id, data, iconeId }: { id: string; data: any; iconeId?: string | null }) => {
       await apiRequest("PATCH", `/api/servicos/${id}`, {
         nome: data.nome,
         categoria: data.categoria,
         valorMensal: data.valorMensal,
         dataCobranca: parseInt(data.dataCobranca),
         formaPagamento: data.formaPagamento,
+        iconeId: iconeId ?? null,
       });
     },
     onSuccess: () => {
@@ -446,6 +452,10 @@ export default function ServicosPage() {
               onSubmit={(e) => { e.preventDefault(); createMutation.mutate(form); }}
               className="space-y-4"
             >
+              <div className="space-y-2">
+                <Label>Icone</Label>
+                <IconPicker value={newServicoIcone} name={form.nome} onChange={setNewServicoIcone} size="sm" />
+              </div>
               <div className="space-y-2">
                 <Label>Nome do servico</Label>
                 <Input
@@ -575,7 +585,7 @@ export default function ServicosPage() {
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3 min-w-0">
-                            <BrandIconDisplay name={s.nome} size="sm" />
+                            <BrandIconDisplay name={s.nome} iconeId={s.iconeId} size="sm" />
                             <div className="min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p className={`font-medium ${s.status === "cancelado" ? "line-through text-muted-foreground" : ""}`}>{s.nome}</p>
@@ -616,6 +626,7 @@ export default function ServicosPage() {
                               size="icon"
                               onClick={() => {
                                 setEditingServico(s);
+                                setEditIcone(s.iconeId || null);
                                 setEditForm({
                                   nome: s.nome,
                                   categoria: s.categoria,
@@ -665,7 +676,7 @@ export default function ServicosPage() {
         </div>
       )}
 
-      <Dialog open={!!editingServico} onOpenChange={(v) => { if (!v) setEditingServico(null); }}>
+      <Dialog open={!!editingServico} onOpenChange={(v) => { if (!v) { setEditingServico(null); setEditIcone(null); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Editar Servico</DialogTitle>
@@ -674,10 +685,14 @@ export default function ServicosPage() {
             onSubmit={(e) => {
               e.preventDefault();
               if (!editingServico) return;
-              updateMutation.mutate({ id: editingServico.id, data: editForm });
+              updateMutation.mutate({ id: editingServico.id, data: editForm, iconeId: editIcone });
             }}
             className="space-y-4"
           >
+            <div className="space-y-2">
+              <Label>Ícone</Label>
+              <IconPicker value={editIcone} name={editForm.nome} onChange={setEditIcone} size="sm" />
+            </div>
             <div className="space-y-2">
               <Label>Nome do servico</Label>
               <Input
