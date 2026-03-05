@@ -9,8 +9,9 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import {
-  User, Download, Shield, Database, LogOut, CheckCircle,
+  User, Download, Shield, Database, LogOut, CheckCircle, HelpCircle
 } from "lucide-react";
+import { TourRestartButton } from "@/components/onboarding-tour";
 import type { Divida, Servico, Cartao, CompraCartao, Pessoa, Meta } from "@shared/schema";
 
 function formatCurrency(value: number): string {
@@ -191,6 +192,20 @@ export default function PerfilPage() {
           >
             <Download className="w-4 h-4 mr-2" /> Exportar dados (JSON)
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base flex items-center gap-2">
+            <HelpCircle className="w-4 h-4" /> Ajuda e Tutorial
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Precisa de uma ajuda para entender como o sistema funciona?
+          </p>
+          <TourRestartButton />
         </CardContent>
       </Card>
 

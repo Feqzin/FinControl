@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Repeat, Trash2, X, Check, Users, ChevronUp, Pencil } from "lucide-react";
+import { BrandIconDisplay } from "@/lib/brand-icons";
 import { format, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { Servico, ServicoPessoa, ServicoPagamento, Pessoa } from "@shared/schema";
@@ -574,7 +575,7 @@ export default function ServicosPage() {
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className={`w-2 h-8 rounded-full flex-shrink-0 ${s.status === "ativo" ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
+                            <BrandIconDisplay name={s.nome} size="sm" />
                             <div className="min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p className={`font-medium ${s.status === "cancelado" ? "line-through text-muted-foreground" : ""}`}>{s.nome}</p>

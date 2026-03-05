@@ -7,6 +7,7 @@ import {
   ArrowUpRight, ArrowDownRight, Receipt, Bell,
   AlertTriangle, CreditCard, CheckCircle, Lightbulb,
   Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank,
+  Settings2,
 } from "lucide-react";
 import type { Divida, Servico, Pessoa, Cartao, CompraCartao, Renda, Patrimonio } from "@shared/schema";
 import { format, differenceInDays, parseISO } from "date-fns";
@@ -14,6 +15,17 @@ import { calcularScore, gerarInsights } from "@/utils/financialEngine";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useMemo } from "react";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
+import { useUIPreferences } from "@/context/ui-preferences";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -29,7 +41,7 @@ function getUrgencyStyle(dataVencimento: string | null, status: string) {
   return { dot: "bg-emerald-400", label: `${days}d`, labelClass: "text-emerald-600" };
 }
 
-function StatCard({ title, value, icon: Icon, trend, color, valueColor, tooltipLines }: {
+function StatCard({ title, value, icon: Icon, trend, color, valueColor, tooltipLines, compact }: {
   title: string;
   value: string;
   icon: any;
@@ -37,18 +49,19 @@ function StatCard({ title, value, icon: Icon, trend, color, valueColor, tooltipL
   color: string;
   valueColor?: string;
   tooltipLines?: string[];
+  compact?: boolean;
 }) {
   const card = (
-    <Card className="hover-elevate min-h-[100px]">
-      <CardContent className="p-5 h-full">
+    <Card className={`hover-elevate ${compact ? "min-h-[80px]" : "min-h-[100px]"}`}>
+      <CardContent className={`${compact ? "p-3" : "p-5"} h-full`}>
         <div className="flex items-start justify-between gap-2 h-full">
           <div className="space-y-1 flex-1 min-w-0">
-            <p className="text-sm text-muted-foreground">{title}</p>
-            <p className={`text-xl font-bold tracking-tight truncate ${valueColor || ""}`} title={value}>{value}</p>
-            {trend && <p className="text-xs text-muted-foreground">{trend}</p>}
+            <p className="text-xs text-muted-foreground truncate">{title}</p>
+            <p className={`${compact ? "text-lg" : "text-xl"} font-bold tracking-tight truncate ${valueColor || ""}`} title={value}>{value}</p>
+            {trend && !compact && <p className="text-xs text-muted-foreground truncate">{trend}</p>}
           </div>
-          <div className={`flex items-center justify-center w-10 h-10 rounded-md flex-shrink-0 ${color}`}>
-            <Icon className="w-5 h-5" />
+          <div className={`flex items-center justify-center ${compact ? "w-8 h-8" : "w-10 h-10"} rounded-md flex-shrink-0 ${color}`}>
+            <Icon className={`${compact ? "w-4 h-4" : "w-5 h-5"}`} />
           </div>
         </div>
       </CardContent>
@@ -85,6 +98,7 @@ const insightIconMap: Record<string, any> = {
 
 export default function Dashboard() {
   const { visible } = useValuesVisibility();
+  const { prefs, toggleDashCard, toggleCompact } = useUIPreferences();
 
   const { data: dividas = [], isLoading: l1 } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [], isLoading: l2 } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
@@ -341,12 +355,57 @@ export default function Dashboard() {
     );
   }
 
+  const allDashCards = [
+    { id: "receber", title: "A receber" },
+    { id: "pagar", title: "A pagar" },
+    { id: "servicos", title: "Gastos fixos" },
+    { id: "saldo", title: "Saldo do mês" },
+    { id: "renda", title: "Renda mensal" },
+    { id: "patrimonio", title: "Patrimônio total" },
+  ];
+
   return (
     <div className="p-6 space-y-6" data-testid="dashboard-page">
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Painel</h1>
-          <p className="text-muted-foreground">Resumo financeiro geral</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Painel</h1>
+            <p className="text-muted-foreground text-sm">Resumo financeiro geral</p>
+          </div>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8" title="Personalizar Painel">
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Personalizar Painel</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="flex items-center justify-between p-2 rounded-lg border bg-muted/30">
+                  <Label htmlFor="compact-mode" className="font-medium">Modo Compacto</Label>
+                  <Switch
+                    id="compact-mode"
+                    checked={prefs.dashboardCompact}
+                    onCheckedChange={toggleCompact}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground px-2">Cards visíveis</Label>
+                  {allDashCards.map((card) => (
+                    <div key={card.id} className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-lg transition-colors">
+                      <span className="text-sm">{card.title}</span>
+                      <Switch
+                        checked={!prefs.hiddenDashCards.includes(card.id)}
+                        onCheckedChange={() => toggleDashCard(card.id)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
         <div
           className="flex items-center gap-3 px-4 py-2 rounded-xl border bg-card min-w-[200px]"
@@ -370,60 +429,78 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        <StatCard
-          title="A receber"
-          value={maskValue(formatCurrency(totalReceber), visible)}
-          icon={ArrowUpRight}
-          trend={`${dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").length} pendentes`}
-          color="bg-emerald-500/10 text-emerald-600"
-          valueColor="text-emerald-600"
-          tooltipLines={aReceberTooltip}
-        />
-        <StatCard
-          title="A pagar"
-          value={maskValue(formatCurrency(totalPagar), visible)}
-          icon={ArrowDownRight}
-          trend={`${dividas.filter((d) => d.tipo === "pagar" && d.status === "pendente").length} pendentes`}
-          color="bg-red-500/10 text-red-600"
-          valueColor="text-red-600"
-          tooltipLines={aPagarTooltip}
-        />
-        <StatCard
-          title="Gastos fixos"
-          value={maskValue(formatCurrency(totalServicos), visible)}
-          icon={Receipt}
-          trend={`${servicos.filter((s) => s.status === "ativo").length} ativos`}
-          color="bg-amber-500/10 text-amber-600"
-          tooltipLines={gastosFixosTooltip}
-        />
-        <StatCard
-          title="Saldo do mês"
-          value={maskValue(formatCurrency(saldoPrevisto), visible)}
-          icon={saldoPrevisto >= 0 ? TrendingUp : TrendingDown}
-          trend="Entradas - Saídas"
-          color={saldoIconBg}
-          valueColor={saldoColor}
-          tooltipLines={saldoMesTooltip}
-        />
-        <StatCard
-          title="Renda mensal"
-          value={maskValue(formatCurrency(totalRenda), visible)}
-          icon={DollarSign}
-          trend={`${rendas.filter((r) => r.ativo).length} fontes ativas`}
-          color="bg-emerald-500/10 text-emerald-600"
-          valueColor="text-emerald-600"
-          tooltipLines={rendaMensalTooltip}
-        />
-        <StatCard
-          title="Patrimônio total"
-          value={maskValue(formatCurrency(totalPatrimonio), visible)}
-          icon={PiggyBank}
-          trend={`${patrimonios.length} itens`}
-          color="bg-blue-500/10 text-blue-600"
-          valueColor="text-blue-600"
-          tooltipLines={patrimonioTooltip}
-        />
+      <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 ${prefs.dashboardCompact ? "gap-2" : "gap-4"}`}>
+        {!prefs.hiddenDashCards.includes("receber") && (
+          <StatCard
+            title="A receber"
+            value={maskValue(formatCurrency(totalReceber), visible)}
+            icon={ArrowUpRight}
+            trend={`${dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").length} pendentes`}
+            color="bg-emerald-500/10 text-emerald-600"
+            valueColor="text-emerald-600"
+            tooltipLines={aReceberTooltip}
+            compact={prefs.dashboardCompact}
+          />
+        )}
+        {!prefs.hiddenDashCards.includes("pagar") && (
+          <StatCard
+            title="A pagar"
+            value={maskValue(formatCurrency(totalPagar), visible)}
+            icon={ArrowDownRight}
+            trend={`${dividas.filter((d) => d.tipo === "pagar" && d.status === "pendente").length} pendentes`}
+            color="bg-red-500/10 text-red-600"
+            valueColor="text-red-600"
+            tooltipLines={aPagarTooltip}
+            compact={prefs.dashboardCompact}
+          />
+        )}
+        {!prefs.hiddenDashCards.includes("servicos") && (
+          <StatCard
+            title="Gastos fixos"
+            value={maskValue(formatCurrency(totalServicos), visible)}
+            icon={Receipt}
+            trend={`${servicos.filter((s) => s.status === "ativo").length} ativos`}
+            color="bg-amber-500/10 text-amber-600"
+            tooltipLines={gastosFixosTooltip}
+            compact={prefs.dashboardCompact}
+          />
+        )}
+        {!prefs.hiddenDashCards.includes("saldo") && (
+          <StatCard
+            title="Saldo do mês"
+            value={maskValue(formatCurrency(saldoPrevisto), visible)}
+            icon={saldoPrevisto >= 0 ? TrendingUp : TrendingDown}
+            trend="Entradas - Saídas"
+            color={saldoIconBg}
+            valueColor={saldoColor}
+            tooltipLines={saldoMesTooltip}
+            compact={prefs.dashboardCompact}
+          />
+        )}
+        {!prefs.hiddenDashCards.includes("renda") && (
+          <StatCard
+            title="Renda mensal"
+            value={maskValue(formatCurrency(totalRenda), visible)}
+            icon={DollarSign}
+            trend={`${rendas.filter((r) => r.ativo).length} fontes ativas`}
+            color="bg-emerald-500/10 text-emerald-600"
+            valueColor="text-emerald-600"
+            tooltipLines={rendaMensalTooltip}
+            compact={prefs.dashboardCompact}
+          />
+        )}
+        {!prefs.hiddenDashCards.includes("patrimonio") && (
+          <StatCard
+            title="Patrimônio total"
+            value={maskValue(formatCurrency(totalPatrimonio), visible)}
+            icon={PiggyBank}
+            trend={`${patrimonios.length} itens`}
+            color="bg-blue-500/10 text-blue-600"
+            valueColor="text-blue-600"
+            tooltipLines={patrimonioTooltip}
+            compact={prefs.dashboardCompact}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -1,0 +1,162 @@
+Quero transformar meu aplicativo financeiro em um sistema altamente personalizável, permitindo customização visual, estrutural e funcional.
+
+========================================
+1) SISTEMA DE ÍCONES PERSONALIZADOS
+========================================
+
+Criar biblioteca de ícones para:
+
+Cartões:
+- Nubank
+- Mercado Pago
+- Itaú
+- Banco do Brasil
+- Caixa
+- Bradesco
+- Inter
+- Santander
+
+Serviços:
+- Netflix
+- Spotify
+- Amazon
+- YouTube
+- Apple
+- Google
+- Disney+
+- HBO Max
+
+Instituições financeiras e carteiras:
+- PayPal
+- PicPay
+- PagSeguro
+
+========================================
+FUNCIONALIDADES
+========================================
+
+- Ao cadastrar cartão, serviço ou conta:
+   → Permitir escolher ícone da biblioteca
+- Mostrar ícone nos cards do dashboard
+- Mostrar ícone nas listas e relatórios
+- Permitir alterar ícone depois
+
+========================================
+UPLOAD DE ÍCONE PRÓPRIO
+========================================
+
+Permitir:
+
+- Upload de imagem personalizada (PNG, JPG, SVG)
+- Armazenar no sistema vinculado ao item
+- Redimensionamento automático
+- Exibir preview antes de salvar
+
+========================================
+2) DASHBOARD 100% PERSONALIZÁVEL
+========================================
+
+Criar modo:
+
+"Personalizar Painel"
+
+Funcionalidades:
+
+- Ativar/desativar cards
+- Reordenar cards via arrastar e soltar (drag and drop)
+- Substituir um card por outro
+- Ocultar telas que não deseja usar
+- Escolher quais informações aparecem na tela inicial
+
+========================================
+OPÇÃO DE REMOVER TELAS
+========================================
+
+Criar menu:
+
+"Gerenciar Telas"
+
+Permitir:
+
+- Ocultar aba Relatório
+- Ocultar aba Conversor
+- Ocultar aba Investimentos
+- Ocultar qualquer outra tela
+
+Sem excluir dados, apenas esconder da interface.
+
+Salvar preferência do usuário.
+
+========================================
+3) LAYOUT FLEXÍVEL
+========================================
+
+Permitir:
+
+- Escolher quantidade de colunas no desktop
+- Compacto ou espaçado
+- Cards grandes ou médios
+- Modo simplificado (apenas resumo)
+
+========================================
+4) TUTORIAL INTERATIVO PASSO A PASSO
+========================================
+
+Criar opção:
+
+"Como usar o aplicativo"
+
+Funcionalidades:
+
+- Tour guiado ao entrar pela primeira vez
+- Destacar elementos da tela
+- Explicar:
+   → Como cadastrar cartão
+   → Como lançar dívida
+   → Como usar saldo do mês
+   → Como usar relatório
+   → Como usar conversor
+   → Como usar simulação de investimento
+   → Como ocultar valores
+
+========================================
+COMPORTAMENTO DO TUTORIAL
+========================================
+
+- Passo a passo com botão "Próximo"
+- Botão "Pular tutorial"
+- Pode ser reativado nas configurações
+- Animação suave
+- Fundo levemente escurecido
+- Caixa de explicação clara e objetiva
+
+========================================
+5) EXPERIÊNCIA PREMIUM
+========================================
+
+- Microanimações suaves
+- Transição ao reorganizar cards
+- Feedback visual ao salvar personalização
+- Tudo responsivo
+
+========================================
+6) INTEGRAÇÃO COM MODO OCULTAR VALORES
+========================================
+
+Se valores estiverem ocultos:
+
+- Ícones continuam visíveis
+- Tutorial respeita estado atual
+- Cards não quebram layout
+
+========================================
+OBJETIVO FINAL
+========================================
+
+Criar um sistema:
+
+- Visualmente moderno
+- Totalmente personalizável
+- Intuitivo
+- Profissional
+- Flexível para qualquer tipo de usuário

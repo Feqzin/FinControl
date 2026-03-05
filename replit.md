@@ -28,6 +28,10 @@ A comprehensive personal finance management application in Brazilian Portuguese,
 - Intelligent text import (natural language parsing → creates records automatically)
 - Dark mode toggle with localStorage persistence
 - Mobile bottom navigation bar (visible on small screens: Painel, Dívidas, Cartões, Renda, Patrimônio)
+- **Brand Icons System**: Auto-matched visual icons for banks (Nubank, Itaú, BB, Caixa, Bradesco, Inter, Santander, Mercado Pago) and services (Netflix, Spotify, YouTube, Apple, Google, HBO Max, Disney+, PayPal, PicPay, PagSeguro) using react-icons/si + letter avatars; displayed in cartoes-page and servicos-page
+- **Manage Pages (Gerenciar Telas)**: "Personalizar" button in sidebar footer opens a dialog to hide/show any page; preferences persist via localStorage ("fincontrol_ui_prefs")
+- **Dashboard Customization**: "Personalizar Painel" button on dashboard opens dialog to hide/show individual stat cards and toggle compact mode; persists in same localStorage key
+- **Interactive Onboarding Tutorial**: 8-step guided tour on first login; full-screen overlay with step dots, Próximo/Anterior/Pular navigation; localStorage key "fincontrol_tour_done"; "Refazer tutorial" button in Perfil page
 
 ## Project Structure
 ```

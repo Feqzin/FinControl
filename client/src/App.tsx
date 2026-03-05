@@ -29,7 +29,10 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { LayoutDashboard, Receipt, CreditCard, DollarSign, PiggyBank, Eye, EyeOff } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { ValuesVisibilityProvider, useValuesVisibility } from "@/context/values-visibility";
+import { UIPreferencesProvider } from "@/context/ui-preferences";
 import { Button } from "@/components/ui/button";
+
+import { OnboardingTour } from "@/components/onboarding-tour";
 
 function Router() {
   return (
@@ -96,6 +99,7 @@ function AuthenticatedLayout() {
           <ScrollArea className="flex-1">
             <Router />
           </ScrollArea>
+          <OnboardingTour />
 
           <nav className="fixed bottom-0 left-0 right-0 md:hidden border-t bg-background z-40 flex h-16 items-center justify-around px-2">
             {navItems.map((item) => (
@@ -141,12 +145,14 @@ function App() {
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <ValuesVisibilityProvider>
-          <TooltipProvider>
-            <Toaster />
-            <AppContent />
-          </TooltipProvider>
-        </ValuesVisibilityProvider>
+        <UIPreferencesProvider>
+          <ValuesVisibilityProvider>
+            <TooltipProvider>
+              <Toaster />
+              <AppContent />
+            </TooltipProvider>
+          </ValuesVisibilityProvider>
+        </UIPreferencesProvider>
       </QueryClientProvider>
     </ThemeProvider>
   );

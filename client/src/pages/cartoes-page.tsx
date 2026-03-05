@@ -25,6 +25,7 @@ import {
   Plus, CreditCard, Trash2, CalendarClock, ShoppingBag, User, Pencil,
   RefreshCw, Upload, List, Check, X, AlertTriangle, FileText, ChevronRight,
 } from "lucide-react";
+import { BrandIconDisplay } from "@/lib/brand-icons";
 import type { Cartao, CompraCartao, Pessoa, ParcelaCompra } from "@shared/schema";
 import { format, addMonths, isPast, parseISO } from "date-fns";
 
@@ -720,9 +721,7 @@ export default function CartoesPage() {
                   <p className="text-sm text-muted-foreground">Total de faturas abertas</p>
                   <p className="text-2xl font-bold">{formatCurrency(totalFaturas)}</p>
                 </div>
-                <div className="flex items-center justify-center w-10 h-10 rounded-md bg-primary/10">
-                  <CreditCard className="w-5 h-5 text-primary" />
-                </div>
+                <BrandIconDisplay name="generic" size="md" />
               </div>
             </CardContent>
           </Card>
@@ -1288,9 +1287,7 @@ export default function CartoesPage() {
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center w-11 h-11 rounded-md bg-primary/10">
-                        <CreditCard className="w-5 h-5 text-primary" />
-                      </div>
+                      <BrandIconDisplay name={c.nome} size="md" />
                       <div>
                         <CardTitle className="text-base">{c.nome}</CardTitle>
                         <p className="text-xs text-muted-foreground mt-0.5">
@@ -1366,7 +1363,8 @@ export default function CartoesPage() {
                         const reembolsado = compra.pessoaId && compra.statusPessoa === "pago";
                         return (
                           <div key={compra.id} className="p-2.5 rounded-md bg-muted/30 text-sm" data-testid={`compra-${compra.id}`}>
-                            <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-3 mb-2">
+                              <BrandIconDisplay name={compra.descricao} size="sm" />
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <p className="truncate font-medium">{compra.descricao}</p>
