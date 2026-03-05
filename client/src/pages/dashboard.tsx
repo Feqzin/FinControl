@@ -7,7 +7,7 @@ import {
   ArrowUpRight, ArrowDownRight, Receipt, Bell,
   AlertTriangle, CreditCard, CheckCircle, Lightbulb,
   Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank,
-  Settings2,
+  Settings2, Smartphone,
 } from "lucide-react";
 import type { Divida, Servico, Pessoa, Cartao, CompraCartao, Renda, Patrimonio } from "@shared/schema";
 import { format, differenceInDays, parseISO, addDays } from "date-fns";
@@ -132,7 +132,7 @@ const insightIconMap: Record<string, any> = {
 
 export default function Dashboard() {
   const { visible } = useValuesVisibility();
-  const { prefs, toggleDashCard, toggleCompact } = useUIPreferences();
+  const { prefs, toggleDashCard, toggleCompact, toggleMobileMode } = useUIPreferences();
   const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), "yyyy-MM"));
 
   const monthOptions = useMemo(() => {
@@ -460,6 +460,211 @@ export default function Dashboard() {
     { id: "patrimonio", title: "Patrimônio total" },
   ];
 
+  if (prefs.mobileMode) {
+    const visibleCards = allDashCards.filter(c => !prefs.hiddenDashCards.includes(c.id));
+    const cardDataMap: Record<string, { value: string; icon: any; iconColor: string; bg: string; valueColor: string }> = {
+      receber: { value: maskValue(formatCurrency(totalReceber), visible), icon: ArrowUpRight, iconColor: "text-emerald-600", bg: "bg-emerald-500/10", valueColor: "text-emerald-600" },
+      pagar: { value: maskValue(formatCurrency(totalPagar), visible), icon: ArrowDownRight, iconColor: "text-red-500", bg: "bg-red-500/10", valueColor: "text-red-600" },
+      servicos: { value: maskValue(formatCurrency(totalServicos), visible), icon: Receipt, iconColor: "text-amber-500", bg: "bg-amber-500/10", valueColor: "text-foreground" },
+      saldo: { value: maskValue(formatCurrency(saldoPrevisto), visible), icon: saldoPrevisto >= 0 ? TrendingUp : TrendingDown, iconColor: saldoPrevisto >= 0 ? "text-emerald-600" : "text-red-500", bg: saldoPrevisto >= 0 ? "bg-emerald-500/10" : "bg-red-500/10", valueColor: saldoPrevisto >= 0 ? "text-emerald-600" : "text-red-600" },
+      renda: { value: maskValue(formatCurrency(totalRenda), visible), icon: DollarSign, iconColor: "text-emerald-600", bg: "bg-emerald-500/10", valueColor: "text-emerald-600" },
+      patrimonio: { value: maskValue(formatCurrency(totalPatrimonio), visible), icon: PiggyBank, iconColor: "text-blue-500", bg: "bg-blue-500/10", valueColor: "text-blue-600" },
+    };
+
+    const selectedMonthLabel = monthOptions.find(o => o.value === selectedMonth)?.label || selectedMonth;
+
+    return (
+      <div className="min-h-screen bg-background pb-24" data-testid="dashboard-mobile">
+        <div className="bg-card/80 backdrop-blur-sm border-b px-4 pt-5 pb-4 sticky top-0 z-10">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">Painel</h1>
+              <p className="text-xs text-muted-foreground capitalize">{selectedMonthLabel}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full" title="Personalizar">
+                    <Settings2 className="h-4 w-4" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Personalizar Painel</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3 pt-4">
+                    <div className="flex items-center justify-between p-3 rounded-xl border bg-muted/30">
+                      <div className="flex items-center gap-2">
+                        <Smartphone className="w-4 h-4 text-primary" />
+                        <div>
+                          <Label htmlFor="mobile-mode-m" className="font-medium cursor-pointer">Modo Celular</Label>
+                          <p className="text-xs text-muted-foreground">Interface otimizada para toque</p>
+                        </div>
+                      </div>
+                      <Switch id="mobile-mode-m" checked={prefs.mobileMode} onCheckedChange={toggleMobileMode} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground px-1 uppercase tracking-wide">Cards visíveis</Label>
+                      {allDashCards.map((card) => (
+                        <div key={card.id} className="flex items-center justify-between py-3 px-2 border-b last:border-b-0">
+                          <span className="text-base">{card.title}</span>
+                          <Switch
+                            checked={!prefs.hiddenDashCards.includes(card.id)}
+                            onCheckedChange={() => toggleDashCard(card.id)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+            <SelectTrigger className="h-10 w-full text-sm rounded-xl border-0 bg-muted/50" data-testid="select-month-mobile">
+              <SelectValue placeholder="Selecionar mês" />
+            </SelectTrigger>
+            <SelectContent>
+              {monthOptions.map((o) => (
+                <SelectItem key={o.value} value={o.value} className="py-3 text-base">{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="px-4 pt-4 space-y-3">
+          <div
+            className={`rounded-2xl p-5 shadow-sm ${saldoPrevisto >= 0 ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}
+            data-testid="mobile-saldo-hero"
+          >
+            <p className="text-sm font-medium opacity-80 uppercase tracking-wider mb-1">Saldo do Mês</p>
+            <p className="text-4xl font-bold tracking-tight mb-3">{maskValue(formatCurrency(saldoPrevisto), visible)}</p>
+            <div className="flex gap-4 text-sm opacity-85">
+              <div className="flex items-center gap-1.5">
+                <ArrowUpRight className="w-3.5 h-3.5" />
+                <span>{maskValue(formatCurrency(totalRenda), visible)}</span>
+              </div>
+              <div className="w-px bg-white/30" />
+              <div className="flex items-center gap-1.5">
+                <ArrowDownRight className="w-3.5 h-3.5" />
+                <span>{maskValue(formatCurrency(totalCartoesMes + totalPagarMes + totalServicos), visible)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="flex items-center gap-3 bg-card rounded-2xl px-4 py-3 shadow-sm border border-border/50"
+            data-testid="mobile-score"
+          >
+            <div className="flex-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Score Financeiro</p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-500 ${scoreBarColor}`} style={{ width: `${score.valor}%` }} />
+                </div>
+                <span className={`text-sm font-bold ${scoreLabelColor}`}>{score.valor}</span>
+              </div>
+            </div>
+            <div className={`text-xs font-semibold px-2 py-1 rounded-lg ${scoreLabelColor} bg-muted/50`}>{score.classificacao}</div>
+          </div>
+
+          {visibleCards.filter(c => c.id !== "saldo").length > 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              {visibleCards.filter(c => c.id !== "saldo").map(card => {
+                const d = cardDataMap[card.id];
+                if (!d) return null;
+                const IconC = d.icon;
+                return (
+                  <div
+                    key={card.id}
+                    className="bg-card rounded-2xl p-4 shadow-sm border border-border/50 min-h-[90px] flex flex-col justify-between"
+                    data-testid={`mobile-card-${card.id}`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-muted-foreground font-medium">{card.title}</p>
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${d.bg}`}>
+                        <IconC className={`w-3.5 h-3.5 ${d.iconColor}`} />
+                      </div>
+                    </div>
+                    <p className={`text-xl font-bold tracking-tight ${d.valueColor}`}>{d.value}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {pagarSemana.length > 0 && (
+            <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden" data-testid="mobile-pagar-semana">
+              <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4 text-amber-500" />
+                  <span className="font-semibold text-sm">A Pagar na Semana</span>
+                </div>
+                <span className="text-xs text-muted-foreground">Próximos 7 dias</span>
+              </div>
+              {pagarSemana.map((item, idx) => {
+                const urg = urgencyLabel(item.dateStr);
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex items-center gap-3 px-4 py-3.5 ${idx < pagarSemana.length - 1 ? "border-b border-border/40" : ""}`}
+                    data-testid={`mobile-pagar-${item.id}`}
+                  >
+                    <DateBadge dateStr={item.dateStr} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{item.title}</p>
+                      <p className={`text-xs ${urg.cls}`}>{urg.text}</p>
+                    </div>
+                    <span className="text-sm font-bold text-red-600 flex-shrink-0">
+                      {maskValue(formatCurrency(item.amount), visible)}
+                    </span>
+                  </div>
+                );
+              })}
+              <div className="px-4 py-3 bg-muted/30 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground font-medium">Total da semana</span>
+                <span className="text-sm font-bold text-red-600">
+                  {maskValue(formatCurrency(pagarSemana.reduce((s, i) => s + i.amount, 0)), visible)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {alertas.length > 0 && (
+            <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+              <div className="px-4 pt-4 pb-2 flex items-center gap-2">
+                <Bell className="w-4 h-4" />
+                <span className="font-semibold text-sm">Alertas</span>
+              </div>
+              {alertas.map((alerta, i) => (
+                <div key={i} className={`flex items-start gap-3 px-4 py-3.5 border-b border-border/40 last:border-b-0 ${alerta.bgColor}`}>
+                  <alerta.icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${alerta.color}`} />
+                  <p className={`text-sm ${alerta.color}`}>{alerta.texto}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+            <div className="px-4 pt-4 pb-2">
+              <span className="font-semibold text-sm">Resumo do Score</span>
+            </div>
+            <div className="px-4 pb-3 space-y-2.5">
+              {score.fatores.map((f, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">{f.label}</span>
+                  <span className={`text-sm font-semibold ${f.tipo === "positivo" ? "text-emerald-600" : f.tipo === "negativo" ? "text-red-500" : "text-muted-foreground"}`}>
+                    {f.impacto > 0 ? "+" : ""}{f.impacto}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6" data-testid="dashboard-page">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -479,6 +684,21 @@ export default function Dashboard() {
                 <DialogTitle>Personalizar Painel</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
+                <div className="flex items-center justify-between p-3 rounded-xl border bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <Smartphone className="w-4 h-4 text-primary" />
+                    <div>
+                      <Label htmlFor="mobile-mode" className="font-medium cursor-pointer">Modo Celular</Label>
+                      <p className="text-xs text-muted-foreground">Interface otimizada para toque</p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="mobile-mode"
+                    checked={prefs.mobileMode}
+                    onCheckedChange={toggleMobileMode}
+                    data-testid="toggle-mobile-mode"
+                  />
+                </div>
                 <div className="flex items-center justify-between p-2 rounded-lg border bg-muted/30">
                   <Label htmlFor="compact-mode" className="font-medium">Modo Compacto</Label>
                   <Switch
