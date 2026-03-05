@@ -24,7 +24,6 @@ import RendaPage from "@/pages/renda-page";
 import PatrimonioPage from "@/pages/patrimonio-page";
 import PerfilPage from "@/pages/perfil-page";
 import RedefinirSenhaPage from "@/pages/redefinir-senha-page";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeProvider } from "@/components/theme-provider";
 import { LayoutDashboard, Receipt, CreditCard, DollarSign, PiggyBank, Eye, EyeOff } from "lucide-react";
 import { Link, useLocation } from "wouter";
@@ -96,9 +95,9 @@ function AuthenticatedLayout() {
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <EyeToggle />
           </header>
-          <ScrollArea className="flex-1">
+          <main className="flex-1 overflow-y-auto overscroll-contain">
             <Router />
-          </ScrollArea>
+          </main>
           <OnboardingTour />
 
           <nav className="fixed bottom-0 left-0 right-0 md:hidden border-t bg-background z-40 flex h-16 items-center justify-around px-2">

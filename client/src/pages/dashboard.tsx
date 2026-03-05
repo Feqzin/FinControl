@@ -727,19 +727,45 @@ export default function Dashboard() {
           )}
 
           <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
-            <div className="px-4 pt-4 pb-2">
-              <span className="font-semibold text-sm">Resumo do Score</span>
+            <div className="px-4 pt-4 pb-2 flex items-center gap-2">
+              <CalendarClock className="w-4 h-4 text-primary" />
+              <span className="font-semibold text-sm">Próximos Vencimentos</span>
             </div>
-            <div className="px-4 pb-3 space-y-2.5">
-              {score.fatores.map((f, i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">{f.label}</span>
-                  <span className={`text-sm font-semibold ${f.tipo === "positivo" ? "text-emerald-600" : f.tipo === "negativo" ? "text-red-500" : "text-muted-foreground"}`}>
-                    {f.impacto > 0 ? "+" : ""}{f.impacto}
-                  </span>
-                </div>
-              ))}
-            </div>
+            {proximosVencimentos.length === 0 ? (
+              <div className="px-4 pb-4 text-center">
+                <p className="text-sm text-muted-foreground py-2">Nenhum vencimento pendente</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border/30">
+                {proximosVencimentos.slice(0, 6).map((item) => {
+                  const isPast = item.dataVenc < today;
+                  const isToday = item.dataVenc === today;
+                  const isThisWeek = item.dataVenc > today && item.dataVenc <= in7Days;
+                  const dotColor = isPast ? "bg-red-500" : isToday ? "bg-red-500" : isThisWeek ? "bg-amber-400" : "bg-emerald-400";
+                  const TipoIcon = item.tipo === "cartao" ? CreditCard : item.tipo === "servico" ? Receipt : ArrowDownRight;
+                  const tipoBg = item.tipo === "cartao" ? "bg-blue-500/10 text-blue-600" : item.tipo === "servico" ? "bg-amber-500/10 text-amber-600" : "bg-red-500/10 text-red-600";
+                  return (
+                    <div key={item.id} className="flex items-center gap-3 px-4 py-3" data-testid={`mobile-vencimento-${item.id}`}>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tipoBg}`}>
+                        <TipoIcon className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.nome}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
+                          <p className={`text-xs ${isPast || isToday ? "text-red-600 font-medium" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
+                            {item.subtitulo}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-sm font-semibold flex-shrink-0">
+                        {maskValue(formatCurrency(item.valor), visible)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>

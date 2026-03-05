@@ -21,8 +21,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Users, Phone, Trash2, Search, Receipt, Check,
-  Clock, ArrowUpRight, ArrowDownRight, Pencil, CreditCard, Repeat,
+  Clock, ArrowUpRight, ArrowDownRight, Pencil, CreditCard, Repeat, ChevronRight,
 } from "lucide-react";
+import { useUIPreferences } from "@/context/ui-preferences";
 import type { Pessoa, Divida, CompraCartao, Cartao, ServicoPessoa, ServicoPagamento, Servico } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -32,6 +33,7 @@ function formatCurrency(value: number): string {
 
 export default function PessoasPage() {
   const { toast } = useToast();
+  const { prefs } = useUIPreferences();
   const [openPessoa, setOpenPessoa] = useState(false);
   const [openDivida, setOpenDivida] = useState(false);
   const [selectedPessoa, setSelectedPessoa] = useState<Pessoa | null>(null);
@@ -316,6 +318,87 @@ export default function PessoasPage() {
           <Users className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
           <p className="text-lg font-medium text-muted-foreground">Nenhuma pessoa encontrada</p>
           <p className="text-sm text-muted-foreground mt-1">Adicione uma pessoa para comecar</p>
+        </div>
+      ) : prefs.mobileMode ? (
+        <div className="space-y-2">
+          {filtered.map((p) => {
+            const stats = getPessoaStats(p.id);
+            const isMeDeve = p.tipo === "me_deve";
+            return (
+              <div
+                key={p.id}
+                className="bg-card border border-border/60 rounded-2xl overflow-hidden"
+                data-testid={`card-pessoa-${p.id}`}
+              >
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <div className={`flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0 ${isMeDeve ? "bg-emerald-500/15" : "bg-red-500/15"}`}>
+                    <span className={`text-sm font-bold ${isMeDeve ? "text-emerald-600" : "text-red-600"}`}>
+                      {p.nome.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-sm truncate">{p.nome}</p>
+                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${isMeDeve ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-red-500/10 text-red-700 dark:text-red-400"}`}>
+                        {isMeDeve ? "Me deve" : "Eu devo"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      {stats.pendente > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          Pendente: <span className="font-semibold text-foreground">{formatCurrency(stats.pendente)}</span>
+                        </span>
+                      )}
+                      {stats.pendente === 0 && (
+                        <span className="text-xs text-emerald-600 font-medium">Quitado</span>
+                      )}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                </div>
+                <div className="flex border-t border-border/40 divide-x divide-border/40">
+                  <button
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium text-primary active:bg-muted/50 transition-colors"
+                    onClick={() => {
+                      setSelectedPessoa(p);
+                      setDividaForm({
+                        tipo: p.tipo === "me_deve" ? "receber" : "pagar",
+                        valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
+                      });
+                      setOpenDivida(true);
+                    }}
+                    data-testid={`button-add-divida-pessoa-${p.id}`}
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Nova dívida
+                  </button>
+                  <button
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium text-muted-foreground active:bg-muted/50 transition-colors"
+                    onClick={() => setHistoryPessoa(p)}
+                    data-testid={`button-history-pessoa-${p.id}`}
+                  >
+                    <Clock className="w-3.5 h-3.5" /> Histórico
+                  </button>
+                  <button
+                    className="flex items-center justify-center px-4 py-2.5 text-muted-foreground active:bg-muted/50 transition-colors"
+                    onClick={() => {
+                      setEditingPessoa(p);
+                      setEditForm({ nome: p.nome, tipo: p.tipo, telefone: p.telefone || "", observacao: p.observacao || "" });
+                    }}
+                    data-testid={`button-edit-pessoa-${p.id}`}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    className="flex items-center justify-center px-4 py-2.5 text-red-500 active:bg-red-50 dark:active:bg-red-950/30 transition-colors"
+                    onClick={() => deleteMutation.mutate(p.id)}
+                    data-testid={`button-delete-pessoa-${p.id}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

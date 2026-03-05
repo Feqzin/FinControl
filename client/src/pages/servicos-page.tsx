@@ -583,78 +583,86 @@ export default function ServicosPage() {
                   return (
                     <Card key={s.id} className="hover-elevate" data-testid={`card-servico-${s.id}`}>
                       <CardContent className="p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <BrandIconDisplay name={s.nome} iconeId={s.iconeId} size="sm" />
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className={`font-medium ${s.status === "cancelado" ? "line-through text-muted-foreground" : ""}`}>{s.nome}</p>
-                                {vinculados.length > 0 && (
-                                  <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                                    <Users className="w-2.5 h-2.5" />
-                                    {vinculados.length} pessoa{vinculados.length !== 1 ? "s" : ""}
-                                    {pendentesHoje > 0 && (
-                                      <span className="text-amber-600 dark:text-amber-400"> · {pendentesHoje} pendente{pendentesHoje !== 1 ? "s" : ""}</span>
-                                    )}
-                                  </span>
-                                )}
+                        <div className="flex items-start gap-3">
+                          <BrandIconDisplay name={s.nome} iconeId={s.iconeId} size="sm" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className={`font-medium ${s.status === "cancelado" ? "line-through text-muted-foreground" : ""}`}>{s.nome}</p>
+                                  {vinculados.length > 0 && (
+                                    <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                                      <Users className="w-2.5 h-2.5" />
+                                      {vinculados.length} pessoa{vinculados.length !== 1 ? "s" : ""}
+                                      {pendentesHoje > 0 && (
+                                        <span className="text-amber-600 dark:text-amber-400"> · {pendentesHoje} pendente{pendentesHoje !== 1 ? "s" : ""}</span>
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  Dia {s.dataCobranca} | {s.formaPagamento}
+                                </p>
                               </div>
-                              <p className="text-xs text-muted-foreground">
-                                Dia {s.dataCobranca} | {s.formaPagamento}
-                              </p>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className="font-semibold text-sm">{formatCurrency(Number(s.valorMensal))}</span>
+                                <Badge variant={s.status === "ativo" ? "default" : "secondary"} className="text-xs">
+                                  {s.status === "ativo" ? "Ativo" : "Cancelado"}
+                                </Badge>
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className="font-semibold">{formatCurrency(Number(s.valorMensal))}</span>
-                            <Badge variant={s.status === "ativo" ? "default" : "secondary"}>
-                              {s.status === "ativo" ? "Ativo" : "Cancelado"}
-                            </Badge>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => toggleDivisao(s.id)}
-                              title="Divisao entre pessoas"
-                              data-testid={`button-divisao-${s.id}`}
-                            >
-                              {isDivisaoOpen
-                                ? <ChevronUp className="w-4 h-4" />
-                                : <Users className="w-4 h-4" />
-                              }
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => {
-                                setEditingServico(s);
-                                setEditIcone(s.iconeId || null);
-                                setEditForm({
-                                  nome: s.nome,
-                                  categoria: s.categoria,
-                                  valorMensal: String(s.valorMensal),
-                                  dataCobranca: String(s.dataCobranca),
-                                  formaPagamento: s.formaPagamento,
-                                });
-                              }}
-                              data-testid={`button-edit-servico-${s.id}`}
-                            >
-                              <Pencil className="w-4 h-4 text-muted-foreground" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => toggleStatusMutation.mutate({ id: s.id, status: s.status })}
-                              data-testid={`button-toggle-servico-${s.id}`}
-                            >
-                              {s.status === "ativo" ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => deleteMutation.mutate(s.id)}
-                              data-testid={`button-delete-servico-${s.id}`}
-                            >
-                              <Trash2 className="w-4 h-4 text-muted-foreground" />
-                            </Button>
+                            <div className="flex items-center gap-1 mt-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => toggleDivisao(s.id)}
+                                title="Divisão entre pessoas"
+                                data-testid={`button-divisao-${s.id}`}
+                              >
+                                {isDivisaoOpen
+                                  ? <ChevronUp className="w-4 h-4" />
+                                  : <Users className="w-4 h-4" />
+                                }
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => {
+                                  setEditingServico(s);
+                                  setEditIcone(s.iconeId || null);
+                                  setEditForm({
+                                    nome: s.nome,
+                                    categoria: s.categoria,
+                                    valorMensal: String(s.valorMensal),
+                                    dataCobranca: String(s.dataCobranca),
+                                    formaPagamento: s.formaPagamento,
+                                  });
+                                }}
+                                data-testid={`button-edit-servico-${s.id}`}
+                              >
+                                <Pencil className="w-4 h-4 text-muted-foreground" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => toggleStatusMutation.mutate({ id: s.id, status: s.status })}
+                                data-testid={`button-toggle-servico-${s.id}`}
+                              >
+                                {s.status === "ativo" ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => deleteMutation.mutate(s.id)}
+                                data-testid={`button-delete-servico-${s.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 text-muted-foreground" />
+                              </Button>
+                            </div>
                           </div>
                         </div>
 
