@@ -156,21 +156,12 @@ export default function Dashboard() {
 
   const isLoading = l1 || l2 || l3;
 
-  const currentMonth = selectedMonth;
+  const currentRealMonth = format(new Date(), "yyyy-MM");
 
-  // Totais gerais (para cards A receber / A pagar)
-  const totalReceber = dividas
-    .filter((d) => d.tipo === "receber" && d.status === "pendente")
-    .reduce((s, d) => s + Number(d.valor), 0);
+  // Parsed selected month
+  const [selYearN, selMonthN] = selectedMonth.split("-").map(Number);
 
-  const totalPagar = dividas
-    .filter((d) => d.tipo === "pagar" && d.status === "pendente")
-    .reduce((s, d) => s + Number(d.valor), 0);
-
-  const totalServicos = servicos
-    .filter((s) => s.status === "ativo")
-    .reduce((s, sv) => s + Number(sv.valorMensal), 0);
-
+  // Totais fixos (independem do mês — patrimônio e renda são recorrentes)
   const totalRenda = rendas
     .filter((r) => r.ativo)
     .reduce((s, r) => s + Number(r.valor), 0);
@@ -178,24 +169,44 @@ export default function Dashboard() {
   const totalPatrimonio = patrimonios
     .reduce((s, p) => s + Number(p.valorAtual), 0);
 
-  // === SALDO DO MÊS — CÁLCULO COMPLETO ===
-  // Entradas do mês
-  const ReceberMes = dividas
-    .filter((d) => d.tipo === "receber" && d.status === "pendente" && d.dataVencimento?.startsWith(currentMonth))
+  const totalServicos = servicos
+    .filter((s) => s.status === "ativo")
+    .reduce((s, sv) => s + Number(sv.valorMensal), 0);
+
+  // === CÁLCULOS FILTRADOS PELO MÊS SELECIONADO ===
+
+  // A receber do mês: dividas tipo=receber com vencimento no mês selecionado
+  const totalReceber = dividas
+    .filter((d) => d.tipo === "receber" && d.dataVencimento?.startsWith(selectedMonth))
     .reduce((s, d) => s + Number(d.valor), 0);
+
+  // A pagar do mês: dividas tipo=pagar com vencimento no mês selecionado
+  const totalPagar = dividas
+    .filter((d) => d.tipo === "pagar" && d.dataVencimento?.startsWith(selectedMonth))
+    .reduce((s, d) => s + Number(d.valor), 0);
+
+  // Cartões do mês selecionado: calcula quais parcelas caíam naquele mês
+  const totalCartoesMes = useMemo(() => {
+    return compras.reduce((sum, c) => {
+      const compraDate = parseISO(c.dataCompra);
+      const compraYear = compraDate.getFullYear();
+      const compraMonth = compraDate.getMonth() + 1; // 1-indexed
+      const monthOffset = (selYearN - compraYear) * 12 + (selMonthN - compraMonth);
+      // 0-indexed: parcel 0 = first parcel (same month as compra)
+      if (monthOffset >= 0 && monthOffset < c.parcelas) {
+        sum += Number(c.valorParcela);
+      }
+      return sum;
+    }, 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [compras, selectedMonth]);
+
+  // A receber previsto para o mês (dividas receber com data no mês)
+  const ReceberMes = totalReceber;
+  const totalPagarMes = totalPagar;
 
   const totalEntradas = totalRenda + ReceberMes;
-
-  // Saídas do mês
-  const totalCartoesMes = compras
-    .reduce((s, c) => s + Number(c.valorParcela), 0);
-
-  const totalPagarMes = dividas
-    .filter((d) => d.tipo === "pagar" && d.status === "pendente" && d.dataVencimento?.startsWith(currentMonth))
-    .reduce((s, d) => s + Number(d.valor), 0);
-
   const totalSaidas = totalCartoesMes + totalPagarMes + totalServicos;
-
   const saldoPrevisto = totalEntradas - totalSaidas;
 
   const saldoColor =
@@ -212,17 +223,87 @@ export default function Dashboard() {
   const in5Days = format(new Date(Date.now() + 5 * 86400000), "yyyy-MM-dd");
   const in7Days = format(addDays(new Date(), 7), "yyyy-MM-dd");
 
-  const proximosVencimentos = dividas
-    .filter((d) => d.status === "pendente")
-    .sort((a, b) => (a.dataVencimento || "").localeCompare(b.dataVencimento || ""))
-    .slice(0, 6);
-
+  // Alertas baseados apenas em dividas tipo=pagar (o que VOCÊ deve)
   const vencendo5Dias = dividas.filter(
-    (d) => d.status === "pendente" && d.dataVencimento && d.dataVencimento >= today && d.dataVencimento <= in5Days
+    (d) => d.tipo === "pagar" && d.status === "pendente" && d.dataVencimento && d.dataVencimento >= today && d.dataVencimento <= in5Days
   );
   const vencidos = dividas.filter(
-    (d) => d.status === "pendente" && d.dataVencimento && d.dataVencimento < today
+    (d) => d.tipo === "pagar" && d.status === "pendente" && d.dataVencimento && d.dataVencimento < today
   );
+
+  // === PRÓXIMOS VENCIMENTOS UNIFICADOS: cartões + quem você deve + serviços ===
+  interface VencimentoItem {
+    id: string;
+    tipo: "cartao" | "divida" | "servico";
+    nome: string;
+    subtitulo: string;
+    valor: number;
+    dataVenc: string; // yyyy-MM-dd
+  }
+
+  const getNextDueDate = (diaDoMes: number): string => {
+    const now = new Date();
+    const thisMonth = new Date(now.getFullYear(), now.getMonth(), diaDoMes);
+    const thisMonthStr = format(thisMonth, "yyyy-MM-dd");
+    if (thisMonthStr >= today) return thisMonthStr;
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, diaDoMes);
+    return format(nextMonth, "yyyy-MM-dd");
+  };
+
+  const proximosVencimentos: VencimentoItem[] = useMemo(() => {
+    const items: VencimentoItem[] = [];
+
+    // 1. Cartões com fatura (só se tiver compras)
+    cartoes.forEach((c) => {
+      const usado = compras.filter((cc) => cc.cartaoId === c.id).reduce((s, cc) => s + Number(cc.valorParcela), 0);
+      if (usado <= 0) return;
+      const dataVenc = getNextDueDate(c.diaVencimento);
+      const daysUntil = differenceInDays(parseISO(dataVenc), new Date());
+      items.push({
+        id: `cartao-${c.id}`,
+        tipo: "cartao",
+        nome: `Fatura ${c.nome}`,
+        subtitulo: daysUntil === 0 ? "Vence hoje" : daysUntil < 0 ? `Venceu há ${Math.abs(daysUntil)}d` : `Vence em ${daysUntil} dia${daysUntil === 1 ? "" : "s"}`,
+        valor: usado,
+        dataVenc,
+      });
+    });
+
+    // 2. Dividas tipo=pagar pendentes (o que você deve a pessoas)
+    dividas
+      .filter((d) => d.tipo === "pagar" && d.status === "pendente" && d.dataVencimento)
+      .forEach((d) => {
+        const pessoa = pessoas.find((p) => p.id === d.pessoaId);
+        const nome = d.descricao || pessoa?.nome || "Pagamento";
+        const daysUntil = differenceInDays(parseISO(d.dataVencimento!), new Date());
+        const urgLabel = daysUntil < 0 ? `Venceu há ${Math.abs(daysUntil)}d` : daysUntil === 0 ? "Vence hoje" : `Vence em ${daysUntil}d`;
+        items.push({
+          id: `divida-${d.id}`,
+          tipo: "divida",
+          nome,
+          subtitulo: pessoa ? `${urgLabel} · ${pessoa.nome}` : urgLabel,
+          valor: Number(d.valor),
+          dataVenc: d.dataVencimento!,
+        });
+      });
+
+    // 3. Serviços ativos — próxima cobrança
+    servicos.filter((s) => s.status === "ativo").forEach((s) => {
+      const dataVenc = getNextDueDate(s.dataCobranca);
+      const daysUntil = differenceInDays(parseISO(dataVenc), new Date());
+      items.push({
+        id: `servico-${s.id}`,
+        tipo: "servico",
+        nome: s.nome,
+        subtitulo: daysUntil === 0 ? "Cobrado hoje" : daysUntil < 0 ? `Cobrado há ${Math.abs(daysUntil)}d` : `Cobra em ${daysUntil} dia${daysUntil === 1 ? "" : "s"}`,
+        valor: Number(s.valorMensal),
+        dataVenc,
+      });
+    });
+
+    return items.sort((a, b) => a.dataVenc.localeCompare(b.dataVenc));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dividas, cartoes, servicos, compras, pessoas, today]);
 
   const getCardUsage = (cartaoId: string) =>
     compras.filter((c) => c.cartaoId === cartaoId).reduce((s, c) => s + Number(c.valorParcela), 0);
@@ -935,7 +1016,7 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <CalendarClock className="w-4 h-4" /> Proximos vencimentos
+              <CalendarClock className="w-4 h-4" /> Próximos vencimentos
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -945,35 +1026,35 @@ export default function Dashboard() {
                 <p className="text-sm">Nenhum vencimento pendente</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {proximosVencimentos.map((d) => {
-                  const urgency = getUrgencyStyle(d.dataVencimento, d.status);
+              <div className="space-y-1.5">
+                {proximosVencimentos.map((item) => {
+                  const isPast = item.dataVenc < today;
+                  const isToday = item.dataVenc === today;
+                  const isThisWeek = item.dataVenc > today && item.dataVenc <= in7Days;
+                  const dotColor = isPast ? "bg-red-500" : isToday ? "bg-red-500" : isThisWeek ? "bg-amber-400" : "bg-emerald-400";
+                  const TipoIcon = item.tipo === "cartao" ? CreditCard : item.tipo === "servico" ? Receipt : ArrowDownRight;
+                  const tipoBg = item.tipo === "cartao" ? "bg-blue-500/10 text-blue-600" : item.tipo === "servico" ? "bg-amber-500/10 text-amber-600" : "bg-red-500/10 text-red-600";
                   return (
                     <div
-                      key={d.id}
-                      className="flex items-center justify-between gap-2 p-3 rounded-md bg-muted/40"
-                      data-testid={`vencimento-${d.id}`}
+                      key={item.id}
+                      className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors"
+                      data-testid={`vencimento-${item.id}`}
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${urgency.dot}`} />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{getPessoaNome(d.pessoaId)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {d.dataVencimento}
-                            {urgency.label && (
-                              <span className={`ml-1 font-medium ${urgency.labelClass}`}>
-                                · {urgency.label}
-                              </span>
-                            )}
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tipoBg}`}>
+                        <TipoIcon className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.nome}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
+                          <p className={`text-xs ${isPast || isToday ? "text-red-600 font-medium" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
+                            {item.subtitulo}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <Badge variant={d.tipo === "receber" ? "default" : "destructive"} className="text-xs">
-                          {d.tipo === "receber" ? "Receber" : "Pagar"}
-                        </Badge>
-                        <span className="text-sm font-semibold">{maskValue(formatCurrency(Number(d.valor)), visible)}</span>
-                      </div>
+                      <span className="text-sm font-semibold flex-shrink-0">
+                        {maskValue(formatCurrency(item.valor), visible)}
+                      </span>
                     </div>
                   );
                 })}
