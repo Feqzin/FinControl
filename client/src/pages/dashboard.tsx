@@ -11,38 +11,56 @@ import {
 import type { Divida, Servico, Pessoa, Cartao, CompraCartao, Renda, Patrimonio } from "@shared/schema";
 import { format, differenceInDays, parseISO } from "date-fns";
 import { calcularScore, gerarInsights } from "@/utils/financialEngine";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useMemo } from "react";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
-function getUrgencyStyle(dataVencimento: string, status: string) {
+function getUrgencyStyle(dataVencimento: string | null, status: string) {
   const today = format(new Date(), "yyyy-MM-dd");
   if (status === "pago") return { dot: "bg-emerald-500", label: "", labelClass: "" };
+  if (!dataVencimento) return { dot: "bg-muted", label: "Sem data", labelClass: "text-muted-foreground" };
   if (dataVencimento < today) return { dot: "bg-red-500", label: "Vencido", labelClass: "text-red-600" };
   const days = differenceInDays(parseISO(dataVencimento), new Date());
   if (days <= 7) return { dot: "bg-amber-400", label: `${days}d`, labelClass: "text-amber-600" };
   return { dot: "bg-emerald-400", label: `${days}d`, labelClass: "text-emerald-600" };
 }
 
-function StatCard({ title, value, icon: Icon, trend, color }: {
-  title: string; value: string; icon: any; trend?: string; color: string;
+function StatCard({ title, value, icon: Icon, trend, color, tooltipLines }: {
+  title: string; value: string; icon: any; trend?: string; color: string; tooltipLines?: string[];
 }) {
-  return (
-    <Card className="hover-elevate">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="space-y-1">
+  const card = (
+    <Card className="hover-elevate min-h-[100px]">
+      <CardContent className="p-5 h-full">
+        <div className="flex items-start justify-between gap-2 h-full">
+          <div className="space-y-1 flex-1 min-w-0">
             <p className="text-sm text-muted-foreground">{title}</p>
-            <p className="text-2xl font-bold tracking-tight">{value}</p>
+            <p className="text-xl font-bold tracking-tight truncate" title={value}>{value}</p>
             {trend && <p className="text-xs text-muted-foreground">{trend}</p>}
           </div>
-          <div className={`flex items-center justify-center w-10 h-10 rounded-md ${color}`}>
+          <div className={`flex items-center justify-center w-10 h-10 rounded-md flex-shrink-0 ${color}`}>
             <Icon className="w-5 h-5" />
           </div>
         </div>
       </CardContent>
     </Card>
+  );
+
+  if (!tooltipLines?.length) return card;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{card}</TooltipTrigger>
+      <TooltipContent side="bottom" align="start" className="max-w-[280px] p-3">
+        <div className="space-y-1 text-xs">
+          {tooltipLines.map((line, i) => (
+            <div key={i} className={line.startsWith('---') ? 'border-t my-1' : ''}>{line.startsWith('---') ? '' : line}</div>
+          ))}
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -95,14 +113,14 @@ export default function Dashboard() {
 
   const proximosVencimentos = dividas
     .filter((d) => d.status === "pendente")
-    .sort((a, b) => a.dataVencimento.localeCompare(b.dataVencimento))
+    .sort((a, b) => (a.dataVencimento || "").localeCompare(b.dataVencimento || ""))
     .slice(0, 6);
 
   const vencendo5Dias = dividas.filter(
-    (d) => d.status === "pendente" && d.dataVencimento >= today && d.dataVencimento <= in5Days
+    (d) => d.status === "pendente" && d.dataVencimento && d.dataVencimento >= today && d.dataVencimento <= in5Days
   );
   const vencidos = dividas.filter(
-    (d) => d.status === "pendente" && d.dataVencimento < today
+    (d) => d.status === "pendente" && d.dataVencimento && d.dataVencimento < today
   );
 
   const getCardUsage = (cartaoId: string) =>
@@ -114,6 +132,87 @@ export default function Dashboard() {
   });
 
   const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "Desconhecido";
+
+  const aReceberTooltip = useMemo(() => {
+    const items = dividas
+      .filter((d) => d.tipo === "receber" && d.status === "pendente")
+      .sort((a, b) => Number(b.valor) - Number(a.valor))
+      .slice(0, 5);
+    if (items.length === 0) return ["Nenhum valor a receber pendente."];
+    return [
+      "Principais valores a receber:",
+      ...items.map(d => `• ${getPessoaNome(d.pessoaId)} — ${formatCurrency(Number(d.valor))}`),
+      "---",
+      `Total: ${formatCurrency(totalReceber)}`
+    ];
+  }, [dividas, pessoas, totalReceber]);
+
+  const aPagarTooltip = useMemo(() => {
+    const items = dividas
+      .filter((d) => d.tipo === "pagar" && d.status === "pendente" && d.dataVencimento)
+      .sort((a, b) => (a.dataVencimento || "").localeCompare(b.dataVencimento || ""))
+      .slice(0, 5);
+    if (items.length === 0) return ["Nenhum vencimento pendente."];
+    return [
+      "Próximos vencimentos:",
+      ...items.map(d => `• ${(d.descricao || getPessoaNome(d.pessoaId)).slice(0, 25)} — ${formatCurrency(Number(d.valor))} (${d.dataVencimento ? format(parseISO(d.dataVencimento), 'dd/MM') : 'S/D'})`),
+      "---",
+      `Total: ${formatCurrency(totalPagar)}`
+    ];
+  }, [dividas, pessoas, totalPagar]);
+
+  const gastosFixosTooltip = useMemo(() => {
+    const items = servicos.filter((s) => s.status === "ativo");
+    if (items.length === 0) return ["Nenhum serviço ativo."];
+    return [
+      "Serviços ativos:",
+      ...items.map(s => `• ${s.nome} — ${formatCurrency(Number(s.valorMensal))}/mês`),
+      "---",
+      `Total: ${formatCurrency(totalServicos)}`
+    ];
+  }, [servicos, totalServicos]);
+
+  const saldoMesTooltip = useMemo(() => [
+    totalRenda > 0 ? `Renda: ${formatCurrency(totalRenda)}` : `A receber: ${formatCurrency(totalReceber)}`,
+    `Serviços: -${formatCurrency(totalServicos)}`,
+    `A pagar: -${formatCurrency(totalPagar)}`,
+    "---",
+    `Saldo: ${formatCurrency(saldoPrevisto)}`
+  ], [totalRenda, totalReceber, totalServicos, totalPagar, saldoPrevisto]);
+
+  const rendaMensalTooltip = useMemo(() => {
+    const items = rendas.filter((r) => r.ativo);
+    if (items.length === 0) return ["Nenhuma renda cadastrada.", "Acesse /renda para adicionar."];
+    return [
+      "Fontes de renda ativas:",
+      ...items.map(r => `• ${r.descricao} — ${formatCurrency(Number(r.valor))} (${r.tipo === 'fixo' ? 'Fixo' : 'Variável'})`),
+      "---",
+      `Total: ${formatCurrency(totalRenda)}`
+    ];
+  }, [rendas, totalRenda]);
+
+  const patrimonioTooltip = useMemo(() => {
+    if (patrimonios.length === 0) return ["Nenhum patrimônio cadastrado."];
+    const grouped = patrimonios.reduce((acc, p) => {
+      acc[p.tipo] = (acc[p.tipo] || 0) + Number(p.valorAtual);
+      return acc;
+    }, {} as Record<string, number>);
+    
+    const tipoLabels: Record<string, string> = {
+      conta_bancaria: "Conta Bancária",
+      dinheiro: "Dinheiro",
+      poupanca: "Poupança",
+      investimento: "Investimento",
+      outros: "Outros"
+    };
+
+    return [
+      "Distribuição por tipo:",
+      ...Object.entries(grouped).map(([tipo, total]) => `• ${tipoLabels[tipo] || tipo}: ${formatCurrency(total)}`),
+      "---",
+      `Total: ${formatCurrency(totalPatrimonio)}`
+    ];
+  }, [patrimonios, totalPatrimonio]);
 
   const alertas: { icon: any; color: string; bgColor: string; texto: string }[] = [];
   if (vencidos.length > 0) {
@@ -222,6 +321,7 @@ export default function Dashboard() {
           icon={ArrowUpRight}
           trend={`${dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").length} pendentes`}
           color="bg-emerald-500/10 text-emerald-600"
+          tooltipLines={aReceberTooltip}
         />
         <StatCard
           title="A pagar"
@@ -229,6 +329,7 @@ export default function Dashboard() {
           icon={ArrowDownRight}
           trend={`${dividas.filter((d) => d.tipo === "pagar" && d.status === "pendente").length} pendentes`}
           color="bg-red-500/10 text-red-600"
+          tooltipLines={aPagarTooltip}
         />
         <StatCard
           title="Gastos fixos"
@@ -236,6 +337,7 @@ export default function Dashboard() {
           icon={Receipt}
           trend={`${servicos.filter((s) => s.status === "ativo").length} ativos`}
           color="bg-amber-500/10 text-amber-600"
+          tooltipLines={gastosFixosTooltip}
         />
         <StatCard
           title="Saldo do mês"
@@ -243,6 +345,7 @@ export default function Dashboard() {
           icon={saldoPrevisto >= 0 ? TrendingUp : TrendingDown}
           trend={totalRenda > 0 ? "Renda - Gastos" : "Receitas - Despesas"}
           color={saldoPrevisto >= 0 ? "bg-primary/10 text-primary" : "bg-red-500/10 text-red-600"}
+          tooltipLines={saldoMesTooltip}
         />
         <StatCard
           title="Renda mensal"
@@ -250,6 +353,7 @@ export default function Dashboard() {
           icon={DollarSign}
           trend={`${rendas.filter((r) => r.ativo).length} fontes ativas`}
           color="bg-emerald-500/10 text-emerald-600"
+          tooltipLines={rendaMensalTooltip}
         />
         <StatCard
           title="Patrimônio total"
@@ -257,6 +361,7 @@ export default function Dashboard() {
           icon={PiggyBank}
           trend={`${patrimonios.length} itens`}
           color="bg-blue-500/10 text-blue-600"
+          tooltipLines={patrimonioTooltip}
         />
       </div>
 

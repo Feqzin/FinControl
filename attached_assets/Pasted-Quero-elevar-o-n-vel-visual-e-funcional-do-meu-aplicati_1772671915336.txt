@@ -1,0 +1,198 @@
+Quero elevar o nível visual e funcional do meu aplicativo financeiro com:
+
+1) Relatório financeiro completo exportável em PDF
+2) Dashboard organizado, responsivo e visualmente equilibrado
+3) Tooltips inteligentes ao passar o mouse
+4) Layout que se adapta dinamicamente aos valores exibidos
+
+========================================
+1) ABA RELATÓRIO — COMPLETO E DETALHADO
+========================================
+
+Criar aba "Relatório".
+
+O relatório deve incluir:
+
+========================
+RESUMO GERAL
+========================
+
+- Renda total do período
+- Total de gastos
+- Total em cartões
+- Total de dívidas
+- Total a receber
+- Patrimônio total
+- Saldo líquido real
+
+========================
+DETALHAMENTO POR CATEGORIA
+========================
+
+1) Cartões
+   - Lista de compras
+   - Parcelas
+   - Valor total pago no período
+   - Valor futuro
+
+2) Pessoas
+   - Quem deve
+   - Quanto deve
+   - Parcelas pendentes
+   - Parcelas atrasadas
+
+3) Serviços
+   - Serviços ativos
+   - Valor mensal
+   - Quem pagou
+   - Quem está pendente
+
+4) Patrimônio
+   - Conta bancária
+   - Dinheiro físico
+   - Caixinhas
+   - Investimentos
+
+5) Projeção e Simulação (se houver dados)
+
+========================
+FILTRO DE PERÍODO
+========================
+
+Permitir gerar relatório por:
+
+- Mês atual
+- Mês anterior
+- Intervalo personalizado
+- Ano completo
+- Total geral
+
+========================
+EXPORTAR EM PDF
+========================
+
+Botão: "Baixar em PDF"
+
+O PDF deve conter:
+
+- Cabeçalho com nome do usuário
+- Data de geração
+- Todas as seções organizadas
+- Tabelas bem alinhadas
+- Totais destacados
+- Separação por páginas se necessário
+
+Layout limpo, profissional e organizado.
+
+========================================
+2) DASHBOARD — ORGANIZAÇÃO VISUAL PROFISSIONAL
+========================================
+
+Problema:
+Quando os valores mudam, os elementos ficam muito próximos e visualmente desorganizados.
+
+Solução:
+
+- Usar cards com altura mínima fixa
+- Padding interno consistente
+- Espaçamento uniforme (gap fixo)
+- Grid responsivo com colunas ajustáveis
+- Quebra automática em mobile
+
+Garantir:
+
+- Nenhum elemento sobreponha outro
+- Números grandes não quebrem layout
+- Valores longos ajustem fonte dinamicamente
+
+========================================
+3) TOOLTIP INTELIGENTE (HOVER)
+========================================
+
+Implementar tooltips ao passar o mouse em:
+
+Saldo mensal:
+→ Mostrar:
+   - Renda mensal
+   - Total de gastos
+   - Total de cartões
+   - Total a receber
+   - Fórmula usada no cálculo
+
+"A receber":
+→ Mostrar lista resumida das 5 maiores dívidas
+
+"A pagar":
+→ Mostrar principais vencimentos
+
+"Gastos fixos":
+→ Mostrar lista detalhada de serviços
+
+Patrimônio:
+→ Mostrar distribuição por tipo
+
+Tooltips devem:
+
+- Ter sombra suave
+- Fundo escuro ou branco elegante
+- Bordas arredondadas
+- Animação leve
+- Não ultrapassar bordas da tela
+
+========================================
+4) ORGANIZAÇÃO E HIERARQUIA VISUAL
+========================================
+
+Aplicar:
+
+- Títulos bem definidos
+- Separadores visuais
+- Ícones coerentes
+- Cores consistentes
+- Tipografia equilibrada
+
+Usar:
+
+Verde → positivo
+Vermelho → negativo
+Azul → informativo
+Laranja → alerta
+
+========================================
+5) EXPERIÊNCIA PREMIUM
+========================================
+
+- Animação suave ao atualizar números
+- Transição suave ao trocar período
+- Skeleton loading ao carregar dados
+- Microinterações discretas
+
+========================================
+6) RESPONSIVIDADE AVANÇADA
+========================================
+
+Mobile:
+
+- Cards empilhados
+- Botões grandes
+- Scroll organizado
+- Tabelas adaptadas para lista vertical
+
+Desktop:
+
+- Grid em 3 ou 4 colunas
+- Hover ativo
+- Mais detalhes visíveis
+
+========================================
+
+Objetivo final:
+
+Criar um sistema visualmente impecável e organizado, com:
+
+- Relatório detalhado
+- Exportação em PDF
+- Dashboard inteligente
+- Tooltips explicativos
+- Layout adaptável
+- Experiência profissional
