@@ -6,7 +6,7 @@ import {
   LineChart, Line, Legend, ReferenceLine,
 } from "recharts";
 import { TrendingUp, TrendingDown, BarChart3, ArrowUpRight, ArrowDownRight } from "lucide-react";
-import type { Divida, Servico, Cartao, CompraCartao } from "@shared/schema";
+import type { Divida, Servico, Cartao, CompraCartao, Renda } from "@shared/schema";
 import { gerarHistoricoMensal, calcularScore } from "@/utils/financialEngine";
 
 function formatCurrency(value: number): string {
@@ -36,11 +36,12 @@ export default function HistoricoPage() {
   const { data: servicos = [], isLoading: l2 } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
   const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
+  const { data: rendas = [] } = useQuery<Renda[]>({ queryKey: ["/api/rendas"] });
 
   const isLoading = l1 || l2;
 
-  const historico = gerarHistoricoMensal(dividas, servicos, 6);
-  const score = calcularScore(dividas, servicos, cartoes, compras);
+  const historico = gerarHistoricoMensal(dividas, servicos, 6, rendas);
+  const score = calcularScore(dividas, servicos, cartoes, compras, rendas);
 
   const ultimoMes = historico[historico.length - 1];
   const penultimoMes = historico[historico.length - 2];

@@ -328,8 +328,8 @@ export default function Dashboard() {
     });
   }
 
-  const score = calcularScore(dividas, servicos, cartoes, compras);
-  const insights = gerarInsights(dividas, servicos, cartoes, compras);
+  const score = calcularScore(dividas, servicos, cartoes, compras, rendas);
+  const insights = gerarInsights(dividas, servicos, cartoes, compras, rendas);
 
   const scoreBarColor =
     score.valor >= 80 ? "bg-emerald-500" :

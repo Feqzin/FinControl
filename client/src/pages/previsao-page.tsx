@@ -2,12 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown, Wallet } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid,
 } from "recharts";
-import type { Divida, Servico } from "@shared/schema";
-import { format, getDaysInMonth, startOfMonth } from "date-fns";
+import type { Divida, Servico, Renda } from "@shared/schema";
+import { format, getDaysInMonth } from "date-fns";
+import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -19,21 +20,30 @@ function formatCurrencyShort(value: number): string {
 }
 
 export default function PrevisaoPage() {
+  const { visible } = useValuesVisibility();
   const { data: dividas = [], isLoading: l1 } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [], isLoading: l2 } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
-  const isLoading = l1 || l2;
+  const { data: rendas = [], isLoading: l3 } = useQuery<Renda[]>({ queryKey: ["/api/rendas"] });
+  const isLoading = l1 || l2 || l3;
+
+  const mask = (v: string) => maskValue(v, visible);
 
   const now = new Date();
   const currentMonth = format(now, "yyyy-MM");
   const daysInMonth = getDaysInMonth(now);
   const currentDay = now.getDate();
 
-  const receberMes = dividas
-    .filter((d) => d.tipo === "receber" && d.status === "pendente" && d.dataVencimento.startsWith(currentMonth))
+  const rendasAtivas = rendas.filter((r) => r.ativo);
+  const rendaMensal = rendasAtivas.reduce((s, r) => s + Number(r.valor), 0);
+
+  const receberDividas = dividas
+    .filter((d) => d.tipo === "receber" && d.status === "pendente" && (d.dataVencimento || "").startsWith(currentMonth))
     .reduce((s, d) => s + Number(d.valor), 0);
 
+  const totalEntradas = rendaMensal + receberDividas;
+
   const pagarDividas = dividas
-    .filter((d) => d.tipo === "pagar" && d.status === "pendente" && d.dataVencimento.startsWith(currentMonth))
+    .filter((d) => d.tipo === "pagar" && d.status === "pendente" && (d.dataVencimento || "").startsWith(currentMonth))
     .reduce((s, d) => s + Number(d.valor), 0);
 
   const servicosMes = servicos
@@ -41,21 +51,28 @@ export default function PrevisaoPage() {
     .reduce((s, sv) => s + Number(sv.valorMensal), 0);
 
   const totalSaida = pagarDividas + servicosMes;
-  const saldoPrevisto = receberMes - totalSaida;
+  const saldoPrevisto = totalEntradas - totalSaida;
+  const pctComprometido = totalEntradas > 0 ? Math.round((totalSaida / totalEntradas) * 100) : null;
 
-  const entradasMes = dividas
-    .filter((d) => d.tipo === "receber" && d.status === "pendente" && d.dataVencimento.startsWith(currentMonth))
-    .sort((a, b) => a.dataVencimento.localeCompare(b.dataVencimento));
+  const entradasDividas = dividas
+    .filter((d) => d.tipo === "receber" && d.status === "pendente" && (d.dataVencimento || "").startsWith(currentMonth))
+    .sort((a, b) => (a.dataVencimento || "").localeCompare(b.dataVencimento || ""));
 
   const saidasDividas = dividas
-    .filter((d) => d.tipo === "pagar" && d.status === "pendente" && d.dataVencimento.startsWith(currentMonth))
-    .sort((a, b) => a.dataVencimento.localeCompare(b.dataVencimento));
+    .filter((d) => d.tipo === "pagar" && d.status === "pendente" && (d.dataVencimento || "").startsWith(currentMonth))
+    .sort((a, b) => (a.dataVencimento || "").localeCompare(b.dataVencimento || ""));
 
   const chartData = Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
     const dayStr = `${currentMonth}-${String(day).padStart(2, "0")}`;
     let entradas = 0;
     let saidas = 0;
+
+    for (const r of rendasAtivas) {
+      if (Number(r.diaRecebimento) === day) {
+        entradas += Number(r.valor);
+      }
+    }
 
     for (const d of dividas) {
       if (d.status === "pendente" && d.dataVencimento === dayStr) {
@@ -85,10 +102,10 @@ export default function PrevisaoPage() {
     return (
       <div className="rounded-md border bg-card p-3 shadow-md text-sm space-y-1">
         <p className="font-semibold">Dia {label}</p>
-        {data.entradas > 0 && <p className="text-emerald-600">+{formatCurrency(data.entradas)}</p>}
-        {data.saidas > 0 && <p className="text-red-600">-{formatCurrency(data.saidas)}</p>}
+        {data.entradas > 0 && <p className="text-emerald-600">+{mask(formatCurrency(data.entradas))}</p>}
+        {data.saidas > 0 && <p className="text-red-600">-{mask(formatCurrency(data.saidas))}</p>}
         <p className={`font-bold ${data.saldo >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-          Saldo: {formatCurrency(data.saldo)}
+          Saldo: {mask(formatCurrency(data.saldo))}
         </p>
       </div>
     );
@@ -98,8 +115,8 @@ export default function PrevisaoPage() {
     return (
       <div className="p-6 space-y-6">
         <Skeleton className="h-8 w-48" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-28" />)}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-28" />)}
         </div>
         <Skeleton className="h-64" />
       </div>
@@ -113,56 +130,94 @@ export default function PrevisaoPage() {
         <p className="text-muted-foreground">Projecao financeira para {format(now, "MMMM yyyy")}</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="hover-elevate">
           <CardContent className="p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-md bg-emerald-500/10">
-                <ArrowUpRight className="w-5 h-5 text-emerald-600" />
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center justify-center w-9 h-9 rounded-md bg-emerald-500/10 shrink-0">
+                <ArrowUpRight className="w-4 h-4 text-emerald-600" />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total a receber</p>
-                <p className="text-2xl font-bold text-emerald-600">{formatCurrency(receberMes)}</p>
-              </div>
+              <p className="text-xs text-muted-foreground">Total entradas</p>
             </div>
-            <p className="text-xs text-muted-foreground">{entradasMes.length} lancamento(s) este mes</p>
+            <p className="text-xl font-bold text-emerald-600">{mask(formatCurrency(totalEntradas))}</p>
+            <div className="mt-1 space-y-0.5">
+              {rendaMensal > 0 && (
+                <p className="text-xs text-muted-foreground flex justify-between">
+                  <span>Renda</span><span className="font-medium">{mask(formatCurrency(rendaMensal))}</span>
+                </p>
+              )}
+              {receberDividas > 0 && (
+                <p className="text-xs text-muted-foreground flex justify-between">
+                  <span>A receber</span><span className="font-medium">{mask(formatCurrency(receberDividas))}</span>
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
 
         <Card className="hover-elevate">
           <CardContent className="p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex items-center justify-center w-10 h-10 rounded-md bg-red-500/10">
-                <ArrowDownRight className="w-5 h-5 text-red-600" />
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center justify-center w-9 h-9 rounded-md bg-red-500/10 shrink-0">
+                <ArrowDownRight className="w-4 h-4 text-red-600" />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total a pagar</p>
-                <p className="text-2xl font-bold text-red-600">{formatCurrency(totalSaida)}</p>
-              </div>
+              <p className="text-xs text-muted-foreground">Total saidas</p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {saidasDividas.length} divida(s) + {servicos.filter((s) => s.status === "ativo").length} servico(s)
+            <p className="text-xl font-bold text-red-600">{mask(formatCurrency(totalSaida))}</p>
+            <div className="mt-1 space-y-0.5">
+              {pagarDividas > 0 && (
+                <p className="text-xs text-muted-foreground flex justify-between">
+                  <span>Dividas</span><span className="font-medium">{mask(formatCurrency(pagarDividas))}</span>
+                </p>
+              )}
+              {servicosMes > 0 && (
+                <p className="text-xs text-muted-foreground flex justify-between">
+                  <span>Servicos</span><span className="font-medium">{mask(formatCurrency(servicosMes))}</span>
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="hover-elevate">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-2">
+              <div className={`flex items-center justify-center w-9 h-9 rounded-md shrink-0 ${saldoPrevisto >= 0 ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
+                {saldoPrevisto >= 0
+                  ? <TrendingUp className="w-4 h-4 text-emerald-600" />
+                  : <TrendingDown className="w-4 h-4 text-red-600" />}
+              </div>
+              <p className="text-xs text-muted-foreground">Saldo previsto</p>
+            </div>
+            <p className={`text-xl font-bold ${saldoPrevisto >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+              {mask(formatCurrency(saldoPrevisto))}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {saldoPrevisto >= 0 ? "Financas equilibradas" : "Despesas excedem receitas"}
             </p>
           </CardContent>
         </Card>
 
         <Card className="hover-elevate">
           <CardContent className="p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className={`flex items-center justify-center w-10 h-10 rounded-md ${saldoPrevisto >= 0 ? "bg-primary/10" : "bg-red-500/10"}`}>
-                {saldoPrevisto >= 0
-                  ? <TrendingUp className="w-5 h-5 text-primary" />
-                  : <TrendingDown className="w-5 h-5 text-red-600" />
-                }
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center justify-center w-9 h-9 rounded-md bg-primary/10 shrink-0">
+                <Wallet className="w-4 h-4 text-primary" />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Saldo previsto</p>
-                <p className={`text-2xl font-bold ${saldoPrevisto >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                  {formatCurrency(saldoPrevisto)}
-                </p>
-              </div>
+              <p className="text-xs text-muted-foreground">Renda comprometida</p>
             </div>
-            <p className="text-xs text-muted-foreground">Receitas - Despesas</p>
+            <p className="text-xl font-bold text-primary">
+              {pctComprometido !== null ? `${pctComprometido}%` : "—"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {pctComprometido === null
+                ? "Cadastre fontes de renda"
+                : pctComprometido < 50
+                  ? "Nivel saudavel"
+                  : pctComprometido < 80
+                    ? "Atencao"
+                    : "Risco elevado"}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -190,7 +245,6 @@ export default function PrevisaoPage() {
                   tickLine={false}
                   axisLine={false}
                   interval={4}
-                  tickFormatter={(d) => `${d}`}
                 />
                 <YAxis
                   tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
@@ -220,7 +274,7 @@ export default function PrevisaoPage() {
             </ResponsiveContainer>
           </div>
           <p className="text-xs text-muted-foreground mt-2 text-center">
-            Saldo acumulado dia a dia com base nas datas de vencimento
+            Saldo acumulado dia a dia incluindo renda mensal, valores a receber e despesas
           </p>
         </CardContent>
       </Card>
@@ -230,25 +284,38 @@ export default function PrevisaoPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <ArrowUpRight className="w-4 h-4 text-emerald-600" />
-              Entradas previstas ({entradasMes.length})
+              Entradas previstas ({rendasAtivas.length + entradasDividas.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {entradasMes.length === 0 ? (
-              <p className="text-center py-8 text-muted-foreground text-sm">Nenhuma entrada prevista</p>
-            ) : (
-              <div className="space-y-2">
-                {entradasMes.map((d) => (
-                  <div key={d.id} className="flex items-center justify-between p-3 rounded-md bg-muted/30">
-                    <div>
-                      <p className="text-sm font-medium">{d.descricao || "Divida"}</p>
-                      <p className="text-xs text-muted-foreground">Vencimento: {d.dataVencimento}</p>
+            <div className="space-y-2">
+              {rendasAtivas.map((r) => (
+                <div key={r.id} className="flex items-center justify-between p-3 rounded-md bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30">
+                  <div>
+                    <p className="text-sm font-medium">{r.descricao}</p>
+                    <div className="flex items-center gap-1">
+                      <Badge variant="secondary" className="text-[10px]">Renda fixa</Badge>
+                      <span className="text-xs text-muted-foreground">Dia {r.diaRecebimento}</span>
                     </div>
-                    <span className="font-semibold text-emerald-600">{formatCurrency(Number(d.valor))}</span>
                   </div>
-                ))}
-              </div>
-            )}
+                  <span className="font-semibold text-emerald-600">{mask(formatCurrency(Number(r.valor)))}</span>
+                </div>
+              ))}
+              {entradasDividas.map((d) => (
+                <div key={d.id} className="flex items-center justify-between p-3 rounded-md bg-muted/30">
+                  <div>
+                    <p className="text-sm font-medium">{d.descricao || "A receber"}</p>
+                    <p className="text-xs text-muted-foreground">Vencimento: {d.dataVencimento}</p>
+                  </div>
+                  <span className="font-semibold text-emerald-600">{mask(formatCurrency(Number(d.valor)))}</span>
+                </div>
+              ))}
+              {rendasAtivas.length === 0 && entradasDividas.length === 0 && (
+                <p className="text-center py-8 text-muted-foreground text-sm">
+                  Nenhuma entrada prevista.<br />Cadastre fontes de renda ou valores a receber.
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -270,7 +337,7 @@ export default function PrevisaoPage() {
                       <span className="text-xs text-muted-foreground">Dia {s.dataCobranca}</span>
                     </div>
                   </div>
-                  <span className="font-semibold text-red-600">{formatCurrency(Number(s.valorMensal))}</span>
+                  <span className="font-semibold text-red-600">{mask(formatCurrency(Number(s.valorMensal)))}</span>
                 </div>
               ))}
               {saidasDividas.map((d) => (
@@ -279,7 +346,7 @@ export default function PrevisaoPage() {
                     <p className="text-sm font-medium">{d.descricao || "Divida"}</p>
                     <p className="text-xs text-muted-foreground">Vencimento: {d.dataVencimento}</p>
                   </div>
-                  <span className="font-semibold text-red-600">{formatCurrency(Number(d.valor))}</span>
+                  <span className="font-semibold text-red-600">{mask(formatCurrency(Number(d.valor)))}</span>
                 </div>
               ))}
               {saidasDividas.length === 0 && servicos.filter((s) => s.status === "ativo").length === 0 && (
