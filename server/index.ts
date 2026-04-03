@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase } from "./seed";
+import { ENV } from "./env";
 
 const app = express();
 const httpServer = createServer(app);
@@ -34,10 +35,37 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+function isSensitiveKey(key: string): boolean {
+  const normalized = key.toLowerCase();
+  return (
+    normalized.includes("password") ||
+    normalized === "token" ||
+    normalized.endsWith("token") ||
+    normalized.includes("resetlink")
+  );
+}
+
+function sanitizeForLog(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map((item) => sanitizeForLog(item));
+  if (typeof value !== "object") return value;
+  if (value instanceof Date) return value.toISOString();
+
+  const out: Record<string, unknown> = {};
+  for (const [key, childValue] of Object.entries(value as Record<string, unknown>)) {
+    if (isSensitiveKey(key)) {
+      out[key] = "[REDACTED]";
+      continue;
+    }
+    out[key] = sanitizeForLog(childValue);
+  }
+  return out;
+}
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+  let capturedJsonResponse: unknown = undefined;
 
   const originalResJson = res.json;
   res.json = function (bodyJson, ...args) {
@@ -49,8 +77,15 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      if (capturedJsonResponse !== undefined) {
+        const safeResponse = sanitizeForLog(capturedJsonResponse);
+        let serialized = "[unserializable_response_body]";
+        try {
+          serialized = JSON.stringify(safeResponse);
+        } catch {
+          // keep default fallback
+        }
+        logLine += ` :: ${serialized}`;
       }
 
       log(logLine);
@@ -94,12 +129,11 @@ app.use((req, res, next) => {
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || "5000", 10);
+  const port = ENV.port;
   httpServer.listen(
     {
       port,
       host: "0.0.0.0",
-      reusePort: true,
     },
     () => {
       log(`serving on port ${port}`);

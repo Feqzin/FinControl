@@ -5,6 +5,7 @@ import { setupAuth, requireAuth } from "./auth";
 import { z } from "zod";
 import { addMonths, format, parseISO, addDays } from "date-fns";
 import { insertRendaSchema, insertPatrimonioSchema } from "@shared/schema";
+import { buildDividaRecalculoPlan } from "./divida-recalculo";
 
 const pessoaBody = z.object({
   nome: z.string().min(1),
@@ -368,36 +369,60 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post("/api/dividas/:id/recalcular", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
     const { novoTotal, primeiroVencimento } = req.body;
-    if (!novoTotal || novoTotal < 1) return res.status(400).json({ message: "novoTotal obrigatorio" });
+    const novoTotalNum = Number(novoTotal);
+    if (!Number.isInteger(novoTotalNum) || novoTotalNum < 1) {
+      return res.status(400).json({ message: "novoTotal obrigatorio e deve ser inteiro >= 1" });
+    }
     const divida = await storage.getDivida(req.params.id, userId);
     if (!divida) return res.status(404).json({ message: "Not found" });
     const parcelasExistentes = await storage.getParcelasByDivida(req.params.id, userId);
+    if (parcelasExistentes.length === 0) {
+      return res.status(400).json({ message: "Divida nao possui parcelas para recalculo" });
+    }
+
     const pagas = parcelasExistentes.filter((p) => p.status === "pago");
     const pendentes = parcelasExistentes.filter((p) => p.status !== "pago");
-    for (const p of pendentes) await storage.deleteParcela(p.id, userId);
-    const valorTotal = Number(divida.valorTotal || divida.valor) * Number(divida.totalParcelas || 1);
-    const valorParcela = Number((valorTotal / novoTotal).toFixed(2));
-    const baseDate = primeiroVencimento
-      ? new Date(primeiroVencimento + "T12:00:00")
-      : new Date((divida.dataVencimento || format(new Date(), "yyyy-MM-dd")) + "T12:00:00");
-    const novasParcelas = [];
-    for (let i = pagas.length; i < novoTotal; i++) {
-      novasParcelas.push({
-        userId, dividaId: divida.id, numero: i + 1,
-        valor: i === novoTotal - 1
-          ? String(Number((valorTotal - valorParcela * (novoTotal - 1)).toFixed(2)))
-          : String(valorParcela),
-        dataVencimento: format(addMonths(baseDate, i - pagas.length), "yyyy-MM-dd"),
-        status: "pendente", dataPagamento: null, formaPagamento: null,
-      });
+
+    const valorTotalDivida = Number(divida.valorTotal ?? divida.valor);
+    const pendenteOrdenadas = [...pendentes].sort((a, b) => a.numero - b.numero);
+    const firstPendingDate =
+      primeiroVencimento ||
+      pendenteOrdenadas[0]?.dataVencimento ||
+      divida.dataVencimento ||
+      format(new Date(), "yyyy-MM-dd");
+    const baseDate = new Date(`${firstPendingDate}T12:00:00`);
+    if (Number.isNaN(baseDate.getTime())) {
+      return res.status(400).json({ message: "primeiroVencimento invalido" });
     }
-    const criadas = await storage.createParcelasBulk(novasParcelas);
+
+    let plan;
+    try {
+      plan = buildDividaRecalculoPlan({
+        valorTotal: valorTotalDivida,
+        novoTotal: novoTotalNum,
+        parcelasPagas: pagas.map((p) => ({ valor: Number(p.valor) })),
+        primeiroVencimento: baseDate,
+      });
+    } catch (error) {
+      return res.status(400).json({ message: error instanceof Error ? error.message : "Erro no recalculo" });
+    }
+
+    for (const p of pendentes) await storage.deleteParcela(p.id, userId);
+
+    const criadas = await storage.createParcelasBulk(
+      plan.parcelasPendentes.map((parcela) => ({
+        ...parcela,
+        userId,
+        dividaId: divida.id,
+      }))
+    );
+
     await storage.updateDivida(divida.id, userId, {
-      totalParcelas: novoTotal,
-      valorTotal: String(valorTotal),
-      valor: String(valorParcela),
+      totalParcelas: novoTotalNum,
+      valorTotal: plan.valorTotal,
+      valor: plan.valorParcelaReferencia,
     });
-    res.json({ pagas: pagas.length, novas: criadas.length });
+    res.json({ pagas: pagas.length, novas: criadas.length, valorRestante: plan.valorRestante });
   });
 
   app.get("/api/parcelas-compra/:compraId", requireAuth, async (req, res) => {

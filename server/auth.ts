@@ -8,6 +8,7 @@ import connectPgSimple from "connect-pg-simple";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import rateLimit from "express-rate-limit";
+import { ENV } from "./env";
 
 const scryptAsync = promisify(scrypt);
 
@@ -36,7 +37,7 @@ export function setupAuth(app: Express) {
   const PgStore = connectPgSimple(session);
 
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET!,
+    secret: ENV.sessionSecret,
     resave: false,
     saveUninitialized: false,
     store: new PgStore({
@@ -139,16 +140,22 @@ export function setupAuth(app: Express) {
   app.post("/api/auth/forgot-password", loginLimiter, async (req, res) => {
     try {
       const { username } = req.body;
+      const genericMessage = "Se o usuario existir, o link de redefinicao foi gerado.";
       if (!username) return res.status(400).json({ message: "Informe o usuario" });
       const user = await storage.getUserByUsername(username);
       if (!user) {
-        return res.json({ message: "Se o usuario existir, o link de redefinicao foi gerado." });
+        return res.json({ message: genericMessage });
       }
       const token = randomBytes(32).toString("hex");
       const expiry = new Date(Date.now() + 60 * 60 * 1000);
       await storage.updateUser(user.id, { resetToken: token, resetTokenExpiry: expiry });
+
+      if (process.env.NODE_ENV === "production") {
+        return res.json({ message: genericMessage });
+      }
+
       const resetLink = `/redefinir-senha?token=${token}`;
-      return res.json({ message: "Link gerado com sucesso.", resetLink, _dev: "Em producao este link seria enviado por email" });
+      return res.json({ message: genericMessage, resetLink, _dev: "Em producao este link seria enviado por email" });
     } catch (err) {
       return res.status(500).json({ message: "Erro interno" });
     }
