@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, lazy, Suspense } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,11 +27,14 @@ import {
   Eye,
 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
-import { IconPicker } from "@/components/icon-picker";
 import { useUIPreferences } from "@/context/ui-preferences";
 import type { Cartao, CompraCartao, Pessoa, ParcelaCompra } from "@shared/schema";
 import { format, addMonths, isPast, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
+
+const IconPicker = lazy(() =>
+  import("@/components/icon-picker").then((mod) => ({ default: mod.IconPicker })),
+);
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -72,6 +75,33 @@ interface ParsedItem {
   tipo: "compra" | "taxa";
   duplicata: any;
   action: "import" | "skip";
+}
+
+type ParseSource = "csv" | "ofx" | "texto";
+
+interface ParseStats {
+  source: ParseSource;
+  totalRows: number;
+  skippedInvalidValue: number;
+  skippedNegativeValue: number;
+  skippedPaymentOrCredit: number;
+  skippedUnrecognized: number;
+}
+
+interface ParseResult {
+  items: ParsedItem[];
+  stats: ParseStats;
+}
+
+function createParseStats(source: ParseSource, totalRows: number): ParseStats {
+  return {
+    source,
+    totalRows,
+    skippedInvalidValue: 0,
+    skippedNegativeValue: 0,
+    skippedPaymentOrCredit: 0,
+    skippedUnrecognized: 0,
+  };
 }
 
 // ── Parser helpers ──────────────────────────────────────────────────────────
@@ -215,18 +245,22 @@ function checkDuplicata(item: { valorParcela: number; descricao: string }, exist
   }) || null;
 }
 
-function parseTexto(text: string, existentes: CompraCartao[], cartaoId: string): ParsedItem[] {
+function parseTexto(text: string, existentes: CompraCartao[], cartaoId: string): ParseResult {
   const vencimentoFatura = findVencimentoFatura(text);
   const linhas = text.split(/\n/).map((l) => l.trim()).filter(Boolean);
   const items: ParsedItem[] = [];
+  const stats = createParseStats("texto", linhas.length);
   let idx = 0;
   for (const linha of linhas) {
     const parsed = parseLinha(linha, vencimentoFatura);
-    if (!parsed) continue;
+    if (!parsed) {
+      stats.skippedUnrecognized += 1;
+      continue;
+    }
     const duplicata = checkDuplicata(parsed, existentes, cartaoId);
     items.push({ id: String(idx++), ...parsed, tipo: parsed.tipo ?? "compra", vencimentoFatura, duplicata, action: duplicata ? "skip" : "import" });
   }
-  return items;
+  return { items, stats };
 }
 
 function parseCsvValue(raw: string): number {
@@ -258,7 +292,7 @@ function parseCsvDate(raw: string): string {
 
 const PAYMENT_KEYWORDS = /pagamento\s*(recebido|de\s*fatura|efetuado)|credito\s*em\s*conta|estorno|reembolso|cashback/i;
 
-function parseCsv(content: string, existentes: CompraCartao[], cartaoId: string): ParsedItem[] {
+function parseCsv(content: string, existentes: CompraCartao[], cartaoId: string): ParseResult {
   // Detect separator: prefer comma for simple CSV, semicolon for BR exports
   const firstLine = content.split(/\n/)[0] ?? "";
   const sep = firstLine.split(";").length > firstLine.split(",").length ? ";" : ",";
@@ -278,6 +312,7 @@ function parseCsv(content: string, existentes: CompraCartao[], cartaoId: string)
 
   const vencimentoFatura = findVencimentoFatura(content);
   const items: ParsedItem[] = [];
+  const stats = createParseStats("csv", Math.max(0, linhas.length - 1));
   let idx = 0;
 
   for (let i = 1; i < linhas.length; i++) {
@@ -292,21 +327,37 @@ function parseCsv(content: string, existentes: CompraCartao[], cartaoId: string)
     }
     cols.push(cur.trim());
 
-    if (cols.length < 2) continue;
+    if (cols.length < 2) {
+      stats.skippedUnrecognized += 1;
+      continue;
+    }
 
     const rawDesc = (descIdx >= 0 ? cols[descIdx] : cols[1] ?? "").replace(/"/g, "").trim();
     const valorRaw = (valIdx >= 0 ? cols[valIdx] : cols[cols.length - 1] ?? "").replace(/"/g, "").trim();
     const dataRaw  = (dateIdx >= 0 ? cols[dateIdx] : cols[0] ?? "").replace(/"/g, "").trim();
 
     // Skip empty rows
-    if (!rawDesc && !valorRaw) continue;
+    if (!rawDesc && !valorRaw) {
+      stats.skippedUnrecognized += 1;
+      continue;
+    }
 
     // Parse value — keep sign to detect payments
     const valorSigned = parseCsvValue(valorRaw);
-    if (isNaN(valorSigned) || valorSigned === 0) continue;
+    if (isNaN(valorSigned) || valorSigned === 0) {
+      stats.skippedInvalidValue += 1;
+      continue;
+    }
 
     // Skip payments received (negative = credit to account, or keyword match)
-    if (valorSigned < 0 || PAYMENT_KEYWORDS.test(rawDesc)) continue;
+    if (valorSigned < 0) {
+      stats.skippedNegativeValue += 1;
+      continue;
+    }
+    if (PAYMENT_KEYWORDS.test(rawDesc)) {
+      stats.skippedPaymentOrCredit += 1;
+      continue;
+    }
 
     const valorParcela = valorSigned; // CSV amount = this installment's value
 
@@ -340,10 +391,19 @@ function parseCsv(content: string, existentes: CompraCartao[], cartaoId: string)
     });
   }
 
-  return items.length > 0 ? items : parseTexto(content, existentes, cartaoId);
+  if (
+    items.length === 0 &&
+    stats.skippedInvalidValue === 0 &&
+    stats.skippedNegativeValue === 0 &&
+    stats.skippedPaymentOrCredit === 0
+  ) {
+    return parseTexto(content, existentes, cartaoId);
+  }
+
+  return { items, stats };
 }
 
-function parseOfx(content: string, existentes: CompraCartao[], cartaoId: string): ParsedItem[] {
+function parseOfx(content: string, existentes: CompraCartao[], cartaoId: string): ParseResult {
   const getTag = (block: string, tag: string) => {
     const m = block.match(new RegExp(`<${tag}>([^<\n\r]+)`, "i"));
     return m ? m[1].trim() : "";
@@ -363,12 +423,26 @@ function parseOfx(content: string, existentes: CompraCartao[], cartaoId: string)
   const blocks = rawBlocks.length > 0 ? rawBlocks : [content];
   const vencimentoFatura = findVencimentoFatura(content);
   const items: ParsedItem[] = [];
+  const stats = createParseStats("ofx", blocks.length);
   let idx = 0;
   for (const block of blocks) {
-    const valorStr = getTag(block, "TRNAMT");
-    const valor = Math.abs(parseFloat(valorStr.replace(",", ".")));
-    if (isNaN(valor) || valor <= 0) continue;
     const rawDesc = getTag(block, "MEMO") || getTag(block, "NAME") || "Compra OFX";
+    const trnType = getTag(block, "TRNTYPE").toLowerCase();
+    const valorStr = getTag(block, "TRNAMT");
+    const valorSigned = parseFloat(valorStr.replace(",", "."));
+    if (isNaN(valorSigned) || valorSigned === 0) {
+      stats.skippedInvalidValue += 1;
+      continue;
+    }
+    if (valorSigned < 0) {
+      stats.skippedNegativeValue += 1;
+      continue;
+    }
+    if (/credit|payment/.test(trnType) || PAYMENT_KEYWORDS.test(rawDesc)) {
+      stats.skippedPaymentOrCredit += 1;
+      continue;
+    }
+    const valorParcela = Number(valorSigned.toFixed(2));
     const descricao = normalizarDescricao(rawDesc);
     const dtRaw = getTag(block, "DTPOSTED");
     let dataCompra = format(new Date(), "yyyy-MM-dd");
@@ -376,13 +450,32 @@ function parseOfx(content: string, existentes: CompraCartao[], cartaoId: string)
     const instResult = extractInstallment(rawDesc);
     const parcelaAtual = instResult ? instResult.parcelaAtual : 1;
     const totalParcelas = instResult ? instResult.totalParcelas : 1;
-    const valorParcela = Number((valor / totalParcelas).toFixed(2));
+    const valor = Number((valorParcela * totalParcelas).toFixed(2));
     const parcelasRestantes = totalParcelas - parcelaAtual;
     const tipo = detectarTipo(rawDesc);
     const duplicata = checkDuplicata({ valorParcela, descricao }, existentes, cartaoId);
     items.push({ id: String(idx++), descricao, valor, valorParcela, parcelas: totalParcelas, parcelaAtual, parcelasRestantes, dataCompra, vencimentoFatura, tipo, duplicata, action: duplicata ? "skip" : "import" });
   }
-  return items;
+  return { items, stats };
+}
+
+function countIgnoredRows(stats: ParseStats): number {
+  return (
+    stats.skippedInvalidValue +
+    stats.skippedNegativeValue +
+    stats.skippedPaymentOrCredit +
+    stats.skippedUnrecognized
+  );
+}
+
+function buildIgnoredDetails(stats: ParseStats): string | undefined {
+  const reasons: string[] = [];
+  if (stats.skippedNegativeValue > 0) reasons.push(`${stats.skippedNegativeValue} com valor negativo (credito/estorno)`);
+  if (stats.skippedPaymentOrCredit > 0) reasons.push(`${stats.skippedPaymentOrCredit} com pagamento/estorno/reembolso`);
+  if (stats.skippedInvalidValue > 0) reasons.push(`${stats.skippedInvalidValue} com valor invalido`);
+  if (stats.skippedUnrecognized > 0) reasons.push(`${stats.skippedUnrecognized} nao reconhecida(s)`);
+  if (reasons.length === 0) return undefined;
+  return `Linhas ignoradas: ${reasons.join(", ")}.`;
 }
 
 export default function CartoesPage() {
@@ -597,13 +690,25 @@ export default function CartoesPage() {
   const handleParseTexto = () => {
     if (!importTexto.trim()) { toast({ title: "Cole ou escreva o texto da fatura", variant: "destructive" }); return; }
     const cartaoId = importCartaoId || (cartoes[0]?.id ?? "");
-    const items = parseCsv(importTexto, compras, cartaoId);
-    setImportItems(items);
+    const result = parseCsv(importTexto, compras, cartaoId);
+    setImportItems(result.items);
     setImportEditingId(null);
     const venc = findVencimentoFatura(importTexto);
     if (venc) setImportVencimento(venc);
-    if (items.length === 0) toast({ title: "Nenhuma compra detectada. Verifique o formato do texto.", variant: "destructive" });
-    else toast({ title: `${items.length} compra(s) detectada(s)` });
+    const ignoredDetails = buildIgnoredDetails(result.stats);
+    const hasIgnoredRows = countIgnoredRows(result.stats) > 0;
+    if (result.items.length === 0) {
+      toast({
+        title: "Nenhuma compra detectada. Verifique o formato do texto.",
+        description: ignoredDetails,
+        variant: "destructive",
+      });
+      return;
+    }
+    toast({
+      title: `${result.items.length} compra(s) detectada(s)`,
+      description: hasIgnoredRows ? ignoredDetails : undefined,
+    });
   };
 
   const applyImportEdit = () => {
@@ -636,16 +741,28 @@ export default function CartoesPage() {
     try {
       const content = await file.text();
       const cartaoId = importCartaoId || (cartoes[0]?.id ?? "");
-      let items: ParsedItem[] = [];
+      let result: ParseResult;
       const name = file.name.toLowerCase();
-      if (name.endsWith(".ofx") || name.endsWith(".qfx")) items = parseOfx(content, compras, cartaoId);
-      else items = parseCsv(content, compras, cartaoId);
-      setImportItems(items);
+      if (name.endsWith(".ofx") || name.endsWith(".qfx")) result = parseOfx(content, compras, cartaoId);
+      else result = parseCsv(content, compras, cartaoId);
+      setImportItems(result.items);
       setImportEditingId(null);
       const venc = findVencimentoFatura(content);
       if (venc) setImportVencimento(venc);
-      if (items.length === 0) toast({ title: "Nenhuma compra detectada no arquivo.", variant: "destructive" });
-      else toast({ title: `${items.length} compra(s) detectada(s)` });
+      const ignoredDetails = buildIgnoredDetails(result.stats);
+      const hasIgnoredRows = countIgnoredRows(result.stats) > 0;
+      if (result.items.length === 0) {
+        toast({
+          title: "Nenhuma compra detectada no arquivo.",
+          description: ignoredDetails,
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({
+        title: `${result.items.length} compra(s) detectada(s)`,
+        description: hasIgnoredRows ? ignoredDetails : undefined,
+      });
     } catch {
       toast({ title: "Erro ao ler arquivo", variant: "destructive" });
     } finally { setImportLoading(false); }
@@ -693,7 +810,9 @@ export default function CartoesPage() {
               <form onSubmit={(e) => { e.preventDefault(); createCardMutation.mutate(cardForm); }} className="space-y-4">
                 <div className="space-y-2">
                   <Label>Icone</Label>
-                  <IconPicker value={newCardIcone} name={cardForm.nome} onChange={setNewCardIcone} size="md" />
+                  <Suspense fallback={<Skeleton className="h-14 w-full" />}>
+                    <IconPicker value={newCardIcone} name={cardForm.nome} onChange={setNewCardIcone} size="md" />
+                  </Suspense>
                 </div>
                 <div className="space-y-2">
                   <Label>Nome do cartao</Label>
@@ -818,7 +937,9 @@ export default function CartoesPage() {
           <form onSubmit={(e) => { e.preventDefault(); if (!editingCard) return; updateCardMutation.mutate({ id: editingCard.id, data: editCardForm, iconeId: editCardIcone }); }} className="space-y-4">
             <div className="space-y-2">
               <Label>Ícone</Label>
-              <IconPicker value={editCardIcone} name={editCardForm.nome} onChange={setEditCardIcone} size="md" />
+              <Suspense fallback={<Skeleton className="h-14 w-full" />}>
+                <IconPicker value={editCardIcone} name={editCardForm.nome} onChange={setEditCardIcone} size="md" />
+              </Suspense>
             </div>
             <div className="space-y-2">
               <Label>Nome do cartao</Label>

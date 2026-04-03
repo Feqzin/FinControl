@@ -4,6 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedDatabase } from "./seed";
 import { ENV } from "./env";
+import { startHttpServer } from "./server-startup";
 
 const app = express();
 const httpServer = createServer(app);
@@ -98,9 +99,16 @@ app.use((req, res, next) => {
 (async () => {
   await registerRoutes(httpServer, app);
 
-  seedDatabase().catch((err) => {
-    console.error("Seed error:", err);
-  });
+  if (ENV.demoSeed.enabled) {
+    seedDatabase({
+      username: ENV.demoSeed.username,
+      password: ENV.demoSeed.password,
+    }).catch((err) => {
+      console.error("Seed error:", err);
+    });
+  } else {
+    log("demo seed disabled", "seed");
+  }
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -125,18 +133,12 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = ENV.port;
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-    },
-    () => {
-      log(`serving on port ${port}`);
-    },
-  );
+  const started = await startHttpServer(httpServer, {
+    preferredHost: "0.0.0.0",
+    preferredPort: ENV.port,
+    nodeEnv: ENV.nodeEnv,
+    log: (message) => log(message, "server"),
+  });
+
+  log(`serving on ${started.host}:${started.port}`);
 })();

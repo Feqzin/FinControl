@@ -29,11 +29,13 @@ function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
-function formatDate(d: string) {
+function formatDate(d?: string | null) {
+  if (!d) return "—";
   try { return format(parseISO(d), "dd/MM/yyyy", { locale: ptBR }); } catch { return d; }
 }
 
-function isOverdueDate(d: string) {
+function isOverdueDate(d?: string | null) {
+  if (!d) return false;
   try { return isPast(parseISO(d + "T23:59:59")); } catch { return false; }
 }
 
@@ -171,7 +173,7 @@ export default function DividasPage() {
       return d.status === filterStatus;
     })
     .filter((d) => filterTipo === "todos" || d.tipo === filterTipo)
-    .sort((a, b) => a.dataVencimento.localeCompare(b.dataVencimento));
+    .sort((a, b) => (a.dataVencimento ?? "").localeCompare(b.dataVencimento ?? ""));
 
   const getDividaStatus = (d: DividaWithParcelas) => {
     if (d.parcelas.length === 0) return d.status;

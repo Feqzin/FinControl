@@ -1,14 +1,16 @@
+import { lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown, Wallet } from "lucide-react";
-import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, CartesianGrid,
-} from "recharts";
 import type { Divida, Servico, Renda } from "@shared/schema";
 import { format, getDaysInMonth } from "date-fns";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
+
+const PrevisaoSaldoChart = lazy(
+  () => import("@/components/charts/previsao-saldo-chart"),
+);
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -95,21 +97,6 @@ export default function PrevisaoPage() {
     cumulativo += d.entradas - d.saidas;
     return { ...d, saldo: Math.round(cumulativo * 100) / 100 };
   });
-
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (!active || !payload?.length) return null;
-    const data = payload[0]?.payload;
-    return (
-      <div className="rounded-md border bg-card p-3 shadow-md text-sm space-y-1">
-        <p className="font-semibold">Dia {label}</p>
-        {data.entradas > 0 && <p className="text-emerald-600">+{mask(formatCurrency(data.entradas))}</p>}
-        {data.saidas > 0 && <p className="text-red-600">-{mask(formatCurrency(data.saidas))}</p>}
-        <p className={`font-bold ${data.saldo >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-          Saldo: {mask(formatCurrency(data.saldo))}
-        </p>
-      </div>
-    );
-  };
 
   if (isLoading) {
     return (
@@ -229,50 +216,15 @@ export default function PrevisaoPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-56" data-testid="chart-saldo-mes">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartDataWithBalance} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="saldoGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis
-                  dataKey="dia"
-                  tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-                  tickLine={false}
-                  axisLine={false}
-                  interval={4}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={formatCurrencyShort}
-                  width={60}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine y={0} stroke="hsl(var(--destructive))" strokeDasharray="4 2" strokeWidth={1.5} />
-                <ReferenceLine
-                  x={currentDay}
-                  stroke="hsl(var(--muted-foreground))"
-                  strokeDasharray="4 2"
-                  label={{ value: "Hoje", position: "top", fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="saldo"
-                  stroke="hsl(var(--primary))"
-                  strokeWidth={2}
-                  fill="url(#saldoGradient)"
-                  dot={false}
-                  activeDot={{ r: 4, fill: "hsl(var(--primary))" }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          <Suspense fallback={<Skeleton className="h-56 w-full" />}>
+            <PrevisaoSaldoChart
+              data={chartDataWithBalance}
+              currentDay={currentDay}
+              formatCurrency={formatCurrency}
+              formatCurrencyShort={formatCurrencyShort}
+              maskCurrency={mask}
+            />
+          </Suspense>
           <p className="text-xs text-muted-foreground mt-2 text-center">
             Saldo acumulado dia a dia incluindo renda mensal, valores a receber e despesas
           </p>

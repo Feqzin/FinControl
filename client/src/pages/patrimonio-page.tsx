@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,7 +36,10 @@ import {
 } from "lucide-react";
 import type { Patrimonio, InsertPatrimonio } from "@shared/schema";
 import { BrandIconDisplay } from "@/lib/brand-icons";
-import { IconPicker } from "@/components/icon-picker";
+
+const IconPicker = lazy(() =>
+  import("@/components/icon-picker").then((mod) => ({ default: mod.IconPicker })),
+);
 
 const TIPOS_PATRIMONIO = [
   { value: "conta_bancaria", label: "Conta Bancária", icon: Wallet },
@@ -188,12 +191,14 @@ export default function PatrimonioPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label>Ícone</Label>
-                <IconPicker
-                  value={formData.iconeId || null}
-                  name={formData.nome || ""}
-                  onChange={(v) => setFormData({ ...formData, iconeId: v || undefined })}
-                  size="md"
-                />
+                <Suspense fallback={<Skeleton className="h-14 w-full" />}>
+                  <IconPicker
+                    value={formData.iconeId || null}
+                    name={formData.nome || ""}
+                    onChange={(v) => setFormData({ ...formData, iconeId: v || undefined })}
+                    size="md"
+                  />
+                </Suspense>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="nome">Nome / Descrição</Label>

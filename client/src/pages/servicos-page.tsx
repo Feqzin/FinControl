@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,10 +17,13 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Repeat, Trash2, X, Check, Users, ChevronUp, Pencil } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
-import { IconPicker } from "@/components/icon-picker";
 import { format, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { Servico, ServicoPessoa, ServicoPagamento, Pessoa } from "@shared/schema";
+
+const IconPicker = lazy(() =>
+  import("@/components/icon-picker").then((mod) => ({ default: mod.IconPicker })),
+);
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -454,7 +457,9 @@ export default function ServicosPage() {
             >
               <div className="space-y-2">
                 <Label>Icone</Label>
-                <IconPicker value={newServicoIcone} name={form.nome} onChange={setNewServicoIcone} size="sm" />
+                <Suspense fallback={<Skeleton className="h-14 w-full" />}>
+                  <IconPicker value={newServicoIcone} name={form.nome} onChange={setNewServicoIcone} size="sm" />
+                </Suspense>
               </div>
               <div className="space-y-2">
                 <Label>Nome do servico</Label>
@@ -699,7 +704,9 @@ export default function ServicosPage() {
           >
             <div className="space-y-2">
               <Label>Ícone</Label>
-              <IconPicker value={editIcone} name={editForm.nome} onChange={setEditIcone} size="sm" />
+              <Suspense fallback={<Skeleton className="h-14 w-full" />}>
+                <IconPicker value={editIcone} name={editForm.nome} onChange={setEditIcone} size="sm" />
+              </Suspense>
             </div>
             <div className="space-y-2">
               <Label>Nome do servico</Label>

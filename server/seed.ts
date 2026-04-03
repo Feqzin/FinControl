@@ -1,7 +1,4 @@
 import { storage } from "./storage";
-import { db } from "./db";
-import { users, pessoas, dividas, servicos } from "@shared/schema";
-import { eq } from "drizzle-orm";
 import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 
@@ -13,12 +10,17 @@ async function hashPassword(password: string): Promise<string> {
   return `${buf.toString("hex")}.${salt}`;
 }
 
-export async function seedDatabase() {
-  const existing = await storage.getUserByUsername("demo");
+type SeedCredentials = {
+  username: string;
+  password: string;
+};
+
+export async function seedDatabase(credentials: SeedCredentials) {
+  const existing = await storage.getUserByUsername(credentials.username);
   if (existing) return;
 
-  const hashedPassword = await hashPassword("demo123");
-  const user = await storage.createUser({ username: "demo", password: hashedPassword });
+  const hashedPassword = await hashPassword(credentials.password);
+  const user = await storage.createUser({ username: credentials.username, password: hashedPassword });
   const uid = user.id;
 
   const p1 = await storage.createPessoa({ userId: uid, nome: "Carlos Silva", tipo: "me_deve", telefone: "(11) 99887-6655", observacao: "Amigo do trabalho" });
@@ -42,5 +44,5 @@ export async function seedDatabase() {
   await storage.createServico({ userId: uid, nome: "Academia Smart Fit", categoria: "lazer", valorMensal: "99.90", dataCobranca: 1, formaPagamento: "debito", status: "ativo" });
   await storage.createServico({ userId: uid, nome: "Amazon Prime", categoria: "assinatura", valorMensal: "14.90", dataCobranca: 20, formaPagamento: "cartao", status: "cancelado" });
 
-  console.log("Seed data created successfully");
+  console.log(`Seed data created successfully for ${credentials.username}`);
 }

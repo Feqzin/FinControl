@@ -9,7 +9,11 @@
     "start": "cross-env NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "db:push": "drizzle-kit push",
-    "test:recalculo": "tsx --test server/tests/divida-recalculo.test.ts"
+    "db:migrate": "tsx script/db-migrate.ts",
+    "test": "npm run test:recalculo && npm run test:seed-policy && npm run test:startup",
+    "test:recalculo": "tsx --test server/tests/divida-recalculo.test.ts",
+    "test:seed-policy": "tsx --test server/tests/seed-policy.test.ts",
+    "test:startup": "tsx --test server/tests/server-startup.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

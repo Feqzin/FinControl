@@ -102,14 +102,6 @@ export default function AuthPage() {
     }
   };
 
-  const handleDemoLogin = async () => {
-    try {
-      await login.mutateAsync({ username: "demo", password: "demo123" });
-    } catch (error: any) {
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
-    }
-  };
-
   const handleForgot = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotLoading(true);
@@ -237,7 +229,7 @@ export default function AuthPage() {
                         </div>
                         <Button
                           type="button"
-                          variant="link"
+                          variant="ghost"
                           className="p-0 h-auto text-xs text-muted-foreground"
                           onClick={() => setForgotMode(true)}
                           data-testid="link-forgot-password"
@@ -311,25 +303,6 @@ export default function AuthPage() {
                 </TabsContent>
               </Tabs>
 
-              <div className="mt-4">
-                <div className="relative flex items-center gap-3 mb-4">
-                  <div className="flex-1 h-px bg-border" />
-                  <span className="text-xs text-muted-foreground">ou</span>
-                  <div className="flex-1 h-px bg-border" />
-                </div>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={handleDemoLogin}
-                  disabled={login.isPending}
-                  data-testid="button-demo-login"
-                >
-                  Testar versao demo
-                </Button>
-                <p className="text-xs text-muted-foreground text-center mt-2">
-                  Explore o app sem criar conta. Dados de exemplo incluidos.
-                </p>
-              </div>
             </>
           )}
         </div>

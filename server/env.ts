@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { resolveDemoSeedConfig } from "./seed-policy";
 
 function fail(message: string): never {
   throw new Error(`\n[ENV] ${message}\n`);
@@ -49,9 +50,18 @@ if (sessionSecret.length < 16) {
   fail("SESSION_SECRET muito curto. Use pelo menos 16 caracteres.");
 }
 
+const nodeEnv = (process.env.NODE_ENV || "development").trim();
+const demoSeed = resolveDemoSeedConfig({
+  nodeEnv,
+  enableDemoSeed: process.env.ENABLE_DEMO_SEED,
+  demoSeedUsername: process.env.DEMO_SEED_USERNAME,
+  demoSeedPassword: process.env.DEMO_SEED_PASSWORD,
+});
+
 export const ENV = {
+  nodeEnv,
   databaseUrl,
   sessionSecret,
   port: resolvePort(process.env.PORT),
+  demoSeed,
 } as const;
-

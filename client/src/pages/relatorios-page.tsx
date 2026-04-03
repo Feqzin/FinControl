@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, lazy, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,9 +12,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { FileDown, CreditCard, Users, Receipt, PiggyBank, Wallet, BarChart as BarChartIcon, TrendingUp } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from "recharts";
 import type { Divida, Pessoa, Renda, Patrimonio, CompraCartao, Cartao, Servico } from "@shared/schema";
-import { 
+import {
   format, 
   startOfMonth, 
   endOfMonth, 
@@ -26,8 +25,10 @@ import {
   addMonths
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+
+const RelatoriosHistoricoChart = lazy(
+  () => import("@/components/charts/relatorios-historico-chart"),
+);
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -150,7 +151,11 @@ export default function RelatoriosPage() {
     });
   }, [dividas]);
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
+    const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+      import("jspdf"),
+      import("jspdf-autotable"),
+    ]);
     const doc = new jsPDF();
     const nowStr = new Date().toLocaleDateString('pt-BR');
     
@@ -376,26 +381,12 @@ export default function RelatoriosPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis dataKey="name" className="text-xs" />
-                <YAxis className="text-xs" tickFormatter={(v) => `R$ ${v}`} />
-                <RechartsTooltip
-                  formatter={(value: number) => formatCurrency(value)}
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "8px",
-                  }}
-                />
-                <Legend />
-                <Bar dataKey="entradas" fill="hsl(var(--chart-2))" name="Entradas" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="saidas" fill="hsl(var(--chart-1))" name="Saídas" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <Suspense fallback={<Skeleton className="h-72 w-full" />}>
+            <RelatoriosHistoricoChart
+              data={chartData}
+              formatCurrency={formatCurrency}
+            />
+          </Suspense>
         </CardContent>
       </Card>
 

@@ -37,53 +37,99 @@ const dividaParceladoBody = z.object({
   formaPagamento: z.string().optional().nullable(),
 });
 
+const nonEmptyUpdateMessage = "Informe ao menos um campo para atualizar";
+const moneyField = z.string().or(z.number()).transform(String);
+
 const dividaUpdate = z.object({
   status: z.string().optional(),
   dataPagamento: z.string().optional().nullable(),
   formaPagamento: z.string().optional().nullable(),
   descricao: z.string().optional().nullable(),
-}).passthrough();
+}).strict().refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });
 
 const parcelaUpdate = z.object({
   status: z.string().optional(),
   dataPagamento: z.string().optional().nullable(),
   formaPagamento: z.string().optional().nullable(),
-  valor: z.string().or(z.number()).transform(String).optional(),
+  valor: moneyField.optional(),
   dataVencimento: z.string().optional(),
-});
+}).strict().refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });
+
+const anteciparParcelasBody = z.object({
+  dividaId: z.string().min(1),
+  quantidade: z.coerce.number().int().min(1).max(360),
+  formaPagamento: z.string().optional().nullable(),
+}).strict();
 
 const cartaoBody = z.object({
   nome: z.string().min(1),
-  limite: z.string().or(z.number()).transform(String),
+  limite: moneyField,
   melhorDiaCompra: z.coerce.number().int().min(1).max(31),
   diaVencimento: z.coerce.number().int().min(1).max(31),
 });
 
+const cartaoUpdateBody = z.object({
+  nome: z.string().min(1).optional(),
+  limite: moneyField.optional(),
+  melhorDiaCompra: z.coerce.number().int().min(1).max(31).optional(),
+  diaVencimento: z.coerce.number().int().min(1).max(31).optional(),
+  iconeId: z.string().optional().nullable(),
+}).strict().refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });
+
 const compraBody = z.object({
   cartaoId: z.string().min(1),
   descricao: z.string().min(1),
-  valorTotal: z.string().or(z.number()).transform(String),
+  valorTotal: moneyField,
   parcelas: z.coerce.number().int().min(1),
   parcelaAtual: z.coerce.number().int().min(1),
-  valorParcela: z.string().or(z.number()).transform(String),
+  valorParcela: moneyField,
   dataCompra: z.string().min(1),
   pessoaId: z.string().optional().nullable(),
 });
 
+const compraUpdateBody = z.object({
+  cartaoId: z.string().min(1).optional(),
+  descricao: z.string().min(1).optional(),
+  valorTotal: moneyField.optional(),
+  parcelas: z.coerce.number().int().min(1).optional(),
+  parcelaAtual: z.coerce.number().int().min(1).optional(),
+  valorParcela: moneyField.optional(),
+  dataCompra: z.string().min(1).optional(),
+  pessoaId: z.string().min(1).optional().nullable(),
+  statusPessoa: z.string().optional().nullable(),
+  dataPagamentoPessoa: z.string().optional().nullable(),
+}).strict().refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });
+
 const servicoBody = z.object({
   nome: z.string().min(1),
   categoria: z.string().min(1),
-  valorMensal: z.string().or(z.number()).transform(String),
+  valorMensal: moneyField,
   dataCobranca: z.coerce.number().int().min(1).max(31),
   formaPagamento: z.string().min(1),
   status: z.string().optional().default("ativo"),
 });
 
+const servicoUpdateBody = z.object({
+  nome: z.string().min(1).optional(),
+  categoria: z.string().min(1).optional(),
+  valorMensal: moneyField.optional(),
+  dataCobranca: z.coerce.number().int().min(1).max(31).optional(),
+  formaPagamento: z.string().min(1).optional(),
+  status: z.string().min(1).optional(),
+  iconeId: z.string().optional().nullable(),
+}).strict().refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });
+
 const servicoPessoaBody = z.object({
   servicoId: z.string().min(1),
   pessoaId: z.string().min(1),
-  valorDevido: z.string().or(z.number()).transform(String),
+  valorDevido: moneyField,
 });
+
+const servicoPessoaUpdateBody = z.object({
+  servicoId: z.string().min(1).optional(),
+  pessoaId: z.string().min(1).optional(),
+  valorDevido: moneyField.optional(),
+}).strict().refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });
 
 const servicoPagamentoBody = z.object({
   servicoPessoaId: z.string().min(1),
@@ -91,6 +137,61 @@ const servicoPagamentoBody = z.object({
   status: z.string().optional().default("pago"),
   dataPagamento: z.string().optional().nullable(),
 });
+
+const metaBody = z.object({
+  nome: z.string().min(1),
+  descricao: z.string().optional().nullable(),
+  valorAlvo: moneyField,
+  valorAtual: moneyField.optional().default("0"),
+  prazo: z.string().min(1),
+  status: z.string().optional().default("ativa"),
+});
+
+const metaUpdateBody = z.object({
+  nome: z.string().min(1).optional(),
+  descricao: z.string().optional().nullable(),
+  valorAlvo: moneyField.optional(),
+  valorAtual: moneyField.optional(),
+  prazo: z.string().min(1).optional(),
+  status: z.string().min(1).optional(),
+}).strict().refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });
+
+const parcelaCompraUpdateBody = z.object({
+  numero: z.coerce.number().int().min(1).optional(),
+  valor: moneyField.optional(),
+  dataVencimento: z.string().optional().nullable(),
+  statusCartao: z.string().optional(),
+  dataPagamentoCartao: z.string().optional().nullable(),
+  statusPessoa: z.string().optional().nullable(),
+  dataPagamentoPessoa: z.string().optional().nullable(),
+}).strict().refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });
+
+const parcelaCompraBulkItemBody = z.object({
+  numero: z.coerce.number().int().min(1),
+  valor: moneyField,
+  dataVencimento: z.string().optional().nullable(),
+  statusCartao: z.string().optional().default("pendente"),
+  dataPagamentoCartao: z.string().optional().nullable(),
+  statusPessoa: z.string().optional().nullable(),
+  dataPagamentoPessoa: z.string().optional().nullable(),
+}).strict();
+
+const parcelasCompraBulkBody = z.object({
+  compraCartaoId: z.string().min(1),
+  parcelas: z.array(parcelaCompraBulkItemBody).max(600),
+}).strict();
+
+const rendaUpdateBody = insertRendaSchema
+  .omit({ userId: true })
+  .partial()
+  .strict()
+  .refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });
+
+const patrimonioUpdateBody = insertPatrimonioSchema
+  .omit({ userId: true })
+  .partial()
+  .strict()
+  .refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   setupAuth(app);
@@ -197,8 +298,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.post("/api/parcelas/antecipar", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
-    const { dividaId, quantidade, formaPagamento } = req.body;
-    if (!dividaId || !quantidade) return res.status(400).json({ message: "dividaId e quantidade obrigatorios" });
+    const parsed = anteciparParcelasBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const { dividaId, quantidade, formaPagamento } = parsed.data;
     const all = await storage.getParcelasByDivida(dividaId, userId);
     const pendentes = all.filter((p) => p.status === "pendente").sort((a, b) => a.numero - b.numero).slice(0, quantidade);
     const hoje = format(new Date(), "yyyy-MM-dd");
@@ -227,7 +329,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.patch("/api/cartoes/:id", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
-    const c = await storage.updateCartao(req.params.id, userId, req.body);
+    const parsed = cartaoUpdateBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const c = await storage.updateCartao(req.params.id, userId, parsed.data);
     if (!c) return res.status(404).json({ message: "Not found" });
     res.json(c);
   });
@@ -260,7 +364,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.patch("/api/compras-cartao/:id", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
-    const c = await storage.updateCompraCartao(req.params.id, userId, req.body);
+    const parsed = compraUpdateBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    if (parsed.data.cartaoId) {
+      const cartao = await storage.getCartao(parsed.data.cartaoId, userId);
+      if (!cartao) return res.status(400).json({ message: "Cartao not found" });
+    }
+    if (parsed.data.pessoaId) {
+      const pessoa = await storage.getPessoa(parsed.data.pessoaId, userId);
+      if (!pessoa) return res.status(400).json({ message: "Pessoa not found" });
+    }
+    const c = await storage.updateCompraCartao(req.params.id, userId, parsed.data);
     if (!c) return res.status(404).json({ message: "Not found" });
     res.json(c);
   });
@@ -283,7 +397,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.patch("/api/servicos/:id", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
-    const s = await storage.updateServico(req.params.id, userId, req.body);
+    const parsed = servicoUpdateBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const s = await storage.updateServico(req.params.id, userId, parsed.data);
     if (!s) return res.status(404).json({ message: "Not found" });
     res.json(s);
   });
@@ -306,7 +422,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.patch("/api/servico-pessoas/:id", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
-    const p = await storage.updateServicoPessoa(req.params.id, userId, req.body);
+    const parsed = servicoPessoaUpdateBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    if (parsed.data.servicoId) {
+      const servico = await storage.getServico(parsed.data.servicoId, userId);
+      if (!servico) return res.status(400).json({ message: "Servico not found" });
+    }
+    if (parsed.data.pessoaId) {
+      const pessoa = await storage.getPessoa(parsed.data.pessoaId, userId);
+      if (!pessoa) return res.status(400).json({ message: "Pessoa not found" });
+    }
+    const p = await storage.updateServicoPessoa(req.params.id, userId, parsed.data);
     if (!p) return res.status(404).json({ message: "Not found" });
     res.json(p);
   });
@@ -335,14 +461,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ success: true });
   });
 
-  const metaBody = z.object({
-    nome: z.string().min(1),
-    descricao: z.string().optional().nullable(),
-    valorAlvo: z.string().or(z.number()).transform(String),
-    valorAtual: z.string().or(z.number()).transform(String).optional().default("0"),
-    prazo: z.string().min(1),
-    status: z.string().optional().default("ativa"),
-  });
   app.get("/api/metas", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
     res.json(await storage.getMetas(userId));
@@ -355,7 +473,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.patch("/api/metas/:id", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
-    const m = await storage.updateMeta(req.params.id, userId, req.body);
+    const parsed = metaUpdateBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const m = await storage.updateMeta(req.params.id, userId, parsed.data);
     if (!m) return res.status(404).json({ message: "Not found" });
     res.json(m);
   });
@@ -457,17 +577,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/parcelas-compra/:id", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
-    const p = await storage.updateParcelaCompra(req.params.id, userId, req.body);
+    const parsed = parcelaCompraUpdateBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const p = await storage.updateParcelaCompra(req.params.id, userId, parsed.data);
     if (!p) return res.status(404).json({ message: "Not found" });
     res.json(p);
   });
 
   app.post("/api/parcelas-compra/bulk", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
-    const { compraCartaoId, parcelas: rows } = req.body;
-    if (!compraCartaoId || !Array.isArray(rows)) return res.status(400).json({ message: "Invalid" });
+    const parsed = parcelasCompraBulkBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const { compraCartaoId, parcelas: rows } = parsed.data;
+    const compra = (await storage.getComprasCartao(userId)).find((c) => c.id === compraCartaoId);
+    if (!compra) return res.status(400).json({ message: "Compra not found" });
     await storage.deleteParcelasCompraBulk(compraCartaoId, userId);
-    const created = await storage.createParcelasCompraBulk(rows.map((r: any) => ({ ...r, userId, compraCartaoId })));
+    const created = await storage.createParcelasCompraBulk(rows.map((r) => ({ ...r, userId, compraCartaoId })));
     res.json(created);
   });
 
@@ -484,7 +609,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.patch("/api/rendas/:id", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
-    const updated = await storage.updateRenda(req.params.id, userId, req.body);
+    const parsed = rendaUpdateBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const updated = await storage.updateRenda(req.params.id, userId, parsed.data);
     if (!updated) return res.status(404).json({ message: "Renda nao encontrada" });
     res.json(updated);
   });
@@ -507,7 +634,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
   app.patch("/api/patrimonios/:id", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
-    const updated = await storage.updatePatrimonio(req.params.id, userId, req.body);
+    const parsed = patrimonioUpdateBody.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const updated = await storage.updatePatrimonio(req.params.id, userId, parsed.data);
     if (!updated) return res.status(404).json({ message: "Patrimonio nao encontrado" });
     res.json(updated);
   });

@@ -166,7 +166,7 @@ export default function PessoasPage() {
   const getPessoaDividas = (pessoaId: string) =>
     dividas
       .filter((d) => d.pessoaId === pessoaId)
-      .sort((a, b) => b.dataVencimento.localeCompare(a.dataVencimento));
+      .sort((a, b) => (b.dataVencimento ?? "").localeCompare(a.dataVencimento ?? ""));
 
   const filtered = pessoas
     .filter((p) => p.nome.toLowerCase().includes(search.toLowerCase()))
@@ -754,7 +754,9 @@ export default function PessoasPage() {
               ) : (
                 <div className="space-y-2">
                   {historyDividas.map((d) => {
-                    const isOverdue = d.status === "pendente" && d.dataVencimento < format(new Date(), "yyyy-MM-dd");
+                    const isOverdue = d.status === "pendente"
+                      && !!d.dataVencimento
+                      && d.dataVencimento < format(new Date(), "yyyy-MM-dd");
                     return (
                       <div
                         key={d.id}
