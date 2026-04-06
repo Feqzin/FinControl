@@ -1,4 +1,4 @@
-import { useState, useRef, lazy, Suspense } from "react";
+﻿import { useState, lazy, Suspense } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,8 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -23,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import {
   Plus, CreditCard, Trash2, CalendarClock, ShoppingBag, User, Pencil,
-  RefreshCw, Upload, List, Check, X, AlertTriangle, FileText, ChevronRight,
+  RefreshCw, Upload, List, Check, X, ChevronRight,
   Eye,
 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
@@ -31,6 +29,8 @@ import { useUIPreferences } from "@/context/ui-preferences";
 import type { Cartao, CompraCartao, Pessoa, ParcelaCompra } from "@shared/schema";
 import { format, addMonths, isPast, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { buildIgnoredDetails, countIgnoredRows, findVencimentoFatura, parseCsv, parseOfx, type ParseResult, type ParsedItem } from "@/pages/cartoes/import-parser";
+import { ImportFaturaDialog } from "@/pages/cartoes/components/import-fatura-dialog";
 
 const IconPicker = lazy(() =>
   import("@/components/icon-picker").then((mod) => ({ default: mod.IconPicker })),
@@ -60,422 +60,6 @@ function isParcelaVencida(p: ParcelaCompra) {
   if (p.statusCartao === "pago") return false;
   if (!p.dataVencimento) return false;
   try { return isPast(parseISO(p.dataVencimento + "T23:59:59")); } catch { return false; }
-}
-
-interface ParsedItem {
-  id: string;
-  descricao: string;
-  valor: number;
-  valorParcela: number;
-  parcelas: number;
-  parcelaAtual: number;
-  parcelasRestantes: number;
-  dataCompra: string;
-  vencimentoFatura: string | null;
-  tipo: "compra" | "taxa";
-  duplicata: any;
-  action: "import" | "skip";
-}
-
-type ParseSource = "csv" | "ofx" | "texto";
-
-interface ParseStats {
-  source: ParseSource;
-  totalRows: number;
-  skippedInvalidValue: number;
-  skippedNegativeValue: number;
-  skippedPaymentOrCredit: number;
-  skippedUnrecognized: number;
-}
-
-interface ParseResult {
-  items: ParsedItem[];
-  stats: ParseStats;
-}
-
-function createParseStats(source: ParseSource, totalRows: number): ParseStats {
-  return {
-    source,
-    totalRows,
-    skippedInvalidValue: 0,
-    skippedNegativeValue: 0,
-    skippedPaymentOrCredit: 0,
-    skippedUnrecognized: 0,
-  };
-}
-
-// ── Parser helpers ──────────────────────────────────────────────────────────
-
-function extractAllISODates(str: string): { iso: string; raw: string; index: number }[] {
-  const results: { iso: string; raw: string; index: number }[] = [];
-  const re = /(\d{2})\/(\d{2})\/(\d{2,4})/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(str)) !== null) {
-    const y = m[3].length === 2 ? "20" + m[3] : m[3];
-    const mo = m[2]; const d = m[1];
-    const intY = parseInt(y); const intMo = parseInt(mo); const intD = parseInt(d);
-    if (intMo >= 1 && intMo <= 12 && intD >= 1 && intD <= 31 && intY >= 2000 && intY <= 2050) {
-      results.push({ iso: `${y}-${mo}-${d}`, raw: m[0], index: m.index });
-    }
-  }
-  return results;
-}
-
-function extractInstallment(str: string): { parcelaAtual: number; totalParcelas: number; raw: string } | null {
-  // Priority 1: explicit "Parcela X/Y" keyword (Portuguese CSV format)
-  const kwRe = /\bparcela\s+(\d{1,2})\/(\d{1,2})\b/gi;
-  let km: RegExpExecArray | null;
-  while ((km = kwRe.exec(str)) !== null) {
-    const x = parseInt(km[1]); const y = parseInt(km[2]);
-    if (x >= 1 && y >= 1 && x <= y && y <= 48) {
-      return { parcelaAtual: x, totalParcelas: y, raw: km[0] };
-    }
-  }
-  // Priority 2: generic X/Y (where Y >= 2 to avoid date confusion)
-  const re = /\b(\d{1,2})\/(\d{1,2})\b/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(str)) !== null) {
-    const x = parseInt(m[1]); const y = parseInt(m[2]);
-    if (x >= 1 && y >= 2 && x <= y && y <= 48) {
-      return { parcelaAtual: x, totalParcelas: y, raw: m[0] };
-    }
-  }
-  return null;
-}
-
-function extractMonetaryValue(str: string): { valor: number; raw: string } | null {
-  const patterns = [
-    /R?\$\s*([\d]{1,3}(?:\.\d{3})*,\d{2})/,
-    /R?\$\s*([\d]{1,3}(?:,\d{3})*\.\d{2})/,
-    /(?<!\d)([\d]{1,3}(?:\.\d{3})*,\d{2})(?!\d)/,
-  ];
-  for (const pat of patterns) {
-    const m = str.match(pat);
-    if (m) {
-      const raw = m[1];
-      const clean = raw.includes(",") && raw.indexOf(",") > raw.indexOf(".")
-        ? raw.replace(/\./g, "").replace(",", ".")
-        : raw.replace(/,/g, "").replace(/\.(?=\d{3})/g, "");
-      const v = parseFloat(clean);
-      if (!isNaN(v) && v > 0 && v < 1_000_000) return { valor: v, raw: m[0] };
-    }
-  }
-  return null;
-}
-
-function detectarTipo(titulo: string): "taxa" | "compra" {
-  if (/\b(IOF|seguro|tarifa|encargo|juros|anuidade)\b/i.test(titulo)) return "taxa";
-  return "compra";
-}
-
-function normalizarDescricao(raw: string): string {
-  let s = raw;
-  // Remove " - Parcela X/Y" and "- PARC X/Y" patterns (with surrounding dash)
-  s = s.replace(/\s*[-–]\s*Parcela\s+\d{1,2}\/\d{1,2}/gi, "");
-  s = s.replace(/\s*[-–]\s*PARC(?:ELA)?\s+\d{1,2}\/\d{1,2}/gi, "");
-  // Remove bare "Parcela X/Y" at end of string
-  s = s.replace(/\bPARC(?:ELA)?\s+\d{1,2}\/\d{1,2}\b/gi, "");
-  // Remove long digit sequences (auth codes)
-  s = s.replace(/\b\d{7,}\b/g, "");
-  // Replace asterisks with space (e.g. "AMAZON*MKTPL")
-  s = s.replace(/\*/g, " ");
-  // Remove R$ symbols
-  s = s.replace(/R\$\s*/g, "");
-  // Collapse whitespace and trim
-  s = s.trim().replace(/\s+/g, " ");
-  // Remove leading/trailing non-alphanumeric
-  s = s.replace(/^[\s\W]+|[\s\W]+$/g, "").trim();
-  // Convert ALL-CAPS to Title Case
-  const uppers = (s.match(/[A-Z]/g) || []).length;
-  const lowers = (s.match(/[a-z]/g) || []).length;
-  if (uppers > 2 && lowers === 0) {
-    s = s.toLowerCase().replace(/(^\w|\s\w)/g, (c) => c.toUpperCase());
-  }
-  return s.trim() || "Compra importada";
-}
-
-function findVencimentoFatura(text: string): string | null {
-  const linhas = text.split(/\n/).slice(0, 20);
-  for (const l of linhas) {
-    if (/vencimento|vencto|venc\b|due.?date/i.test(l)) {
-      const dates = extractAllISODates(l);
-      if (dates.length > 0) return dates[0].iso;
-    }
-  }
-  for (const l of linhas.slice(0, 5)) {
-    const dates = extractAllISODates(l);
-    if (dates.length > 0) return dates[0].iso;
-  }
-  return null;
-}
-
-function parseLinha(linha: string, vencimentoFatura: string | null): Omit<ParsedItem, "id" | "duplicata" | "action"> | null {
-  const valResult = extractMonetaryValue(linha);
-  if (!valResult) return null;
-  const valorParcela = valResult.valor; // value on the line = this installment's amount
-
-  const fullDates = extractAllISODates(linha);
-
-  let working = linha;
-  for (const d of [...fullDates].reverse()) {
-    working = working.slice(0, d.index) + " " + working.slice(d.index + d.raw.length);
-  }
-  working = working.replace(valResult.raw, " ");
-
-  const instResult = extractInstallment(working);
-  const parcelaAtual = instResult ? instResult.parcelaAtual : 1;
-  const totalParcelas = instResult ? instResult.totalParcelas : 1;
-  if (instResult) working = working.replace(instResult.raw, " ");
-
-  const descricao = normalizarDescricao(working);
-  const dataCompra = fullDates.length > 0 ? fullDates[0].iso : format(new Date(), "yyyy-MM-dd");
-  const valor = Number((valorParcela * totalParcelas).toFixed(2)); // true total
-  const parcelasRestantes = totalParcelas - parcelaAtual;
-  const tipo = detectarTipo(linha);
-
-  return { descricao, valor, valorParcela, parcelas: totalParcelas, parcelaAtual, parcelasRestantes, dataCompra, vencimentoFatura, tipo };
-}
-
-function checkDuplicata(item: { valorParcela: number; descricao: string }, existentes: CompraCartao[], cartaoId: string) {
-  return existentes.find((e) => {
-    const diffVal = Math.abs(Number(e.valorParcela) - item.valorParcela) / (item.valorParcela || 1);
-    const key = item.descricao.toLowerCase().replace(/\s+/g, "").slice(0, 8);
-    const ekey = e.descricao.toLowerCase().replace(/\s+/g, "").slice(0, 8);
-    return diffVal < 0.06 && (key === ekey || key.includes(ekey.slice(0, 5)) || ekey.includes(key.slice(0, 5))) && e.cartaoId === cartaoId;
-  }) || null;
-}
-
-function parseTexto(text: string, existentes: CompraCartao[], cartaoId: string): ParseResult {
-  const vencimentoFatura = findVencimentoFatura(text);
-  const linhas = text.split(/\n/).map((l) => l.trim()).filter(Boolean);
-  const items: ParsedItem[] = [];
-  const stats = createParseStats("texto", linhas.length);
-  let idx = 0;
-  for (const linha of linhas) {
-    const parsed = parseLinha(linha, vencimentoFatura);
-    if (!parsed) {
-      stats.skippedUnrecognized += 1;
-      continue;
-    }
-    const duplicata = checkDuplicata(parsed, existentes, cartaoId);
-    items.push({ id: String(idx++), ...parsed, tipo: parsed.tipo ?? "compra", vencimentoFatura, duplicata, action: duplicata ? "skip" : "import" });
-  }
-  return { items, stats };
-}
-
-function parseCsvValue(raw: string): number {
-  // Handles both American "53.01" and Brazilian "53,01" / "1.234,56"
-  const s = raw.replace(/[R$\s]/g, "");
-  // American format: has dot as decimal separator, no trailing comma
-  if (/^-?\d{1,3}(?:,\d{3})*\.\d{2}$/.test(s)) return parseFloat(s.replace(/,/g, ""));
-  if (/^-?\d+\.\d{1,2}$/.test(s)) return parseFloat(s);
-  // Brazilian format: "1.234,56" or "1234,56"
-  if (s.includes(",")) return parseFloat(s.replace(/\./g, "").replace(",", "."));
-  return parseFloat(s) || 0;
-}
-
-function parseCsvDate(raw: string): string {
-  const s = raw.trim().replace(/"/g, "");
-  // ISO: 2026-02-17
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // BR: 17/02/2026
-  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
-  // Short BR: 17/02/26
-  const br2 = s.match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
-  if (br2) return `20${br2[3]}-${br2[2]}-${br2[1]}`;
-  // American: 02/17/2026
-  const us = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (us) return `${us[3]}-${us[1]}-${us[2]}`;
-  return format(new Date(), "yyyy-MM-dd");
-}
-
-const PAYMENT_KEYWORDS = /pagamento\s*(recebido|de\s*fatura|efetuado)|credito\s*em\s*conta|estorno|reembolso|cashback/i;
-
-function parseCsv(content: string, existentes: CompraCartao[], cartaoId: string): ParseResult {
-  // Detect separator: prefer comma for simple CSV, semicolon for BR exports
-  const firstLine = content.split(/\n/)[0] ?? "";
-  const sep = firstLine.split(";").length > firstLine.split(",").length ? ";" : ",";
-
-  const linhas = content.split(/\n/).map((l) => l.trim()).filter(Boolean);
-  if (linhas.length < 2) return parseTexto(content, existentes, cartaoId);
-
-  const rawHeaders = linhas[0].split(sep).map((h) => h.replace(/"/g, "").trim());
-  const headers = rawHeaders.map((h) => h.toLowerCase());
-
-  // Column detection — "title" and "amount" are explicit Nubank/inter CSV names
-  const dateIdx = headers.findIndex((h) => /^date$|^data$|data.compra|lança|post/i.test(h));
-  const descIdx = headers.findIndex((h) => /^title$|^desc|^hist|^memo|^nome$|^lancamento/i.test(h));
-  const valIdx  = headers.findIndex((h) => /^amount$|^valor$|^value$|trnamt|debito|credito/i.test(h));
-
-  if (valIdx < 0 && descIdx < 0) return parseTexto(content, existentes, cartaoId);
-
-  const vencimentoFatura = findVencimentoFatura(content);
-  const items: ParsedItem[] = [];
-  const stats = createParseStats("csv", Math.max(0, linhas.length - 1));
-  let idx = 0;
-
-  for (let i = 1; i < linhas.length; i++) {
-    const raw = linhas[i];
-    // Handle quoted fields with commas inside
-    const cols: string[] = [];
-    let cur = ""; let inQ = false;
-    for (const ch of raw) {
-      if (ch === '"') { inQ = !inQ; }
-      else if (ch === sep && !inQ) { cols.push(cur.trim()); cur = ""; }
-      else cur += ch;
-    }
-    cols.push(cur.trim());
-
-    if (cols.length < 2) {
-      stats.skippedUnrecognized += 1;
-      continue;
-    }
-
-    const rawDesc = (descIdx >= 0 ? cols[descIdx] : cols[1] ?? "").replace(/"/g, "").trim();
-    const valorRaw = (valIdx >= 0 ? cols[valIdx] : cols[cols.length - 1] ?? "").replace(/"/g, "").trim();
-    const dataRaw  = (dateIdx >= 0 ? cols[dateIdx] : cols[0] ?? "").replace(/"/g, "").trim();
-
-    // Skip empty rows
-    if (!rawDesc && !valorRaw) {
-      stats.skippedUnrecognized += 1;
-      continue;
-    }
-
-    // Parse value — keep sign to detect payments
-    const valorSigned = parseCsvValue(valorRaw);
-    if (isNaN(valorSigned) || valorSigned === 0) {
-      stats.skippedInvalidValue += 1;
-      continue;
-    }
-
-    // Skip payments received (negative = credit to account, or keyword match)
-    if (valorSigned < 0) {
-      stats.skippedNegativeValue += 1;
-      continue;
-    }
-    if (PAYMENT_KEYWORDS.test(rawDesc)) {
-      stats.skippedPaymentOrCredit += 1;
-      continue;
-    }
-
-    const valorParcela = valorSigned; // CSV amount = this installment's value
-
-    const dataCompra = parseCsvDate(dataRaw);
-
-    // Extract installments from the raw title BEFORE cleaning
-    const instResult = extractInstallment(rawDesc);
-    const parcelaAtual = instResult ? instResult.parcelaAtual : 1;
-    const totalParcelas = instResult ? instResult.totalParcelas : 1;
-    const parcelasRestantes = totalParcelas - parcelaAtual;
-    const valorTotal = Number((valorParcela * totalParcelas).toFixed(2));
-
-    // Clean description after extracting installment info
-    const descricao = normalizarDescricao(rawDesc);
-    const tipo = detectarTipo(rawDesc);
-
-    const duplicata = checkDuplicata({ valorParcela, descricao }, existentes, cartaoId);
-    items.push({
-      id: String(idx++),
-      descricao,
-      valor: valorTotal,
-      valorParcela,
-      parcelas: totalParcelas,
-      parcelaAtual,
-      parcelasRestantes,
-      dataCompra,
-      vencimentoFatura,
-      tipo,
-      duplicata,
-      action: duplicata ? "skip" : "import",
-    });
-  }
-
-  if (
-    items.length === 0 &&
-    stats.skippedInvalidValue === 0 &&
-    stats.skippedNegativeValue === 0 &&
-    stats.skippedPaymentOrCredit === 0
-  ) {
-    return parseTexto(content, existentes, cartaoId);
-  }
-
-  return { items, stats };
-}
-
-function parseOfx(content: string, existentes: CompraCartao[], cartaoId: string): ParseResult {
-  const getTag = (block: string, tag: string) => {
-    const m = block.match(new RegExp(`<${tag}>([^<\n\r]+)`, "i"));
-    return m ? m[1].trim() : "";
-  };
-  const normalizedOfx = content.includes("</STMTTRN>")
-    ? content
-    : content.replace(/<STMTTRN>/gi, "<STMTTRN>").replace(/(?=<(?:DTPOSTED|TRNAMT|MEMO|NAME|FITID)>)/gi, "\n");
-  const rawBlocks: string[] = [];
-  const openRe = /<STMTTRN>/gi;
-  let om: RegExpExecArray | null;
-  while ((om = openRe.exec(normalizedOfx)) !== null) {
-    const start = om.index;
-    const closeIdx = normalizedOfx.indexOf("</STMTTRN>", start);
-    if (closeIdx >= 0) rawBlocks.push(normalizedOfx.slice(start, closeIdx + 10));
-    else rawBlocks.push(normalizedOfx.slice(start, start + 500));
-  }
-  const blocks = rawBlocks.length > 0 ? rawBlocks : [content];
-  const vencimentoFatura = findVencimentoFatura(content);
-  const items: ParsedItem[] = [];
-  const stats = createParseStats("ofx", blocks.length);
-  let idx = 0;
-  for (const block of blocks) {
-    const rawDesc = getTag(block, "MEMO") || getTag(block, "NAME") || "Compra OFX";
-    const trnType = getTag(block, "TRNTYPE").toLowerCase();
-    const valorStr = getTag(block, "TRNAMT");
-    const valorSigned = parseFloat(valorStr.replace(",", "."));
-    if (isNaN(valorSigned) || valorSigned === 0) {
-      stats.skippedInvalidValue += 1;
-      continue;
-    }
-    if (valorSigned < 0) {
-      stats.skippedNegativeValue += 1;
-      continue;
-    }
-    if (/credit|payment/.test(trnType) || PAYMENT_KEYWORDS.test(rawDesc)) {
-      stats.skippedPaymentOrCredit += 1;
-      continue;
-    }
-    const valorParcela = Number(valorSigned.toFixed(2));
-    const descricao = normalizarDescricao(rawDesc);
-    const dtRaw = getTag(block, "DTPOSTED");
-    let dataCompra = format(new Date(), "yyyy-MM-dd");
-    if (dtRaw && dtRaw.length >= 8) dataCompra = `${dtRaw.slice(0, 4)}-${dtRaw.slice(4, 6)}-${dtRaw.slice(6, 8)}`;
-    const instResult = extractInstallment(rawDesc);
-    const parcelaAtual = instResult ? instResult.parcelaAtual : 1;
-    const totalParcelas = instResult ? instResult.totalParcelas : 1;
-    const valor = Number((valorParcela * totalParcelas).toFixed(2));
-    const parcelasRestantes = totalParcelas - parcelaAtual;
-    const tipo = detectarTipo(rawDesc);
-    const duplicata = checkDuplicata({ valorParcela, descricao }, existentes, cartaoId);
-    items.push({ id: String(idx++), descricao, valor, valorParcela, parcelas: totalParcelas, parcelaAtual, parcelasRestantes, dataCompra, vencimentoFatura, tipo, duplicata, action: duplicata ? "skip" : "import" });
-  }
-  return { items, stats };
-}
-
-function countIgnoredRows(stats: ParseStats): number {
-  return (
-    stats.skippedInvalidValue +
-    stats.skippedNegativeValue +
-    stats.skippedPaymentOrCredit +
-    stats.skippedUnrecognized
-  );
-}
-
-function buildIgnoredDetails(stats: ParseStats): string | undefined {
-  const reasons: string[] = [];
-  if (stats.skippedNegativeValue > 0) reasons.push(`${stats.skippedNegativeValue} com valor negativo (credito/estorno)`);
-  if (stats.skippedPaymentOrCredit > 0) reasons.push(`${stats.skippedPaymentOrCredit} com pagamento/estorno/reembolso`);
-  if (stats.skippedInvalidValue > 0) reasons.push(`${stats.skippedInvalidValue} com valor invalido`);
-  if (stats.skippedUnrecognized > 0) reasons.push(`${stats.skippedUnrecognized} nao reconhecida(s)`);
-  if (reasons.length === 0) return undefined;
-  return `Linhas ignoradas: ${reasons.join(", ")}.`;
 }
 
 export default function CartoesPage() {
@@ -514,7 +98,6 @@ export default function CartoesPage() {
   const [importEditForm, setImportEditForm] = useState({
     descricao: "", valor: "", dataCompra: "", parcelas: "", parcelaAtual: "", vencimentoFatura: "",
   });
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: cartoes = [], isLoading } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
@@ -716,7 +299,7 @@ export default function CartoesPage() {
     const p = Math.max(1, parseInt(importEditForm.parcelas) || 1);
     const pa = Math.min(Math.max(1, parseInt(importEditForm.parcelaAtual) || 1), p);
     const vp = parseFloat(importEditForm.valor) || 0; // valor da parcela
-    const vt = Number((vp * p).toFixed(2)); // valorTotal = parcela × total
+    const vt = Number((vp * p).toFixed(2)); // valorTotal = parcela Ã— total
     setImportItems(importItems.map((item) => item.id === importEditingId ? {
       ...item,
       descricao: importEditForm.descricao || item.descricao,
@@ -936,7 +519,7 @@ export default function CartoesPage() {
           <DialogHeader><DialogTitle>Editar Cartao</DialogTitle></DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); if (!editingCard) return; updateCardMutation.mutate({ id: editingCard.id, data: editCardForm, iconeId: editCardIcone }); }} className="space-y-4">
             <div className="space-y-2">
-              <Label>Ícone</Label>
+              <Label>Ãcone</Label>
               <Suspense fallback={<Skeleton className="h-14 w-full" />}>
                 <IconPicker value={editCardIcone} name={editCardForm.nome} onChange={setEditCardIcone} size="md" />
               </Suspense>
@@ -1034,7 +617,7 @@ export default function CartoesPage() {
           {viewingCompra && (
             <>
               <SheetHeader className="mb-4">
-                <SheetTitle>Parcelas — {viewingCompra.descricao}</SheetTitle>
+                <SheetTitle>Parcelas â€” {viewingCompra.descricao}</SheetTitle>
                 <div className="flex items-center gap-3 text-sm text-muted-foreground">
                   <span>{viewingCompra.parcelas}x de {formatCurrency(Number(viewingCompra.valorParcela))}</span>
                   <span>Total: {formatCurrency(Number(viewingCompra.valorTotal))}</span>
@@ -1110,7 +693,7 @@ export default function CartoesPage() {
                                 )}
                                 {!pago && p.dataVencimento && (
                                   <span className={`text-xs ${vencida ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
-                                    Venc. {p.dataVencimento}{vencida ? " · VENCIDA" : ""}
+                                    Venc. {p.dataVencimento}{vencida ? " Â· VENCIDA" : ""}
                                   </span>
                                 )}
                               </div>
@@ -1184,225 +767,43 @@ export default function CartoesPage() {
         </SheetContent>
       </Sheet>
 
-      <Dialog open={openImport} onOpenChange={(v) => { if (!v) { setOpenImport(false); setImportItems([]); setImportTexto(""); setImportVencimento(""); setImportEditingId(null); } }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Importar Fatura</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            {cartoes.length > 1 && (
-              <div className="space-y-2">
-                <Label>Cartao de destino</Label>
-                <Select value={importCartaoId} onValueChange={setImportCartaoId}>
-                  <SelectTrigger data-testid="select-import-cartao"><SelectValue placeholder="Selecione o cartao" /></SelectTrigger>
-                  <SelectContent>
-                    {cartoes.map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <Tabs value={importTab} onValueChange={(v) => setImportTab(v as "texto" | "arquivo")}>
-              <TabsList className="w-full">
-                <TabsTrigger value="texto" className="flex-1">Colar texto / CSV</TabsTrigger>
-                <TabsTrigger value="arquivo" className="flex-1">Enviar arquivo</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="texto" className="space-y-3">
-                <Label>Cole o extrato da fatura (texto livre, CSV, ou linha por linha)</Label>
-                <Textarea
-                  data-testid="textarea-import-texto"
-                  value={importTexto}
-                  onChange={(e) => setImportTexto(e.target.value)}
-                  placeholder={"Exemplos:\n25/02 NETFLIX 60,00 1/1\n01/02 LOJA ABC 150,00 3/10\n\nOu CSV:\nData,Descricao,Valor\n25/02/2026,NETFLIX,60.00"}
-                  rows={6}
-                  className="font-mono text-sm"
-                />
-                <Button onClick={handleParseTexto} className="w-full" data-testid="button-parse-texto">
-                  <FileText className="w-4 h-4 mr-2" /> Detectar compras
-                </Button>
-              </TabsContent>
-
-              <TabsContent value="arquivo" className="space-y-3">
-                <div className="border-2 border-dashed rounded-lg p-8 text-center space-y-3">
-                  <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
-                  <div>
-                    <p className="text-sm font-medium">Arraste ou selecione o arquivo</p>
-                    <p className="text-xs text-muted-foreground">Formatos suportados: CSV, OFX, QFX</p>
-                  </div>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".csv,.ofx,.qfx,.txt"
-                    className="hidden"
-                    onChange={(e) => { if (e.target.files?.[0]) handleFileUpload(e.target.files[0]); }}
-                  />
-                  <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={importLoading}
-                    data-testid="button-upload-file">
-                    {importLoading ? "Processando..." : "Selecionar arquivo"}
-                  </Button>
-                </div>
-              </TabsContent>
-            </Tabs>
-
-            {importItems.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <p className="text-sm font-semibold">{importItems.length} compra(s) detectada(s)</p>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" className="h-7 text-xs"
-                      onClick={() => setImportItems(importItems.map((i) => ({ ...i, action: "import" as const })))}>
-                      Marcar todas
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-7 text-xs"
-                      onClick={() => setImportItems(importItems.map((i) => ({ ...i, action: "skip" as const })))}>
-                      Ignorar todas
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs flex-shrink-0">Vencimento da fatura (opcional):</Label>
-                  <Input type="date" className="h-7 text-xs flex-1" value={importVencimento}
-                    onChange={(e) => setImportVencimento(e.target.value)} />
-                  <Button variant="outline" size="sm" className="h-7 text-xs flex-shrink-0"
-                    onClick={applyVencimentoToAll} disabled={!importVencimento}>
-                    Aplicar a todos
-                  </Button>
-                </div>
-
-                <div className="border rounded-md overflow-hidden divide-y divide-border/40">
-                  {importItems.map((item, idx) => {
-                    const isEditingRow = importEditingId === item.id;
-                    return (
-                      <div key={item.id} data-testid={`row-import-${idx}`}
-                        className={`text-sm ${item.duplicata ? "bg-amber-500/5" : item.action === "skip" ? "bg-muted/20 opacity-60" : ""}`}>
-                        {isEditingRow ? (
-                          <div className="p-3 space-y-2">
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Descricao</p>
-                                <Input className="h-7 text-xs" value={importEditForm.descricao}
-                                  onChange={(e) => setImportEditForm({ ...importEditForm, descricao: e.target.value })} />
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Valor da parcela (R$)</p>
-                                <Input type="number" step="0.01" className="h-7 text-xs" value={importEditForm.valor}
-                                  onChange={(e) => setImportEditForm({ ...importEditForm, valor: e.target.value })} />
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2">
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Data compra</p>
-                                <Input type="date" className="h-7 text-xs" value={importEditForm.dataCompra}
-                                  onChange={(e) => setImportEditForm({ ...importEditForm, dataCompra: e.target.value })} />
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Parcela atual</p>
-                                <Input type="number" min="1" className="h-7 text-xs" value={importEditForm.parcelaAtual}
-                                  onChange={(e) => setImportEditForm({ ...importEditForm, parcelaAtual: e.target.value })} />
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Total parcelas</p>
-                                <Input type="number" min="1" max="48" className="h-7 text-xs" value={importEditForm.parcelas}
-                                  onChange={(e) => setImportEditForm({ ...importEditForm, parcelas: e.target.value })} />
-                              </div>
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground mb-1">Vencimento desta fatura</p>
-                              <Input type="date" className="h-7 text-xs" value={importEditForm.vencimentoFatura}
-                                onChange={(e) => setImportEditForm({ ...importEditForm, vencimentoFatura: e.target.value })} />
-                            </div>
-                            <div className="flex gap-2">
-                              <Button size="sm" className="h-7 text-xs" onClick={applyImportEdit}>Salvar</Button>
-                              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setImportEditingId(null)}>Cancelar</Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="px-3 py-2 flex items-start gap-2">
-                            <Select value={item.action} onValueChange={(v: any) => setImportItems(importItems.map((i, j) => j === idx ? { ...i, action: v } : i))}>
-                              <SelectTrigger className="h-7 w-20 text-xs flex-shrink-0 mt-0.5">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="import">Importar</SelectItem>
-                                <SelectItem value="skip">Ignorar</SelectItem>
-                              </SelectContent>
-                            </Select>
-
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1 flex-wrap">
-                                <p className="font-medium truncate">{item.descricao}</p>
-                                {item.tipo === "taxa" && (
-                                  <span className="inline-flex items-center text-xs px-1 py-0.5 rounded bg-blue-500/10 text-blue-600 flex-shrink-0">
-                                    Taxa
-                                  </span>
-                                )}
-                                {item.duplicata && (
-                                  <span className="inline-flex items-center gap-0.5 text-xs px-1 py-0.5 rounded bg-amber-500/10 text-amber-600 flex-shrink-0">
-                                    <AlertTriangle className="w-2.5 h-2.5" /> Duplicata?
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5 flex-wrap">
-                                <span className="font-semibold text-foreground">{formatCurrency(item.valorParcela)}/parc</span>
-                                <span>Total: {formatCurrency(item.valor)}</span>
-                                <span className="flex items-center gap-0.5">
-                                  Parc <strong className="text-foreground">{item.parcelaAtual}/{item.parcelas}</strong>
-                                  {item.parcelasRestantes > 0 && <span className="text-amber-600"> · faltam {item.parcelasRestantes}</span>}
-                                </span>
-                                <span>Compra: {item.dataCompra}</span>
-                                {item.vencimentoFatura && <span className="text-emerald-600">Venc: {item.vencimentoFatura}</span>}
-                              </div>
-                              {item.duplicata && (
-                                <p className="text-xs text-amber-600 mt-0.5">Similar a: "{item.duplicata.descricao}" ({formatCurrency(Number(item.duplicata.valorParcela))})</p>
-                              )}
-                            </div>
-
-                            <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0 mt-0.5"
-                              onClick={() => {
-                                setImportEditingId(item.id);
-                                setImportEditForm({
-                                  descricao: item.descricao,
-                                  valor: String(item.valorParcela),
-                                  dataCompra: item.dataCompra,
-                                  parcelas: String(item.parcelas),
-                                  parcelaAtual: String(item.parcelaAtual),
-                                  vencimentoFatura: item.vencimentoFatura ?? "",
-                                });
-                              }}
-                              data-testid={`button-edit-import-item-${idx}`}>
-                              <Pencil className="w-3 h-3 text-muted-foreground" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0 mt-0.5"
-                              onClick={() => setImportItems(importItems.filter((_, j) => j !== idx))}
-                              data-testid={`button-remove-import-item-${idx}`}>
-                              <X className="w-3 h-3 text-muted-foreground" />
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm text-muted-foreground">
-                    {importItems.filter((i) => i.action === "import").length} de {importItems.length} serao importadas
-                    {" · "}Total: {formatCurrency(importItems.filter((i) => i.action === "import").reduce((s, i) => s + i.valorParcela, 0))}/mes
-                  </p>
-                  <Button
-                    data-testid="button-confirmar-importacao"
-                    disabled={importItems.filter((i) => i.action === "import").length === 0 || batchImportMutation.isPending}
-                    onClick={() => batchImportMutation.mutate({ items: importItems, cartaoId: importCartaoId || cartoes[0]?.id })}>
-                    {batchImportMutation.isPending ? "Importando..." : "Confirmar importacao"}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ImportFaturaDialog
+        open={openImport}
+        onOpenChange={(v) => {
+          if (!v) {
+            setOpenImport(false);
+            setImportItems([]);
+            setImportTexto("");
+            setImportVencimento("");
+            setImportEditingId(null);
+            return;
+          }
+          setOpenImport(true);
+        }}
+        cartoes={cartoes}
+        importCartaoId={importCartaoId}
+        setImportCartaoId={setImportCartaoId}
+        importTab={importTab}
+        setImportTab={(value) => setImportTab(value)}
+        importTexto={importTexto}
+        setImportTexto={setImportTexto}
+        onParseTexto={handleParseTexto}
+        importLoading={importLoading}
+        onFileUpload={handleFileUpload}
+        importItems={importItems}
+        setImportItems={setImportItems}
+        importVencimento={importVencimento}
+        setImportVencimento={setImportVencimento}
+        onApplyVencimentoToAll={applyVencimentoToAll}
+        importEditingId={importEditingId}
+        setImportEditingId={setImportEditingId}
+        importEditForm={importEditForm}
+        setImportEditForm={setImportEditForm}
+        onApplyImportEdit={applyImportEdit}
+        formatCurrency={formatCurrency}
+        isBatchImportPending={batchImportMutation.isPending}
+        onConfirmImport={() => batchImportMutation.mutate({ items: importItems, cartaoId: importCartaoId || cartoes[0]?.id })}
+      />
 
       {cartoes.length === 0 ? (
         <div className="text-center py-16" data-testid="empty-cartoes">
@@ -1423,7 +824,7 @@ export default function CartoesPage() {
           </div>
 
           <div className="space-y-3">
-            <p className="text-sm font-semibold text-muted-foreground px-1">Meus cartões</p>
+            <p className="text-sm font-semibold text-muted-foreground px-1">Meus cartÃµes</p>
             {cartoes.map((c) => {
               const limite = Number(c.limite);
               const faturaAtual = getCardTotal(c.id);
@@ -1441,7 +842,7 @@ export default function CartoesPage() {
                     <BrandIconDisplay name={c.nome} iconeId={c.iconeId} size="md" />
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm leading-tight">{c.nome}</p>
-                      <p className="text-xs text-muted-foreground">Cartão manual</p>
+                      <p className="text-xs text-muted-foreground">CartÃ£o manual</p>
                     </div>
                     <Button
                       variant="outline"
@@ -1459,7 +860,7 @@ export default function CartoesPage() {
 
                   <div className="grid grid-cols-2 divide-x divide-border bg-muted/30 px-4 py-3">
                     <div className="pr-4">
-                      <p className="text-xs text-muted-foreground mb-0.5">Limite Disponível</p>
+                      <p className="text-xs text-muted-foreground mb-0.5">Limite DisponÃ­vel</p>
                       <p className="text-sm font-semibold text-emerald-600">{formatCurrency(limiteDisponivel)}</p>
                     </div>
                     <div className="pl-4">
@@ -1529,7 +930,7 @@ export default function CartoesPage() {
                       <div>
                         <CardTitle className="text-base">{c.nome}</CardTitle>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          Melhor compra: dia {c.melhorDiaCompra} · Venc: dia {c.diaVencimento}
+                          Melhor compra: dia {c.melhorDiaCompra} Â· Venc: dia {c.diaVencimento}
                         </p>
                       </div>
                     </div>
@@ -1554,7 +955,7 @@ export default function CartoesPage() {
                       <p className="text-lg font-bold">{formatCurrency(faturaAtual)}</p>
                     </div>
                     <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Disponível</p>
+                      <p className="text-xs text-muted-foreground mb-1">DisponÃ­vel</p>
                       <p className="text-lg font-bold text-emerald-600">{formatCurrency(limite - faturaAtual)}</p>
                     </div>
                   </div>
@@ -1575,7 +976,7 @@ export default function CartoesPage() {
                     <div>
                       <p className="text-xs text-muted-foreground">Proxima fatura</p>
                       <p className={`text-sm font-semibold ${isUrgent ? "text-red-600" : ""}`}>
-                        {nextDate} · {daysUntil} dia(s)
+                        {nextDate} Â· {daysUntil} dia(s)
                       </p>
                     </div>
                   </div>
@@ -1625,7 +1026,7 @@ export default function CartoesPage() {
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-0.5">
                                   {compra.parcelaAtual}/{compra.parcelas}x de {formatCurrency(Number(compra.valorParcela))}
-                                  {" · "}total: {formatCurrency(Number(compra.valorTotal))}
+                                  {" Â· "}total: {formatCurrency(Number(compra.valorTotal))}
                                 </p>
                               </div>
                               <div className="flex items-center gap-1 flex-shrink-0">

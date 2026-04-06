@@ -10,9 +10,9 @@ import {
   Settings2, Smartphone,
 } from "lucide-react";
 import type { Divida, Servico, Pessoa, Cartao, CompraCartao, Renda, Patrimonio } from "@shared/schema";
+import type { FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
 import { format, differenceInDays, parseISO, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { calcularScore, gerarInsights } from "@/utils/financialEngine";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState, useMemo } from "react";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
@@ -153,61 +153,49 @@ export default function Dashboard() {
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
   const { data: rendas = [] } = useQuery<Renda[]>({ queryKey: ["/api/rendas"] });
   const { data: patrimonios = [] } = useQuery<Patrimonio[]>({ queryKey: ["/api/patrimonios"] });
+  const { data: financialScore, isLoading: l4 } = useQuery<FinancialScore>({ queryKey: ["/api/financial/score"] });
+  const { data: financialInsights = [], isLoading: l5 } = useQuery<FinancialInsight[]>({ queryKey: ["/api/financial/insights"] });
+  const { data: financialSummary, isLoading: l6 } = useQuery<FinancialSummary>({
+    queryKey: ["/api/financial/summary", selectedMonth],
+    queryFn: async () => {
+      const res = await fetch(`/api/financial/summary?month=${encodeURIComponent(selectedMonth)}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+      return res.json();
+    },
+  });
 
-  const isLoading = l1 || l2 || l3;
+  const isLoading = l1 || l2 || l3 || l4 || l5 || l6;
 
-  const currentRealMonth = format(new Date(), "yyyy-MM");
-
-  // Parsed selected month
-  const [selYearN, selMonthN] = selectedMonth.split("-").map(Number);
+  
 
   // Totais fixos (independem do mês — patrimônio e renda são recorrentes)
-  const totalRenda = rendas
-    .filter((r) => r.ativo)
-    .reduce((s, r) => s + Number(r.valor), 0);
+  const totalRenda = financialSummary?.totalRenda ?? 0;
 
   const totalPatrimonio = patrimonios
     .reduce((s, p) => s + Number(p.valorAtual), 0);
 
-  const totalServicos = servicos
-    .filter((s) => s.status === "ativo")
-    .reduce((s, sv) => s + Number(sv.valorMensal), 0);
+  const totalServicos = financialSummary?.totalServicos ?? 0;
 
   // === CÁLCULOS FILTRADOS PELO MÊS SELECIONADO ===
 
   // A receber do mês: dividas tipo=receber com vencimento no mês selecionado
-  const totalReceber = dividas
-    .filter((d) => d.tipo === "receber" && d.dataVencimento?.startsWith(selectedMonth))
-    .reduce((s, d) => s + Number(d.valor), 0);
+  const totalReceber = financialSummary?.totalReceberMes ?? 0;
 
   // A pagar do mês: dividas tipo=pagar com vencimento no mês selecionado
-  const totalPagar = dividas
-    .filter((d) => d.tipo === "pagar" && d.dataVencimento?.startsWith(selectedMonth))
-    .reduce((s, d) => s + Number(d.valor), 0);
+  const totalPagar = financialSummary?.totalPagarMes ?? 0;
 
   // Cartões do mês selecionado: calcula quais parcelas caíam naquele mês
-  const totalCartoesMes = useMemo(() => {
-    return compras.reduce((sum, c) => {
-      const compraDate = parseISO(c.dataCompra);
-      const compraYear = compraDate.getFullYear();
-      const compraMonth = compraDate.getMonth() + 1; // 1-indexed
-      const monthOffset = (selYearN - compraYear) * 12 + (selMonthN - compraMonth);
-      // 0-indexed: parcel 0 = first parcel (same month as compra)
-      if (monthOffset >= 0 && monthOffset < c.parcelas) {
-        sum += Number(c.valorParcela);
-      }
-      return sum;
-    }, 0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [compras, selectedMonth]);
+  const totalCartoesMes = financialSummary?.totalCartoesMes ?? 0;
 
   // A receber previsto para o mês (dividas receber com data no mês)
   const ReceberMes = totalReceber;
   const totalPagarMes = totalPagar;
 
-  const totalEntradas = totalRenda + ReceberMes;
-  const totalSaidas = totalCartoesMes + totalPagarMes + totalServicos;
-  const saldoPrevisto = totalEntradas - totalSaidas;
+  const totalEntradas = financialSummary?.totalEntradas ?? 0;
+  const totalSaidas = financialSummary?.totalSaidas ?? 0;
+  const saldoPrevisto = financialSummary?.saldo ?? 0;
 
   const saldoColor =
     saldoPrevisto > 0 ? "text-emerald-600"
@@ -505,8 +493,13 @@ export default function Dashboard() {
     });
   }
 
-  const score = calcularScore(dividas, servicos, cartoes, compras, rendas);
-  const insights = gerarInsights(dividas, servicos, cartoes, compras, rendas);
+  const score: FinancialScore = financialScore ?? {
+    valor: 0,
+    classificacao: "Risco",
+    tendencia: "estavel",
+    fatores: [],
+  };
+  const insights = financialInsights;
 
   const scoreBarColor =
     score.valor >= 80 ? "bg-emerald-500" :

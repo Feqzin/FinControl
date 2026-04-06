@@ -13,7 +13,8 @@
     "test": "npm run test:recalculo && npm run test:seed-policy && npm run test:startup",
     "test:recalculo": "tsx --test server/tests/divida-recalculo.test.ts",
     "test:seed-policy": "tsx --test server/tests/seed-policy.test.ts",
-    "test:startup": "tsx --test server/tests/server-startup.test.ts"
+    "test:startup": "tsx --test server/tests/server-startup.test.ts",
+    "package:source": "powershell -ExecutionPolicy Bypass -File script/package-source.ps1"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

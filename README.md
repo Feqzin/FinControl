@@ -23,6 +23,20 @@ Aplicativo full-stack para controle financeiro pessoal.
    npm run dev
    ```
 
+## Compartilhamento seguro do projeto
+Para evitar vazamento de segredos e problemas de portabilidade, nunca compartilhe pacote contendo:
+- `.env` (ou variacoes `.env.*`)
+- `node_modules/`
+- `dist/`
+- `.git/`
+
+Use o pacote source-only:
+```bash
+npm run package:source
+```
+
+O comando gera um `.zip` em `artifacts/` somente com arquivos rastreados no git.
+
 ## Testes
 ```bash
 npm run test

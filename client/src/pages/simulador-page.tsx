@@ -23,8 +23,8 @@ import {
   Target,
   Info
 } from "lucide-react";
-import type { Divida, Servico, Cartao, CompraCartao } from "@shared/schema";
-import { calcularScore } from "@/utils/financialEngine";
+import type { Divida, Servico } from "@shared/schema";
+import type { FinancialScore } from "@shared/financial";
 
 const InvestimentoProjectionChart = lazy(
   () => import("@/components/charts/investimento-projection-chart"),
@@ -40,15 +40,29 @@ export default function SimuladorPage() {
 
   const { data: dividas = [], isLoading: l1 } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [], isLoading: l2 } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
-  const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
-  const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
-
-  const isLoading = l1 || l2;
 
   // Tab 1: Score Financeiro State
   const [rendaExtra, setRendaExtra] = useState(0);
   const [reducaoDespesas, setReducaoDespesas] = useState(0);
   const [quitarDivida, setQuitarDivida] = useState(0);
+  const shouldSimulateScore = quitarDivida > 0 || reducaoDespesas > 0;
+
+  const { data: baseScoreData, isLoading: l3 } = useQuery<FinancialScore>({ queryKey: ["/api/financial/score"] });
+  const { data: simScoreData, isLoading: l4 } = useQuery<FinancialScore>({
+    queryKey: ["/api/financial/score", "sim", quitarDivida, reducaoDespesas],
+    enabled: shouldSimulateScore,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (quitarDivida > 0) params.set("quitarDivida", String(quitarDivida));
+      if (reducaoDespesas > 0) params.set("reducaoDespesas", String(reducaoDespesas));
+      const q = params.toString();
+      const res = await fetch(`/api/financial/score${q ? `?${q}` : ""}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+      return res.json();
+    },
+  });
+
+  const isLoading = l1 || l2 || l3 || (shouldSimulateScore && l4);
 
   // Tab 2: Investimentos State
   const [valorInicial, setValorInicial] = useState(1000);
@@ -70,44 +84,21 @@ export default function SimuladorPage() {
   const basePagar = dividas.filter((d) => d.tipo === "pagar" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
   const baseServicos = servicos.filter((s) => s.status === "ativo").reduce((s, sv) => s + Number(sv.valorMensal), 0);
   const baseSaldo = baseReceber - basePagar - baseServicos;
-  const baseScore = calcularScore(dividas, servicos, cartoes, compras);
+  const baseScore: FinancialScore = baseScoreData ?? {
+    valor: 0,
+    classificacao: "Risco",
+    tendencia: "estavel",
+    fatores: [],
+  };
 
   const simReceber = baseReceber + rendaExtra;
   const simServicos = Math.max(0, baseServicos - reducaoDespesas);
   const simPagar = Math.max(0, basePagar - quitarDivida);
   const simSaldo = simReceber - simPagar - simServicos;
-
-  const simDividas = useMemo(() => {
-    if (quitarDivida === 0) return dividas;
-    let restante = quitarDivida;
-    return dividas.map((d) => {
-      if (d.status === "pendente" && d.tipo === "pagar" && restante > 0) {
-        const v = Number(d.valor);
-        if (restante >= v) {
-          restante -= v;
-          return { ...d, status: "pago" as const };
-        }
-      }
-      return d;
-    });
-  }, [dividas, quitarDivida]);
-
-  const simServicosArray = useMemo(() => {
-    if (reducaoDespesas === 0) return servicos;
-    let restante = reducaoDespesas;
-    return servicos.map((s) => {
-      if (s.status === "ativo" && restante > 0) {
-        const v = Number(s.valorMensal);
-        if (restante >= v) {
-          restante -= v;
-          return { ...s, valorMensal: "0" as any };
-        }
-      }
-      return s;
-    });
-  }, [servicos, reducaoDespesas]);
-
-  const simScore = calcularScore(simDividas, simServicosArray, cartoes, compras);
+  const simScore: FinancialScore =
+    shouldSimulateScore
+      ? (simScoreData ?? baseScore)
+      : baseScore;
   const variacaoSaldo = simSaldo - baseSaldo;
   const variacaoScore = simScore.valor - baseScore.valor;
 

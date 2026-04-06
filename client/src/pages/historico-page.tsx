@@ -3,8 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight } from "lucide-react";
-import type { Divida, Servico, Cartao, CompraCartao, Renda } from "@shared/schema";
-import { gerarHistoricoMensal, calcularScore } from "@/utils/financialEngine";
+import type { Divida, Servico, Renda } from "@shared/schema";
+import type { FinancialScore } from "@shared/financial";
+import { gerarHistoricoMensal } from "@/utils/financialEngine";
 
 const HistoricoOverviewCharts = lazy(
   () => import("@/components/charts/historico-overview-charts"),
@@ -21,14 +22,18 @@ function formatCurrencyShort(v: number): string {
 export default function HistoricoPage() {
   const { data: dividas = [], isLoading: l1 } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [], isLoading: l2 } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
-  const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
-  const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
   const { data: rendas = [] } = useQuery<Renda[]>({ queryKey: ["/api/rendas"] });
+  const { data: financialScore, isLoading: l3 } = useQuery<FinancialScore>({ queryKey: ["/api/financial/score"] });
 
-  const isLoading = l1 || l2;
+  const isLoading = l1 || l2 || l3;
 
   const historico = gerarHistoricoMensal(dividas, servicos, 6, rendas);
-  const score = calcularScore(dividas, servicos, cartoes, compras, rendas);
+  const score: FinancialScore = financialScore ?? {
+    valor: 0,
+    classificacao: "Risco",
+    tendencia: "estavel",
+    fatores: [],
+  };
 
   const ultimoMes = historico[historico.length - 1];
   const penultimoMes = historico[historico.length - 2];
