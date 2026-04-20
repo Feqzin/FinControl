@@ -1,9 +1,20 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, getQueryFn } from "@/lib/queryClient";
-import type { User } from "@shared/schema";
+
+type AuthUser = {
+  id: string;
+  username: string;
+  nomeCompleto: string | null;
+};
+
+function resetSessionCache(nextUser: AuthUser | null): void {
+  // Evita reutilizar dados de outra sessao/usuario no mesmo navegador.
+  queryClient.clear();
+  queryClient.setQueryData(["/api/auth/me"], nextUser);
+}
 
 export function useAuth() {
-  const { data: user, isLoading } = useQuery<User | null>({
+  const { data: user, isLoading } = useQuery<AuthUser | null>({
     queryKey: ["/api/auth/me"],
     queryFn: getQueryFn({ on401: "returnNull" }),
     retry: false,
@@ -13,20 +24,20 @@ export function useAuth() {
   const loginMutation = useMutation({
     mutationFn: async (data: { username: string; password: string }) => {
       const res = await apiRequest("POST", "/api/auth/login", data);
-      return res.json();
+      return res.json() as Promise<AuthUser>;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    onSuccess: (loggedUser) => {
+      resetSessionCache(loggedUser);
     },
   });
 
   const registerMutation = useMutation({
     mutationFn: async (data: { username: string; password: string; nomeCompleto?: string }) => {
       const res = await apiRequest("POST", "/api/auth/register", data);
-      return res.json();
+      return res.json() as Promise<AuthUser>;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    onSuccess: (registeredUser) => {
+      resetSessionCache(registeredUser);
     },
   });
 
@@ -35,7 +46,7 @@ export function useAuth() {
       await apiRequest("POST", "/api/auth/logout");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      resetSessionCache(null);
     },
   });
 
