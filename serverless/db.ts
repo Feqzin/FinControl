@@ -12,13 +12,13 @@ const poolConfig: pg.PoolConfig = {
   ssl: {
     rejectUnauthorized: false,
   },
-  max: isServerlessRuntime ? 3 : 10,
+  max: isServerlessRuntime ? 4 : 10,
   min: 0,
-  idleTimeoutMillis: isServerlessRuntime ? 10_000 : 30_000,
-  connectionTimeoutMillis: 10_000,
-  allowExitOnIdle: ENV.nodeEnv !== "production",
+  idleTimeoutMillis: isServerlessRuntime ? 45_000 : 30_000,
+  connectionTimeoutMillis: isServerlessRuntime ? 30_000 : 10_000,
+  allowExitOnIdle: isServerlessRuntime ? false : ENV.nodeEnv !== "production",
   keepAlive: true,
-  maxUses: isServerlessRuntime ? 7_500 : undefined,
+  maxUses: isServerlessRuntime ? 15_000 : undefined,
 };
 
 type GlobalWithPgPool = typeof globalThis & {

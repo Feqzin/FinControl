@@ -150,6 +150,80 @@ export function registerRoutes(app: Express): void {
     }
   });
 
+  // Rota temporaria de diagnostico de conectividade Postgres em runtime.
+  // Remover apos conclusao da investigacao de timeout em producao.
+  app.get("/api/debug/db-connectivity", async (req, res) => {
+    const configuredToken = process.env.DEBUG_DB_CHECK_TOKEN?.trim();
+    const providedToken = req.get("x-debug-token")?.trim() ?? "";
+    const isProduction = ENV.nodeEnv === "production";
+
+    if (isProduction && !configuredToken) {
+      return res.status(404).json({ message: "Not found" });
+    }
+
+    if (configuredToken && providedToken !== configuredToken) {
+      return res.status(401).json({ message: "Nao autorizado" });
+    }
+
+    let hostSanitized: string | null = null;
+    try {
+      const parsed = new URL(ENV.databaseUrl);
+      hostSanitized = parsed.hostname || null;
+    } catch {
+      hostSanitized = null;
+    }
+
+    let connectAttemptMs: number | null = null;
+    let select1Ms: number | null = null;
+
+    try {
+      const connectStartedAt = Date.now();
+      const client = await pool.connect();
+      connectAttemptMs = Date.now() - connectStartedAt;
+
+      try {
+        const selectStartedAt = Date.now();
+        const result = await client.query<{
+          currentDatabase: string;
+          currentSchema: string;
+          currentUser: string;
+        }>(`
+          SELECT
+            current_database() AS "currentDatabase",
+            current_schema() AS "currentSchema",
+            current_user AS "currentUser",
+            1 AS "ok"
+        `);
+        select1Ms = Date.now() - selectStartedAt;
+
+        const row = result.rows[0];
+        return res.json({
+          ok: true,
+          hostSanitized,
+          connectAttemptMs,
+          select1Ms,
+          currentDatabase: row?.currentDatabase ?? null,
+          currentSchema: row?.currentSchema ?? null,
+          currentUser: row?.currentUser ?? null,
+          errorMessage: null,
+        });
+      } finally {
+        client.release();
+      }
+    } catch (error) {
+      return res.status(500).json({
+        ok: false,
+        hostSanitized,
+        connectAttemptMs,
+        select1Ms,
+        currentDatabase: null,
+        currentSchema: null,
+        currentUser: null,
+        errorMessage: error instanceof Error ? error.message : "Erro interno ao testar conectividade",
+      });
+    }
+  });
+
   app.get("/api/pessoas/:pessoaId/timeline-pagamentos", requireAuth, pagamentosTimelineController.listByPessoa);
   app.patch("/api/pagamentos/:sourceType/:sourceId/observacao", requireAuth, pagamentosTimelineController.updateObservacao);
   app.post("/api/pagamentos/:sourceType/:sourceId/comprovante", requireAuth, pagamentosTimelineController.uploadComprovante);
