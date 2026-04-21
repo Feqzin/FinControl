@@ -494,14 +494,28 @@ export function setupAuth(app: Express) {
             });
             return next(err);
           }
-          auditAuth(req, {
-            action: "auth",
-            status: "success",
-            domain: "auth.register",
-            userId: updatedUser!.id,
-            details: { username },
+          req.session.save((saveErr) => {
+            if (saveErr) {
+              auditAuth(req, {
+                action: "auth",
+                status: "error",
+                domain: "auth.register",
+                userId: updatedUser!.id,
+                details: { username, reason: "session_save_failed" },
+                error: saveErr.message,
+              });
+              return next(saveErr);
+            }
+
+            auditAuth(req, {
+              action: "auth",
+              status: "success",
+              domain: "auth.register",
+              userId: updatedUser!.id,
+              details: { username },
+            });
+            return res.json({ id: updatedUser!.id, username: updatedUser!.username, nomeCompleto: updatedUser!.nomeCompleto });
           });
-          return res.json({ id: updatedUser!.id, username: updatedUser!.username, nomeCompleto: updatedUser!.nomeCompleto });
         });
       });
     } catch (error) {
@@ -562,14 +576,28 @@ export function setupAuth(app: Express) {
             });
             return next(loginErr);
           }
-          auditAuth(req, {
-            action: "auth",
-            status: "success",
-            domain: "auth.login",
-            userId: user.id,
-            details: { username: user.username },
+          req.session.save((saveErr) => {
+            if (saveErr) {
+              auditAuth(req, {
+                action: "auth",
+                status: "error",
+                domain: "auth.login",
+                userId: user.id,
+                details: { username: attemptedUsername, reason: "session_save_failed" },
+                error: saveErr.message,
+              });
+              return next(saveErr);
+            }
+
+            auditAuth(req, {
+              action: "auth",
+              status: "success",
+              domain: "auth.login",
+              userId: user.id,
+              details: { username: user.username },
+            });
+            return res.json({ id: user.id, username: user.username, nomeCompleto: user.nomeCompleto });
           });
-          return res.json({ id: user.id, username: user.username, nomeCompleto: user.nomeCompleto });
         });
       });
     })(req, res, next);
