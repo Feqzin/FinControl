@@ -141,6 +141,13 @@ if (isProduction && isVercel) {
       "DATABASE_URL na Vercel deve usar a porta 6543 do Supabase pooler transacional."
     );
   }
+
+  if (parsedDatabaseUrl.searchParams.has("sslmode")) {
+    fail(
+      "DATABASE_URL na Vercel nao deve incluir sslmode. " +
+      "Remova esse parametro da URL para evitar conflito com a configuracao SSL do Pool (serverless/db.ts)."
+    );
+  }
 }
 
 const sessionSecret = requireEnv(
