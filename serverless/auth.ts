@@ -147,7 +147,11 @@ const sessionCookieSettings = {
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
   const buf = (await scryptAsync(password, salt, SCRYPT_KEY_LENGTH)) as Buffer;
-  return `${buf.toString("hex")}.${salt}`;
+  const storedPassword = `${buf.toString("hex")}.${salt}`;
+  if (!inspectStoredPassword(storedPassword).isComparable) {
+    throw new Error("[AUTH] hashPassword gerou formato invalido; esperado hash.salt");
+  }
+  return storedPassword;
 }
 
 type StoredPasswordInspection = {
@@ -417,7 +421,7 @@ export function setupAuth(app: Express) {
       });
 
       const user = await storage.createUser({ username, password: hashedPassword });
-      const persistedPasswordInspection = inspectStoredPassword(user.password);
+      let persistedPasswordInspection = inspectStoredPassword(user.password);
 
       writeTechnicalLog({
         event: "auth.register.password_persisted",
@@ -430,6 +434,37 @@ export function setupAuth(app: Express) {
           passwordComparable: persistedPasswordInspection.isComparable,
         },
       });
+
+      if (!persistedPasswordInspection.isComparable) {
+        writeTechnicalLog({
+          event: "auth.register.password_repair_attempt",
+          source: "auth",
+          level: "warn",
+          requestId: req.requestId ?? undefined,
+          data: {
+            username,
+            reason: "persisted_password_not_comparable",
+          },
+        });
+
+        const repairedUser = await storage.updateUser(user.id, { password: hashedPassword });
+        persistedPasswordInspection = inspectStoredPassword(repairedUser?.password ?? "");
+
+        writeTechnicalLog({
+          event: "auth.register.password_repair_result",
+          source: "auth",
+          level: persistedPasswordInspection.isComparable ? "info" : "error",
+          requestId: req.requestId ?? undefined,
+          data: {
+            username,
+            passwordComparable: persistedPasswordInspection.isComparable,
+          },
+        });
+
+        if (!persistedPasswordInspection.isComparable) {
+          throw new Error("Falha ao persistir senha no formato hash.salt");
+        }
+      }
 
       if (nomeCompleto) {
         await storage.updateUser(user.id, { nomeCompleto });

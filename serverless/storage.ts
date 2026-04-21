@@ -1,5 +1,6 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "./db.js";
+import { writeTechnicalLog } from "./logger.js";
 import {
   users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos,
   servicoPessoas, servicoPagamentos, metas, parcelasCompra, rendas, patrimonios,
@@ -23,6 +24,9 @@ const usersBaseProjection = {
   username: users.username,
   password: users.password,
 } as const;
+
+const USERNAME_LOOKUP_QUERY =
+  `select * from "users" where lower("users"."username") = lower($1) limit 1`;
 
 function isMissingUsersOptionalColumnsError(error: unknown): boolean {
   const messages: string[] = [];
@@ -189,12 +193,74 @@ export class DatabaseStorage implements IStorage {
     }
   }
   async getUserByUsername(username: string) {
+    const normalizedUsername = username.trim();
+
+    writeTechnicalLog({
+      event: "storage.users.get_user_by_username",
+      source: "storage",
+      level: "info",
+      data: {
+        usernameReceived: normalizedUsername,
+        query: USERNAME_LOOKUP_QUERY,
+      },
+    });
+
+    if (!normalizedUsername) {
+      writeTechnicalLog({
+        event: "storage.users.get_user_by_username.result",
+        source: "storage",
+        level: "info",
+        data: {
+          usernameReceived: normalizedUsername,
+          query: USERNAME_LOOKUP_QUERY,
+          found: false,
+          reason: "empty_username",
+        },
+      });
+      return undefined;
+    }
+
     try {
-      const [user] = await this.database.select().from(users).where(eq(users.username, username));
+      const [user] = await this.database
+        .select()
+        .from(users)
+        .where(sql`lower(${users.username}) = lower(${normalizedUsername})`)
+        .limit(1);
+
+      writeTechnicalLog({
+        event: "storage.users.get_user_by_username.result",
+        source: "storage",
+        level: "info",
+        data: {
+          usernameReceived: normalizedUsername,
+          query: USERNAME_LOOKUP_QUERY,
+          found: Boolean(user),
+          mode: "full_projection",
+        },
+      });
+
       return user;
     } catch (error) {
       if (!isMissingUsersOptionalColumnsError(error)) throw error;
-      const [user] = await this.database.select(usersBaseProjection).from(users).where(eq(users.username, username));
+
+      const [user] = await this.database
+        .select(usersBaseProjection)
+        .from(users)
+        .where(sql`lower(${users.username}) = lower(${normalizedUsername})`)
+        .limit(1);
+
+      writeTechnicalLog({
+        event: "storage.users.get_user_by_username.result",
+        source: "storage",
+        level: "info",
+        data: {
+          usernameReceived: normalizedUsername,
+          query: USERNAME_LOOKUP_QUERY,
+          found: Boolean(user),
+          mode: "base_projection_fallback",
+        },
+      });
+
       return user ? toUserWithOptionalDefaults(user) : undefined;
     }
   }
