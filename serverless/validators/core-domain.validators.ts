@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { insertPatrimonioSchema, insertRendaSchema } from "@shared/schema";
+import { insertPatrimonioSchema, insertRendaSchema } from "../../shared/schema.js";
 
 const nonEmptyUpdateMessage = "Informe ao menos um campo para atualizar";
 const moneyField = z.string().or(z.number()).transform(String);

@@ -1,5 +1,5 @@
 import { addMonths, format, parseISO } from "date-fns";
-import type { CompraCartao, ParcelaCompra } from "@shared/schema";
+import type { CompraCartao, ParcelaCompra } from "../../shared/schema.js";
 import { parseMoney } from "../../utils/money.js";
 
 type MoneyValue = string | number | null | undefined;

@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { format } from "date-fns";
 import { db } from "../db.js";
-import { cartoes, comprasCartao, importLogs, parcelasCompra, type InsertCompraCartao } from "@shared/schema";
+import { cartoes, comprasCartao, importLogs, parcelasCompra, type InsertCompraCartao } from "../../shared/schema.js";
 import { formatMoneyFixed, multiply, parseMoney } from "../../utils/money.js";
 import { buildParcelasCompraRows } from "./parcelas-compra-materialization.js";
 import type {

@@ -3,7 +3,7 @@ import type {
   InsertDivida,
   InsertParcela,
   InsertParcelaCompra,
-} from "@shared/schema";
+} from "../../shared/schema.js";
 import { db } from "../db.js";
 import { DatabaseStorage, storage, type IStorage } from "../storage.js";
 

@@ -1,4 +1,4 @@
-import type { Divida, Parcela } from "@shared/schema";
+import type { Divida, Parcela } from "../../shared/schema.js";
 import { parseMoney } from "../../utils/money.js";
 
 type MoneyValue = string | number | null | undefined;

@@ -6,7 +6,7 @@ import type {
   InsertDivida,
   Parcela,
   ParcelaCompra,
-} from "@shared/schema";
+} from "../../shared/schema.js";
 import type { FinancialRepository } from "../repositories/financial.repository.js";
 import { formatMoneyFixed, parseMoney } from "../../utils/money.js";
 

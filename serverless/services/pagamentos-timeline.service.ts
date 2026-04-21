@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import type { Divida, Parcela } from "@shared/schema";
+import type { Divida, Parcela } from "../../shared/schema.js";
 import type { FinancialRepository } from "../repositories/financial.repository.js";
 import {
   comprovanteStorage as defaultComprovanteStorage,

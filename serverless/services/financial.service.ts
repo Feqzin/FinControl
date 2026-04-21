@@ -1,6 +1,6 @@
 import { format } from "date-fns";
-import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Renda, Servico } from "@shared/schema";
-import type { FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
+import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Renda, Servico } from "../../shared/schema.js";
+import type { FinancialInsight, FinancialScore, FinancialSummary } from "../../shared/financial.js";
 import type { FinancialRepository } from "../repositories/financial.repository.js";
 import { formatMoneyFixed, parseMoney, toCentsBigInt } from "../../utils/money.js";
 import {

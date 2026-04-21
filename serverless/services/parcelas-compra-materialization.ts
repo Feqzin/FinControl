@@ -1,5 +1,5 @@
 import { addMonths, format } from "date-fns";
-import type { CompraCartao, InsertParcelaCompra } from "@shared/schema";
+import type { CompraCartao, InsertParcelaCompra } from "../../shared/schema.js";
 import type { FinancialRepository } from "../repositories/financial.repository.js";
 import { formatMoneyFixed, parseMoney } from "../../utils/money.js";
 import { recomputeCardPurchaseAggregate } from "./financial-aggregate-consistency.js";

@@ -16,7 +16,7 @@ import {
   type ParcelaCompra, type InsertParcelaCompra,
   type Renda, type InsertRenda,
   type Patrimonio, type InsertPatrimonio,
-} from "@shared/schema";
+} from "../shared/schema.js";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
