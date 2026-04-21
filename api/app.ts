@@ -1,5 +1,5 @@
 import express, { type NextFunction, type Request, type Response } from "express";
-import { registerRoutes } from "../server/routes.js";
+import { registerRoutes } from "./routes.js";
 import {
   createRequestId,
   summarizeResponsePayload,

@@ -176,7 +176,7 @@ function sanitizeInternal(
   return out;
 }
 
-function sanitizeForLog(value: unknown, options?: SanitizeOptions): JsonLike {
+export function sanitizeForLog(value: unknown, options?: SanitizeOptions): JsonLike {
   const merged = { ...DEFAULT_SANITIZE_OPTIONS, ...(options ?? {}) };
   return sanitizeInternal(value, merged, 0);
 }
@@ -242,6 +242,16 @@ type TechnicalLogInput = {
   data?: Record<string, unknown>;
 };
 
+type BusinessLogInput = {
+  event: string;
+  domain: string;
+  status: "success" | "failure" | "error";
+  userId?: string | null;
+  targetId?: string | null;
+  requestId?: string;
+  details?: unknown;
+};
+
 export function writeTechnicalLog(input: TechnicalLogInput): void {
   const payload = {
     type: "technical",
@@ -255,6 +265,27 @@ export function writeTechnicalLog(input: TechnicalLogInput): void {
       dropHeavyPayloads: true,
       maxStringLength: 500,
     }) : undefined,
+  };
+
+  console.log(JSON.stringify(payload));
+}
+
+export function writeBusinessLog(input: BusinessLogInput): void {
+  const payload = {
+    type: "business",
+    timestamp: new Date().toISOString(),
+    event: input.event,
+    domain: input.domain,
+    status: input.status,
+    userId: input.userId ?? null,
+    targetId: input.targetId ?? null,
+    requestId: input.requestId,
+    details: input.details
+      ? sanitizeForLog(input.details, {
+        redactFinancial: true,
+        dropHeavyPayloads: true,
+      })
+      : undefined,
   };
 
   console.log(JSON.stringify(payload));
