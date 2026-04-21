@@ -136,10 +136,9 @@ if (isProduction && isVercel) {
     );
   }
 
-  const sslMode = parsedDatabaseUrl.searchParams.get("sslmode")?.toLowerCase();
-  if (sslMode !== "require") {
+  if (parsedDatabaseUrl.port !== "6543") {
     fail(
-      "DATABASE_URL na Vercel deve incluir sslmode=require para conexao segura com Supabase."
+      "DATABASE_URL na Vercel deve usar a porta 6543 do Supabase pooler transacional."
     );
   }
 }

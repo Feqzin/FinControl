@@ -29,6 +29,7 @@ import { createPatrimoniosController } from "./controllers/patrimonios.controlle
 import { createPagamentosTimelineController } from "./controllers/pagamentos-timeline.controller.js";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.js";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
+import { registerDebugDbPingRoute } from "./routes/debug-db-ping.route.js";
 import { PagamentosTimelineService } from "./services/pagamentos-timeline.service.js";
 import { divide, parseMoney } from "../utils/money.js";
 import { pool } from "./db.js";
@@ -80,6 +81,8 @@ export function registerRoutes(app: Express): void {
     rendasController,
     patrimoniosController,
   });
+
+  registerDebugDbPingRoute(app);
 
   // Rota temporaria de diagnostico de banco/schema em runtime.
   // Remover apos conclusao da investigacao de ambiente em producao.

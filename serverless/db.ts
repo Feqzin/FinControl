@@ -1,37 +1,33 @@
-import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool, type PoolConfig } from "pg";
 import * as schema from "../shared/schema.js";
-import { ENV } from "./env.js";
-import { writeTechnicalLog } from "./logger.js";
 
-const isServerlessRuntime =
-  ENV.isVercel || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+const connectionString = process.env.DATABASE_URL;
 
-const poolConfig: pg.PoolConfig = {
-  connectionString: ENV.databaseUrl,
+if (!connectionString) {
+  throw new Error("[DB] Variavel obrigatoria ausente: DATABASE_URL");
+}
+
+const poolConfig: PoolConfig = {
+  connectionString,
   ssl: {
     rejectUnauthorized: false,
   },
-  max: isServerlessRuntime ? 4 : 10,
+  max: 1,
   min: 0,
-  idleTimeoutMillis: isServerlessRuntime ? 45_000 : 30_000,
-  connectionTimeoutMillis: isServerlessRuntime ? 30_000 : 10_000,
-  allowExitOnIdle: isServerlessRuntime ? false : ENV.nodeEnv !== "production",
-  keepAlive: true,
-  maxUses: isServerlessRuntime ? 15_000 : undefined,
+  idleTimeoutMillis: 5000,
+  connectionTimeoutMillis: 15000,
+  allowExitOnIdle: true,
 };
 
 type GlobalWithPgPool = typeof globalThis & {
-  __debtControlPgPool?: pg.Pool;
-  __debtControlDbDiagLogged?: boolean;
+  __debtControlPgPool?: Pool;
+  __debtControlPgPoolAttached?: boolean;
 };
 
 const globalWithPgPool = globalThis as GlobalWithPgPool;
 
-// Reusa uma unica Pool por processo para evitar excesso de conexoes em ambiente serverless.
-export const pool =
-  globalWithPgPool.__debtControlPgPool ??
-  new pg.Pool(poolConfig);
+export const pool = globalWithPgPool.__debtControlPgPool ?? new Pool(poolConfig);
 
 if (!globalWithPgPool.__debtControlPgPool) {
   globalWithPgPool.__debtControlPgPool = pool;
@@ -40,68 +36,19 @@ if (!globalWithPgPool.__debtControlPgPool) {
   });
 }
 
-function getSanitizedDatabaseUrlInfo(): {
-  hostFromUrl: string | null;
-  databaseNameFromUrl: string | null;
-} {
-  try {
-    const parsed = new URL(ENV.databaseUrl);
-    return {
-      hostFromUrl: parsed.hostname || null,
-      databaseNameFromUrl: parsed.pathname.replace(/^\/+/, "") || null,
-    };
-  } catch {
-    return {
-      hostFromUrl: null,
-      databaseNameFromUrl: null,
-    };
-  }
+if (!globalWithPgPool.__debtControlPgPoolAttached) {
+  globalWithPgPool.__debtControlPgPoolAttached = true;
+  void (async () => {
+    try {
+      // @ts-ignore: dependencia opcional em ambiente local.
+      const { attachDatabasePool } = await import("@vercel/functions");
+      if (typeof attachDatabasePool === "function") {
+        attachDatabasePool(pool);
+      }
+    } catch {
+      // Ignora quando @vercel/functions nao estiver instalado localmente.
+    }
+  })();
 }
-
-async function logDatabaseConnectionDiagnosticOnce(): Promise<void> {
-  if (globalWithPgPool.__debtControlDbDiagLogged) return;
-  globalWithPgPool.__debtControlDbDiagLogged = true;
-
-  const { hostFromUrl, databaseNameFromUrl } = getSanitizedDatabaseUrlInfo();
-
-  try {
-    const result = await pool.query<{
-      current_user: string;
-      current_database: string;
-      current_schema: string;
-    }>(
-      `SELECT current_user AS current_user, current_database() AS current_database, current_schema() AS current_schema`,
-    );
-    const row = result.rows[0];
-
-    writeTechnicalLog({
-      event: "db.connection.diagnostic.temp",
-      source: "db",
-      level: "info",
-      data: {
-        hostFromUrl,
-        databaseNameFromUrl,
-        currentUser: row?.current_user ?? null,
-        currentDatabase: row?.current_database ?? null,
-        currentSchema: row?.current_schema ?? null,
-      },
-    });
-  } catch (error) {
-    writeTechnicalLog({
-      event: "db.connection.diagnostic.temp.error",
-      source: "db",
-      level: "error",
-      data: {
-        hostFromUrl,
-        databaseNameFromUrl,
-        error: error instanceof Error ? error.message : String(error),
-      },
-    });
-  }
-}
-
-void logDatabaseConnectionDiagnosticOnce();
-
-// Mantem o fluxo padrao do Drizzle+pg sem prepared statements nomeados customizados.
 
 export const db = drizzle(pool, { schema });
