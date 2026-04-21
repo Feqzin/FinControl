@@ -9,6 +9,9 @@ const isServerlessRuntime =
 
 const poolConfig: pg.PoolConfig = {
   connectionString: ENV.databaseUrl,
+  ssl: {
+    rejectUnauthorized: false,
+  },
   max: isServerlessRuntime ? 3 : 10,
   min: 0,
   idleTimeoutMillis: isServerlessRuntime ? 10_000 : 30_000,

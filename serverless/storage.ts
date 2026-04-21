@@ -18,6 +18,79 @@ import {
   type Patrimonio, type InsertPatrimonio,
 } from "../shared/schema.js";
 
+const usersBaseProjection = {
+  id: users.id,
+  username: users.username,
+  password: users.password,
+} as const;
+
+function isMissingUsersOptionalColumnsError(error: unknown): boolean {
+  const messages: string[] = [];
+  const queue: unknown[] = [error];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+
+    if (typeof current === "string") {
+      messages.push(current.toLowerCase());
+      continue;
+    }
+
+    if (typeof current === "object") {
+      const maybeError = current as { message?: unknown; code?: unknown; cause?: unknown };
+      if (typeof maybeError.message === "string") {
+        messages.push(maybeError.message.toLowerCase());
+      }
+      if (typeof maybeError.code === "string") {
+        messages.push(maybeError.code.toLowerCase());
+      }
+      if (maybeError.cause !== undefined) {
+        queue.push(maybeError.cause);
+      }
+    }
+  }
+
+  const combined = messages.join(" | ");
+  if (combined.includes("42703")) return true;
+
+  const referencesUsersOptionalColumnsInFailedQuery =
+    combined.includes("failed query") &&
+    combined.includes("\"users\"") &&
+    (
+      combined.includes("\"nome_completo\"") ||
+      combined.includes("\"reset_token\"") ||
+      combined.includes("\"reset_token_expiry\"")
+    );
+
+  if (referencesUsersOptionalColumnsInFailedQuery) return true;
+
+  const referencesMissingColumn =
+    combined.includes("does not exist") &&
+    (
+      combined.includes("nome_completo") ||
+      combined.includes("reset_token") ||
+      combined.includes("reset_token_expiry")
+    );
+
+  return referencesMissingColumn;
+}
+
+function toUserWithOptionalDefaults(user: {
+  id: string;
+  username: string;
+  password: string;
+}): User {
+  return {
+    id: user.id,
+    username: user.username,
+    password: user.password,
+    nomeCompleto: null,
+    resetToken: null,
+    resetTokenExpiry: null,
+  };
+}
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -106,24 +179,67 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   constructor(private readonly database: any = db) {}
   async getUser(id: string) {
-    const [user] = await this.database.select().from(users).where(eq(users.id, id));
-    return user;
+    try {
+      const [user] = await this.database.select().from(users).where(eq(users.id, id));
+      return user;
+    } catch (error) {
+      if (!isMissingUsersOptionalColumnsError(error)) throw error;
+      const [user] = await this.database.select(usersBaseProjection).from(users).where(eq(users.id, id));
+      return user ? toUserWithOptionalDefaults(user) : undefined;
+    }
   }
   async getUserByUsername(username: string) {
-    const [user] = await this.database.select().from(users).where(eq(users.username, username));
-    return user;
+    try {
+      const [user] = await this.database.select().from(users).where(eq(users.username, username));
+      return user;
+    } catch (error) {
+      if (!isMissingUsersOptionalColumnsError(error)) throw error;
+      const [user] = await this.database.select(usersBaseProjection).from(users).where(eq(users.username, username));
+      return user ? toUserWithOptionalDefaults(user) : undefined;
+    }
   }
   async createUser(insertUser: InsertUser) {
-    const [user] = await this.database.insert(users).values(insertUser).returning();
-    return user;
+    try {
+      const [user] = await this.database.insert(users).values(insertUser).returning();
+      return user;
+    } catch (error) {
+      if (!isMissingUsersOptionalColumnsError(error)) throw error;
+      const [user] = await this.database.insert(users).values(insertUser).returning(usersBaseProjection);
+      return toUserWithOptionalDefaults(user);
+    }
   }
   async updateUser(id: string, data: Partial<User>) {
-    const [user] = await this.database.update(users).set(data).where(eq(users.id, id)).returning();
-    return user;
+    try {
+      const [user] = await this.database.update(users).set(data).where(eq(users.id, id)).returning();
+      return user;
+    } catch (error) {
+      if (!isMissingUsersOptionalColumnsError(error)) throw error;
+
+      const fallbackData: Partial<User> = { ...data };
+      delete fallbackData.nomeCompleto;
+      delete fallbackData.resetToken;
+      delete fallbackData.resetTokenExpiry;
+
+      if (Object.keys(fallbackData).length === 0) {
+        return this.getUser(id);
+      }
+
+      const [user] = await this.database
+        .update(users)
+        .set(fallbackData)
+        .where(eq(users.id, id))
+        .returning(usersBaseProjection);
+      return user ? toUserWithOptionalDefaults(user) : undefined;
+    }
   }
   async getUserByResetToken(token: string) {
-    const [user] = await this.database.select().from(users).where(eq(users.resetToken, token));
-    return user;
+    try {
+      const [user] = await this.database.select().from(users).where(eq(users.resetToken, token));
+      return user;
+    } catch (error) {
+      if (!isMissingUsersOptionalColumnsError(error)) throw error;
+      return undefined;
+    }
   }
 
   async getPessoas(userId: string) { return this.database.select().from(pessoas).where(eq(pessoas.userId, userId)); }
