@@ -54,6 +54,13 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION _safe_parse_fin_date(input date)
+RETURNS date
+LANGUAGE sql
+AS $$
+  SELECT input;
+$$;
+
 DO $$
 BEGIN
   IF EXISTS (
@@ -146,26 +153,131 @@ BEGIN
 END;
 $$;
 
-ALTER TABLE dividas
-  ALTER COLUMN data_vencimento TYPE date USING _safe_parse_fin_date(data_vencimento),
-  ALTER COLUMN data_pagamento TYPE date USING _safe_parse_fin_date(data_pagamento);
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'dividas'
+      AND column_name = 'data_vencimento'
+      AND data_type <> 'date'
+  ) THEN
+    ALTER TABLE dividas
+      ALTER COLUMN data_vencimento TYPE date USING _safe_parse_fin_date(data_vencimento);
+  END IF;
 
-ALTER TABLE parcelas
-  ALTER COLUMN data_vencimento TYPE date USING _safe_parse_fin_date(data_vencimento),
-  ALTER COLUMN data_pagamento TYPE date USING _safe_parse_fin_date(data_pagamento);
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'dividas'
+      AND column_name = 'data_pagamento'
+      AND data_type <> 'date'
+  ) THEN
+    ALTER TABLE dividas
+      ALTER COLUMN data_pagamento TYPE date USING _safe_parse_fin_date(data_pagamento);
+  END IF;
 
-ALTER TABLE compras_cartao
-  ALTER COLUMN data_compra TYPE date USING _safe_parse_fin_date(data_compra),
-  ALTER COLUMN data_pagamento_pessoa TYPE date USING _safe_parse_fin_date(data_pagamento_pessoa);
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'parcelas'
+      AND column_name = 'data_vencimento'
+      AND data_type <> 'date'
+  ) THEN
+    ALTER TABLE parcelas
+      ALTER COLUMN data_vencimento TYPE date USING _safe_parse_fin_date(data_vencimento);
+  END IF;
 
-ALTER TABLE servico_pagamentos
-  ALTER COLUMN data_pagamento TYPE date USING _safe_parse_fin_date(data_pagamento);
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'parcelas'
+      AND column_name = 'data_pagamento'
+      AND data_type <> 'date'
+  ) THEN
+    ALTER TABLE parcelas
+      ALTER COLUMN data_pagamento TYPE date USING _safe_parse_fin_date(data_pagamento);
+  END IF;
 
-ALTER TABLE parcelas_compra
-  ALTER COLUMN data_vencimento TYPE date USING _safe_parse_fin_date(data_vencimento),
-  ALTER COLUMN data_pagamento_cartao TYPE date USING _safe_parse_fin_date(data_pagamento_cartao),
-  ALTER COLUMN data_pagamento_pessoa TYPE date USING _safe_parse_fin_date(data_pagamento_pessoa);
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'compras_cartao'
+      AND column_name = 'data_compra'
+      AND data_type <> 'date'
+  ) THEN
+    ALTER TABLE compras_cartao
+      ALTER COLUMN data_compra TYPE date USING _safe_parse_fin_date(data_compra);
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'compras_cartao'
+      AND column_name = 'data_pagamento_pessoa'
+      AND data_type <> 'date'
+  ) THEN
+    ALTER TABLE compras_cartao
+      ALTER COLUMN data_pagamento_pessoa TYPE date USING _safe_parse_fin_date(data_pagamento_pessoa);
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'servico_pagamentos'
+      AND column_name = 'data_pagamento'
+      AND data_type <> 'date'
+  ) THEN
+    ALTER TABLE servico_pagamentos
+      ALTER COLUMN data_pagamento TYPE date USING _safe_parse_fin_date(data_pagamento);
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'parcelas_compra'
+      AND column_name = 'data_vencimento'
+      AND data_type <> 'date'
+  ) THEN
+    ALTER TABLE parcelas_compra
+      ALTER COLUMN data_vencimento TYPE date USING _safe_parse_fin_date(data_vencimento);
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'parcelas_compra'
+      AND column_name = 'data_pagamento_cartao'
+      AND data_type <> 'date'
+  ) THEN
+    ALTER TABLE parcelas_compra
+      ALTER COLUMN data_pagamento_cartao TYPE date USING _safe_parse_fin_date(data_pagamento_cartao);
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'parcelas_compra'
+      AND column_name = 'data_pagamento_pessoa'
+      AND data_type <> 'date'
+  ) THEN
+    ALTER TABLE parcelas_compra
+      ALTER COLUMN data_pagamento_pessoa TYPE date USING _safe_parse_fin_date(data_pagamento_pessoa);
+  END IF;
+END;
+$$;
 
 DROP FUNCTION _safe_parse_fin_date(text);
+DROP FUNCTION _safe_parse_fin_date(date);
 
 COMMIT;
