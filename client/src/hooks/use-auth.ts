@@ -7,15 +7,22 @@ type AuthUser = {
   nomeCompleto: string | null;
 };
 
+const AUTH_ME_QUERY_KEY = ["/api/auth/me"] as const;
+
 function resetSessionCache(nextUser: AuthUser | null): void {
-  // Evita reutilizar dados de outra sessao/usuario no mesmo navegador.
-  queryClient.clear();
-  queryClient.setQueryData(["/api/auth/me"], nextUser);
+  queryClient.setQueryData(AUTH_ME_QUERY_KEY, nextUser);
+}
+
+async function refreshAuthenticatedUser(): Promise<void> {
+  await queryClient.invalidateQueries({
+    queryKey: AUTH_ME_QUERY_KEY,
+    refetchType: "active",
+  });
 }
 
 export function useAuth() {
   const { data: user, isLoading } = useQuery<AuthUser | null>({
-    queryKey: ["/api/auth/me"],
+    queryKey: AUTH_ME_QUERY_KEY,
     queryFn: getQueryFn({ on401: "returnNull" }),
     retry: false,
     staleTime: Infinity,
@@ -26,8 +33,9 @@ export function useAuth() {
       const res = await apiRequest("POST", "/api/auth/login", data);
       return res.json() as Promise<AuthUser>;
     },
-    onSuccess: (loggedUser) => {
+    onSuccess: async (loggedUser) => {
       resetSessionCache(loggedUser);
+      await refreshAuthenticatedUser();
     },
   });
 
@@ -36,8 +44,9 @@ export function useAuth() {
       const res = await apiRequest("POST", "/api/auth/register", data);
       return res.json() as Promise<AuthUser>;
     },
-    onSuccess: (registeredUser) => {
+    onSuccess: async (registeredUser) => {
       resetSessionCache(registeredUser);
+      await refreshAuthenticatedUser();
     },
   });
 
@@ -45,8 +54,9 @@ export function useAuth() {
     mutationFn: async () => {
       await apiRequest("POST", "/api/auth/logout");
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       resetSessionCache(null);
+      await refreshAuthenticatedUser();
     },
   });
 
