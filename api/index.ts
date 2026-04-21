@@ -1,11 +1,11 @@
 import express, { type NextFunction, type Request, type Response } from "express";
-import { registerRoutes } from "../server/routes";
+import { registerRoutes } from "../server/routes.js";
 import {
   createRequestId,
   summarizeResponsePayload,
   toErrorLog,
   writeTechnicalLog,
-} from "../server/logger";
+} from "../server/logger.js";
 
 declare module "http" {
   interface IncomingMessage {
