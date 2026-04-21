@@ -31,6 +31,8 @@ import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
 import { PagamentosTimelineService } from "./services/pagamentos-timeline.service.js";
 import { divide, parseMoney } from "../utils/money.js";
+import { pool } from "./db.js";
+import { ENV } from "./env.js";
 
 function auditRoute(
   req: Request,
@@ -77,6 +79,75 @@ export function registerRoutes(app: Express): void {
     metasController,
     rendasController,
     patrimoniosController,
+  });
+
+  // Rota temporaria de diagnostico de banco/schema em runtime.
+  // Remover apos conclusao da investigacao de ambiente em producao.
+  app.get("/api/debug/db-check", async (req, res) => {
+    const configuredToken = process.env.DEBUG_DB_CHECK_TOKEN?.trim();
+    const providedToken = req.get("x-debug-token")?.trim() ?? "";
+    const isProduction = ENV.nodeEnv === "production";
+
+    if (isProduction && !configuredToken) {
+      return res.status(404).json({ message: "Not found" });
+    }
+
+    if (configuredToken && providedToken !== configuredToken) {
+      return res.status(401).json({ message: "Nao autorizado" });
+    }
+
+    let hostSanitized: string | null = null;
+    try {
+      const parsed = new URL(ENV.databaseUrl);
+      hostSanitized = parsed.hostname || null;
+    } catch {
+      hostSanitized = null;
+    }
+
+    try {
+      const result = await pool.query<{
+        currentDatabase: string;
+        currentSchema: string;
+        currentUser: string;
+        usersTableExists: boolean;
+        userFernandoExists: boolean;
+        usersCount: number;
+      }>(`
+        SELECT
+          current_database() AS "currentDatabase",
+          current_schema() AS "currentSchema",
+          current_user AS "currentUser",
+          (to_regclass(format('%I.users', current_schema())) IS NOT NULL) AS "usersTableExists",
+          CASE
+            WHEN to_regclass(format('%I.users', current_schema())) IS NOT NULL
+              THEN EXISTS (SELECT 1 FROM users WHERE username = 'fernandoq87@gmail.com')
+            ELSE FALSE
+          END AS "userFernandoExists",
+          CASE
+            WHEN to_regclass(format('%I.users', current_schema())) IS NOT NULL
+              THEN (SELECT count(*)::int FROM users)
+            ELSE 0
+          END AS "usersCount"
+      `);
+
+      const row = result.rows[0];
+      return res.json({
+        ok: true,
+        hostSanitized,
+        currentDatabase: row?.currentDatabase ?? null,
+        currentSchema: row?.currentSchema ?? null,
+        currentUser: row?.currentUser ?? null,
+        usersTableExists: row?.usersTableExists ?? false,
+        userFernandoExists: row?.userFernandoExists ?? false,
+        usersCount: row?.usersCount ?? 0,
+      });
+    } catch (error) {
+      return res.status(500).json({
+        ok: false,
+        hostSanitized,
+        message: error instanceof Error ? error.message : "Erro interno ao diagnosticar banco",
+      });
+    }
   });
 
   app.get("/api/pessoas/:pessoaId/timeline-pagamentos", requireAuth, pagamentosTimelineController.listByPessoa);
