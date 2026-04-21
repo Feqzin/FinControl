@@ -18,6 +18,8 @@ const isVercelRuntime = ENV.isVercel;
 const SESSION_STORE_TABLE_NAME = "session" as const;
 const SCRYPT_KEY_LENGTH = 64;
 const HASH_HEX_LENGTH = SCRYPT_KEY_LENGTH * 2;
+const LEGACY_PASSWORD_RESET_MESSAGE =
+  "Conta com senha antiga detectada. Use 'Esqueci minha senha' para redefinir e entrar.";
 
 function failAuthConfig(message: string): never {
   throw new Error(`[AUTH] ${message}`);
@@ -310,13 +312,14 @@ export function setupAuth(app: Express) {
             hasSalt: storedPasswordInspection.hasSalt,
             hashLooksHex: storedPasswordInspection.hashLooksHex,
             hasExpectedHashLength: storedPasswordInspection.hasExpectedHashLength,
+            passwordComparable: storedPasswordInspection.isComparable,
             hashLength: storedPasswordInspection.hashLength,
             saltLength: storedPasswordInspection.saltLength,
           },
         });
 
         if (!storedPasswordInspection.isComparable) {
-          return done(null, false, { message: "Credenciais invalidas" });
+          return done(null, false, { message: LEGACY_PASSWORD_RESET_MESSAGE });
         }
 
         const match = await comparePasswords(password, user.password);
@@ -347,6 +350,18 @@ export function setupAuth(app: Express) {
       username = normalizeUsername(req.body?.username);
       const password = req.body?.password;
       const nomeCompleto = req.body?.nomeCompleto;
+
+      writeTechnicalLog({
+        event: "auth.register.input",
+        source: "auth",
+        level: "info",
+        requestId: req.requestId ?? undefined,
+        data: {
+          username,
+          hasPassword: typeof password === "string" && password.length > 0,
+        },
+      });
+
       if (!username || !password) {
         auditAuth(req, {
           action: "auth",
@@ -366,6 +381,18 @@ export function setupAuth(app: Express) {
         return res.status(400).json({ message: "A senha deve ter pelo menos 8 caracteres" });
       }
       const existing = await storage.getUserByUsername(username);
+
+      writeTechnicalLog({
+        event: "auth.register.user_lookup",
+        source: "auth",
+        level: "info",
+        requestId: req.requestId ?? undefined,
+        data: {
+          username,
+          userFound: Boolean(existing),
+        },
+      });
+
       if (existing) {
         auditAuth(req, {
           action: "auth",
@@ -376,7 +403,34 @@ export function setupAuth(app: Express) {
         return res.status(400).json({ message: "Este usuario ja esta em uso" });
       }
       const hashedPassword = await hashPassword(password);
+      const generatedPasswordInspection = inspectStoredPassword(hashedPassword);
+
+      writeTechnicalLog({
+        event: "auth.register.password_generated",
+        source: "auth",
+        level: generatedPasswordInspection.isComparable ? "info" : "warn",
+        requestId: req.requestId ?? undefined,
+        data: {
+          username,
+          passwordComparable: generatedPasswordInspection.isComparable,
+        },
+      });
+
       const user = await storage.createUser({ username, password: hashedPassword });
+      const persistedPasswordInspection = inspectStoredPassword(user.password);
+
+      writeTechnicalLog({
+        event: "auth.register.password_persisted",
+        source: "auth",
+        level: persistedPasswordInspection.isComparable ? "info" : "warn",
+        requestId: req.requestId ?? undefined,
+        data: {
+          username,
+          userFound: true,
+          passwordComparable: persistedPasswordInspection.isComparable,
+        },
+      });
+
       if (nomeCompleto) {
         await storage.updateUser(user.id, { nomeCompleto });
       }
