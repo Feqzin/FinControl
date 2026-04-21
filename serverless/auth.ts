@@ -10,11 +10,14 @@ import { promisify } from "util";
 import rateLimit from "express-rate-limit";
 import { ENV } from "./env.js";
 import { writeAuditLog } from "./audit-log.js";
+import { writeTechnicalLog } from "./logger.js";
 
 const scryptAsync = promisify(scrypt);
 const isProduction = ENV.nodeEnv === "production";
 const isVercelRuntime = ENV.isVercel;
 const SESSION_STORE_TABLE_NAME = "session" as const;
+const SCRYPT_KEY_LENGTH = 64;
+const HASH_HEX_LENGTH = SCRYPT_KEY_LENGTH * 2;
 
 function failAuthConfig(message: string): never {
   throw new Error(`[AUTH] ${message}`);
@@ -141,14 +144,71 @@ const sessionCookieSettings = {
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
-  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
+  const buf = (await scryptAsync(password, salt, SCRYPT_KEY_LENGTH)) as Buffer;
   return `${buf.toString("hex")}.${salt}`;
 }
 
+type StoredPasswordInspection = {
+  hasPassword: boolean;
+  hasSeparator: boolean;
+  hasHash: boolean;
+  hasSalt: boolean;
+  hashLooksHex: boolean;
+  hasExpectedHashLength: boolean;
+  hashLength: number;
+  saltLength: number;
+  isComparable: boolean;
+  hashHex?: string;
+  salt?: string;
+};
+
+function inspectStoredPassword(stored: unknown): StoredPasswordInspection {
+  if (typeof stored !== "string" || stored.length === 0) {
+    return {
+      hasPassword: false,
+      hasSeparator: false,
+      hasHash: false,
+      hasSalt: false,
+      hashLooksHex: false,
+      hasExpectedHashLength: false,
+      hashLength: 0,
+      saltLength: 0,
+      isComparable: false,
+    };
+  }
+
+  const separatorIndex = stored.indexOf(".");
+  const hasSeparator = separatorIndex > 0 && separatorIndex < stored.length - 1;
+  const hashHex = hasSeparator ? stored.slice(0, separatorIndex).trim() : "";
+  const salt = hasSeparator ? stored.slice(separatorIndex + 1).trim() : "";
+  const hasHash = hashHex.length > 0;
+  const hasSalt = salt.length > 0;
+  const hashLooksHex = hasHash && /^[a-f0-9]+$/i.test(hashHex);
+  const hasExpectedHashLength = hashHex.length === HASH_HEX_LENGTH;
+  const isComparable = hasSeparator && hasHash && hasSalt && hashLooksHex && hasExpectedHashLength;
+
+  return {
+    hasPassword: true,
+    hasSeparator,
+    hasHash,
+    hasSalt,
+    hashLooksHex,
+    hasExpectedHashLength,
+    hashLength: hashHex.length,
+    saltLength: salt.length,
+    isComparable,
+    hashHex: isComparable ? hashHex : undefined,
+    salt: isComparable ? salt : undefined,
+  };
+}
+
 async function comparePasswords(supplied: string, stored: string): Promise<boolean> {
-  const [hashedPassword, salt] = stored.split(".");
-  const hashedPasswordBuf = Buffer.from(hashedPassword, "hex");
-  const suppliedPasswordBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+  const parsed = inspectStoredPassword(stored);
+  if (!parsed.isComparable || !parsed.hashHex || !parsed.salt) return false;
+
+  const hashedPasswordBuf = Buffer.from(parsed.hashHex, "hex");
+  const suppliedPasswordBuf = (await scryptAsync(supplied, parsed.salt, SCRYPT_KEY_LENGTH)) as Buffer;
+  if (hashedPasswordBuf.length !== suppliedPasswordBuf.length) return false;
   return timingSafeEqual(hashedPasswordBuf, suppliedPasswordBuf);
 }
 
@@ -220,7 +280,45 @@ export function setupAuth(app: Express) {
       try {
         const normalizedUsername = normalizeUsername(username);
         const user = await storage.getUserByUsername(normalizedUsername);
-        if (!user) return done(null, false, { message: "Usuario nao encontrado" });
+
+        if (!user) {
+          writeTechnicalLog({
+            event: "auth.login.user_lookup",
+            source: "auth",
+            level: "info",
+            data: {
+              username: normalizedUsername,
+              userFound: false,
+            },
+          });
+          return done(null, false, { message: "Usuario nao encontrado" });
+        }
+
+        const storedPasswordInspection = inspectStoredPassword(user.password);
+        writeTechnicalLog({
+          event: "auth.login.user_lookup",
+          source: "auth",
+          level: storedPasswordInspection.isComparable ? "info" : "warn",
+          data: {
+            username: normalizedUsername,
+            userFound: true,
+            hasId: Boolean(user.id),
+            hasUsername: typeof user.username === "string" && user.username.length > 0,
+            hasPassword: storedPasswordInspection.hasPassword,
+            hasSeparator: storedPasswordInspection.hasSeparator,
+            hasHash: storedPasswordInspection.hasHash,
+            hasSalt: storedPasswordInspection.hasSalt,
+            hashLooksHex: storedPasswordInspection.hashLooksHex,
+            hasExpectedHashLength: storedPasswordInspection.hasExpectedHashLength,
+            hashLength: storedPasswordInspection.hashLength,
+            saltLength: storedPasswordInspection.saltLength,
+          },
+        });
+
+        if (!storedPasswordInspection.isComparable) {
+          return done(null, false, { message: "Credenciais invalidas" });
+        }
+
         const match = await comparePasswords(password, user.password);
         if (!match) return done(null, false, { message: "Senha incorreta" });
         return done(null, user);
