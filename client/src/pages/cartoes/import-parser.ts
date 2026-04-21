@@ -1,5 +1,6 @@
-﻿import { format } from "date-fns";
+import { format } from "date-fns";
 import type { CompraCartao } from "@shared/schema";
+import { formatMoneyFixed, multiply, parseMoney, toMoneyNumber } from "@/lib/money";
 
 export interface ParsedItem {
   id: string;
@@ -14,6 +15,12 @@ export interface ParsedItem {
   tipo: "compra" | "taxa";
   duplicata: any;
   action: "import" | "skip";
+  confidenceScore?: number;
+  confidenceLevel?: "alta" | "media" | "baixa";
+  validationIssues?: string[];
+  canImport?: boolean;
+  reviewRequired?: boolean;
+  duplicateId?: string | null;
 }
 
 type ParseSource = "csv" | "ofx" | "texto";
@@ -43,7 +50,7 @@ function createParseStats(source: ParseSource, totalRows: number): ParseStats {
   };
 }
 
-// â”€â”€ Parser helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Parser helpers ──────────────────────────────────────────────────────────
 
 function extractAllISODates(str: string): { iso: string; raw: string; index: number }[] {
   const results: { iso: string; raw: string; index: number }[] = [];
@@ -95,8 +102,8 @@ function extractMonetaryValue(str: string): { valor: number; raw: string } | nul
       const clean = raw.includes(",") && raw.indexOf(",") > raw.indexOf(".")
         ? raw.replace(/\./g, "").replace(",", ".")
         : raw.replace(/,/g, "").replace(/\.(?=\d{3})/g, "");
-      const v = parseFloat(clean);
-      if (!isNaN(v) && v > 0 && v < 1_000_000) return { valor: v, raw: m[0] };
+      const v = parseMoney(clean);
+      if (v != null && v > 0 && v < 1_000_000) return { valor: v, raw: m[0] };
     }
   }
   return null;
@@ -110,8 +117,8 @@ function detectarTipo(titulo: string): "taxa" | "compra" {
 function normalizarDescricao(raw: string): string {
   let s = raw;
   // Remove " - Parcela X/Y" and "- PARC X/Y" patterns (with surrounding dash)
-  s = s.replace(/\s*[-â€“]\s*Parcela\s+\d{1,2}\/\d{1,2}/gi, "");
-  s = s.replace(/\s*[-â€“]\s*PARC(?:ELA)?\s+\d{1,2}\/\d{1,2}/gi, "");
+  s = s.replace(/\s*[-–]\s*Parcela\s+\d{1,2}\/\d{1,2}/gi, "");
+  s = s.replace(/\s*[-–]\s*PARC(?:ELA)?\s+\d{1,2}\/\d{1,2}/gi, "");
   // Remove bare "Parcela X/Y" at end of string
   s = s.replace(/\bPARC(?:ELA)?\s+\d{1,2}\/\d{1,2}\b/gi, "");
   // Remove long digit sequences (auth codes)
@@ -168,7 +175,7 @@ function parseLinha(linha: string, vencimentoFatura: string | null): Omit<Parsed
 
   const descricao = normalizarDescricao(working);
   const dataCompra = fullDates.length > 0 ? fullDates[0].iso : format(new Date(), "yyyy-MM-dd");
-  const valor = Number((valorParcela * totalParcelas).toFixed(2)); // true total
+  const valor = toMoneyNumber(multiply(valorParcela, totalParcelas)); // true total
   const parcelasRestantes = totalParcelas - parcelaAtual;
   const tipo = detectarTipo(linha);
 
@@ -177,7 +184,7 @@ function parseLinha(linha: string, vencimentoFatura: string | null): Omit<Parsed
 
 function checkDuplicata(item: { valorParcela: number; descricao: string }, existentes: CompraCartao[], cartaoId: string) {
   return existentes.find((e) => {
-    const diffVal = Math.abs(Number(e.valorParcela) - item.valorParcela) / (item.valorParcela || 1);
+    const diffVal = Math.abs(toMoneyNumber(e.valorParcela) - item.valorParcela) / (item.valorParcela || 1);
     const key = item.descricao.toLowerCase().replace(/\s+/g, "").slice(0, 8);
     const ekey = e.descricao.toLowerCase().replace(/\s+/g, "").slice(0, 8);
     return diffVal < 0.06 && (key === ekey || key.includes(ekey.slice(0, 5)) || ekey.includes(key.slice(0, 5))) && e.cartaoId === cartaoId;
@@ -203,14 +210,8 @@ function parseTexto(text: string, existentes: CompraCartao[], cartaoId: string):
 }
 
 function parseCsvValue(raw: string): number {
-  // Handles both American "53.01" and Brazilian "53,01" / "1.234,56"
-  const s = raw.replace(/[R$\s]/g, "");
-  // American format: has dot as decimal separator, no trailing comma
-  if (/^-?\d{1,3}(?:,\d{3})*\.\d{2}$/.test(s)) return parseFloat(s.replace(/,/g, ""));
-  if (/^-?\d+\.\d{1,2}$/.test(s)) return parseFloat(s);
-  // Brazilian format: "1.234,56" or "1234,56"
-  if (s.includes(",")) return parseFloat(s.replace(/\./g, "").replace(",", "."));
-  return parseFloat(s) || 0;
+  const parsed = parseMoney(raw);
+  return parsed == null ? Number.NaN : parsed;
 }
 
 function parseCsvDate(raw: string): string {
@@ -242,8 +243,8 @@ export function parseCsv(content: string, existentes: CompraCartao[], cartaoId: 
   const rawHeaders = linhas[0].split(sep).map((h) => h.replace(/"/g, "").trim());
   const headers = rawHeaders.map((h) => h.toLowerCase());
 
-  // Column detection â€” "title" and "amount" are explicit Nubank/inter CSV names
-  const dateIdx = headers.findIndex((h) => /^date$|^data$|data.compra|lanÃ§a|post/i.test(h));
+  // Column detection — "title" and "amount" are explicit Nubank/inter CSV names
+  const dateIdx = headers.findIndex((h) => /^date$|^data$|data.compra|lança|post/i.test(h));
   const descIdx = headers.findIndex((h) => /^title$|^desc|^hist|^memo|^nome$|^lancamento/i.test(h));
   const valIdx  = headers.findIndex((h) => /^amount$|^valor$|^value$|trnamt|debito|credito/i.test(h));
 
@@ -281,7 +282,7 @@ export function parseCsv(content: string, existentes: CompraCartao[], cartaoId: 
       continue;
     }
 
-    // Parse value â€” keep sign to detect payments
+    // Parse value — keep sign to detect payments
     const valorSigned = parseCsvValue(valorRaw);
     if (isNaN(valorSigned) || valorSigned === 0) {
       stats.skippedInvalidValue += 1;
@@ -307,7 +308,7 @@ export function parseCsv(content: string, existentes: CompraCartao[], cartaoId: 
     const parcelaAtual = instResult ? instResult.parcelaAtual : 1;
     const totalParcelas = instResult ? instResult.totalParcelas : 1;
     const parcelasRestantes = totalParcelas - parcelaAtual;
-    const valorTotal = Number((valorParcela * totalParcelas).toFixed(2));
+    const valorTotal = toMoneyNumber(multiply(valorParcela, totalParcelas));
 
     // Clean description after extracting installment info
     const descricao = normalizarDescricao(rawDesc);
@@ -381,7 +382,7 @@ export function parseOfx(content: string, existentes: CompraCartao[], cartaoId: 
       stats.skippedPaymentOrCredit += 1;
       continue;
     }
-    const valorParcela = Number(valorSigned.toFixed(2));
+    const valorParcela = toMoneyNumber(formatMoneyFixed(valorSigned));
     const descricao = normalizarDescricao(rawDesc);
     const dtRaw = getTag(block, "DTPOSTED");
     let dataCompra = format(new Date(), "yyyy-MM-dd");
@@ -389,7 +390,7 @@ export function parseOfx(content: string, existentes: CompraCartao[], cartaoId: 
     const instResult = extractInstallment(rawDesc);
     const parcelaAtual = instResult ? instResult.parcelaAtual : 1;
     const totalParcelas = instResult ? instResult.totalParcelas : 1;
-    const valor = Number((valorParcela * totalParcelas).toFixed(2));
+    const valor = toMoneyNumber(multiply(valorParcela, totalParcelas));
     const parcelasRestantes = totalParcelas - parcelaAtual;
     const tipo = detectarTipo(rawDesc);
     const duplicata = checkDuplicata({ valorParcela, descricao }, existentes, cartaoId);

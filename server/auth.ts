@@ -1,7 +1,7 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { storage } from "./storage";
-import { type Express } from "express";
+import { type Express, type Request } from "express";
 import session from "express-session";
 import { pool } from "./db";
 import connectPgSimple from "connect-pg-simple";
@@ -12,14 +12,131 @@ import { ENV } from "./env";
 import { writeAuditLog } from "./audit-log";
 
 const scryptAsync = promisify(scrypt);
-const isProduction = process.env.NODE_ENV === "production";
-const sessionCookieName = "fincontrol.sid";
+const isProduction = ENV.nodeEnv === "production";
+const isVercelRuntime = ENV.isVercel;
+const SESSION_STORE_TABLE_NAME = "session" as const;
+
+function failAuthConfig(message: string): never {
+  throw new Error(`[AUTH] ${message}`);
+}
+
+function parseBooleanEnv(value: string | undefined): boolean | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") return true;
+  if (normalized === "false" || normalized === "0") return false;
+  failAuthConfig(`Valor booleano invalido: "${value}". Use true/false ou 1/0.`);
+}
+
+function resolveSessionCookieName(): string {
+  const fromEnv = process.env.SESSION_COOKIE_NAME?.trim();
+  const fallback = "fincontrol.sid";
+  const resolved = fromEnv || fallback;
+
+  if (resolved.length > 100) {
+    failAuthConfig("SESSION_COOKIE_NAME muito longo. Use no maximo 100 caracteres.");
+  }
+
+  if (!/^[A-Za-z0-9._-]+$/.test(resolved)) {
+    failAuthConfig(
+      "SESSION_COOKIE_NAME invalido. Use apenas letras, numeros, ponto, underscore e hifen.",
+    );
+  }
+
+  return resolved;
+}
+
+function resolveSessionCookieSameSite(): "lax" | "strict" | "none" {
+  // Guia rapido:
+  // - lax: frontend e API no mesmo "site" (inclui subdominios do mesmo dominio raiz).
+  // - none: frontend e API em sites diferentes (cross-site); exige HTTPS + secure=true.
+  const fromEnv = process.env.SESSION_COOKIE_SAME_SITE?.trim().toLowerCase();
+  if (!fromEnv) return "lax";
+  if (fromEnv === "lax" || fromEnv === "strict" || fromEnv === "none") {
+    return fromEnv;
+  }
+  failAuthConfig(
+    `SESSION_COOKIE_SAME_SITE invalido: "${fromEnv}". Use lax, strict ou none.`,
+  );
+}
+
+function resolveSessionCookieDomain(): string | undefined {
+  // Opcional: use quando quiser compartilhar cookie entre subdominios do mesmo dominio.
+  // Se nao definido, o cookie fica host-only (escopo mais restrito e seguro por padrao).
+  const fromEnv = process.env.SESSION_COOKIE_DOMAIN?.trim();
+  if (!fromEnv) return undefined;
+
+  const normalized = fromEnv.toLowerCase();
+  if (
+    normalized.includes("://") ||
+    normalized.includes("/") ||
+    normalized.includes(":") ||
+    normalized.includes(" ")
+  ) {
+    failAuthConfig(
+      `SESSION_COOKIE_DOMAIN invalido: "${fromEnv}". Informe apenas o host de dominio (sem protocolo, porta ou path).`,
+    );
+  }
+
+  const withoutLeadingDot = normalized.startsWith(".")
+    ? normalized.slice(1)
+    : normalized;
+  if (!/^[a-z0-9.-]+$/.test(withoutLeadingDot)) {
+    failAuthConfig(
+      `SESSION_COOKIE_DOMAIN invalido: "${fromEnv}". Use apenas letras, numeros, ponto e hifen.`,
+    );
+  }
+
+  if (withoutLeadingDot.length < 3 || withoutLeadingDot.endsWith(".")) {
+    failAuthConfig(`SESSION_COOKIE_DOMAIN invalido: "${fromEnv}".`);
+  }
+
+  if (isProduction && (withoutLeadingDot === "localhost" || withoutLeadingDot === "127.0.0.1")) {
+    failAuthConfig("SESSION_COOKIE_DOMAIN nao pode ser localhost/127.0.0.1 em producao.");
+  }
+
+  return withoutLeadingDot;
+}
+
+const sessionCookieName = resolveSessionCookieName();
+const sessionCookieSameSite = resolveSessionCookieSameSite();
+const sessionCookieSecureFromEnv = parseBooleanEnv(process.env.SESSION_COOKIE_SECURE);
+const sessionCookieSecure = sessionCookieSecureFromEnv ?? isProduction;
+const sessionCookieDomain = resolveSessionCookieDomain();
+const sessionStoreCreateTableIfMissingFromEnv = parseBooleanEnv(
+  process.env.SESSION_STORE_CREATE_TABLE_IF_MISSING,
+);
+const sessionStoreCreateTableIfMissing =
+  isProduction
+    ? false
+    : (sessionStoreCreateTableIfMissingFromEnv ?? true);
+
+if (isProduction && !sessionCookieSecure) {
+  failAuthConfig("SESSION_COOKIE_SECURE deve ser true em producao.");
+}
+
+if (sessionCookieSameSite === "none" && !sessionCookieSecure) {
+  failAuthConfig(
+    "SESSION_COOKIE_SAME_SITE=none exige SESSION_COOKIE_SECURE=true e HTTPS ativo.",
+  );
+}
+
+if (isProduction && sessionStoreCreateTableIfMissingFromEnv === true) {
+  failAuthConfig(
+    "SESSION_STORE_CREATE_TABLE_IF_MISSING=true nao e permitido em producao. " +
+    "Crie a tabela de sessao antes do deploy e mantenha essa opcao desativada.",
+  );
+}
+
+const shouldTrustProxy = isProduction || isVercelRuntime;
 
 const sessionCookieSettings = {
+  path: "/",
   maxAge: 30 * 24 * 60 * 60 * 1000,
   httpOnly: true,
-  secure: isProduction,
-  sameSite: "lax" as const,
+  secure: sessionCookieSecure,
+  sameSite: sessionCookieSameSite,
+  ...(sessionCookieDomain ? { domain: sessionCookieDomain } : {}),
 };
 
 export async function hashPassword(password: string): Promise<string> {
@@ -54,7 +171,7 @@ function hashResetToken(token: string): string {
 
 async function invalidateUserSessions(userId: string, keepSessionId?: string): Promise<void> {
   const params: string[] = [userId];
-  let query = `DELETE FROM "session" WHERE (sess::jsonb -> 'passport' ->> 'user') = $1`;
+  let query = `DELETE FROM "${SESSION_STORE_TABLE_NAME}" WHERE (sess::jsonb -> 'passport' ->> 'user') = $1`;
   if (keepSessionId) {
     params.push(keepSessionId);
     query += " AND sid <> $2";
@@ -62,29 +179,34 @@ async function invalidateUserSessions(userId: string, keepSessionId?: string): P
   await pool.query(query, params);
 }
 
-function auditAuth(req: { method: string; path: string }, event: Omit<Parameters<typeof writeAuditLog>[0], "method" | "route">): void {
+function auditAuth(req: Request, event: Omit<Parameters<typeof writeAuditLog>[0], "method" | "route">): void {
   writeAuditLog({
     ...event,
     method: req.method,
     route: req.path,
+    requestId: req.requestId ?? null,
+    requestIp: req.ip ?? null,
+    userAgent: req.get("user-agent") ?? null,
   });
 }
 
 export function setupAuth(app: Express) {
   const PgStore = connectPgSimple(session);
 
-  if (isProduction) {
+  if (shouldTrustProxy) {
     app.set("trust proxy", 1);
   }
 
   const sessionSettings: session.SessionOptions = {
     name: sessionCookieName,
+    proxy: shouldTrustProxy,
     secret: ENV.sessionSecret,
     resave: false,
     saveUninitialized: false,
     store: new PgStore({
       pool,
-      createTableIfMissing: true,
+      tableName: SESSION_STORE_TABLE_NAME,
+      createTableIfMissing: sessionStoreCreateTableIfMissing,
     }),
     cookie: sessionCookieSettings,
   };
@@ -293,6 +415,7 @@ export function setupAuth(app: Express) {
           secure: sessionCookieSettings.secure,
           sameSite: sessionCookieSettings.sameSite,
           path: "/",
+          ...(sessionCookieSettings.domain ? { domain: sessionCookieSettings.domain } : {}),
         });
         return res.json({ message: "Desconectado com sucesso" });
       }
@@ -321,6 +444,7 @@ export function setupAuth(app: Express) {
           secure: sessionCookieSettings.secure,
           sameSite: sessionCookieSettings.sameSite,
           path: "/",
+          ...(sessionCookieSettings.domain ? { domain: sessionCookieSettings.domain } : {}),
         });
         return res.json({ message: "Desconectado com sucesso" });
       });
@@ -430,6 +554,7 @@ export function setupAuth(app: Express) {
           secure: sessionCookieSettings.secure,
           sameSite: sessionCookieSettings.sameSite,
           path: "/",
+          ...(sessionCookieSettings.domain ? { domain: sessionCookieSettings.domain } : {}),
         });
       }
 

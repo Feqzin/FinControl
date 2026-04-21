@@ -1,4 +1,4 @@
-import type { Request } from "express";
+import type { Request, Response } from "express";
 import { writeAuditLog, type AuditEvent } from "../audit-log";
 
 export function getUserId(req: Request): string {
@@ -19,5 +19,16 @@ export function auditRequest(
     ...event,
     method: req.method,
     route: req.path,
+    requestId: req.requestId ?? null,
+    requestIp: req.ip ?? null,
+    userAgent: req.get("user-agent") ?? null,
   });
+}
+
+export function sendBadRequest(res: Response, message: string) {
+  return res.status(400).json({ message });
+}
+
+export function sendNotFound(res: Response, message = "Not found") {
+  return res.status(404).json({ message });
 }

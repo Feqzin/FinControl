@@ -1,4 +1,4 @@
-import { useRef } from "react";
+﻿import { useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Cartao } from "@shared/schema";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
@@ -316,7 +316,26 @@ export function ImportFaturaDialog({
                               </span>
                               <span>Compra: {item.dataCompra}</span>
                               {item.vencimentoFatura && <span className="text-emerald-600">Venc: {item.vencimentoFatura}</span>}
+                              {typeof item.confidenceScore === "number" && (
+                                <span
+                                  className={
+                                    item.confidenceScore >= 85
+                                      ? "text-emerald-600"
+                                      : item.confidenceScore >= 65
+                                      ? "text-amber-600"
+                                      : "text-red-600"
+                                  }
+                                >
+                                  Confianca: {Math.round(item.confidenceScore)}%
+                                </span>
+                              )}
+                              {item.reviewRequired && <span className="text-amber-600">Revisao recomendada</span>}
                             </div>
+                            {item.validationIssues && item.validationIssues.length > 0 && (
+                              <p className="text-xs text-red-600 mt-0.5">
+                                {item.validationIssues.join(" · ")}
+                              </p>
+                            )}
                             {item.duplicata && (
                               <p className="text-xs text-amber-600 mt-0.5">
                                 Similar a: "{item.duplicata.descricao}" ({formatCurrency(Number(item.duplicata.valorParcela))})

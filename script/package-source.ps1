@@ -14,12 +14,59 @@ try {
     throw "Nenhum arquivo rastreado encontrado. Verifique se este diretorio e um repositorio git."
   }
 
-  $blockedEntries = @(".env", ".env.local", "node_modules", "dist", ".git")
+  $blockedCriticalDirectories = @(
+    ".git",
+    "node_modules",
+    "dist"
+  )
+
+  $excludedDirectories = @(
+    "artifacts",
+    "diagnostics",
+    "attached_assets",
+    ".local",
+    ".agents",
+    ".config"
+  )
+
+  $blockedExtensions = @(".zip", ".7z", ".tar", ".tgz", ".tar.gz")
+  $blockedSensitiveExtensions = @(".pem", ".key", ".p12", ".pfx", ".kdbx")
+  $excludedTracked = New-Object 'System.Collections.Generic.HashSet[string]'
+
   foreach ($file in $trackedFiles) {
     $normalized = $file -replace "\\", "/"
-    foreach ($blocked in $blockedEntries) {
+
+    if ($normalized -match '(^|/)\.env(\..+)?$' -and $normalized -ne ".env.example") {
+      throw "Arquivo sensivel rastreado no git: '$normalized'. Corrija antes de gerar pacote."
+    }
+
+    if ($normalized -match '(^|/)\.envrc$') {
+      throw "Arquivo sensivel rastreado no git: '$normalized'. Corrija antes de gerar pacote."
+    }
+
+    foreach ($blocked in $blockedCriticalDirectories) {
       if ($normalized -eq $blocked -or $normalized.StartsWith("$blocked/")) {
-        throw "Arquivo/pasta sensivel rastreado no git: '$normalized'. Corrija antes de gerar pacote."
+        throw "Pasta critica indevida rastreada no git: '$normalized'. Corrija antes de gerar pacote."
+      }
+    }
+
+    foreach ($excluded in $excludedDirectories) {
+      if ($normalized -eq $excluded -or $normalized.StartsWith("$excluded/")) {
+        $excludedTracked.Add($normalized) | Out-Null
+        continue
+      }
+    }
+
+    foreach ($extension in $blockedExtensions) {
+      if ($normalized.EndsWith($extension, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $excludedTracked.Add($normalized) | Out-Null
+        continue
+      }
+    }
+
+    foreach ($extension in $blockedSensitiveExtensions) {
+      if ($normalized.EndsWith($extension, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Arquivo potencialmente sensivel rastreado no git: '$normalized'. Corrija antes de gerar pacote."
       }
     }
   }
@@ -43,6 +90,11 @@ try {
 
   try {
     foreach ($relativePath in $trackedFiles) {
+      $normalized = $relativePath -replace "\\", "/"
+      if ($excludedTracked.Contains($normalized)) {
+        continue
+      }
+
       $sourcePath = Join-Path $repoRoot $relativePath
       if (-not (Test-Path -LiteralPath $sourcePath)) {
         continue
@@ -61,6 +113,15 @@ try {
   } finally {
     if (Test-Path -LiteralPath $stagingDir) {
       Remove-Item -LiteralPath $stagingDir -Recurse -Force
+    }
+  }
+
+  if ($excludedTracked.Count -gt 0) {
+    Write-Host "Aviso: $($excludedTracked.Count) arquivos rastreados foram excluidos automaticamente do pacote por politica de seguranca."
+    $preview = $excludedTracked | Sort-Object | Select-Object -First 25
+    $preview | ForEach-Object { Write-Host "  - $_" }
+    if ($excludedTracked.Count -gt 25) {
+      Write-Host "  ... e mais $($excludedTracked.Count - 25) arquivo(s)."
     }
   }
 

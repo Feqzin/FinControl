@@ -1,30 +1,65 @@
 import { format } from "date-fns";
-import type { Cartao, CompraCartao, Divida, Parcela, Renda, Servico } from "@shared/schema";
+import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Renda, Servico } from "@shared/schema";
 import type { FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
 import type { FinancialRepository } from "../repositories/financial.repository";
+import { formatMoneyFixed, parseMoney, toCentsBigInt } from "../../utils/money";
+import {
+  getDebtObligations,
+  getDebtPortfolioSummary,
+  getMonthlyDebtObligations,
+  getOutstandingDebtInstallments,
+} from "./financial-debt-analytics";
+import {
+  getCardPortfolioSummary,
+  getMonthlyCardObligations,
+  getOutstandingCardInstallments,
+} from "./financial-card-analytics";
 
 type FinancialContext = {
   dividas: Divida[];
   parcelas: Parcela[];
+  parcelasCompra: ParcelaCompra[];
   servicos: Servico[];
   cartoes: Cartao[];
   compras: CompraCartao[];
   rendas: Renda[];
 };
 
-export type ScoreSimulationInput = {
+export type FinancialSimulationInput = {
   quitarDivida?: number;
   reducaoDespesas?: number;
+  rendaExtra?: number;
 };
 
-function toNumber(value: string | number | null | undefined): number {
-  if (value == null) return 0;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
+type MoneyValue = string | number | null | undefined;
+
+function toMoneyNumber(value: MoneyValue): number {
+  return parseMoney(value) ?? 0;
+}
+
+function centsToMoneyString(cents: number): string {
+  const negative = cents < 0;
+  const abs = negative ? -cents : cents;
+  const intPart = Math.floor(abs / 100);
+  const fracPart = String(abs % 100).padStart(2, "0");
+  return `${negative ? "-" : ""}${intPart}.${fracPart}`;
+}
+
+function sumMoneyValues(values: MoneyValue[]): number {
+  const totalCents = values.reduce<number>((sum, value) => sum + (toCentsBigInt(value) ?? 0), 0);
+  return parseMoney(centsToMoneyString(totalCents)) ?? 0;
+}
+
+function sumMoneyBy<T>(items: T[], valueSelector: (item: T) => MoneyValue): number {
+  return sumMoneyValues(items.map(valueSelector));
+}
+
+function formatMoneyText(value: number): string {
+  return (formatMoneyFixed(value) ?? "0.00").replace(".", ",");
 }
 
 function round2(value: number): number {
-  return Math.round(value * 100) / 100;
+  return parseMoney(formatMoneyFixed(value)) ?? 0;
 }
 
 function resolveMonthReference(input?: string): string {
@@ -32,62 +67,75 @@ function resolveMonthReference(input?: string): string {
   return format(new Date(), "yyyy-MM");
 }
 
-function calculateCartoesForMonth(compras: CompraCartao[], monthRef: string): number {
-  const [selYearN, selMonthN] = monthRef.split("-").map(Number);
+function isOpenDebtStatus(status: string): boolean {
+  const normalized = String(status || "").trim().toLowerCase();
+  return normalized !== "pago" && normalized !== "cancelado";
+}
 
-  return compras.reduce((sum, compra) => {
-    const [compraYear, compraMonth] = String(compra.dataCompra || "")
-      .split("-")
-      .slice(0, 2)
-      .map(Number);
+function getMonthlyDebtTotals(
+  debtInput: Pick<FinancialContext, "dividas" | "parcelas">,
+  monthReference: string,
+) {
+  const monthlyDebtObligations = getMonthlyDebtObligations(debtInput, monthReference);
+  const totalReceberMes = sumMoneyBy(
+    monthlyDebtObligations.filter((row) => row.tipo === "receber"),
+    (row) => row.valor,
+  );
+  const totalPagarMes = sumMoneyBy(
+    monthlyDebtObligations.filter((row) => row.tipo === "pagar"),
+    (row) => row.valor,
+  );
 
-    if (!Number.isFinite(compraYear) || !Number.isFinite(compraMonth)) return sum;
+  return { monthlyDebtObligations, totalReceberMes, totalPagarMes };
+}
 
-    const monthOffset = (selYearN - compraYear) * 12 + (selMonthN - compraMonth);
-    if (monthOffset >= 0 && monthOffset < toNumber(compra.parcelas)) {
-      return sum + toNumber(compra.valorParcela);
-    }
-
-    return sum;
-  }, 0);
+function getMonthlyCardTotals(
+  cardInput: Pick<FinancialContext, "compras" | "parcelasCompra">,
+  monthReference: string,
+) {
+  const monthlyCardObligations = getMonthlyCardObligations(cardInput, monthReference);
+  const totalCartoesMes = sumMoneyBy(monthlyCardObligations, (row) => row.valor);
+  return { monthlyCardObligations, totalCartoesMes };
 }
 
 function calculateScoreFromContext({
   dividas,
+  parcelas,
+  parcelasCompra,
   servicos,
   cartoes,
   compras,
   rendas,
-}: Pick<FinancialContext, "dividas" | "servicos" | "cartoes" | "compras" | "rendas">): FinancialScore {
+}: Pick<FinancialContext, "dividas" | "parcelas" | "parcelasCompra" | "servicos" | "cartoes" | "compras" | "rendas">): FinancialScore {
   const today = format(new Date(), "yyyy-MM-dd");
+  const currentMonth = format(new Date(), "yyyy-MM");
   const fatores: FinancialScore["fatores"] = [];
+  const debtInput = { dividas, parcelas };
+  const cardInput = { compras, parcelasCompra };
+  const outstandingDebtInstallments = getOutstandingDebtInstallments(debtInput);
+  const debtPortfolio = getDebtPortfolioSummary(debtInput);
+  const { totalReceberMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, currentMonth);
+  const outstandingCardInstallments = getOutstandingCardInstallments(cardInput);
+  const { totalCartoesMes } = getMonthlyCardTotals(cardInput, currentMonth);
+  const cardPortfolio = getCardPortfolioSummary(cardInput);
 
   let score = 60;
 
-  const vencidas = dividas.filter((d) => d.status === "pendente" && d.dataVencimento && d.dataVencimento < today);
+  const vencidas = outstandingDebtInstallments.filter((row) => row.dataVencimento && row.dataVencimento < today);
   if (vencidas.length === 0) {
     score += 15;
     fatores.push({ label: "Sem dividas vencidas", impacto: +15, tipo: "positivo" });
   } else {
     const penalidade = Math.min(vencidas.length * 8, 30);
     score -= penalidade;
-    fatores.push({ label: `${vencidas.length} divida(s) vencida(s)`, impacto: -penalidade, tipo: "negativo" });
+    fatores.push({ label: `${vencidas.length} obrigacao(oes) vencida(s)`, impacto: -penalidade, tipo: "negativo" });
   }
 
-  const totalRenda = rendas.filter((r) => r.ativo).reduce((s, r) => s + toNumber(r.valor), 0);
-  const totalReceber = dividas
-    .filter((d) => d.tipo === "receber" && d.status === "pendente")
-    .reduce((s, d) => s + toNumber(d.valor), 0);
-  const totalPagar = dividas
-    .filter((d) => d.tipo === "pagar" && d.status === "pendente")
-    .reduce((s, d) => s + toNumber(d.valor), 0);
-  const totalServicos = servicos
-    .filter((s) => s.status === "ativo")
-    .reduce((s, sv) => s + toNumber(sv.valorMensal), 0);
-  const totalCartoes = compras.reduce((s, c) => s + toNumber(c.valorParcela), 0);
+  const totalRenda = sumMoneyBy(rendas.filter((r) => r.ativo), (r) => r.valor);
+  const totalServicos = sumMoneyBy(servicos.filter((s) => s.status === "ativo"), (sv) => sv.valorMensal);
 
-  const entradas = totalRenda + totalReceber;
-  const saidas = totalPagar + totalServicos + totalCartoes;
+  const entradas = totalRenda + totalReceberMes;
+  const saidas = totalPagarMes + totalServicos + totalCartoesMes;
   const saldo = entradas - saidas;
 
   if (totalRenda > 0) {
@@ -123,8 +171,11 @@ function calculateScoreFromContext({
   const cardPenalidades: string[] = [];
   let totalCardPenalty = 0;
   for (const cartao of cartoes) {
-    const usado = compras.filter((c) => c.cartaoId === cartao.id).reduce((s, c) => s + toNumber(c.valorParcela), 0);
-    const limite = toNumber(cartao.limite);
+    const usado = sumMoneyBy(
+      outstandingCardInstallments.filter((row) => row.cartaoId === cartao.id),
+      (row) => row.valor,
+    );
+    const limite = toMoneyNumber(cartao.limite);
     const pct = limite > 0 ? (usado / limite) * 100 : 0;
     if (pct >= 80) {
       totalCardPenalty += 10;
@@ -143,8 +194,20 @@ function calculateScoreFromContext({
     fatores.push({ label: "Uso de cartao saudavel", impacto: +3, tipo: "positivo" });
   }
 
-  const pagas = dividas.filter((d) => d.status === "pago").length;
-  const total = dividas.length;
+  if (cardPortfolio.totalPendente > 0 && totalRenda > 0) {
+    const carteiraSobreRenda = (cardPortfolio.totalPendente / totalRenda) * 100;
+    if (carteiraSobreRenda > 100) {
+      score -= 5;
+      fatores.push({
+        label: `Saldo restante no cartao em ${Math.round(carteiraSobreRenda)}% da renda mensal`,
+        impacto: -5,
+        tipo: "negativo",
+      });
+    }
+  }
+
+  const pagas = debtPortfolio.obrigacoes.pagas;
+  const total = debtPortfolio.obrigacoes.total;
   if (total > 0 && pagas / total >= 0.5) {
     score += 5;
     fatores.push({ label: "Bom historico de quitacao", impacto: +5, tipo: "positivo" });
@@ -166,45 +229,47 @@ function calculateScoreFromContext({
 
 function generateInsightsFromContext({
   dividas,
+  parcelas,
+  parcelasCompra,
   servicos,
   cartoes,
   compras,
   rendas,
-}: Pick<FinancialContext, "dividas" | "servicos" | "cartoes" | "compras" | "rendas">): FinancialInsight[] {
+}: Pick<FinancialContext, "dividas" | "parcelas" | "parcelasCompra" | "servicos" | "cartoes" | "compras" | "rendas">): FinancialInsight[] {
   const insights: FinancialInsight[] = [];
   const now = new Date();
   const currentMonth = format(now, "yyyy-MM");
   const prevMonth = format(new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()), "yyyy-MM");
   const today = format(now, "yyyy-MM-dd");
   const in30 = format(new Date(Date.now() + 30 * 86400000), "yyyy-MM-dd");
+  const debtInput = { dividas, parcelas };
+  const cardInput = { compras, parcelasCompra };
+  const debtObligations = getDebtObligations(debtInput);
+  const outstandingDebtInstallments = getOutstandingDebtInstallments(debtInput);
+  const outstandingCardInstallments = getOutstandingCardInstallments(cardInput);
 
-  const totalRenda = rendas.filter((r) => r.ativo).reduce((s, r) => s + toNumber(r.valor), 0);
+  const totalRenda = sumMoneyBy(rendas.filter((r) => r.ativo), (r) => r.valor);
   const servicosAtivos = servicos.filter((s) => s.status === "ativo");
-  const totalServicos = servicosAtivos.reduce((s, sv) => s + toNumber(sv.valorMensal), 0);
-  const totalCartoes = compras.reduce((s, c) => s + toNumber(c.valorParcela), 0);
-  const totalPagar = dividas
-    .filter((d) => d.tipo === "pagar" && d.status === "pendente")
-    .reduce((s, d) => s + toNumber(d.valor), 0);
-  const totalReceber = dividas
-    .filter((d) => d.tipo === "receber" && d.status === "pendente")
-    .reduce((s, d) => s + toNumber(d.valor), 0);
+  const totalServicos = sumMoneyBy(servicosAtivos, (sv) => sv.valorMensal);
+  const { totalReceberMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, currentMonth);
+  const { totalCartoesMes } = getMonthlyCardTotals(cardInput, currentMonth);
 
-  const entradas = totalRenda + totalReceber;
-  const saidas = totalPagar + totalServicos + totalCartoes;
+  const entradas = totalRenda + totalReceberMes;
+  const saidas = totalPagarMes + totalServicos + totalCartoesMes;
   const saldo = entradas - saidas;
 
-  const pagosMes = dividas.filter((d) => d.status === "pago" && String(d.dataPagamento || "").startsWith(currentMonth)).length;
-  const pagosMesAnterior = dividas.filter((d) => d.status === "pago" && String(d.dataPagamento || "").startsWith(prevMonth)).length;
+  const pagosMes = debtObligations.filter((row) => row.status === "pago" && String(row.dataPagamento || "").startsWith(currentMonth)).length;
+  const pagosMesAnterior = debtObligations.filter((row) => row.status === "pago" && String(row.dataPagamento || "").startsWith(prevMonth)).length;
   if (pagosMes > 0 && pagosMes > pagosMesAnterior) {
-    insights.push({ tipo: "positivo", texto: `Voce quitou ${pagosMes} divida(s) este mes - mais que no mes anterior!`, icone: "trophy" });
+    insights.push({ tipo: "positivo", texto: `Voce quitou ${pagosMes} obrigacao(oes) este mes - mais que no mes anterior!`, icone: "trophy" });
   }
 
-  const vencidas = dividas.filter((d) => d.status === "pendente" && d.dataVencimento && d.dataVencimento < today);
+  const vencidas = outstandingDebtInstallments.filter((row) => row.dataVencimento && row.dataVencimento < today);
   if (vencidas.length > 0) {
-    const total = vencidas.reduce((s, d) => s + toNumber(d.valor), 0);
+    const total = sumMoneyBy(vencidas, (row) => row.valor);
     insights.push({
       tipo: "negativo",
-      texto: `Voce tem ${vencidas.length} divida(s) vencida(s) totalizando R$ ${total.toFixed(2).replace(".", ",")}`,
+      texto: `Voce tem ${vencidas.length} obrigacao(oes) vencida(s) totalizando R$ ${formatMoneyText(total)}`,
       icone: "alert",
     });
   }
@@ -220,25 +285,24 @@ function generateInsightsFromContext({
     } else if (comprometimento < 50 && entradas > 0) {
       insights.push({
         tipo: "positivo",
-        texto: `Otimo! Apenas ${Math.round(comprometimento)}% da sua renda esta comprometida`,
+        texto: `Otimo! Apenas ${Math.round(comprometimento)}% da renda esta comprometida`,
         icone: "star",
       });
     }
   }
 
-  const receber30 = dividas
-    .filter((d) =>
-      d.tipo === "receber"
-      && d.status === "pendente"
-      && d.dataVencimento
-      && d.dataVencimento >= today
-      && d.dataVencimento <= in30,
-    )
-    .reduce((s, d) => s + toNumber(d.valor), 0);
+  const receber30Dividas = outstandingDebtInstallments
+    .filter((row) =>
+      row.tipo === "receber"
+      && row.dataVencimento
+      && row.dataVencimento >= today
+      && row.dataVencimento <= in30,
+    );
+  const receber30 = sumMoneyBy(receber30Dividas, (row) => row.valor);
   if (receber30 > 0) {
     insights.push({
       tipo: "positivo",
-      texto: `Voce tem R$ ${receber30.toFixed(2).replace(".", ",")} a receber nos proximos 30 dias`,
+      texto: `Voce tem R$ ${formatMoneyText(receber30)} a receber nos proximos 30 dias`,
       icone: "money",
     });
   }
@@ -246,20 +310,23 @@ function generateInsightsFromContext({
   if (totalServicos > 300) {
     insights.push({
       tipo: "negativo",
-      texto: `Seus gastos com servicos/assinaturas sao R$ ${totalServicos.toFixed(2).replace(".", ",")} por mes`,
+      texto: `Seus gastos com servicos/assinaturas sao R$ ${formatMoneyText(totalServicos)} por mes`,
       icone: "repeat",
     });
   } else if (servicosAtivos.length > 0) {
     insights.push({
       tipo: "neutro",
-      texto: `Voce tem ${servicosAtivos.length} servico(s) ativo(s) custando R$ ${totalServicos.toFixed(2).replace(".", ",")} mensais`,
+      texto: `Voce tem ${servicosAtivos.length} servico(s) ativo(s) custando R$ ${formatMoneyText(totalServicos)} mensais`,
       icone: "repeat",
     });
   }
 
   for (const cartao of cartoes) {
-    const usado = compras.filter((c) => c.cartaoId === cartao.id).reduce((s, c) => s + toNumber(c.valorParcela), 0);
-    const limite = toNumber(cartao.limite);
+    const usado = sumMoneyBy(
+      outstandingCardInstallments.filter((row) => row.cartaoId === cartao.id),
+      (row) => row.valor,
+    );
+    const limite = toMoneyNumber(cartao.limite);
     const pct = limite > 0 ? (usado / limite) * 100 : 0;
     if (pct >= 80) {
       insights.push({
@@ -279,7 +346,7 @@ function generateInsightsFromContext({
   } else if (saldo > 1000) {
     insights.push({
       tipo: "positivo",
-      texto: `Excelente! Saldo previsto de R$ ${saldo.toFixed(2).replace(".", ",")} - considere criar uma meta de economia`,
+      texto: `Excelente! Saldo previsto de R$ ${formatMoneyText(saldo)} - considere criar uma meta de economia`,
       icone: "star",
     });
   }
@@ -287,24 +354,73 @@ function generateInsightsFromContext({
   return insights.slice(0, 5);
 }
 
-function applyScoreSimulation(
+function resolveContextUserId(context: FinancialContext): string {
+  return (
+    context.rendas[0]?.userId
+    || context.dividas[0]?.userId
+    || context.servicos[0]?.userId
+    || context.cartoes[0]?.userId
+    || context.compras[0]?.userId
+    || context.parcelasCompra[0]?.userId
+    || context.parcelas[0]?.userId
+    || "sim"
+  );
+}
+
+function applyFinancialSimulation(
   context: FinancialContext,
-  simulation?: ScoreSimulationInput,
+  simulation?: FinancialSimulationInput,
 ): FinancialContext {
   if (!simulation) return context;
 
   const quitarDivida = Math.max(0, simulation.quitarDivida ?? 0);
   const reducaoDespesas = Math.max(0, simulation.reducaoDespesas ?? 0);
+  const rendaExtra = Math.max(0, simulation.rendaExtra ?? 0);
 
-  if (quitarDivida === 0 && reducaoDespesas === 0) return context;
+  if (quitarDivida === 0 && reducaoDespesas === 0 && rendaExtra === 0) return context;
 
   let remainingQuitar = quitarDivida;
+  const simulatedParcelas = context.parcelas.map((parcela) => ({ ...parcela }));
+  const parcelasPendentesOrdenadas = simulatedParcelas
+    .filter((parcela) => isOpenDebtStatus(parcela.status))
+    .sort((a, b) => {
+      const dateOrder = String(a.dataVencimento || "").localeCompare(String(b.dataVencimento || ""));
+      if (dateOrder !== 0) return dateOrder;
+      return a.numero - b.numero;
+    });
+
+  for (const parcela of parcelasPendentesOrdenadas) {
+    if (remainingQuitar <= 0) break;
+    const valor = toMoneyNumber(parcela.valor);
+    if (remainingQuitar >= valor) {
+      remainingQuitar -= valor;
+      parcela.status = "pago";
+      parcela.dataPagamento = format(new Date(), "yyyy-MM-dd");
+      parcela.formaPagamento = parcela.formaPagamento || "simulacao";
+    }
+  }
+
+  const parcelasByDivida = new Map<string, Parcela[]>();
+  for (const parcela of simulatedParcelas) {
+    const rows = parcelasByDivida.get(parcela.dividaId) ?? [];
+    rows.push(parcela);
+    parcelasByDivida.set(parcela.dividaId, rows);
+  }
+
   const simulatedDividas = context.dividas.map((divida) => {
-    if (divida.status === "pendente" && divida.tipo === "pagar" && remainingQuitar > 0) {
-      const valor = toNumber(divida.valor);
+    const linkedParcelas = parcelasByDivida.get(divida.id) ?? [];
+    if (linkedParcelas.length > 0) {
+      const todasPagas = linkedParcelas.every((parcela) => parcela.status === "pago");
+      return todasPagas
+        ? { ...divida, status: "pago" as const, dataPagamento: format(new Date(), "yyyy-MM-dd") }
+        : divida;
+    }
+
+    if (isOpenDebtStatus(divida.status) && divida.tipo === "pagar" && remainingQuitar > 0) {
+      const valor = toMoneyNumber(divida.valor);
       if (remainingQuitar >= valor) {
         remainingQuitar -= valor;
-        return { ...divida, status: "pago" as const };
+        return { ...divida, status: "pago" as const, dataPagamento: format(new Date(), "yyyy-MM-dd") };
       }
     }
     return divida;
@@ -313,7 +429,7 @@ function applyScoreSimulation(
   let remainingReducao = reducaoDespesas;
   const simulatedServicos = context.servicos.map((servico) => {
     if (servico.status === "ativo" && remainingReducao > 0) {
-      const valor = toNumber(servico.valorMensal);
+      const valor = toMoneyNumber(servico.valorMensal);
       if (remainingReducao >= valor) {
         remainingReducao -= valor;
         return { ...servico, valorMensal: "0" };
@@ -322,10 +438,26 @@ function applyScoreSimulation(
     return servico;
   });
 
+  const simulatedRendas = [...context.rendas];
+  if (rendaExtra > 0) {
+    simulatedRendas.push({
+      id: "__sim_renda_extra__",
+      userId: resolveContextUserId(context),
+      tipo: "fixo",
+      descricao: "Renda Extra (Simulacao)",
+      valor: String(round2(rendaExtra)),
+      diaRecebimento: 1,
+      ativo: true,
+    });
+  }
+
   return {
     ...context,
     dividas: simulatedDividas,
+    parcelas: simulatedParcelas,
+    parcelasCompra: context.parcelasCompra,
     servicos: simulatedServicos,
+    rendas: simulatedRendas,
   };
 }
 
@@ -333,43 +465,42 @@ export class FinancialService {
   constructor(private readonly repository: FinancialRepository) {}
 
   private async loadContext(userId: string): Promise<FinancialContext> {
-    const [dividas, parcelas, servicos, cartoes, compras, rendas] = await Promise.all([
+    const [dividas, parcelas, parcelasCompra, servicos, cartoes, compras, rendas] = await Promise.all([
       this.repository.getDividas(userId),
       this.repository.getParcelas(userId),
+      this.repository.getParcelasCompraByUser(userId),
       this.repository.getServicos(userId),
       this.repository.getCartoes(userId),
       this.repository.getComprasCartao(userId),
       this.repository.getRendas(userId),
     ]);
 
-    return { dividas, parcelas, servicos, cartoes, compras, rendas };
+    return { dividas, parcelas, parcelasCompra, servicos, cartoes, compras, rendas };
   }
 
-  async getSummary(userId: string, monthReference?: string): Promise<FinancialSummary> {
+  async getSummary(
+    userId: string,
+    monthReference?: string,
+    simulation?: FinancialSimulationInput,
+  ): Promise<FinancialSummary> {
     const ctx = await this.loadContext(userId);
+    const simulated = applyFinancialSimulation(ctx, simulation);
     const mesReferencia = resolveMonthReference(monthReference);
+    const debtInput = { dividas: simulated.dividas, parcelas: simulated.parcelas };
+    const cardInput = { compras: simulated.compras, parcelasCompra: simulated.parcelasCompra };
+    const { totalReceberMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, mesReferencia);
+    const { totalCartoesMes } = getMonthlyCardTotals(cardInput, mesReferencia);
+    const debtPortfolio = getDebtPortfolioSummary(debtInput);
 
-    const totalRenda = ctx.rendas.filter((r) => r.ativo).reduce((s, r) => s + toNumber(r.valor), 0);
-    const totalServicos = ctx.servicos.filter((s) => s.status === "ativo").reduce((s, sv) => s + toNumber(sv.valorMensal), 0);
+    const totalRenda = sumMoneyBy(simulated.rendas.filter((r) => r.ativo), (r) => r.valor);
+    const totalServicos = sumMoneyBy(simulated.servicos.filter((s) => s.status === "ativo"), (sv) => sv.valorMensal);
 
-    const totalReceberMes = ctx.dividas
-      .filter((d) => d.tipo === "receber" && String(d.dataVencimento || "").startsWith(mesReferencia))
-      .reduce((s, d) => s + toNumber(d.valor), 0);
-    const totalPagarMes = ctx.dividas
-      .filter((d) => d.tipo === "pagar" && String(d.dataVencimento || "").startsWith(mesReferencia))
-      .reduce((s, d) => s + toNumber(d.valor), 0);
-
-    const totalCartoesMes = calculateCartoesForMonth(ctx.compras, mesReferencia);
     const totalEntradas = totalRenda + totalReceberMes;
     const totalSaidas = totalPagarMes + totalServicos + totalCartoesMes;
     const saldo = totalEntradas - totalSaidas;
 
-    const dividaTotal = ctx.dividas.reduce((s, d) => s + toNumber(d.valor), 0);
-    const dividaTotalPendente = ctx.dividas.filter((d) => d.status === "pendente").reduce((s, d) => s + toNumber(d.valor), 0);
-    const dividaTotalPaga = ctx.dividas.filter((d) => d.status === "pago").reduce((s, d) => s + toNumber(d.valor), 0);
-
-    const parcelasPagas = ctx.parcelas.filter((p) => p.status === "pago");
-    const parcelasPendentes = ctx.parcelas.filter((p) => p.status === "pendente");
+    const parcelasPagas = simulated.parcelas.filter((p) => p.status === "pago");
+    const parcelasPendentes = simulated.parcelas.filter((p) => p.status === "pendente");
 
     return {
       mesReferencia,
@@ -381,27 +512,28 @@ export class FinancialService {
       totalPagarMes: round2(totalPagarMes),
       totalServicos: round2(totalServicos),
       totalCartoesMes: round2(totalCartoesMes),
-      dividaTotal: round2(dividaTotal),
-      dividaTotalPendente: round2(dividaTotalPendente),
-      dividaTotalPaga: round2(dividaTotalPaga),
+      dividaTotal: round2(debtPortfolio.totalContratado),
+      dividaTotalPendente: round2(debtPortfolio.totalPendente),
+      dividaTotalPaga: round2(debtPortfolio.totalPago),
       parcelas: {
-        total: ctx.parcelas.length,
+        total: simulated.parcelas.length,
         pagas: parcelasPagas.length,
         pendentes: parcelasPendentes.length,
-        valorPago: round2(parcelasPagas.reduce((s, p) => s + toNumber(p.valor), 0)),
-        valorPendente: round2(parcelasPendentes.reduce((s, p) => s + toNumber(p.valor), 0)),
+        valorPago: round2(sumMoneyBy(parcelasPagas, (p) => p.valor)),
+        valorPendente: round2(sumMoneyBy(parcelasPendentes, (p) => p.valor)),
       },
     };
   }
 
-  async getScore(userId: string, simulation?: ScoreSimulationInput): Promise<FinancialScore> {
+  async getScore(userId: string, simulation?: FinancialSimulationInput): Promise<FinancialScore> {
     const ctx = await this.loadContext(userId);
-    const simulated = applyScoreSimulation(ctx, simulation);
+    const simulated = applyFinancialSimulation(ctx, simulation);
     return calculateScoreFromContext(simulated);
   }
 
-  async getInsights(userId: string): Promise<FinancialInsight[]> {
+  async getInsights(userId: string, simulation?: FinancialSimulationInput): Promise<FinancialInsight[]> {
     const ctx = await this.loadContext(userId);
-    return generateInsightsFromContext(ctx);
+    const simulated = applyFinancialSimulation(ctx, simulation);
+    return generateInsightsFromContext(simulated);
   }
 }

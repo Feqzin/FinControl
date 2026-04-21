@@ -1,0 +1,16 @@
+node_modules/
+dist/
+uploads/
+artifacts/
+.vercel/
+Debt-Control/
+diagnostics/
+attached_assets/
+.agents/
+.config/
+.local/
+.env
+.env.local
+.env.*
+.git/
+.vscode/

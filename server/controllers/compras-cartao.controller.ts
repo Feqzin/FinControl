@@ -3,7 +3,7 @@ import { formatMoneyFixed } from "../../utils/money";
 import { normalizeIsoDate } from "../../utils/date";
 import { ComprasCartaoService } from "../services/compras-cartao.service";
 import { compraBody, compraUpdateBody } from "../validators/financial.validators";
-import { auditRequest, getParam, getUserId } from "./controller-utils";
+import { auditRequest, getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils";
 
 export function createComprasCartaoController(service: ComprasCartaoService) {
   return {
@@ -35,7 +35,7 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
           userId,
           details: { reason: "validation_error" },
         });
-        return res.status(400).json({ message: parsed.error.message });
+        return sendBadRequest(res, parsed.error.message);
       }
 
       const result = await service.create(userId, parsed.data);
@@ -47,7 +47,7 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
           userId,
           details: { reason: "cartao_not_found", cartaoId: parsed.data.cartaoId },
         });
-        return res.status(400).json({ message: "Cartao not found" });
+        return sendBadRequest(res, "Cartao not found");
       }
 
       const { created } = result;
@@ -81,7 +81,7 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
           targetId: compraId,
           details: { reason: "validation_error" },
         });
-        return res.status(400).json({ message: parsed.error.message });
+        return sendBadRequest(res, parsed.error.message);
       }
 
       const result = await service.update(compraId, userId, parsed.data);
@@ -95,7 +95,7 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
             targetId: compraId,
             details: { reason: "cartao_not_found", cartaoId: parsed.data.cartaoId },
           });
-          return res.status(400).json({ message: "Cartao not found" });
+          return sendBadRequest(res, "Cartao not found");
         }
 
         if (result.error === "PESSOA_NOT_FOUND") {
@@ -107,7 +107,7 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
             targetId: compraId,
             details: { reason: "pessoa_not_found", pessoaId: parsed.data.pessoaId },
           });
-          return res.status(400).json({ message: "Pessoa not found" });
+          return sendBadRequest(res, "Pessoa not found");
         }
 
         auditRequest(req, {
@@ -118,7 +118,7 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
           targetId: compraId,
           details: { reason: "not_found" },
         });
-        return res.status(404).json({ message: "Not found" });
+        return sendNotFound(res);
       }
 
       const { updated } = result;
@@ -151,7 +151,7 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
           targetId: compraId,
           details: { reason: "not_found" },
         });
-        return res.status(404).json({ message: "Not found" });
+        return sendNotFound(res);
       }
 
       auditRequest(req, {

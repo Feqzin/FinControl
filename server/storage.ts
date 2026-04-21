@@ -39,6 +39,7 @@ export interface IStorage {
   deleteDivida(id: string, userId: string): Promise<boolean>;
 
   getParcelas(userId: string): Promise<Parcela[]>;
+  getParcela(id: string, userId: string): Promise<Parcela | undefined>;
   getParcelasByDivida(dividaId: string, userId: string): Promise<Parcela[]>;
   createParcela(parcela: InsertParcela): Promise<Parcela>;
   createParcelasBulk(parcelas: InsertParcela[]): Promise<Parcela[]>;
@@ -53,6 +54,7 @@ export interface IStorage {
   deleteCartao(id: string, userId: string): Promise<boolean>;
 
   getComprasCartao(userId: string): Promise<CompraCartao[]>;
+  getCompraCartao(id: string, userId: string): Promise<CompraCartao | undefined>;
   getComprasByCartao(cartaoId: string, userId: string): Promise<CompraCartao[]>;
   getComprasByPessoa(pessoaId: string, userId: string): Promise<CompraCartao[]>;
   createCompraCartao(compra: InsertCompraCartao): Promise<CompraCartao>;
@@ -73,7 +75,7 @@ export interface IStorage {
   deleteServicoPessoa(id: string, userId: string): Promise<boolean>;
 
   getServicoPagamentos(userId: string): Promise<ServicoPagamento[]>;
-  getServicoPagamentosByServicoPessoa(servicoPessoaId: string): Promise<ServicoPagamento[]>;
+  getServicoPagamentosByServicoPessoa(servicoPessoaId: string, userId: string): Promise<ServicoPagamento[]>;
   createServicoPagamento(sp: InsertServicoPagamento): Promise<ServicoPagamento>;
   deleteServicoPagamento(id: string, userId: string): Promise<boolean>;
   deleteServicoPagamentosByServicoPessoa(servicoPessoaId: string, userId: string): Promise<void>;
@@ -85,6 +87,7 @@ export interface IStorage {
   deleteMeta(id: string, userId: string): Promise<boolean>;
 
   getParcelasCompra(compraCartaoId: string, userId: string): Promise<ParcelaCompra[]>;
+  getParcelasCompraByUser(userId: string): Promise<ParcelaCompra[]>;
   createParcelasCompraBulk(parcelas: InsertParcelaCompra[]): Promise<ParcelaCompra[]>;
   updateParcelaCompra(id: string, userId: string, data: Partial<InsertParcelaCompra>): Promise<ParcelaCompra | undefined>;
   deleteParcelasCompraBulk(compraCartaoId: string, userId: string): Promise<void>;
@@ -101,246 +104,268 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  constructor(private readonly database: any = db) {}
   async getUser(id: string) {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
+    const [user] = await this.database.select().from(users).where(eq(users.id, id));
     return user;
   }
   async getUserByUsername(username: string) {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
+    const [user] = await this.database.select().from(users).where(eq(users.username, username));
     return user;
   }
   async createUser(insertUser: InsertUser) {
-    const [user] = await db.insert(users).values(insertUser).returning();
+    const [user] = await this.database.insert(users).values(insertUser).returning();
     return user;
   }
   async updateUser(id: string, data: Partial<User>) {
-    const [user] = await db.update(users).set(data).where(eq(users.id, id)).returning();
+    const [user] = await this.database.update(users).set(data).where(eq(users.id, id)).returning();
     return user;
   }
   async getUserByResetToken(token: string) {
-    const [user] = await db.select().from(users).where(eq(users.resetToken, token));
+    const [user] = await this.database.select().from(users).where(eq(users.resetToken, token));
     return user;
   }
 
-  async getPessoas(userId: string) { return db.select().from(pessoas).where(eq(pessoas.userId, userId)); }
+  async getPessoas(userId: string) { return this.database.select().from(pessoas).where(eq(pessoas.userId, userId)); }
   async getPessoa(id: string, userId: string) {
-    const [p] = await db.select().from(pessoas).where(and(eq(pessoas.id, id), eq(pessoas.userId, userId)));
+    const [p] = await this.database.select().from(pessoas).where(and(eq(pessoas.id, id), eq(pessoas.userId, userId)));
     return p;
   }
   async createPessoa(pessoa: InsertPessoa) {
-    const [p] = await db.insert(pessoas).values(pessoa).returning();
+    const [p] = await this.database.insert(pessoas).values(pessoa).returning();
     return p;
   }
   async updatePessoa(id: string, userId: string, data: Partial<InsertPessoa>) {
-    const [p] = await db.update(pessoas).set(data).where(and(eq(pessoas.id, id), eq(pessoas.userId, userId))).returning();
+    const [p] = await this.database.update(pessoas).set(data).where(and(eq(pessoas.id, id), eq(pessoas.userId, userId))).returning();
     return p;
   }
   async deletePessoa(id: string, userId: string) {
-    const result = await db.delete(pessoas).where(and(eq(pessoas.id, id), eq(pessoas.userId, userId))).returning();
+    const result = await this.database.delete(pessoas).where(and(eq(pessoas.id, id), eq(pessoas.userId, userId))).returning();
     return result.length > 0;
   }
 
-  async getDividas(userId: string) { return db.select().from(dividas).where(eq(dividas.userId, userId)); }
+  async getDividas(userId: string) { return this.database.select().from(dividas).where(eq(dividas.userId, userId)); }
   async getDividasByPessoa(pessoaId: string, userId: string) {
-    return db.select().from(dividas).where(and(eq(dividas.pessoaId, pessoaId), eq(dividas.userId, userId)));
+    return this.database.select().from(dividas).where(and(eq(dividas.pessoaId, pessoaId), eq(dividas.userId, userId)));
   }
   async getDivida(id: string, userId: string) {
-    const [d] = await db.select().from(dividas).where(and(eq(dividas.id, id), eq(dividas.userId, userId)));
+    const [d] = await this.database.select().from(dividas).where(and(eq(dividas.id, id), eq(dividas.userId, userId)));
     return d;
   }
   async createDivida(divida: InsertDivida) {
-    const [d] = await db.insert(dividas).values(divida).returning();
+    const [d] = await this.database.insert(dividas).values(divida).returning();
     return d;
   }
   async updateDivida(id: string, userId: string, data: Partial<InsertDivida>) {
-    const [d] = await db.update(dividas).set(data).where(and(eq(dividas.id, id), eq(dividas.userId, userId))).returning();
+    const [d] = await this.database.update(dividas).set(data).where(and(eq(dividas.id, id), eq(dividas.userId, userId))).returning();
     return d;
   }
   async deleteDivida(id: string, userId: string) {
-    const result = await db.delete(dividas).where(and(eq(dividas.id, id), eq(dividas.userId, userId))).returning();
+    const result = await this.database.delete(dividas).where(and(eq(dividas.id, id), eq(dividas.userId, userId))).returning();
     return result.length > 0;
   }
 
-  async getParcelas(userId: string) { return db.select().from(parcelas).where(eq(parcelas.userId, userId)); }
+  async getParcelas(userId: string) { return this.database.select().from(parcelas).where(eq(parcelas.userId, userId)); }
+  async getParcela(id: string, userId: string) {
+    const [p] = await this.database.select().from(parcelas).where(and(eq(parcelas.id, id), eq(parcelas.userId, userId)));
+    return p;
+  }
   async getParcelasByDivida(dividaId: string, userId: string) {
-    return db.select().from(parcelas).where(and(eq(parcelas.dividaId, dividaId), eq(parcelas.userId, userId)));
+    return this.database.select().from(parcelas).where(and(eq(parcelas.dividaId, dividaId), eq(parcelas.userId, userId)));
   }
   async createParcela(parcela: InsertParcela) {
-    const [p] = await db.insert(parcelas).values(parcela).returning();
+    const [p] = await this.database.insert(parcelas).values(parcela).returning();
     return p;
   }
   async createParcelasBulk(parcelasData: InsertParcela[]) {
-    return db.insert(parcelas).values(parcelasData).returning();
+    return this.database.insert(parcelas).values(parcelasData).returning();
   }
   async updateParcela(id: string, userId: string, data: Partial<InsertParcela>) {
-    const [p] = await db.update(parcelas).set(data).where(and(eq(parcelas.id, id), eq(parcelas.userId, userId))).returning();
+    const [p] = await this.database.update(parcelas).set(data).where(and(eq(parcelas.id, id), eq(parcelas.userId, userId))).returning();
     return p;
   }
   async deleteParcela(id: string, userId: string) {
-    const result = await db.delete(parcelas).where(and(eq(parcelas.id, id), eq(parcelas.userId, userId))).returning();
+    const result = await this.database.delete(parcelas).where(and(eq(parcelas.id, id), eq(parcelas.userId, userId))).returning();
     return result.length > 0;
   }
   async deleteParcelasByDivida(dividaId: string, userId: string) {
-    await db.delete(parcelas).where(and(eq(parcelas.dividaId, dividaId), eq(parcelas.userId, userId)));
+    await this.database.delete(parcelas).where(and(eq(parcelas.dividaId, dividaId), eq(parcelas.userId, userId)));
   }
 
-  async getCartoes(userId: string) { return db.select().from(cartoes).where(eq(cartoes.userId, userId)); }
+  async getCartoes(userId: string) { return this.database.select().from(cartoes).where(eq(cartoes.userId, userId)); }
   async getCartao(id: string, userId: string) {
-    const [c] = await db.select().from(cartoes).where(and(eq(cartoes.id, id), eq(cartoes.userId, userId)));
+    const [c] = await this.database.select().from(cartoes).where(and(eq(cartoes.id, id), eq(cartoes.userId, userId)));
     return c;
   }
   async createCartao(cartao: InsertCartao) {
-    const [c] = await db.insert(cartoes).values(cartao).returning();
+    const [c] = await this.database.insert(cartoes).values(cartao).returning();
     return c;
   }
   async updateCartao(id: string, userId: string, data: Partial<InsertCartao>) {
-    const [c] = await db.update(cartoes).set(data).where(and(eq(cartoes.id, id), eq(cartoes.userId, userId))).returning();
+    const [c] = await this.database.update(cartoes).set(data).where(and(eq(cartoes.id, id), eq(cartoes.userId, userId))).returning();
     return c;
   }
   async deleteCartao(id: string, userId: string) {
-    const result = await db.delete(cartoes).where(and(eq(cartoes.id, id), eq(cartoes.userId, userId))).returning();
+    const result = await this.database.delete(cartoes).where(and(eq(cartoes.id, id), eq(cartoes.userId, userId))).returning();
     return result.length > 0;
   }
 
-  async getComprasCartao(userId: string) { return db.select().from(comprasCartao).where(eq(comprasCartao.userId, userId)); }
+  async getComprasCartao(userId: string) { return this.database.select().from(comprasCartao).where(eq(comprasCartao.userId, userId)); }
+  async getCompraCartao(id: string, userId: string) {
+    const [c] = await this.database.select().from(comprasCartao).where(and(eq(comprasCartao.id, id), eq(comprasCartao.userId, userId)));
+    return c;
+  }
   async getComprasByCartao(cartaoId: string, userId: string) {
-    return db.select().from(comprasCartao).where(and(eq(comprasCartao.cartaoId, cartaoId), eq(comprasCartao.userId, userId)));
+    return this.database.select().from(comprasCartao).where(and(eq(comprasCartao.cartaoId, cartaoId), eq(comprasCartao.userId, userId)));
   }
   async getComprasByPessoa(pessoaId: string, userId: string) {
-    return db.select().from(comprasCartao).where(and(eq(comprasCartao.pessoaId, pessoaId), eq(comprasCartao.userId, userId)));
+    return this.database.select().from(comprasCartao).where(and(eq(comprasCartao.pessoaId, pessoaId), eq(comprasCartao.userId, userId)));
   }
   async createCompraCartao(compra: InsertCompraCartao) {
-    const [c] = await db.insert(comprasCartao).values(compra).returning();
+    const [c] = await this.database.insert(comprasCartao).values(compra).returning();
     return c;
   }
   async updateCompraCartao(id: string, userId: string, data: Partial<InsertCompraCartao>) {
-    const [c] = await db.update(comprasCartao).set(data).where(and(eq(comprasCartao.id, id), eq(comprasCartao.userId, userId))).returning();
+    const [c] = await this.database.update(comprasCartao).set(data).where(and(eq(comprasCartao.id, id), eq(comprasCartao.userId, userId))).returning();
     return c;
   }
   async deleteCompraCartao(id: string, userId: string) {
-    const result = await db.delete(comprasCartao).where(and(eq(comprasCartao.id, id), eq(comprasCartao.userId, userId))).returning();
+    const result = await this.database.delete(comprasCartao).where(and(eq(comprasCartao.id, id), eq(comprasCartao.userId, userId))).returning();
     return result.length > 0;
   }
 
-  async getServicos(userId: string) { return db.select().from(servicos).where(eq(servicos.userId, userId)); }
+  async getServicos(userId: string) { return this.database.select().from(servicos).where(eq(servicos.userId, userId)); }
   async getServico(id: string, userId: string) {
-    const [s] = await db.select().from(servicos).where(and(eq(servicos.id, id), eq(servicos.userId, userId)));
+    const [s] = await this.database.select().from(servicos).where(and(eq(servicos.id, id), eq(servicos.userId, userId)));
     return s;
   }
   async createServico(servico: InsertServico) {
-    const [s] = await db.insert(servicos).values(servico).returning();
+    const [s] = await this.database.insert(servicos).values(servico).returning();
     return s;
   }
   async updateServico(id: string, userId: string, data: Partial<InsertServico>) {
-    const [s] = await db.update(servicos).set(data).where(and(eq(servicos.id, id), eq(servicos.userId, userId))).returning();
+    const [s] = await this.database.update(servicos).set(data).where(and(eq(servicos.id, id), eq(servicos.userId, userId))).returning();
     return s;
   }
   async deleteServico(id: string, userId: string) {
-    const result = await db.delete(servicos).where(and(eq(servicos.id, id), eq(servicos.userId, userId))).returning();
+    const result = await this.database.delete(servicos).where(and(eq(servicos.id, id), eq(servicos.userId, userId))).returning();
     return result.length > 0;
   }
 
-  async getServicoPessoas(userId: string) { return db.select().from(servicoPessoas).where(eq(servicoPessoas.userId, userId)); }
+  async getServicoPessoas(userId: string) { return this.database.select().from(servicoPessoas).where(eq(servicoPessoas.userId, userId)); }
   async getServicoPessoasByServico(servicoId: string, userId: string) {
-    return db.select().from(servicoPessoas).where(and(eq(servicoPessoas.servicoId, servicoId), eq(servicoPessoas.userId, userId)));
+    return this.database.select().from(servicoPessoas).where(and(eq(servicoPessoas.servicoId, servicoId), eq(servicoPessoas.userId, userId)));
   }
   async getServicoPessoasByPessoa(pessoaId: string, userId: string) {
-    return db.select().from(servicoPessoas).where(and(eq(servicoPessoas.pessoaId, pessoaId), eq(servicoPessoas.userId, userId)));
+    return this.database.select().from(servicoPessoas).where(and(eq(servicoPessoas.pessoaId, pessoaId), eq(servicoPessoas.userId, userId)));
   }
   async createServicoPessoa(sp: InsertServicoPessoa) {
-    const [p] = await db.insert(servicoPessoas).values(sp).returning();
+    const [p] = await this.database.insert(servicoPessoas).values(sp).returning();
     return p;
   }
   async updateServicoPessoa(id: string, userId: string, data: Partial<InsertServicoPessoa>) {
-    const [p] = await db.update(servicoPessoas).set(data).where(and(eq(servicoPessoas.id, id), eq(servicoPessoas.userId, userId))).returning();
+    const [p] = await this.database.update(servicoPessoas).set(data).where(and(eq(servicoPessoas.id, id), eq(servicoPessoas.userId, userId))).returning();
     return p;
   }
   async deleteServicoPessoa(id: string, userId: string) {
-    const result = await db.delete(servicoPessoas).where(and(eq(servicoPessoas.id, id), eq(servicoPessoas.userId, userId))).returning();
+    const result = await this.database.delete(servicoPessoas).where(and(eq(servicoPessoas.id, id), eq(servicoPessoas.userId, userId))).returning();
     return result.length > 0;
   }
 
-  async getServicoPagamentos(userId: string) { return db.select().from(servicoPagamentos).where(eq(servicoPagamentos.userId, userId)); }
-  async getServicoPagamentosByServicoPessoa(servicoPessoaId: string) {
-    return db.select().from(servicoPagamentos).where(eq(servicoPagamentos.servicoPessoaId, servicoPessoaId));
+  async getServicoPagamentos(userId: string) { return this.database.select().from(servicoPagamentos).where(eq(servicoPagamentos.userId, userId)); }
+  async getServicoPagamentosByServicoPessoa(servicoPessoaId: string, userId: string) {
+    return this.database.select().from(servicoPagamentos).where(
+      and(eq(servicoPagamentos.servicoPessoaId, servicoPessoaId), eq(servicoPagamentos.userId, userId)),
+    );
   }
   async createServicoPagamento(sp: InsertServicoPagamento) {
-    const [p] = await db.insert(servicoPagamentos).values(sp).returning();
+    const [p] = await this.database.insert(servicoPagamentos).values(sp).returning();
     return p;
   }
   async deleteServicoPagamento(id: string, userId: string) {
-    const result = await db.delete(servicoPagamentos).where(and(eq(servicoPagamentos.id, id), eq(servicoPagamentos.userId, userId))).returning();
+    const result = await this.database.delete(servicoPagamentos).where(and(eq(servicoPagamentos.id, id), eq(servicoPagamentos.userId, userId))).returning();
     return result.length > 0;
   }
   async deleteServicoPagamentosByServicoPessoa(servicoPessoaId: string, userId: string) {
-    await db.delete(servicoPagamentos).where(and(eq(servicoPagamentos.servicoPessoaId, servicoPessoaId), eq(servicoPagamentos.userId, userId)));
+    await this.database.delete(servicoPagamentos).where(and(eq(servicoPagamentos.servicoPessoaId, servicoPessoaId), eq(servicoPagamentos.userId, userId)));
   }
 
-  async getMetas(userId: string) { return db.select().from(metas).where(eq(metas.userId, userId)); }
+  async getMetas(userId: string) { return this.database.select().from(metas).where(eq(metas.userId, userId)); }
   async getMeta(id: string, userId: string) {
-    const [m] = await db.select().from(metas).where(and(eq(metas.id, id), eq(metas.userId, userId)));
+    const [m] = await this.database.select().from(metas).where(and(eq(metas.id, id), eq(metas.userId, userId)));
     return m;
   }
   async createMeta(meta: InsertMeta) {
-    const [m] = await db.insert(metas).values(meta).returning();
+    const [m] = await this.database.insert(metas).values(meta).returning();
     return m;
   }
   async updateMeta(id: string, userId: string, data: Partial<InsertMeta>) {
-    const [m] = await db.update(metas).set(data).where(and(eq(metas.id, id), eq(metas.userId, userId))).returning();
+    const [m] = await this.database.update(metas).set(data).where(and(eq(metas.id, id), eq(metas.userId, userId))).returning();
     return m;
   }
   async deleteMeta(id: string, userId: string) {
-    const result = await db.delete(metas).where(and(eq(metas.id, id), eq(metas.userId, userId))).returning();
+    const result = await this.database.delete(metas).where(and(eq(metas.id, id), eq(metas.userId, userId))).returning();
     return result.length > 0;
   }
 
   async getParcelasCompra(compraCartaoId: string, userId: string) {
-    const rows = await db.select().from(parcelasCompra).where(
+    const rows: ParcelaCompra[] = await this.database.select().from(parcelasCompra).where(
       and(eq(parcelasCompra.compraCartaoId, compraCartaoId), eq(parcelasCompra.userId, userId))
     );
-    return rows.sort((a, b) => a.numero - b.numero);
+    return rows.sort((a: ParcelaCompra, b: ParcelaCompra) => a.numero - b.numero);
+  }
+  async getParcelasCompraByUser(userId: string) {
+    const rows: ParcelaCompra[] = await this.database.select().from(parcelasCompra).where(
+      eq(parcelasCompra.userId, userId),
+    );
+    return rows.sort((a: ParcelaCompra, b: ParcelaCompra) => {
+      if (a.compraCartaoId !== b.compraCartaoId) {
+        return a.compraCartaoId.localeCompare(b.compraCartaoId);
+      }
+      return a.numero - b.numero;
+    });
   }
   async createParcelasCompraBulk(rows: InsertParcelaCompra[]) {
     if (rows.length === 0) return [];
-    return db.insert(parcelasCompra).values(rows).returning();
+    return this.database.insert(parcelasCompra).values(rows).returning();
   }
   async updateParcelaCompra(id: string, userId: string, data: Partial<InsertParcelaCompra>) {
-    const [p] = await db.update(parcelasCompra).set(data).where(
+    const [p] = await this.database.update(parcelasCompra).set(data).where(
       and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId))
     ).returning();
     return p;
   }
   async deleteParcelasCompraBulk(compraCartaoId: string, userId: string) {
-    await db.delete(parcelasCompra).where(
+    await this.database.delete(parcelasCompra).where(
       and(eq(parcelasCompra.compraCartaoId, compraCartaoId), eq(parcelasCompra.userId, userId))
     );
   }
 
-  async getRendas(userId: string) { return db.select().from(rendas).where(eq(rendas.userId, userId)); }
+  async getRendas(userId: string) { return this.database.select().from(rendas).where(eq(rendas.userId, userId)); }
   async createRenda(data: InsertRenda) {
-    const [r] = await db.insert(rendas).values(data).returning();
+    const [r] = await this.database.insert(rendas).values(data).returning();
     return r;
   }
   async updateRenda(id: string, userId: string, data: Partial<InsertRenda>) {
-    const [r] = await db.update(rendas).set(data).where(and(eq(rendas.id, id), eq(rendas.userId, userId))).returning();
+    const [r] = await this.database.update(rendas).set(data).where(and(eq(rendas.id, id), eq(rendas.userId, userId))).returning();
     return r;
   }
   async deleteRenda(id: string, userId: string) {
-    const result = await db.delete(rendas).where(and(eq(rendas.id, id), eq(rendas.userId, userId))).returning();
+    const result = await this.database.delete(rendas).where(and(eq(rendas.id, id), eq(rendas.userId, userId))).returning();
     return result.length > 0;
   }
 
-  async getPatrimonios(userId: string) { return db.select().from(patrimonios).where(eq(patrimonios.userId, userId)); }
+  async getPatrimonios(userId: string) { return this.database.select().from(patrimonios).where(eq(patrimonios.userId, userId)); }
   async createPatrimonio(data: InsertPatrimonio) {
-    const [p] = await db.insert(patrimonios).values(data).returning();
+    const [p] = await this.database.insert(patrimonios).values(data).returning();
     return p;
   }
   async updatePatrimonio(id: string, userId: string, data: Partial<InsertPatrimonio>) {
-    const [p] = await db.update(patrimonios).set(data).where(and(eq(patrimonios.id, id), eq(patrimonios.userId, userId))).returning();
+    const [p] = await this.database.update(patrimonios).set(data).where(and(eq(patrimonios.id, id), eq(patrimonios.userId, userId))).returning();
     return p;
   }
   async deletePatrimonio(id: string, userId: string) {
-    const result = await db.delete(patrimonios).where(and(eq(patrimonios.id, id), eq(patrimonios.userId, userId))).returning();
+    const result = await this.database.delete(patrimonios).where(and(eq(patrimonios.id, id), eq(patrimonios.userId, userId))).returning();
     return result.length > 0;
   }
 }

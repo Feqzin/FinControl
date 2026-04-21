@@ -1,4 +1,7 @@
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_DATE_TIME_PREFIX_REGEX = /^\d{4}-\d{2}-\d{2}[T ]/;
+const BR_DATE_REGEX = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+const SLASH_ISO_DATE_REGEX = /^(\d{4})\/(\d{2})\/(\d{2})$/;
 
 function pad2(value: number): string {
   return String(value).padStart(2, "0");
@@ -31,6 +34,25 @@ export function normalizeIsoDate(input: string | Date | null | undefined): strin
 
   if (isIsoDateString(input)) {
     return input;
+  }
+
+  const trimmed = input.trim();
+
+  if (ISO_DATE_TIME_PREFIX_REGEX.test(trimmed)) {
+    const datePrefix = trimmed.slice(0, 10);
+    return isIsoDateString(datePrefix) ? datePrefix : null;
+  }
+
+  const brMatch = trimmed.match(BR_DATE_REGEX);
+  if (brMatch) {
+    const normalized = `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+    return isIsoDateString(normalized) ? normalized : null;
+  }
+
+  const slashIsoMatch = trimmed.match(SLASH_ISO_DATE_REGEX);
+  if (slashIsoMatch) {
+    const normalized = `${slashIsoMatch[1]}-${slashIsoMatch[2]}-${slashIsoMatch[3]}`;
+    return isIsoDateString(normalized) ? normalized : null;
   }
 
   const parsed = new Date(input);

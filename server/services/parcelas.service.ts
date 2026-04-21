@@ -1,5 +1,10 @@
-import { addMonths, format } from "date-fns";
+import { format } from "date-fns";
 import type { FinancialRepository } from "../repositories/financial.repository";
+import {
+  recomputeCardPurchaseAggregate,
+  recomputeDebtAggregate,
+} from "./financial-aggregate-consistency";
+import { runFinancialTransaction } from "./transaction-utils";
 import {
   type AnteciparParcelasBodyInput,
   type ParcelaCompraUpdateBodyInput,
@@ -20,97 +25,87 @@ export class ParcelasService {
   }
 
   async update(id: string, userId: string, data: ParcelaUpdateBodyInput) {
-    return this.repository.updateParcela(id, userId, data);
+    return runFinancialTransaction(this.repository, async (repository) => {
+      const updated = await repository.updateParcela(id, userId, data);
+      if (!updated) return updated;
+
+      await recomputeDebtAggregate(repository, updated.dividaId, userId);
+      return updated;
+    });
   }
 
   async antecipar(userId: string, data: AnteciparParcelasBodyInput) {
-    const { dividaId, quantidade, formaPagamento } = data;
-    const all = await this.repository.getParcelasByDivida(dividaId, userId);
-    const pendentes = all
-      .filter((p) => p.status === "pendente")
-      .sort((a, b) => a.numero - b.numero)
-      .slice(0, quantidade);
-    const hoje = format(new Date(), "yyyy-MM-dd");
+    return runFinancialTransaction(this.repository, async (repository) => {
+      const { dividaId, quantidade, formaPagamento } = data;
+      const all = await repository.getParcelasByDivida(dividaId, userId);
+      const pendentes = all
+        .filter((p) => p.status === "pendente")
+        .sort((a, b) => a.numero - b.numero)
+        .slice(0, quantidade);
+      const hoje = format(new Date(), "yyyy-MM-dd");
 
-    const updated = await Promise.all(
-      pendentes.map((p) => this.repository.updateParcela(p.id, userId, {
-        status: "pago",
-        dataPagamento: hoje,
+      const updated = await Promise.all(
+        pendentes.map((p) => repository.updateParcela(p.id, userId, {
+          status: "pago",
+          dataPagamento: hoje,
+          formaPagamento: formaPagamento || "pix",
+        })),
+      );
+
+      const aggregate = await recomputeDebtAggregate(repository, dividaId, userId);
+      const todasPagas = aggregate.persistedStatus === "pago";
+
+      return {
+        dividaId,
+        quantidadeSolicitada: quantidade,
+        quantidadeAtualizada: updated.length,
         formaPagamento: formaPagamento || "pix",
-      })),
-    );
-
-    const allUpdated = await this.repository.getParcelasByDivida(dividaId, userId);
-    const todasPagas = allUpdated.every((p) => p.status === "pago");
-    if (todasPagas) {
-      await this.repository.updateDivida(dividaId, userId, {
-        status: "pago",
         dataPagamento: hoje,
-        formaPagamento: formaPagamento || "pix",
-      });
-    }
-
-    return {
-      dividaId,
-      quantidadeSolicitada: quantidade,
-      quantidadeAtualizada: updated.length,
-      formaPagamento: formaPagamento || "pix",
-      dataPagamento: hoje,
-      todasPagas,
-    };
+        todasPagas,
+      };
+    });
   }
 
   async delete(id: string, userId: string) {
-    return this.repository.deleteParcela(id, userId);
+    return runFinancialTransaction(this.repository, async (repository) => {
+      const current = await repository.getParcela(id, userId);
+      const deleted = await repository.deleteParcela(id, userId);
+      if (deleted && current) {
+        await recomputeDebtAggregate(repository, current.dividaId, userId);
+      }
+      return deleted;
+    });
   }
 
   async listParcelasCompra(compraId: string, userId: string) {
-    let rows = await this.repository.getParcelasCompra(compraId, userId);
-    if (rows.length === 0) {
-      const compra = (await this.repository.getComprasCartao(userId)).find((c) => c.id === compraId);
-      if (!compra) return { error: "COMPRA_NOT_FOUND" as const };
-
-      const valorParcela = Number(compra.valorParcela);
-      const total = Number(compra.parcelas);
-      const atual = Number(compra.parcelaAtual);
-      const baseDate = new Date(`${compra.dataCompra}T12:00:00`);
-
-      const parcelasData = Array.from({ length: total }, (_, i) => {
-        const num = i + 1;
-        return {
-          userId,
-          compraCartaoId: compraId,
-          numero: num,
-          valor: String(valorParcela),
-          dataVencimento: format(addMonths(baseDate, i), "yyyy-MM-dd"),
-          statusCartao: num < atual ? "pago" : "pendente",
-          dataPagamentoCartao: num < atual ? compra.dataCompra : null,
-          statusPessoa: num < atual
-            ? (compra.statusPessoa || null)
-            : (num === atual && compra.pessoaId ? (compra.statusPessoa || "pendente") : null),
-          dataPagamentoPessoa: num < atual ? (compra.dataPagamentoPessoa || null) : null,
-        };
-      });
-
-      rows = await this.repository.createParcelasCompraBulk(parcelasData);
-    }
-
+    const compra = await this.repository.getCompraCartao(compraId, userId);
+    if (!compra) return { error: "COMPRA_NOT_FOUND" as const };
+    const rows = await this.repository.getParcelasCompra(compraId, userId);
     return { rows };
   }
 
   async updateParcelaCompra(id: string, userId: string, data: ParcelaCompraUpdateBodyInput) {
-    return this.repository.updateParcelaCompra(id, userId, data);
+    return runFinancialTransaction(this.repository, async (repository) => {
+      const updated = await repository.updateParcelaCompra(id, userId, data);
+      if (!updated) return updated;
+
+      await recomputeCardPurchaseAggregate(repository, updated.compraCartaoId, userId);
+      return updated;
+    });
   }
 
   async replaceParcelasCompraBulk(userId: string, data: ParcelasCompraBulkBodyInput) {
-    const { compraCartaoId, parcelas } = data;
-    const compra = (await this.repository.getComprasCartao(userId)).find((c) => c.id === compraCartaoId);
-    if (!compra) return { error: "COMPRA_NOT_FOUND" as const };
+    return runFinancialTransaction(this.repository, async (repository) => {
+      const { compraCartaoId, parcelas } = data;
+      const compra = await repository.getCompraCartao(compraCartaoId, userId);
+      if (!compra) return { error: "COMPRA_NOT_FOUND" as const };
 
-    await this.repository.deleteParcelasCompraBulk(compraCartaoId, userId);
-    const created = await this.repository.createParcelasCompraBulk(
-      parcelas.map((row) => ({ ...row, userId, compraCartaoId })),
-    );
-    return { created };
+      await repository.deleteParcelasCompraBulk(compraCartaoId, userId);
+      const created = await repository.createParcelasCompraBulk(
+        parcelas.map((row) => ({ ...row, userId, compraCartaoId })),
+      );
+      await recomputeCardPurchaseAggregate(repository, compraCartaoId, userId);
+      return { created };
+    });
   }
 }

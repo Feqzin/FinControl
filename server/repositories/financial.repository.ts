@@ -4,116 +4,174 @@ import type {
   InsertParcela,
   InsertParcelaCompra,
 } from "@shared/schema";
-import { storage } from "../storage";
+import { db } from "../db";
+import { DatabaseStorage, storage, type IStorage } from "../storage";
 
-export const financialRepository = {
-  async getPessoa(id: string, userId: string) {
-    return storage.getPessoa(id, userId);
-  },
+function createFinancialRepositoryBase(targetStorage: IStorage) {
+  return {
+    async getPessoa(id: string, userId: string) {
+      return targetStorage.getPessoa(id, userId);
+    },
 
-  async getDividas(userId: string) {
-    return storage.getDividas(userId);
-  },
+    async getDividas(userId: string) {
+      return targetStorage.getDividas(userId);
+    },
 
-  async getDividasByPessoa(pessoaId: string, userId: string) {
-    return storage.getDividasByPessoa(pessoaId, userId);
-  },
+    async getDividasByPessoa(pessoaId: string, userId: string) {
+      return targetStorage.getDividasByPessoa(pessoaId, userId);
+    },
 
-  async getDivida(id: string, userId: string) {
-    return storage.getDivida(id, userId);
-  },
+    async getDivida(id: string, userId: string) {
+      return targetStorage.getDivida(id, userId);
+    },
 
-  async createDivida(divida: InsertDivida) {
-    return storage.createDivida(divida);
-  },
+    async createDivida(divida: InsertDivida) {
+      return targetStorage.createDivida(divida);
+    },
 
-  async updateDivida(id: string, userId: string, data: Partial<InsertDivida>) {
-    return storage.updateDivida(id, userId, data);
-  },
+    async updateDivida(id: string, userId: string, data: Partial<InsertDivida>) {
+      return targetStorage.updateDivida(id, userId, data);
+    },
 
-  async deleteDivida(id: string, userId: string) {
-    return storage.deleteDivida(id, userId);
-  },
+    async deleteDivida(id: string, userId: string) {
+      return targetStorage.deleteDivida(id, userId);
+    },
 
-  async deleteParcelasByDivida(dividaId: string, userId: string) {
-    return storage.deleteParcelasByDivida(dividaId, userId);
-  },
+    async deleteParcelasByDivida(dividaId: string, userId: string) {
+      return targetStorage.deleteParcelasByDivida(dividaId, userId);
+    },
 
-  async getParcelas(userId: string) {
-    return storage.getParcelas(userId);
-  },
+    async getParcelas(userId: string) {
+      return targetStorage.getParcelas(userId);
+    },
 
-  async getParcelasByDivida(dividaId: string, userId: string) {
-    return storage.getParcelasByDivida(dividaId, userId);
-  },
+    async getParcela(id: string, userId: string) {
+      return targetStorage.getParcela(id, userId);
+    },
 
-  async createParcelasBulk(rows: InsertParcela[]) {
-    return storage.createParcelasBulk(rows);
-  },
+    async getParcelasByDivida(dividaId: string, userId: string) {
+      return targetStorage.getParcelasByDivida(dividaId, userId);
+    },
 
-  async updateParcela(id: string, userId: string, data: Partial<InsertParcela>) {
-    return storage.updateParcela(id, userId, data);
-  },
+    async createParcelasBulk(rows: InsertParcela[]) {
+      return targetStorage.createParcelasBulk(rows);
+    },
 
-  async deleteParcela(id: string, userId: string) {
-    return storage.deleteParcela(id, userId);
-  },
+    async updateParcela(id: string, userId: string, data: Partial<InsertParcela>) {
+      return targetStorage.updateParcela(id, userId, data);
+    },
 
-  async getCartao(id: string, userId: string) {
-    return storage.getCartao(id, userId);
-  },
+    async deleteParcela(id: string, userId: string) {
+      return targetStorage.deleteParcela(id, userId);
+    },
 
-  async getCartoes(userId: string) {
-    return storage.getCartoes(userId);
-  },
+    async getCartao(id: string, userId: string) {
+      return targetStorage.getCartao(id, userId);
+    },
 
-  async getComprasCartao(userId: string) {
-    return storage.getComprasCartao(userId);
-  },
+    async getCartoes(userId: string) {
+      return targetStorage.getCartoes(userId);
+    },
 
-  async getServicos(userId: string) {
-    return storage.getServicos(userId);
-  },
+    async createCartao(data: Parameters<IStorage["createCartao"]>[0]) {
+      return targetStorage.createCartao(data);
+    },
 
-  async getRendas(userId: string) {
-    return storage.getRendas(userId);
-  },
+    async updateCartao(id: string, userId: string, data: Parameters<IStorage["updateCartao"]>[2]) {
+      return targetStorage.updateCartao(id, userId, data);
+    },
 
-  async getComprasByCartao(cartaoId: string, userId: string) {
-    return storage.getComprasByCartao(cartaoId, userId);
-  },
+    async deleteCartao(id: string, userId: string) {
+      return targetStorage.deleteCartao(id, userId);
+    },
 
-  async getComprasByPessoa(pessoaId: string, userId: string) {
-    return storage.getComprasByPessoa(pessoaId, userId);
-  },
+    async getComprasCartao(userId: string) {
+      return targetStorage.getComprasCartao(userId);
+    },
 
-  async createCompraCartao(data: InsertCompraCartao) {
-    return storage.createCompraCartao(data);
-  },
+    async getCompraCartao(id: string, userId: string) {
+      return targetStorage.getCompraCartao(id, userId);
+    },
 
-  async updateCompraCartao(id: string, userId: string, data: Partial<InsertCompraCartao>) {
-    return storage.updateCompraCartao(id, userId, data);
-  },
+    async getServicos(userId: string) {
+      return targetStorage.getServicos(userId);
+    },
 
-  async deleteCompraCartao(id: string, userId: string) {
-    return storage.deleteCompraCartao(id, userId);
-  },
+    async getRendas(userId: string) {
+      return targetStorage.getRendas(userId);
+    },
 
-  async getParcelasCompra(compraCartaoId: string, userId: string) {
-    return storage.getParcelasCompra(compraCartaoId, userId);
-  },
+    async getComprasByCartao(cartaoId: string, userId: string) {
+      return targetStorage.getComprasByCartao(cartaoId, userId);
+    },
 
-  async createParcelasCompraBulk(rows: InsertParcelaCompra[]) {
-    return storage.createParcelasCompraBulk(rows);
-  },
+    async getComprasByPessoa(pessoaId: string, userId: string) {
+      return targetStorage.getComprasByPessoa(pessoaId, userId);
+    },
 
-  async updateParcelaCompra(id: string, userId: string, data: Partial<InsertParcelaCompra>) {
-    return storage.updateParcelaCompra(id, userId, data);
-  },
+    async createCompraCartao(data: InsertCompraCartao) {
+      return targetStorage.createCompraCartao(data);
+    },
 
-  async deleteParcelasCompraBulk(compraCartaoId: string, userId: string) {
-    return storage.deleteParcelasCompraBulk(compraCartaoId, userId);
-  },
+    async updateCompraCartao(id: string, userId: string, data: Partial<InsertCompraCartao>) {
+      return targetStorage.updateCompraCartao(id, userId, data);
+    },
+
+    async deleteCompraCartao(id: string, userId: string) {
+      return targetStorage.deleteCompraCartao(id, userId);
+    },
+
+    async getParcelasCompra(compraCartaoId: string, userId: string) {
+      return targetStorage.getParcelasCompra(compraCartaoId, userId);
+    },
+
+    async getParcelasCompraByUser(userId: string) {
+      return targetStorage.getParcelasCompraByUser(userId);
+    },
+
+    async createParcelasCompraBulk(rows: InsertParcelaCompra[]) {
+      return targetStorage.createParcelasCompraBulk(rows);
+    },
+
+    async updateParcelaCompra(id: string, userId: string, data: Partial<InsertParcelaCompra>) {
+      return targetStorage.updateParcelaCompra(id, userId, data);
+    },
+
+    async deleteParcelasCompraBulk(compraCartaoId: string, userId: string) {
+      return targetStorage.deleteParcelasCompraBulk(compraCartaoId, userId);
+    },
+  };
+}
+
+type FinancialRepositoryBase = ReturnType<typeof createFinancialRepositoryBase>;
+
+export type FinancialRepository = FinancialRepositoryBase & {
+  withTransaction<T>(callback: (repository: FinancialRepository) => Promise<T>): Promise<T>;
 };
 
-export type FinancialRepository = typeof financialRepository;
+export function createFinancialRepository(
+  targetStorage: IStorage = storage,
+  transactionRunner?: <T>(callback: (repository: FinancialRepository) => Promise<T>) => Promise<T>,
+): FinancialRepository {
+  const base = createFinancialRepositoryBase(targetStorage);
+
+  const repository = {
+    ...base,
+    async withTransaction<T>(callback: (txRepository: FinancialRepository) => Promise<T>) {
+      if (transactionRunner) {
+        return transactionRunner(callback);
+      }
+
+      return db.transaction(async (tx) => {
+        const txStorage = new DatabaseStorage(tx);
+        let txRepository!: FinancialRepository;
+        txRepository = createFinancialRepository(txStorage, async (innerCallback) => innerCallback(txRepository));
+        return callback(txRepository);
+      });
+    },
+  } satisfies FinancialRepository;
+
+  return repository;
+}
+
+export const financialRepository = createFinancialRepository(storage);

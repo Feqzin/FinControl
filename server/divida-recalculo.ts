@@ -1,4 +1,5 @@
 import { addMonths, format } from "date-fns";
+import { toCentsBigInt } from "../utils/money";
 
 type ParcelaPagaInput = {
   valor: number;
@@ -28,11 +29,19 @@ export type DividaRecalculoPlan = {
 };
 
 function toCents(value: number): number {
-  return Math.round(value * 100);
+  const cents = toCentsBigInt(value);
+  if (cents == null) {
+    throw new Error("valor monetario invalido");
+  }
+  return cents;
 }
 
 function fromCents(value: number): string {
-  return (value / 100).toFixed(2);
+  const negative = value < 0;
+  const abs = negative ? -value : value;
+  const intPart = Math.floor(abs / 100);
+  const fracPart = String(abs % 100).padStart(2, "0");
+  return `${negative ? "-" : ""}${intPart}.${fracPart}`;
 }
 
 export function buildDividaRecalculoPlan(input: BuildDividaRecalculoInput): DividaRecalculoPlan {
@@ -51,7 +60,7 @@ export function buildDividaRecalculoPlan(input: BuildDividaRecalculoInput): Divi
   }
 
   const totalCents = toCents(valorTotal);
-  const paidCents = parcelasPagas.reduce((sum, p) => sum + toCents(Number(p.valor)), 0);
+  const paidCents = parcelasPagas.reduce((sum, p) => sum + toCents(p.valor), 0);
   const remainingCents = totalCents - paidCents;
   const pendingCount = novoTotal - paidCount;
 
@@ -100,4 +109,3 @@ export function buildDividaRecalculoPlan(input: BuildDividaRecalculoInput): Divi
     parcelasPendentes,
   };
 }
-

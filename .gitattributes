@@ -1,0 +1,24 @@
+# Exclude local/operational artifacts from git archive exports.
+.env export-ignore
+.env.* export-ignore
+.envrc export-ignore
+.git export-ignore
+node_modules export-ignore
+dist export-ignore
+artifacts export-ignore
+diagnostics export-ignore
+attached_assets export-ignore
+.agents export-ignore
+.config export-ignore
+.local export-ignore
+*.zip export-ignore
+*.7z export-ignore
+*.tar export-ignore
+*.tar.gz export-ignore
+*.tgz export-ignore
+*.pem export-ignore
+*.key export-ignore
+*.p12 export-ignore
+*.pfx export-ignore
+*.crt export-ignore
+*.kdbx export-ignore

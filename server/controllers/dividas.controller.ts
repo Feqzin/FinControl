@@ -7,7 +7,7 @@ import {
   dividaParceladoBody,
   dividaUpdateBody,
 } from "../validators/financial.validators";
-import { auditRequest, getParam, getUserId } from "./controller-utils";
+import { auditRequest, getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils";
 
 export function createDividasController(service: DividasService) {
   return {
@@ -33,7 +33,7 @@ export function createDividasController(service: DividasService) {
           userId,
           details: { reason: "validation_error" },
         });
-        return res.status(400).json({ message: parsed.error.message });
+        return sendBadRequest(res, parsed.error.message);
       }
 
       const result = await service.create(parsed.data, userId);
@@ -45,7 +45,7 @@ export function createDividasController(service: DividasService) {
           userId,
           details: { reason: "pessoa_not_found", pessoaId: parsed.data.pessoaId },
         });
-        return res.status(400).json({ message: "Pessoa not found" });
+        return sendBadRequest(res, "Pessoa not found");
       }
 
       const { created } = result;
@@ -76,7 +76,7 @@ export function createDividasController(service: DividasService) {
           userId,
           details: { reason: "validation_error" },
         });
-        return res.status(400).json({ message: parsed.error.message });
+        return sendBadRequest(res, parsed.error.message);
       }
 
       const result = await service.createParcelado(parsed.data, userId);
@@ -88,7 +88,7 @@ export function createDividasController(service: DividasService) {
           userId,
           details: { reason: "pessoa_not_found", pessoaId: parsed.data.pessoaId },
         });
-        return res.status(400).json({ message: "Pessoa not found" });
+        return sendBadRequest(res, "Pessoa not found");
       }
 
       const { divida, parcelas } = result;
@@ -121,7 +121,7 @@ export function createDividasController(service: DividasService) {
           targetId: dividaId,
           details: { reason: "validation_error" },
         });
-        return res.status(400).json({ message: parsed.error.message });
+        return sendBadRequest(res, parsed.error.message);
       }
 
       const updated = await service.update(dividaId, userId, parsed.data);
@@ -134,7 +134,7 @@ export function createDividasController(service: DividasService) {
           targetId: dividaId,
           details: { reason: "not_found" },
         });
-        return res.status(404).json({ message: "Not found" });
+        return sendNotFound(res);
       }
 
       auditRequest(req, {
@@ -164,7 +164,7 @@ export function createDividasController(service: DividasService) {
           targetId: dividaId,
           details: { reason: "not_found" },
         });
-        return res.status(404).json({ message: "Not found" });
+        return sendNotFound(res);
       }
 
       auditRequest(req, {
@@ -186,9 +186,32 @@ export function createDividasController(service: DividasService) {
       });
 
       if (!result.ok) {
+        auditRequest(req, {
+          action: "update",
+          status: result.status >= 500 ? "error" : "failure",
+          domain: "dividas_recalculo",
+          userId,
+          targetId: dividaId,
+          details: { reason: result.message },
+        });
+        if (result.status === 404) {
+          return sendNotFound(res, result.message);
+        }
         return res.status(result.status).json({ message: result.message });
       }
 
+      auditRequest(req, {
+        action: "update",
+        status: "success",
+        domain: "dividas_recalculo",
+        userId,
+        targetId: dividaId,
+        details: {
+          parcelasPagas: result.data.pagas,
+          parcelasNovas: result.data.novas,
+          valorRestante: result.data.valorRestante,
+        },
+      });
       return res.json(result.data);
     },
   };

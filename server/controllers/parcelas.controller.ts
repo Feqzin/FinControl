@@ -8,7 +8,7 @@ import {
   parcelaUpdateBody,
   parcelasCompraBulkBody,
 } from "../validators/financial.validators";
-import { auditRequest, getParam, getUserId } from "./controller-utils";
+import { auditRequest, getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils";
 
 export function createParcelasController(service: ParcelasService) {
   return {
@@ -36,7 +36,7 @@ export function createParcelasController(service: ParcelasService) {
           targetId: parcelaId,
           details: { reason: "validation_error" },
         });
-        return res.status(400).json({ message: parsed.error.message });
+        return sendBadRequest(res, parsed.error.message);
       }
 
       const updated = await service.update(parcelaId, userId, parsed.data);
@@ -49,7 +49,7 @@ export function createParcelasController(service: ParcelasService) {
           targetId: parcelaId,
           details: { reason: "not_found" },
         });
-        return res.status(404).json({ message: "Not found" });
+        return sendNotFound(res);
       }
 
       const isPayment = parsed.data.status === "pago" || (parsed.data.dataPagamento && parsed.data.formaPagamento);
@@ -80,7 +80,7 @@ export function createParcelasController(service: ParcelasService) {
           userId,
           details: { reason: "validation_error" },
         });
-        return res.status(400).json({ message: parsed.error.message });
+        return sendBadRequest(res, parsed.error.message);
       }
 
       const result = await service.antecipar(userId, parsed.data);
@@ -105,7 +105,25 @@ export function createParcelasController(service: ParcelasService) {
       const userId = getUserId(req);
       const parcelaId = getParam(req, "id");
       const deleted = await service.delete(parcelaId, userId);
-      if (!deleted) return res.status(404).json({ message: "Not found" });
+      if (!deleted) {
+        auditRequest(req, {
+          action: "delete",
+          status: "failure",
+          domain: "parcelas",
+          userId,
+          targetId: parcelaId,
+          details: { reason: "not_found" },
+        });
+        return sendNotFound(res);
+      }
+
+      auditRequest(req, {
+        action: "delete",
+        status: "success",
+        domain: "parcelas",
+        userId,
+        targetId: parcelaId,
+      });
       return res.json({ success: true });
     },
 
@@ -114,7 +132,7 @@ export function createParcelasController(service: ParcelasService) {
       const compraId = getParam(req, "compraId");
       const result = await service.listParcelasCompra(compraId, userId);
       if ("error" in result) {
-        return res.status(404).json({ message: "Compra not found" });
+        return sendNotFound(res, "Compra not found");
       }
       return res.json(result.rows);
     },
@@ -123,18 +141,86 @@ export function createParcelasController(service: ParcelasService) {
       const userId = getUserId(req);
       const parcelaCompraId = getParam(req, "id");
       const parsed = parcelaCompraUpdateBody.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      if (!parsed.success) {
+        auditRequest(req, {
+          action: "update",
+          status: "failure",
+          domain: "parcelas_compra",
+          userId,
+          targetId: parcelaCompraId,
+          details: { reason: "validation_error" },
+        });
+        return sendBadRequest(res, parsed.error.message);
+      }
       const updated = await service.updateParcelaCompra(parcelaCompraId, userId, parsed.data);
-      if (!updated) return res.status(404).json({ message: "Not found" });
+      if (!updated) {
+        auditRequest(req, {
+          action: "update",
+          status: "failure",
+          domain: "parcelas_compra",
+          userId,
+          targetId: parcelaCompraId,
+          details: { reason: "not_found" },
+        });
+        return sendNotFound(res);
+      }
+
+      const isPayment = parsed.data.statusCartao === "pago" || Boolean(parsed.data.dataPagamentoCartao);
+      auditRequest(req, {
+        action: isPayment ? "payment" : "update",
+        status: "success",
+        domain: "parcelas_compra",
+        userId,
+        targetId: updated.id,
+        details: {
+          compraCartaoId: updated.compraCartaoId,
+          numero: updated.numero,
+          statusCartao: updated.statusCartao,
+          statusPessoa: updated.statusPessoa,
+          valor: formatMoneyFixed(updated.valor),
+          dataPagamentoCartao: normalizeIsoDate(updated.dataPagamentoCartao),
+          dataPagamentoPessoa: normalizeIsoDate(updated.dataPagamentoPessoa),
+        },
+      });
       return res.json(updated);
     },
 
     replaceCompraBulk: async (req: Request, res: Response) => {
       const userId = getUserId(req);
       const parsed = parcelasCompraBulkBody.safeParse(req.body);
-      if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+      if (!parsed.success) {
+        auditRequest(req, {
+          action: "update",
+          status: "failure",
+          domain: "parcelas_compra_bulk",
+          userId,
+          details: { reason: "validation_error" },
+        });
+        return sendBadRequest(res, parsed.error.message);
+      }
       const result = await service.replaceParcelasCompraBulk(userId, parsed.data);
-      if ("error" in result) return res.status(400).json({ message: "Compra not found" });
+      if ("error" in result) {
+        auditRequest(req, {
+          action: "update",
+          status: "failure",
+          domain: "parcelas_compra_bulk",
+          userId,
+          targetId: parsed.data.compraCartaoId,
+          details: { reason: "compra_not_found" },
+        });
+        return sendBadRequest(res, "Compra not found");
+      }
+
+      auditRequest(req, {
+        action: "update",
+        status: "success",
+        domain: "parcelas_compra_bulk",
+        userId,
+        targetId: parsed.data.compraCartaoId,
+        details: {
+          totalParcelas: result.created.length,
+        },
+      });
       return res.json(result.created);
     },
   };

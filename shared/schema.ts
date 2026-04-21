@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, boolean, index, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -40,10 +40,16 @@ export const dividas = pgTable("dividas", {
   pessoaId: varchar("pessoa_id").notNull().references(() => pessoas.id, { onDelete: "cascade" }),
   tipo: text("tipo").notNull(),
   valor: decimal("valor", { precision: 12, scale: 2 }).notNull(),
-  dataVencimento: text("data_vencimento"),
+  dataVencimento: date("data_vencimento", { mode: "string" }),
   status: text("status").notNull().default("pendente"),
-  dataPagamento: text("data_pagamento"),
+  dataPagamento: date("data_pagamento", { mode: "string" }),
   formaPagamento: text("forma_pagamento"),
+  observacaoPagamento: text("observacao_pagamento"),
+  comprovantePath: text("comprovante_path"),
+  comprovanteNome: text("comprovante_nome"),
+  comprovanteMimeType: text("comprovante_mime_type"),
+  comprovanteTamanho: integer("comprovante_tamanho"),
+  comprovanteEnviadoEm: timestamp("comprovante_enviado_em"),
   descricao: text("descricao"),
   totalParcelas: integer("total_parcelas"),
   valorTotal: decimal("valor_total", { precision: 12, scale: 2 }),
@@ -64,10 +70,16 @@ export const parcelas = pgTable("parcelas", {
   dividaId: varchar("divida_id").notNull().references(() => dividas.id, { onDelete: "cascade" }),
   numero: integer("numero").notNull(),
   valor: decimal("valor", { precision: 12, scale: 2 }).notNull(),
-  dataVencimento: text("data_vencimento").notNull(),
+  dataVencimento: date("data_vencimento", { mode: "string" }).notNull(),
   status: text("status").notNull().default("pendente"),
-  dataPagamento: text("data_pagamento"),
+  dataPagamento: date("data_pagamento", { mode: "string" }),
   formaPagamento: text("forma_pagamento"),
+  observacaoPagamento: text("observacao_pagamento"),
+  comprovantePath: text("comprovante_path"),
+  comprovanteNome: text("comprovante_nome"),
+  comprovanteMimeType: text("comprovante_mime_type"),
+  comprovanteTamanho: integer("comprovante_tamanho"),
+  comprovanteEnviadoEm: timestamp("comprovante_enviado_em"),
 }, (table) => ({
   parcelasUserIdIdx: index("idx_parcelas_user_id").on(table.userId),
   parcelasDividaIdIdx: index("idx_parcelas_divida_id").on(table.dividaId),
@@ -105,10 +117,10 @@ export const comprasCartao = pgTable("compras_cartao", {
   parcelas: integer("parcelas").notNull().default(1),
   parcelaAtual: integer("parcela_atual").notNull().default(1),
   valorParcela: decimal("valor_parcela", { precision: 12, scale: 2 }).notNull(),
-  dataCompra: text("data_compra").notNull(),
+  dataCompra: date("data_compra", { mode: "string" }).notNull(),
   pessoaId: varchar("pessoa_id").references(() => pessoas.id, { onDelete: "set null" }),
   statusPessoa: varchar("status_pessoa"),
-  dataPagamentoPessoa: text("data_pagamento_pessoa"),
+  dataPagamentoPessoa: date("data_pagamento_pessoa", { mode: "string" }),
 }, (table) => ({
   comprasUserIdIdx: index("idx_compras_cartao_user_id").on(table.userId),
   comprasCartaoIdIdx: index("idx_compras_cartao_cartao_id").on(table.cartaoId),
@@ -163,7 +175,7 @@ export const servicoPagamentos = pgTable("servico_pagamentos", {
   servicoPessoaId: varchar("servico_pessoa_id").notNull().references(() => servicoPessoas.id, { onDelete: "cascade" }),
   mes: text("mes").notNull(),
   status: text("status").notNull().default("pago"),
-  dataPagamento: text("data_pagamento"),
+  dataPagamento: date("data_pagamento", { mode: "string" }),
 }, (table) => ({
   servicoPagamentosUserIdIdx: index("idx_servico_pagamentos_user_id").on(table.userId),
   servicoPagamentosSpIdx: index("idx_servico_pagamentos_sp_id").on(table.servicoPessoaId),
@@ -180,11 +192,11 @@ export const parcelasCompra = pgTable("parcelas_compra", {
   compraCartaoId: varchar("compra_cartao_id").notNull().references(() => comprasCartao.id, { onDelete: "cascade" }),
   numero: integer("numero").notNull(),
   valor: decimal("valor", { precision: 12, scale: 2 }).notNull(),
-  dataVencimento: text("data_vencimento"),
+  dataVencimento: date("data_vencimento", { mode: "string" }),
   statusCartao: text("status_cartao").notNull().default("pendente"),
-  dataPagamentoCartao: text("data_pagamento_cartao"),
+  dataPagamentoCartao: date("data_pagamento_cartao", { mode: "string" }),
   statusPessoa: text("status_pessoa"),
-  dataPagamentoPessoa: text("data_pagamento_pessoa"),
+  dataPagamentoPessoa: date("data_pagamento_pessoa", { mode: "string" }),
 }, (table) => ({
   parcelasCompraUserIdIdx: index("idx_parcelas_compra_user_id").on(table.userId),
   parcelasCompraCompraIdIdx: index("idx_parcelas_compra_compra_id").on(table.compraCartaoId),
@@ -248,3 +260,34 @@ export const metas = pgTable("metas", {
 export const insertMetaSchema = createInsertSchema(metas).omit({ id: true });
 export type InsertMeta = z.infer<typeof insertMetaSchema>;
 export type Meta = typeof metas.$inferSelect;
+
+export const importLogs = pgTable("import_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  cartaoId: varchar("cartao_id").notNull().references(() => cartoes.id, { onDelete: "cascade" }),
+  sourceType: text("source_type").notNull(),
+  sourceName: text("source_name"),
+  status: text("status").notNull().default("previewed"),
+  requestPayload: text("request_payload").notNull(),
+  previewPayload: text("preview_payload").notNull(),
+  confirmedPayload: text("confirmed_payload"),
+  createdCompraIds: text("created_compra_ids"),
+  rollbackPayload: text("rollback_payload"),
+  totalItems: integer("total_items").notNull().default(0),
+  importedItems: integer("imported_items").notNull().default(0),
+  skippedItems: integer("skipped_items").notNull().default(0),
+  averageConfidence: decimal("average_confidence", { precision: 5, scale: 2 }),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  confirmedAt: timestamp("confirmed_at"),
+  rolledBackAt: timestamp("rolled_back_at"),
+}, (table) => ({
+  importLogsUserIdIdx: index("idx_import_logs_user_id").on(table.userId),
+  importLogsCartaoIdIdx: index("idx_import_logs_cartao_id").on(table.cartaoId),
+  importLogsStatusIdx: index("idx_import_logs_status").on(table.status),
+  importLogsCreatedAtIdx: index("idx_import_logs_created_at").on(table.createdAt),
+}));
+
+export const insertImportLogSchema = createInsertSchema(importLogs).omit({ id: true });
+export type InsertImportLog = z.infer<typeof insertImportLogSchema>;
+export type ImportLog = typeof importLogs.$inferSelect;
