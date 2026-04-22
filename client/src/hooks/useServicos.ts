@@ -1,5 +1,13 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Pessoa, Servico, ServicoPagamento, ServicoPessoa } from "@shared/schema";
+import type {
+  Cartao,
+  CompraCartao,
+  ParcelaCompra,
+  Pessoa,
+  Servico,
+  ServicoPagamento,
+  ServicoPessoa,
+} from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
 import {
   createServico,
@@ -14,6 +22,9 @@ export function useServicos() {
   const { data: servicoPessoas = [] } = useQuery<ServicoPessoa[]>({ queryKey: ["/api/servico-pessoas"] });
   const { data: servicoPagamentos = [] } = useQuery<ServicoPagamento[]>({ queryKey: ["/api/servico-pagamentos"] });
   const { data: pessoas = [] } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
+  const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
+  const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
+  const { data: parcelasCompra = [] } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"] });
 
   const createMutation = useMutation({
     mutationFn: (payload: ServicoPayload) => createServico(payload),
@@ -50,6 +61,9 @@ export function useServicos() {
     servicoPessoas,
     servicoPagamentos,
     pessoas,
+    cartoes,
+    compras,
+    parcelasCompra,
     isLoading,
     createMutation,
     toggleStatusMutation,

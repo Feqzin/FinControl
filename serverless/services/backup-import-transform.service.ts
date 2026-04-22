@@ -148,12 +148,25 @@ export function transformBackupForPersistence(
   const servicos = backup.servicos.map((item, index) => {
     const row = asRow(item, `servicos[${index}]`);
     const oldId = readRequiredString(row, "id", `servicos[${index}]`);
+    const rawCompraCartaoId = row.compraCartaoId;
     const newId = randomUUID();
     oldServicoIdToNewServicoId[oldId] = newId;
+
+    let newCompraCartaoId: string | null = null;
+    if (rawCompraCartaoId != null && rawCompraCartaoId !== "") {
+      if (typeof rawCompraCartaoId !== "string" || rawCompraCartaoId.trim() === "") {
+        throw new Error(`Campo invalido: servicos[${index}].compraCartaoId`);
+      }
+      newCompraCartaoId = oldCompraIdToNewCompraId[rawCompraCartaoId] ?? null;
+      if (!newCompraCartaoId) {
+        throw new Error(`Relacionamento invalido: servicos[${index}].compraCartaoId`);
+      }
+    }
 
     return {
       ...withCurrentUser(row, currentUserId),
       id: newId,
+      compraCartaoId: newCompraCartaoId,
     };
   });
 

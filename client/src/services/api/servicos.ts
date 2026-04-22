@@ -7,6 +7,7 @@ export type ServicoPayload = {
   valorMensal: string;
   dataCobranca: string | number;
   formaPagamento: string;
+  compraCartaoId?: string | null;
   status?: string;
   iconeId?: string | null;
 };
@@ -21,6 +22,7 @@ export async function createServico(payload: ServicoPayload): Promise<void> {
   await apiRequest("POST", "/api/servicos", {
     ...payload,
     dataCobranca: Number(payload.dataCobranca),
+    compraCartaoId: payload.compraCartaoId ?? null,
     status: payload.status || "ativo",
     iconeId: payload.iconeId ?? null,
   });

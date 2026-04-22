@@ -23,7 +23,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useServicos } from "@/hooks/useServicos";
 import { DivisaoPanel } from "@/pages/servicos/components/divisao-panel";
-import { Plus, Repeat, Trash2, X, Check, Users, ChevronUp, Pencil } from "lucide-react";
+import { Plus, Repeat, Trash2, X, Check, Users, ChevronUp, Pencil, CreditCard, Unlink2 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import type { Servico } from "@shared/schema";
@@ -40,6 +40,8 @@ const categorias = [
   { value: "outros", label: "Outros" },
 ];
 
+const COMPRA_NONE_VALUE = "__none__";
+
 export default function ServicosPage() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -50,6 +52,7 @@ export default function ServicosPage() {
     valorMensal: "",
     dataCobranca: "",
     formaPagamento: "cartao",
+    compraCartaoId: COMPRA_NONE_VALUE,
   });
   const [editingServico, setEditingServico] = useState<Servico | null>(null);
   const [editIcone, setEditIcone] = useState<string | null>(null);
@@ -60,6 +63,7 @@ export default function ServicosPage() {
     valorMensal: "",
     dataCobranca: "",
     formaPagamento: "cartao",
+    compraCartaoId: COMPRA_NONE_VALUE,
   });
 
   const {
@@ -67,6 +71,9 @@ export default function ServicosPage() {
     servicoPessoas,
     servicoPagamentos,
     pessoas,
+    cartoes,
+    compras,
+    parcelasCompra,
     isLoading,
     createMutation,
     toggleStatusMutation,
@@ -87,13 +94,64 @@ export default function ServicosPage() {
     .filter((s) => s.status === "ativo")
     .reduce((sum, sv) => sum + Number(sv.valorMensal), 0);
 
+  const mesAtual = format(new Date(), "yyyy-MM");
+
   const totalPessoasPendente = (() => {
-    const meAtual = format(new Date(), "yyyy-MM");
     return servicoPessoas.reduce((sum, sp) => {
-      const pago = servicoPagamentos.find((p) => p.servicoPessoaId === sp.id && p.mes === meAtual);
+      const pago = servicoPagamentos.find((p) => p.servicoPessoaId === sp.id && p.mes === mesAtual);
       return sum + (pago ? 0 : Number(sp.valorDevido));
     }, 0);
   })();
+
+  const compraById = new Map(compras.map((compra) => [compra.id, compra] as const));
+  const cartaoById = new Map(cartoes.map((cartao) => [cartao.id, cartao] as const));
+  const servicoPessoasByServicoId = new Map<string, typeof servicoPessoas>();
+  for (const sp of servicoPessoas) {
+    const rows = servicoPessoasByServicoId.get(sp.servicoId) ?? [];
+    rows.push(sp);
+    servicoPessoasByServicoId.set(sp.servicoId, rows);
+  }
+  const parcelasByCompraId = new Map<string, typeof parcelasCompra>();
+  for (const parcela of parcelasCompra) {
+    const rows = parcelasByCompraId.get(parcela.compraCartaoId) ?? [];
+    rows.push(parcela);
+    parcelasByCompraId.set(parcela.compraCartaoId, rows);
+  }
+
+  const getOrigemPagamentoMesAtual = (servico: Servico) => {
+    const vinculados = servicoPessoasByServicoId.get(servico.id) ?? [];
+    const hasPagamentoPessoaMes = vinculados.some((sp) =>
+      servicoPagamentos.some((pagamento) => pagamento.servicoPessoaId === sp.id && pagamento.mes === mesAtual),
+    );
+    if (hasPagamentoPessoaMes) {
+      return { label: "Origem do mês atual: Pessoa", className: "text-blue-600" };
+    }
+
+    if (servico.compraCartaoId) {
+      const parcelasDaCompra = parcelasByCompraId.get(servico.compraCartaoId) ?? [];
+      const parcelasMesAtual = parcelasDaCompra.filter((parcela) =>
+        typeof parcela.dataVencimento === "string" && parcela.dataVencimento.startsWith(mesAtual),
+      );
+      const pagoNoCartao = parcelasMesAtual.some((parcela) => parcela.statusCartao === "pago");
+      if (pagoNoCartao) {
+        return { label: "Origem do mês atual: Cartão (pago)", className: "text-emerald-600" };
+      }
+      if (parcelasMesAtual.length > 0) {
+        return { label: "Origem do mês atual: Cartão (em aberto)", className: "text-amber-600" };
+      }
+      return { label: "Origem principal: Cartão vinculado", className: "text-blue-600" };
+    }
+
+    return { label: "Origem principal: Meu bolso", className: "text-muted-foreground" };
+  };
+
+  const comprasOrdenadas = [...compras].sort((a, b) => String(b.dataCompra).localeCompare(String(a.dataCompra)));
+  const getCompraOptionLabel = (compraId: string) => {
+    const compra = compraById.get(compraId);
+    if (!compra) return "Compra não encontrada";
+    const cartaoNome = cartaoById.get(compra.cartaoId)?.nome ?? "Cartão";
+    return `${cartaoNome} · ${compra.descricao}`;
+  };
 
   const byCategory = categorias
     .map((cat) => ({
@@ -141,6 +199,7 @@ export default function ServicosPage() {
                 createMutation.mutate(
                   {
                     ...form,
+                    compraCartaoId: form.compraCartaoId === COMPRA_NONE_VALUE ? null : form.compraCartaoId,
                     iconeId: newServicoIcone,
                   },
                   {
@@ -152,6 +211,7 @@ export default function ServicosPage() {
                         valorMensal: "",
                         dataCobranca: "",
                         formaPagamento: "cartao",
+                        compraCartaoId: COMPRA_NONE_VALUE,
                       });
                       setNewServicoIcone(null);
                       toast({ title: "Serviço adicionado" });
@@ -236,6 +296,25 @@ export default function ServicosPage() {
                   </Select>
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label>Compra de cartão vinculada (opcional)</Label>
+                <Select
+                  value={form.compraCartaoId}
+                  onValueChange={(value) => setForm({ ...form, compraCartaoId: value })}
+                >
+                  <SelectTrigger data-testid="select-servico-compra-vinculada">
+                    <SelectValue placeholder="Sem vínculo com cartão" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={COMPRA_NONE_VALUE}>Sem vínculo com cartão</SelectItem>
+                    {comprasOrdenadas.map((compra) => (
+                      <SelectItem key={compra.id} value={compra.id}>
+                        {getCompraOptionLabel(compra.id)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <Button type="submit" className="w-full" data-testid="button-save-servico" disabled={createMutation.isPending}>
                 {createMutation.isPending ? "Salvando..." : "Salvar"}
               </Button>
@@ -293,10 +372,12 @@ export default function ServicosPage() {
                 {cat.servicos.map((s) => {
                   const isDivisaoOpen = expandedDivisao.has(s.id);
                   const vinculados = servicoPessoas.filter((sp) => sp.servicoId === s.id);
-                  const meAtual = format(new Date(), "yyyy-MM");
                   const pendentesHoje = vinculados.filter(
-                    (sp) => !servicoPagamentos.find((p) => p.servicoPessoaId === sp.id && p.mes === meAtual),
+                    (sp) => !servicoPagamentos.find((p) => p.servicoPessoaId === sp.id && p.mes === mesAtual),
                   ).length;
+                  const compraVinculada = s.compraCartaoId ? compraById.get(s.compraCartaoId) : null;
+                  const cartaoVinculado = compraVinculada ? cartaoById.get(compraVinculada.cartaoId) : null;
+                  const origemMesAtual = getOrigemPagamentoMesAtual(s);
                   return (
                     <Card key={s.id} className="hover-elevate" data-testid={`card-servico-${s.id}`}>
                       <CardContent className="p-4">
@@ -325,6 +406,14 @@ export default function ServicosPage() {
                                 <p className="text-xs text-muted-foreground mt-0.5">
                                   Dia {s.dataCobranca} | {s.formaPagamento}
                                 </p>
+                                <p className={`text-xs mt-0.5 ${origemMesAtual.className}`}>
+                                  {origemMesAtual.label}
+                                </p>
+                                {compraVinculada && (
+                                  <p className="text-xs text-blue-600 mt-0.5">
+                                    Vínculo de cartão: {cartaoVinculado?.nome ?? "Cartão"} · {compraVinculada.descricao}
+                                  </p>
+                                )}
                               </div>
                               <div className="flex items-center gap-2 flex-shrink-0">
                                 <span className="font-semibold text-sm">{formatCurrencyBRL(Number(s.valorMensal))}</span>
@@ -348,6 +437,22 @@ export default function ServicosPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8"
+                                onClick={() =>
+                                  updateMutation.mutate(
+                                    { id: s.id, compraCartaoId: null },
+                                    { onSuccess: () => toast({ title: "Vínculo com cartão removido" }) },
+                                  )
+                                }
+                                title="Remover vínculo com cartão"
+                                data-testid={`button-unlink-cartao-servico-${s.id}`}
+                                disabled={!s.compraCartaoId}
+                              >
+                                <Unlink2 className="w-4 h-4 text-muted-foreground" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
                                 onClick={() => {
                                   setEditingServico(s);
                                   setEditIcone(s.iconeId || null);
@@ -357,6 +462,7 @@ export default function ServicosPage() {
                                     valorMensal: String(s.valorMensal),
                                     dataCobranca: String(s.dataCobranca),
                                     formaPagamento: s.formaPagamento,
+                                    compraCartaoId: s.compraCartaoId ?? COMPRA_NONE_VALUE,
                                   });
                                 }}
                                 data-testid={`button-edit-servico-${s.id}`}
@@ -393,6 +499,14 @@ export default function ServicosPage() {
                             </div>
                           </div>
                         </div>
+                        {s.compraCartaoId && (
+                          <div className="mt-2">
+                            <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                              <CreditCard className="w-2.5 h-2.5" />
+                              Serviço vinculado ao cartão
+                            </span>
+                          </div>
+                        )}
 
                         {isDivisaoOpen && (
                           <DivisaoPanel
@@ -433,6 +547,7 @@ export default function ServicosPage() {
                 {
                   id: editingServico.id,
                   ...editForm,
+                  compraCartaoId: editForm.compraCartaoId === COMPRA_NONE_VALUE ? null : editForm.compraCartaoId,
                   iconeId: editIcone,
                 },
                 {
@@ -517,6 +632,25 @@ export default function ServicosPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Compra de cartão vinculada (opcional)</Label>
+              <Select
+                value={editForm.compraCartaoId}
+                onValueChange={(value) => setEditForm({ ...editForm, compraCartaoId: value })}
+              >
+                <SelectTrigger data-testid="select-edit-servico-compra-vinculada">
+                  <SelectValue placeholder="Sem vínculo com cartão" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={COMPRA_NONE_VALUE}>Sem vínculo com cartão</SelectItem>
+                  {comprasOrdenadas.map((compra) => (
+                    <SelectItem key={compra.id} value={compra.id}>
+                      {getCompraOptionLabel(compra.id)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <Button type="submit" className="w-full" data-testid="button-save-edit-servico" disabled={updateMutation.isPending}>
               {updateMutation.isPending ? "Salvando..." : "Salvar alterações"}

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Cartao, CompraCartao, ParcelaCompra, Pessoa } from "@shared/schema";
+import type { Cartao, CompraCartao, ParcelaCompra, Pessoa, Servico } from "@shared/schema";
 import { toMoneyNumber } from "@/lib/money";
 import { calculateCardUsedLimit, groupParcelasCompraByCompraId } from "@/lib/card-limit-usage";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
@@ -28,6 +28,7 @@ import {
 export function useCartoes(viewingCompraId?: string) {
   const { data: cartoes = [], isLoading } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
+  const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
   const { data: cartoesResumo = [] } = useQuery<CartaoResumo[]>({
     queryKey: ["/api/cartoes/resumo"],
     queryFn: fetchCartoesResumo,
@@ -189,6 +190,7 @@ export function useCartoes(viewingCompraId?: string) {
   return {
     cartoes,
     compras,
+    servicos,
     pessoas,
     parcelasCompraData,
     refetchParcelas,

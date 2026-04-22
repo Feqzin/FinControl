@@ -206,6 +206,7 @@ function toServicoInsert(row: JsonRow, label: string): InsertServicoWithId {
     valorMensal: readRequiredDecimal(row, "valorMensal", label),
     dataCobranca: readRequiredInteger(row, "dataCobranca", label),
     formaPagamento: readRequiredString(row, "formaPagamento", label),
+    compraCartaoId: readOptionalString(row, "compraCartaoId", label),
     status: readOptionalString(row, "status", label) ?? "ativo",
     iconeId: readOptionalString(row, "iconeId", label),
   };

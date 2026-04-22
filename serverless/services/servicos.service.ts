@@ -13,6 +13,14 @@ type UpdateServicoPessoaResult =
   | { error: "PESSOA_NOT_FOUND" }
   | { updated: Awaited<ReturnType<IStorage["updateServicoPessoa"]>> };
 
+type CreateServicoResult =
+  | { error: "COMPRA_NOT_FOUND" }
+  | { created: Awaited<ReturnType<IStorage["createServico"]>> };
+
+type UpdateServicoResult =
+  | { error: "COMPRA_NOT_FOUND" }
+  | { updated: Awaited<ReturnType<IStorage["updateServico"]>> };
+
 type CreateServicoPessoaResult =
   | { error: "SERVICO_NOT_FOUND" }
   | { error: "PESSOA_NOT_FOUND" }
@@ -29,12 +37,29 @@ export class ServicosService {
     return this.storage.getServicos(userId);
   }
 
-  async createServico(userId: string, data: ServicoBodyInput) {
-    return this.storage.createServico({ ...data, userId });
+  private async validateCompraCartaoOwnership(compraCartaoId: string | null | undefined, userId: string) {
+    if (!compraCartaoId) return { ok: true as const };
+    const compra = await this.storage.getCompraCartao(compraCartaoId, userId);
+    if (!compra) return { ok: false as const };
+    return { ok: true as const };
   }
 
-  async updateServico(id: string, userId: string, data: ServicoUpdateBodyInput) {
-    return this.storage.updateServico(id, userId, data);
+  async createServico(userId: string, data: ServicoBodyInput): Promise<CreateServicoResult> {
+    const compraValidation = await this.validateCompraCartaoOwnership(data.compraCartaoId, userId);
+    if (!compraValidation.ok) return { error: "COMPRA_NOT_FOUND" };
+    const created = await this.storage.createServico({ ...data, userId });
+    return { created };
+  }
+
+  async updateServico(id: string, userId: string, data: ServicoUpdateBodyInput): Promise<UpdateServicoResult> {
+    // Semantica do vinculo: quando informado, compraCartaoId deve pertencer ao usuario autenticado.
+    if (Object.prototype.hasOwnProperty.call(data, "compraCartaoId")) {
+      const compraValidation = await this.validateCompraCartaoOwnership(data.compraCartaoId, userId);
+      if (!compraValidation.ok) return { error: "COMPRA_NOT_FOUND" };
+    }
+
+    const updated = await this.storage.updateServico(id, userId, data);
+    return { updated };
   }
 
   async deleteServico(id: string, userId: string) {

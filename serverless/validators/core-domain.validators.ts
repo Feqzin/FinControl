@@ -19,6 +19,7 @@ export const servicoBody = z.object({
   valorMensal: moneyField,
   dataCobranca: z.coerce.number().int().min(1).max(31),
   formaPagamento: z.string().min(1),
+  compraCartaoId: z.string().min(1).optional().nullable(),
   status: z.string().optional().default("ativo"),
 });
 
@@ -28,6 +29,7 @@ export const servicoUpdateBody = z.object({
   valorMensal: moneyField.optional(),
   dataCobranca: z.coerce.number().int().min(1).max(31).optional(),
   formaPagamento: z.string().min(1).optional(),
+  compraCartaoId: z.string().min(1).optional().nullable(),
   status: z.string().min(1).optional(),
   iconeId: z.string().optional().nullable(),
 }).strict().refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });

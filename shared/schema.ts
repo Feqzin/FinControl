@@ -141,10 +141,13 @@ export const servicos = pgTable("servicos", {
   valorMensal: decimal("valor_mensal", { precision: 12, scale: 2 }).notNull(),
   dataCobranca: integer("data_cobranca").notNull(),
   formaPagamento: text("forma_pagamento").notNull(),
+  // Vínculo opcional para rastrear que o serviço está associado a uma compra no cartão.
+  compraCartaoId: varchar("compra_cartao_id").references(() => comprasCartao.id, { onDelete: "set null" }),
   status: text("status").notNull().default("ativo"),
   iconeId: text("icone_id"),
 }, (table) => ({
   servicosUserIdIdx: index("idx_servicos_user_id").on(table.userId),
+  servicosCompraCartaoIdIdx: index("idx_servicos_compra_cartao_id").on(table.compraCartaoId),
   servicosStatusIdx: index("idx_servicos_status").on(table.status),
   servicosCategoriaIdx: index("idx_servicos_categoria").on(table.categoria),
 }));

@@ -22,7 +22,11 @@ export function createServicosController(service: ServicosService) {
       if (!parsed.success) {
         return sendBadRequest(res, parsed.error.message);
       }
-      return res.json(await service.createServico(userId, parsed.data));
+      const result = await service.createServico(userId, parsed.data);
+      if ("error" in result) {
+        return sendBadRequest(res, "Compra de cartao nao encontrada para vinculo");
+      }
+      return res.json(result.created);
     },
 
     updateServico: async (req: Request, res: Response) => {
@@ -32,11 +36,14 @@ export function createServicosController(service: ServicosService) {
       if (!parsed.success) {
         return sendBadRequest(res, parsed.error.message);
       }
-      const updated = await service.updateServico(servicoId, userId, parsed.data);
-      if (!updated) {
+      const result = await service.updateServico(servicoId, userId, parsed.data);
+      if ("error" in result) {
+        return sendBadRequest(res, "Compra de cartao nao encontrada para vinculo");
+      }
+      if (!result.updated) {
         return sendNotFound(res);
       }
-      return res.json(updated);
+      return res.json(result.updated);
     },
 
     deleteServico: async (req: Request, res: Response) => {

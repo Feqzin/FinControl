@@ -90,6 +90,7 @@ export default function CartoesPage() {
   const {
     cartoes,
     compras,
+    servicos,
     pessoas,
     parcelasCompraData,
     refetchParcelas,
@@ -1029,20 +1030,28 @@ export default function CartoesPage() {
                       {getCardCompras(c.id).length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-4">Nenhuma compra na fatura</p>
                       ) : (
-                        getCardCompras(c.id).map((compra) => (
-                          <div key={compra.id} className="flex items-center gap-3 px-4 py-3">
-                            <BrandIconDisplay name={compra.descricao} size="sm" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{compra.descricao}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {compra.parcelaAtual}/{compra.parcelas}x
+                        getCardCompras(c.id).map((compra) => {
+                          const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
+                          return (
+                            <div key={compra.id} className="flex items-center gap-3 px-4 py-3">
+                              <BrandIconDisplay name={compra.descricao} size="sm" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{compra.descricao}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {compra.parcelaAtual}/{compra.parcelas}x
+                                </p>
+                                {servicosVinculados.length > 0 && (
+                                  <p className="text-[11px] text-blue-600 mt-0.5">
+                                    Serviço vinculado ({servicosVinculados.length})
+                                  </p>
+                                )}
+                              </div>
+                              <p className="text-sm font-semibold flex-shrink-0">
+                                {formatCartaoCurrency(Number(compra.valorParcela))}
                               </p>
                             </div>
-                            <p className="text-sm font-semibold flex-shrink-0">
-                              {formatCartaoCurrency(Number(compra.valorParcela))}
-                            </p>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                       <div className="px-4 py-2.5">
                         <Button
@@ -1154,6 +1163,7 @@ export default function CartoesPage() {
                       {cardCompras.map((compra) => {
                         const aguardandoReembolso = compra.pessoaId && (!compra.statusPessoa || compra.statusPessoa === "pendente");
                         const reembolsado = compra.pessoaId && compra.statusPessoa === "pago";
+                        const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
                         return (
                           <div key={compra.id} className="p-2.5 rounded-md bg-muted/30 text-sm" data-testid={`compra-${compra.id}`}>
                             <div className="flex items-center gap-3 mb-2">
@@ -1175,6 +1185,12 @@ export default function CartoesPage() {
                                   {reembolsado && (
                                     <span className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 flex-shrink-0">
                                       Reembolsado
+                                    </span>
+                                  )}
+                                  {servicosVinculados.length > 0 && (
+                                    <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-700 dark:text-blue-300 flex-shrink-0">
+                                      <CreditCard className="w-2.5 h-2.5" />
+                                      Serviço vinculado ({servicosVinculados.length})
                                     </span>
                                   )}
                                 </div>
