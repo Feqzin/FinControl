@@ -212,6 +212,39 @@ export const insertParcelaCompraSchema = createInsertSchema(parcelasCompra).omit
 export type InsertParcelaCompra = z.infer<typeof insertParcelaCompraSchema>;
 export type ParcelaCompra = typeof parcelasCompra.$inferSelect;
 
+export const pessoaSaldoMovimentacoes = pgTable("pessoa_saldo_movimentacoes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  pessoaId: varchar("pessoa_id").notNull().references(() => pessoas.id, { onDelete: "cascade" }),
+  tipo: text("tipo").notNull(),
+  valor: decimal("valor", { precision: 12, scale: 2 }).notNull(),
+  data: date("data", { mode: "string" }).notNull(),
+  origem: text("origem").notNull().default("manual"),
+  categoria: text("categoria"),
+  observacao: text("observacao"),
+  comprovanteReferencia: text("comprovante_referencia"),
+  dividaId: varchar("divida_id").references(() => dividas.id, { onDelete: "set null" }),
+  compraCartaoId: varchar("compra_cartao_id").references(() => comprasCartao.id, { onDelete: "set null" }),
+  parcelaCompraId: varchar("parcela_compra_id").references(() => parcelasCompra.id, { onDelete: "set null" }),
+  servicoPessoaId: varchar("servico_pessoa_id").references(() => servicoPessoas.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  pessoaSaldoMovimentacoesUserIdIdx: index("idx_pessoa_saldo_mov_user_id").on(table.userId),
+  pessoaSaldoMovimentacoesPessoaIdIdx: index("idx_pessoa_saldo_mov_pessoa_id").on(table.pessoaId),
+  pessoaSaldoMovimentacoesTipoIdx: index("idx_pessoa_saldo_mov_tipo").on(table.tipo),
+  pessoaSaldoMovimentacoesDataIdx: index("idx_pessoa_saldo_mov_data").on(table.data),
+  pessoaSaldoMovimentacoesDividaIdIdx: index("idx_pessoa_saldo_mov_divida_id").on(table.dividaId),
+  pessoaSaldoMovimentacoesCompraCartaoIdIdx: index("idx_pessoa_saldo_mov_compra_cartao_id").on(table.compraCartaoId),
+  pessoaSaldoMovimentacoesServicoPessoaIdIdx: index("idx_pessoa_saldo_mov_servico_pessoa_id").on(table.servicoPessoaId),
+}));
+
+export const insertPessoaSaldoMovimentacaoSchema = createInsertSchema(pessoaSaldoMovimentacoes).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPessoaSaldoMovimentacao = z.infer<typeof insertPessoaSaldoMovimentacaoSchema>;
+export type PessoaSaldoMovimentacao = typeof pessoaSaldoMovimentacoes.$inferSelect;
+
 export const rendas = pgTable("rendas", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),

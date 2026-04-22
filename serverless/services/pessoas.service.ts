@@ -1,8 +1,12 @@
 import { addMonths, format, parseISO } from "date-fns";
-import type { CompraCartao, Pessoa } from "../../shared/schema.js";
+import type { CompraCartao, Pessoa, PessoaSaldoMovimentacao } from "../../shared/schema.js";
 import { parseMoney } from "../../utils/money.js";
 import type { IStorage } from "../storage.js";
-import type { PessoaBodyInput, PessoaUpdateBodyInput } from "../validators/core-domain.validators.js";
+import type {
+  PessoaBodyInput,
+  PessoaSaldoMovimentacaoBodyInput,
+  PessoaUpdateBodyInput,
+} from "../validators/core-domain.validators.js";
 
 type MoneyValue = string | number | null | undefined;
 
@@ -11,6 +15,24 @@ type PessoaResumoDividaBloco = {
   pago: number;
   vencidas: number;
   quantidadePendentes: number;
+};
+
+export type PessoaSaldoResumo = {
+  creditos: number;
+  debitos: number;
+  saldoAtual: number;
+  movimentacoes: number;
+  ultimaMovimentacaoData: string | null;
+};
+
+export type PessoaSaldoMovimentacaoComSaldo = PessoaSaldoMovimentacao & {
+  saldoAposMovimentacao: number;
+};
+
+export type PessoaSaldoMovimentacoesResponse = {
+  pessoa: Pessoa;
+  resumo: PessoaSaldoResumo;
+  movimentacoes: PessoaSaldoMovimentacaoComSaldo[];
 };
 
 export type PessoaResumo = {
@@ -40,6 +62,7 @@ export type PessoaResumo = {
       pendentesQuantidade: number;
       totalVinculos: number;
     };
+    saldoPessoa: PessoaSaldoResumo;
     consolidadoPendente: number;
   };
   alertas: {
@@ -48,6 +71,19 @@ export type PessoaResumo = {
     parcelasPendentesPessoa: number;
   };
 };
+
+type CreatePessoaSaldoMovimentacaoResult =
+  | { error: "PESSOA_NOT_FOUND" }
+  | { error: "VALOR_INVALIDO" }
+  | { error: "DIVIDA_NOT_FOUND" }
+  | { error: "DIVIDA_NOT_LINKED_TO_PESSOA" }
+  | { error: "COMPRA_NOT_FOUND" }
+  | { error: "COMPRA_NOT_LINKED_TO_PESSOA" }
+  | { error: "PARCELA_COMPRA_NOT_FOUND" }
+  | { error: "PARCELA_COMPRA_NOT_LINKED_TO_PESSOA" }
+  | { error: "SERVICO_PESSOA_NOT_FOUND" }
+  | { error: "SERVICO_PESSOA_NOT_LINKED_TO_PESSOA" }
+  | { created: PessoaSaldoMovimentacao };
 
 function toMoneyNumber(value: MoneyValue): number {
   return parseMoney(value) ?? 0;
@@ -59,6 +95,76 @@ function round2(value: number): number {
 
 function normalizeStatus(status: string | null | undefined): string {
   return String(status ?? "").trim().toLowerCase();
+}
+
+function normalizeOptionalText(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function timestampToMillis(value: unknown): number {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.getTime();
+  }
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.getTime();
+    }
+  }
+  return 0;
+}
+
+function compareSaldoMovimentacoesAsc(a: PessoaSaldoMovimentacao, b: PessoaSaldoMovimentacao): number {
+  const byData = String(a.data ?? "").localeCompare(String(b.data ?? ""));
+  if (byData !== 0) return byData;
+
+  const byCreatedAt = timestampToMillis(a.createdAt) - timestampToMillis(b.createdAt);
+  if (byCreatedAt !== 0) return byCreatedAt;
+
+  return String(a.id).localeCompare(String(b.id));
+}
+
+function buildPessoaSaldoResumo(rows: PessoaSaldoMovimentacao[]): PessoaSaldoResumo {
+  let creditos = 0;
+  let debitos = 0;
+
+  for (const row of rows) {
+    const valor = toMoneyNumber(row.valor);
+    if (row.tipo === "credito") {
+      creditos += valor;
+    } else {
+      debitos += valor;
+    }
+  }
+
+  const ordered = [...rows].sort(compareSaldoMovimentacoesAsc);
+  const ultimaMovimentacao = ordered.length > 0 ? ordered[ordered.length - 1] : null;
+
+  return {
+    creditos: round2(creditos),
+    debitos: round2(debitos),
+    saldoAtual: round2(creditos - debitos),
+    movimentacoes: rows.length,
+    ultimaMovimentacaoData: ultimaMovimentacao?.data ?? null,
+  };
+}
+
+function buildPessoaSaldoMovimentacoes(rows: PessoaSaldoMovimentacao[]): PessoaSaldoMovimentacaoComSaldo[] {
+  let saldoAcumulado = 0;
+  const orderedAsc = [...rows].sort(compareSaldoMovimentacoesAsc);
+  const withRunningBalance = orderedAsc.map((row) => {
+    const valor = toMoneyNumber(row.valor);
+    saldoAcumulado += row.tipo === "credito" ? valor : -valor;
+
+    return {
+      ...row,
+      saldoAposMovimentacao: round2(saldoAcumulado),
+    };
+  });
+
+  return withRunningBalance.reverse();
 }
 
 function isPaid(status: string | null | undefined): boolean {
@@ -191,6 +297,89 @@ export class PessoasService {
     return this.storage.deletePessoa(id, userId);
   }
 
+  async listSaldoMovimentacoesByUser(userId: string): Promise<PessoaSaldoMovimentacao[]> {
+    const rows = await this.storage.getPessoaSaldoMovimentacoes(userId);
+    return [...rows].sort((a, b) => compareSaldoMovimentacoesAsc(b, a));
+  }
+
+  async listSaldoMovimentacoes(
+    pessoaId: string,
+    userId: string,
+  ): Promise<PessoaSaldoMovimentacoesResponse | null> {
+    const pessoa = await this.storage.getPessoa(pessoaId, userId);
+    if (!pessoa) return null;
+
+    const rows = await this.storage.getPessoaSaldoMovimentacoesByPessoa(pessoaId, userId);
+    return {
+      pessoa,
+      resumo: buildPessoaSaldoResumo(rows),
+      movimentacoes: buildPessoaSaldoMovimentacoes(rows),
+    };
+  }
+
+  async createSaldoMovimentacao(
+    pessoaId: string,
+    userId: string,
+    data: PessoaSaldoMovimentacaoBodyInput,
+  ): Promise<CreatePessoaSaldoMovimentacaoResult> {
+    const pessoa = await this.storage.getPessoa(pessoaId, userId);
+    if (!pessoa) return { error: "PESSOA_NOT_FOUND" };
+
+    const valorNumber = parseMoney(data.valor);
+    if (valorNumber == null || valorNumber <= 0) {
+      return { error: "VALOR_INVALIDO" };
+    }
+
+    const dividaId = normalizeOptionalText(data.dividaId);
+    if (dividaId) {
+      const divida = await this.storage.getDivida(dividaId, userId);
+      if (!divida) return { error: "DIVIDA_NOT_FOUND" };
+      if (divida.pessoaId !== pessoaId) return { error: "DIVIDA_NOT_LINKED_TO_PESSOA" };
+    }
+
+    const compraCartaoId = normalizeOptionalText(data.compraCartaoId);
+    if (compraCartaoId) {
+      const compra = await this.storage.getCompraCartao(compraCartaoId, userId);
+      if (!compra) return { error: "COMPRA_NOT_FOUND" };
+      if (compra.pessoaId !== pessoaId) return { error: "COMPRA_NOT_LINKED_TO_PESSOA" };
+    }
+
+    const parcelaCompraId = normalizeOptionalText(data.parcelaCompraId);
+    if (parcelaCompraId) {
+      const parcelaCompra = await this.storage.getParcelaCompraById(parcelaCompraId, userId);
+      if (!parcelaCompra) return { error: "PARCELA_COMPRA_NOT_FOUND" };
+      const compraDaParcela = await this.storage.getCompraCartao(parcelaCompra.compraCartaoId, userId);
+      if (!compraDaParcela || compraDaParcela.pessoaId !== pessoaId) {
+        return { error: "PARCELA_COMPRA_NOT_LINKED_TO_PESSOA" };
+      }
+    }
+
+    const servicoPessoaId = normalizeOptionalText(data.servicoPessoaId);
+    if (servicoPessoaId) {
+      const servicoPessoa = await this.storage.getServicoPessoa(servicoPessoaId, userId);
+      if (!servicoPessoa) return { error: "SERVICO_PESSOA_NOT_FOUND" };
+      if (servicoPessoa.pessoaId !== pessoaId) return { error: "SERVICO_PESSOA_NOT_LINKED_TO_PESSOA" };
+    }
+
+    const created = await this.storage.createPessoaSaldoMovimentacao({
+      userId,
+      pessoaId,
+      tipo: data.tipo,
+      valor: round2(valorNumber).toFixed(2),
+      data: data.data ?? format(new Date(), "yyyy-MM-dd"),
+      origem: normalizeOptionalText(data.origem) ?? "manual",
+      categoria: normalizeOptionalText(data.categoria),
+      observacao: normalizeOptionalText(data.observacao),
+      comprovanteReferencia: normalizeOptionalText(data.comprovanteReferencia),
+      dividaId,
+      compraCartaoId,
+      parcelaCompraId,
+      servicoPessoaId,
+    });
+
+    return { created };
+  }
+
   async getResumo(pessoaId: string, userId: string): Promise<PessoaResumo | null> {
     const pessoa = await this.storage.getPessoa(pessoaId, userId);
     if (!pessoa) return null;
@@ -198,11 +387,12 @@ export class PessoasService {
     const todayIso = format(new Date(), "yyyy-MM-dd");
     const mesReferencia = format(new Date(), "yyyy-MM");
 
-    const [dividas, comprasVinculadas, servicoPessoas, servicoPagamentos] = await Promise.all([
+    const [dividas, comprasVinculadas, servicoPessoas, servicoPagamentos, saldoMovimentacoes] = await Promise.all([
       this.storage.getDividasByPessoa(pessoaId, userId),
       this.storage.getComprasByPessoa(pessoaId, userId),
       this.storage.getServicoPessoasByPessoa(pessoaId, userId),
       this.storage.getServicoPagamentos(userId),
+      this.storage.getPessoaSaldoMovimentacoesByPessoa(pessoaId, userId),
     ]);
 
     let comigoPendente = 0;
@@ -273,6 +463,8 @@ export class PessoasService {
       }
     }
 
+    const saldoPessoa = buildPessoaSaldoResumo(saldoMovimentacoes);
+
     const consolidadoPendente = round2(
       comigoPendente
       + euDevoPendente
@@ -317,6 +509,7 @@ export class PessoasService {
           pendentesQuantidade: servicosPendentesQuantidade,
           totalVinculos: servicoPessoas.length,
         },
+        saldoPessoa,
         consolidadoPendente,
       },
       alertas: {

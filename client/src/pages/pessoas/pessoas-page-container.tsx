@@ -22,7 +22,7 @@ import { usePessoas } from "@/hooks/usePessoas";
 import { PaymentTimeline } from "@/pages/pessoas/components/payment-timeline";
 import {
   Plus, Users, Phone, Trash2, Search, Receipt, Check,
-  Clock, ArrowUpRight, ArrowDownRight, Pencil, CreditCard, Repeat, ChevronRight, AlertTriangle, ExternalLink, RotateCcw,
+  Clock, ArrowUpRight, ArrowDownRight, Pencil, CreditCard, Repeat, ChevronRight, AlertTriangle, ExternalLink, RotateCcw, Wallet, ArrowUpCircle, ArrowDownCircle,
 } from "lucide-react";
 import { useUIPreferences } from "@/context/ui-preferences";
 import type { Pessoa, Divida, CompraCartao, Cartao, ServicoPessoa, ServicoPagamento, Servico } from "@shared/schema";
@@ -44,6 +44,14 @@ export default function PessoasPage() {
   const [payOpen, setPayOpen] = useState(false);
   const [payingDivida, setPayingDivida] = useState<Divida | null>(null);
   const [payForm, setPayForm] = useState({ formaPagamento: "pix" });
+  const [saldoForm, setSaldoForm] = useState({
+    tipo: "credito" as "credito" | "debito",
+    valor: "",
+    data: format(new Date(), "yyyy-MM-dd"),
+    origem: "manual",
+    observacao: "",
+    comprovanteReferencia: "",
+  });
 
   const [editingPessoa, setEditingPessoa] = useState<Pessoa | null>(null);
   const [editForm, setEditForm] = useState<{ nome: string; tipo: PessoaKind; telefone: string; observacao: string }>({
@@ -79,8 +87,10 @@ export default function PessoasPage() {
     historyCompras,
     historyServicoPessoas,
     historyStats,
+    historySaldo,
     historyTimelineEvents,
     isTimelineLoading,
+    isSaldoLoading,
     createPessoaMutation,
     createDividaMutation,
     payMutation,
@@ -89,6 +99,7 @@ export default function PessoasPage() {
     deleteMutation,
     marcarServicoPagoMutation,
     reverterServicoPagoMutation,
+    createSaldoMovimentacaoMutation,
     desvincularCompraMutation,
     updateTimelineObservacaoMutation,
     uploadTimelineComprovanteMutation,
@@ -115,6 +126,8 @@ export default function PessoasPage() {
 
   const duplicatePessoa = duplicatePessoaByName(pessoaForm.nome);
   const historyResumo = historyPessoa ? getPessoaResumoConsolidado(historyPessoa.id) : null;
+  const historySaldoResumo = historySaldo?.resumo ?? (historyResumo ? historyResumo.saldoPessoa : null);
+  const historySaldoMovimentacoes = historySaldo?.movimentacoes ?? [];
 
   const handleOpenCompraNoCartao = (cartaoId: string, compraId: string) => {
     const params = new URLSearchParams({
@@ -274,6 +287,9 @@ export default function PessoasPage() {
                         Compras: {formatCurrencyBRL(resumo.comprasVinculadas.pendentePessoa)} ·
                         Serviços ({resumo.servicosMesAtual.mesReferencia}): {formatCurrencyBRL(resumo.servicosMesAtual.pendente)}
                       </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Saldo positivo: <span className="font-medium text-emerald-600">{formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}</span>
+                      </p>
                       {resumo.alertas.comprasAtrasadas > 0 && (
                         <p className="text-[11px] text-red-600">
                           {resumo.alertas.comprasAtrasadas} compra(s) com atraso
@@ -399,6 +415,10 @@ export default function PessoasPage() {
                     <div className="rounded-md bg-muted/40 p-3">
                       <p className="text-xs text-muted-foreground mb-1">Serviços pendentes ({resumo.servicosMesAtual.mesReferencia})</p>
                       <p className="text-base font-bold text-amber-600">{formatCurrencyBRL(resumo.servicosMesAtual.pendente)}</p>
+                    </div>
+                    <div className="rounded-md bg-emerald-500/5 p-3">
+                      <p className="text-xs text-muted-foreground mb-1">Saldo positivo disponível</p>
+                      <p className="text-base font-bold text-emerald-600">{formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}</p>
                     </div>
                   </div>
 
@@ -659,7 +679,20 @@ export default function PessoasPage() {
         </DialogContent>
       </Dialog>
 
-      <Sheet open={!!historyPessoa} onOpenChange={(v) => { if (!v) { setHistoryPessoa(null); setHistoryFilter("todos"); } }}>
+      <Sheet open={!!historyPessoa} onOpenChange={(v) => {
+        if (!v) {
+          setHistoryPessoa(null);
+          setHistoryFilter("todos");
+          setSaldoForm({
+            tipo: "credito",
+            valor: "",
+            data: format(new Date(), "yyyy-MM-dd"),
+            origem: "manual",
+            observacao: "",
+            comprovanteReferencia: "",
+          });
+        }
+      }}>
         <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
           {historyPessoa && historyStats && historyResumo && (
             <>
@@ -687,6 +720,16 @@ export default function PessoasPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="rounded-md bg-emerald-500/5 p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Saldo positivo atual</p>
+                  <p className="text-lg font-bold text-emerald-600">{formatCurrencyBRL(historyResumo.saldoPessoa.saldoAtual)}</p>
+                </div>
+                <div className="rounded-md bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Créditos / Débitos</p>
+                  <p className="text-lg font-bold">
+                    {formatCurrencyBRL(historyResumo.saldoPessoa.creditos)} / {formatCurrencyBRL(historyResumo.saldoPessoa.debitos)}
+                  </p>
+                </div>
                 <div className="rounded-md bg-muted/40 p-3">
                   <p className="text-xs text-muted-foreground mb-1">Total pendente consolidado</p>
                   <p className="text-lg font-bold">{formatCurrencyBRL(historyResumo.consolidadoPendente)}</p>
@@ -723,6 +766,198 @@ export default function PessoasPage() {
                   </span>
                 </div>
               )}
+
+              <div className="mb-6 rounded-md border border-border/60 p-4 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Wallet className="w-4 h-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold">Saldo positivo da pessoa</h3>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="rounded-md bg-emerald-500/5 p-3">
+                    <p className="text-muted-foreground">Saldo atual</p>
+                    <p className="text-sm font-bold text-emerald-600">{formatCurrencyBRL(historySaldoResumo?.saldoAtual ?? 0)}</p>
+                  </div>
+                  <div className="rounded-md bg-muted/40 p-3">
+                    <p className="text-muted-foreground">Créditos</p>
+                    <p className="text-sm font-bold">{formatCurrencyBRL(historySaldoResumo?.creditos ?? 0)}</p>
+                  </div>
+                  <div className="rounded-md bg-muted/40 p-3">
+                    <p className="text-muted-foreground">Débitos</p>
+                    <p className="text-sm font-bold">{formatCurrencyBRL(historySaldoResumo?.debitos ?? 0)}</p>
+                  </div>
+                </div>
+
+                <form
+                  className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!historyPessoa) return;
+                    createSaldoMovimentacaoMutation.mutate(
+                      {
+                        pessoaId: historyPessoa.id,
+                        payload: {
+                          tipo: saldoForm.tipo,
+                          valor: saldoForm.valor,
+                          data: saldoForm.data,
+                          origem: saldoForm.origem,
+                          observacao: saldoForm.observacao || null,
+                          comprovanteReferencia: saldoForm.comprovanteReferencia || null,
+                        },
+                      },
+                      {
+                        onSuccess: () => {
+                          setSaldoForm({
+                            tipo: "credito",
+                            valor: "",
+                            data: format(new Date(), "yyyy-MM-dd"),
+                            origem: "manual",
+                            observacao: "",
+                            comprovanteReferencia: "",
+                          });
+                          toast({ title: "Movimentação de saldo registrada" });
+                        },
+                        onError: (err: Error) => toast({
+                          title: "Erro",
+                          description: err.message,
+                          variant: "destructive",
+                        }),
+                      },
+                    );
+                  }}
+                >
+                  <div className="space-y-1">
+                    <Label>Tipo</Label>
+                    <Select
+                      value={saldoForm.tipo}
+                      onValueChange={(value) => setSaldoForm((prev) => ({ ...prev, tipo: value as "credito" | "debito" }))}
+                    >
+                      <SelectTrigger data-testid="select-saldo-tipo">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="credito">Crédito</SelectItem>
+                        <SelectItem value="debito">Débito manual</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Valor</Label>
+                    <Input
+                      data-testid="input-saldo-valor"
+                      value={saldoForm.valor}
+                      onChange={(e) => setSaldoForm((prev) => ({ ...prev, valor: e.target.value }))}
+                      placeholder="0,00"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Data</Label>
+                    <Input
+                      data-testid="input-saldo-data"
+                      type="date"
+                      value={saldoForm.data}
+                      onChange={(e) => setSaldoForm((prev) => ({ ...prev, data: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Origem</Label>
+                    <Input
+                      data-testid="input-saldo-origem"
+                      value={saldoForm.origem}
+                      onChange={(e) => setSaldoForm((prev) => ({ ...prev, origem: e.target.value }))}
+                      placeholder="manual"
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label>Observação</Label>
+                    <Input
+                      data-testid="input-saldo-observacao"
+                      value={saldoForm.observacao}
+                      onChange={(e) => setSaldoForm((prev) => ({ ...prev, observacao: e.target.value }))}
+                      placeholder="Detalhe opcional da movimentação"
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label>Comprovante (opcional)</Label>
+                    <Input
+                      data-testid="input-saldo-comprovante"
+                      value={saldoForm.comprovanteReferencia}
+                      onChange={(e) => setSaldoForm((prev) => ({ ...prev, comprovanteReferencia: e.target.value }))}
+                      placeholder="Link, número ou referência"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      data-testid="button-saldo-registrar"
+                      disabled={createSaldoMovimentacaoMutation.isPending}
+                    >
+                      {createSaldoMovimentacaoMutation.isPending ? "Registrando..." : "Registrar movimentação"}
+                    </Button>
+                  </div>
+                </form>
+
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Histórico de saldo
+                  </p>
+                  {isSaldoLoading ? (
+                    <div className="text-xs text-muted-foreground">Carregando movimentações...</div>
+                  ) : historySaldoMovimentacoes.length === 0 ? (
+                    <div className="text-xs text-muted-foreground">Nenhuma movimentação de saldo registrada.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {historySaldoMovimentacoes.map((movimentacao) => {
+                        const isCredito = movimentacao.tipo === "credito";
+                        return (
+                          <div
+                            key={movimentacao.id}
+                            className="rounded-md border border-border/60 p-3"
+                            data-testid={`history-saldo-movimentacao-${movimentacao.id}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  {isCredito ? (
+                                    <ArrowUpCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                  ) : (
+                                    <ArrowDownCircle className="w-3.5 h-3.5 text-red-600" />
+                                  )}
+                                  <span className={`text-xs font-semibold ${isCredito ? "text-emerald-600" : "text-red-600"}`}>
+                                    {isCredito ? "Crédito" : "Débito"}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">{movimentacao.data}</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Origem: {movimentacao.origem || "manual"}
+                                </p>
+                                {movimentacao.observacao && (
+                                  <p className="text-xs text-muted-foreground mt-1">{movimentacao.observacao}</p>
+                                )}
+                                {movimentacao.comprovanteReferencia && (
+                                  <p className="text-xs text-blue-600 mt-1">
+                                    Comprovante: {movimentacao.comprovanteReferencia}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                <p className={`text-sm font-bold ${isCredito ? "text-emerald-600" : "text-red-600"}`}>
+                                  {isCredito ? "+" : "-"}{formatCurrencyBRL(Number(movimentacao.valor))}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  Saldo: {formatCurrencyBRL(movimentacao.saldoAposMovimentacao ?? 0)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <div className="mb-6">
                 <PaymentTimeline

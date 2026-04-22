@@ -259,6 +259,7 @@ export function registerRoutes(app: Express): void {
         servicosImportados: persisted.servicosInseridos,
         servicoPessoasImportados: persisted.servicoPessoasInseridas,
         servicoPagamentosImportados: persisted.servicoPagamentosInseridos,
+        saldoMovimentacoesImportadas: persisted.saldoMovimentacoesInseridas,
         metasImportadas: persisted.metasInseridas,
       });
     } catch (error) {

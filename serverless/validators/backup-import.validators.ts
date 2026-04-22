@@ -6,6 +6,7 @@ import type {
   Meta,
   ParcelaCompra,
   Pessoa,
+  PessoaSaldoMovimentacao,
   Servico,
   ServicoPagamento,
   ServicoPessoa,
@@ -28,6 +29,7 @@ export const backupJsonImportSchema = z.object({
   servicos: backupSectionSchema.optional().default([]),
   servicoPessoas: backupSectionSchema.optional().default([]),
   servicoPagamentos: backupSectionSchema.optional().default([]),
+  pessoaSaldoMovimentacoes: backupSectionSchema.optional().default([]),
   metas: backupSectionSchema.optional().default([]),
 }).passthrough();
 
@@ -55,6 +57,7 @@ export type BackupJsonImportPayload = {
   servicos: WithoutUserId<Servico>[];
   servicoPessoas: WithoutUserId<ServicoPessoa>[];
   servicoPagamentos: WithoutUserId<ServicoPagamento>[];
+  pessoaSaldoMovimentacoes: WithoutUserId<PessoaSaldoMovimentacao>[];
   metas: WithoutUserId<Meta>[];
 };
 
@@ -105,6 +108,7 @@ export function parseBackupJsonImport(input: string | unknown): BackupJsonImport
     servicos: sanitizeRows<Servico>(parsed.data.servicos),
     servicoPessoas: sanitizeRows<ServicoPessoa>(parsed.data.servicoPessoas),
     servicoPagamentos: sanitizeRows<ServicoPagamento>(parsed.data.servicoPagamentos),
+    pessoaSaldoMovimentacoes: sanitizeRows<PessoaSaldoMovimentacao>(parsed.data.pessoaSaldoMovimentacoes),
     metas: sanitizeRows<Meta>(parsed.data.metas),
   };
 }

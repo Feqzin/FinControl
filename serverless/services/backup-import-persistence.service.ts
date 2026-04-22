@@ -5,6 +5,7 @@ import type {
   InsertMeta,
   InsertParcelaCompra,
   InsertPessoa,
+  InsertPessoaSaldoMovimentacao,
   InsertServico,
   InsertServicoPagamento,
   InsertServicoPessoa,
@@ -23,6 +24,7 @@ type InsertParcelaCompraWithId = InsertParcelaCompra & { id: string };
 type InsertServicoWithId = InsertServico & { id: string };
 type InsertServicoPessoaWithId = InsertServicoPessoa & { id: string };
 type InsertServicoPagamentoWithId = InsertServicoPagamento & { id: string };
+type InsertPessoaSaldoMovimentacaoWithId = InsertPessoaSaldoMovimentacao & { id: string };
 type InsertMetaWithId = InsertMeta & { id: string };
 
 export type BackupImportPersistenceResult = {
@@ -34,6 +36,7 @@ export type BackupImportPersistenceResult = {
   servicosInseridos: number;
   servicoPessoasInseridas: number;
   servicoPagamentosInseridos: number;
+  saldoMovimentacoesInseridas: number;
   metasInseridas: number;
 };
 
@@ -233,6 +236,30 @@ function toServicoPagamentoInsert(row: JsonRow, label: string): InsertServicoPag
   };
 }
 
+function toPessoaSaldoMovimentacaoInsert(row: JsonRow, label: string): InsertPessoaSaldoMovimentacaoWithId {
+  const tipo = readRequiredString(row, "tipo", label);
+  if (tipo !== "credito" && tipo !== "debito") {
+    throw new Error(`Campo obrigatorio invalido: ${label}.tipo`);
+  }
+
+  return {
+    id: readRequiredString(row, "id", label),
+    userId: readRequiredString(row, "userId", label),
+    pessoaId: readRequiredString(row, "pessoaId", label),
+    tipo,
+    valor: readRequiredDecimal(row, "valor", label),
+    data: readRequiredString(row, "data", label),
+    origem: readOptionalString(row, "origem", label) ?? "manual",
+    categoria: readOptionalString(row, "categoria", label),
+    observacao: readOptionalString(row, "observacao", label),
+    comprovanteReferencia: readOptionalString(row, "comprovanteReferencia", label),
+    dividaId: readOptionalString(row, "dividaId", label),
+    compraCartaoId: readOptionalString(row, "compraCartaoId", label),
+    parcelaCompraId: readOptionalString(row, "parcelaCompraId", label),
+    servicoPessoaId: readOptionalString(row, "servicoPessoaId", label),
+  };
+}
+
 function toMetaInsert(row: JsonRow, label: string): InsertMetaWithId {
   return {
     id: readRequiredString(row, "id", label),
@@ -262,6 +289,12 @@ export async function persistTransformedBackupImport(
   );
   const servicoPagamentosRowsRaw = transformed.servicoPagamentos.map((item, index) =>
     toServicoPagamentoInsert(asRow(item, `servicoPagamentos[${index}]`), `servicoPagamentos[${index}]`),
+  );
+  const pessoaSaldoMovimentacoesRows = transformed.pessoaSaldoMovimentacoes.map((item, index) =>
+    toPessoaSaldoMovimentacaoInsert(
+      asRow(item, `pessoaSaldoMovimentacoes[${index}]`),
+      `pessoaSaldoMovimentacoes[${index}]`,
+    ),
   );
   const servicoPagamentosByKey = new Map<string, InsertServicoPagamentoWithId>();
   for (const row of servicoPagamentosRowsRaw) {
@@ -317,6 +350,10 @@ export async function persistTransformedBackupImport(
       await txStorage.createServicoPagamento(servicoPagamento as unknown as InsertServicoPagamento);
     }
 
+    for (const movimentacao of pessoaSaldoMovimentacoesRows) {
+      await txStorage.createPessoaSaldoMovimentacao(movimentacao as unknown as InsertPessoaSaldoMovimentacao);
+    }
+
     for (const meta of metasRows) {
       await txStorage.createMeta(meta as unknown as InsertMeta);
     }
@@ -331,6 +368,7 @@ export async function persistTransformedBackupImport(
     servicosInseridos: servicosRows.length,
     servicoPessoasInseridas: servicoPessoasRows.length,
     servicoPagamentosInseridos: servicoPagamentosRows.length,
+    saldoMovimentacoesInseridas: pessoaSaldoMovimentacoesRows.length,
     metasInseridas: metasRows.length,
   };
 }

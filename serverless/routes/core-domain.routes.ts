@@ -2,6 +2,9 @@ import type { Express, RequestHandler } from "express";
 import { requireAuth } from "../auth.js";
 
 type PessoasController = {
+  listSaldoMovimentacoesByUser: RequestHandler;
+  listSaldoMovimentacoes: RequestHandler;
+  createSaldoMovimentacao: RequestHandler;
   getResumo: RequestHandler;
   list: RequestHandler;
   create: RequestHandler;
@@ -61,6 +64,9 @@ export function registerCoreDomainRoutes(app: Express, controllers: CoreDomainCo
     patrimoniosController,
   } = controllers;
 
+  app.get("/api/pessoas/saldo-movimentacoes", requireAuth, pessoasController.listSaldoMovimentacoesByUser);
+  app.get("/api/pessoas/:pessoaId/saldo-movimentacoes", requireAuth, pessoasController.listSaldoMovimentacoes);
+  app.post("/api/pessoas/:pessoaId/saldo-movimentacoes", requireAuth, pessoasController.createSaldoMovimentacao);
   app.get("/api/pessoas/:pessoaId/resumo", requireAuth, pessoasController.getResumo);
   app.get("/api/pessoas", requireAuth, pessoasController.list);
   app.post("/api/pessoas", requireAuth, pessoasController.create);

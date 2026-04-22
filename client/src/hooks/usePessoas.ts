@@ -12,16 +12,20 @@ import type {
 import { format } from "date-fns";
 import { queryClient } from "@/lib/queryClient";
 import {
+  createPessoaSaldoMovimentacao,
   createDividaPessoa,
   createPessoa,
   deletePessoa,
   desvincularPessoaDeCompra,
   getPessoaResumo,
+  listPessoaSaldoMovimentacoes,
   listTimelinePagamentosByPessoa,
   marcarDividaPessoaComoPaga,
   marcarServicoPessoaComoPago,
   reverterDividaPessoaParaPendente,
   reverterServicoPessoaPago,
+  type PessoaSaldoMovimentacaoPayload,
+  type PessoaSaldoMovimentacoesResponse,
   type PessoaResumo,
   updateTimelinePagamentoObservacao,
   updatePessoa,
@@ -80,6 +84,13 @@ export type PessoaResumoConsolidado = {
     pago: number;
     pendentesQuantidade: number;
     totalVinculos: number;
+  };
+  saldoPessoa: {
+    creditos: number;
+    debitos: number;
+    saldoAtual: number;
+    movimentacoes: number;
+    ultimaMovimentacaoData: string | null;
   };
   alertas: {
     comprasAtrasadas: number;
@@ -141,6 +152,16 @@ export function usePessoas({
     queryFn: async () => {
       if (!historyPessoa?.id) return [];
       return listTimelinePagamentosByPessoa(historyPessoa.id);
+    },
+  });
+  const { data: historySaldoData, isLoading: isSaldoLoading } = useQuery<PessoaSaldoMovimentacoesResponse>({
+    queryKey: ["/api/pessoas", historyPessoa?.id, "saldo-movimentacoes"],
+    enabled: Boolean(historyPessoa?.id),
+    queryFn: async () => {
+      if (!historyPessoa?.id) {
+        throw new Error("Pessoa não selecionada");
+      }
+      return listPessoaSaldoMovimentacoes(historyPessoa.id);
     },
   });
 
@@ -213,6 +234,7 @@ export function usePessoas({
     mutationFn: (id: string) => deletePessoa(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
     },
   });
 
@@ -230,6 +252,17 @@ export function usePessoas({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servico-pagamentos"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+    },
+  });
+
+  const createSaldoMovimentacaoMutation = useMutation({
+    mutationFn: ({ pessoaId, payload }: { pessoaId: string; payload: PessoaSaldoMovimentacaoPayload }) =>
+      createPessoaSaldoMovimentacao(pessoaId, payload),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "saldo-movimentacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
     },
   });
 
@@ -311,6 +344,7 @@ export function usePessoas({
     : allHistoryDividas;
 
   const historyStats = historyPessoa ? getPessoaStats(historyPessoa.id) : null;
+  const historySaldo = historySaldoData ?? null;
 
   const historyCompras = historyFilter === "pendente"
     ? allHistoryCompras.filter((c) => !c.statusPessoa || c.statusPessoa !== "pago")
@@ -342,6 +376,7 @@ export function usePessoas({
         },
         comprasVinculadas: backendResumo.totais.comprasVinculadas,
         servicosMesAtual: backendResumo.totais.servicosMesAtual,
+        saldoPessoa: backendResumo.totais.saldoPessoa,
         alertas: backendResumo.alertas,
       };
     }
@@ -463,6 +498,13 @@ export function usePessoas({
         pendentesQuantidade: servicosPendentesQuantidade,
         totalVinculos: pessoaServicoPessoas.length,
       },
+      saldoPessoa: {
+        creditos: 0,
+        debitos: 0,
+        saldoAtual: 0,
+        movimentacoes: 0,
+        ultimaMovimentacaoData: null,
+      },
       alertas: {
         comprasAtrasadas: 0,
         servicosPendentes: servicosPendentesQuantidade,
@@ -486,8 +528,10 @@ export function usePessoas({
     historyCompras,
     historyServicoPessoas,
     historyStats,
+    historySaldo,
     historyTimelineEvents,
     isTimelineLoading,
+    isSaldoLoading,
     getPessoaResumoConsolidado,
     createPessoaMutation,
     createDividaMutation,
@@ -497,6 +541,7 @@ export function usePessoas({
     deleteMutation,
     marcarServicoPagoMutation,
     reverterServicoPagoMutation,
+    createSaldoMovimentacaoMutation,
     desvincularCompraMutation,
     updateTimelineObservacaoMutation,
     uploadTimelineComprovanteMutation,

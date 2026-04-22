@@ -3,9 +3,10 @@ import { db } from "./db.js";
 import { writeTechnicalLog } from "./logger.js";
 import {
   users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos,
-  servicoPessoas, servicoPagamentos, metas, parcelasCompra, rendas, patrimonios,
+  servicoPessoas, servicoPagamentos, metas, parcelasCompra, pessoaSaldoMovimentacoes, rendas, patrimonios,
   type User, type InsertUser,
   type Pessoa, type InsertPessoa,
+  type PessoaSaldoMovimentacao, type InsertPessoaSaldoMovimentacao,
   type Divida, type InsertDivida,
   type Parcela, type InsertParcela,
   type Cartao, type InsertCartao,
@@ -107,6 +108,9 @@ export interface IStorage {
   createPessoa(pessoa: InsertPessoa): Promise<Pessoa>;
   updatePessoa(id: string, userId: string, data: Partial<InsertPessoa>): Promise<Pessoa | undefined>;
   deletePessoa(id: string, userId: string): Promise<boolean>;
+  getPessoaSaldoMovimentacoes(userId: string): Promise<PessoaSaldoMovimentacao[]>;
+  getPessoaSaldoMovimentacoesByPessoa(pessoaId: string, userId: string): Promise<PessoaSaldoMovimentacao[]>;
+  createPessoaSaldoMovimentacao(movimentacao: InsertPessoaSaldoMovimentacao): Promise<PessoaSaldoMovimentacao>;
 
   getDividas(userId: string): Promise<Divida[]>;
   getDividasByPessoa(pessoaId: string, userId: string): Promise<Divida[]>;
@@ -145,6 +149,7 @@ export interface IStorage {
   deleteServico(id: string, userId: string): Promise<boolean>;
 
   getServicoPessoas(userId: string): Promise<ServicoPessoa[]>;
+  getServicoPessoa(id: string, userId: string): Promise<ServicoPessoa | undefined>;
   getServicoPessoasByServico(servicoId: string, userId: string): Promise<ServicoPessoa[]>;
   getServicoPessoasByPessoa(pessoaId: string, userId: string): Promise<ServicoPessoa[]>;
   createServicoPessoa(sp: InsertServicoPessoa): Promise<ServicoPessoa>;
@@ -165,6 +170,7 @@ export interface IStorage {
 
   getParcelasCompra(compraCartaoId: string, userId: string): Promise<ParcelaCompra[]>;
   getParcelasCompraByUser(userId: string): Promise<ParcelaCompra[]>;
+  getParcelaCompraById(id: string, userId: string): Promise<ParcelaCompra | undefined>;
   createParcelasCompraBulk(parcelas: InsertParcelaCompra[]): Promise<ParcelaCompra[]>;
   updateParcelaCompra(id: string, userId: string, data: Partial<InsertParcelaCompra>): Promise<ParcelaCompra | undefined>;
   deleteParcelasCompraBulk(compraCartaoId: string, userId: string): Promise<void>;
@@ -325,6 +331,18 @@ export class DatabaseStorage implements IStorage {
     const result = await this.database.delete(pessoas).where(and(eq(pessoas.id, id), eq(pessoas.userId, userId))).returning();
     return result.length > 0;
   }
+  async getPessoaSaldoMovimentacoes(userId: string) {
+    return this.database.select().from(pessoaSaldoMovimentacoes).where(eq(pessoaSaldoMovimentacoes.userId, userId));
+  }
+  async getPessoaSaldoMovimentacoesByPessoa(pessoaId: string, userId: string) {
+    return this.database.select().from(pessoaSaldoMovimentacoes).where(
+      and(eq(pessoaSaldoMovimentacoes.pessoaId, pessoaId), eq(pessoaSaldoMovimentacoes.userId, userId)),
+    );
+  }
+  async createPessoaSaldoMovimentacao(movimentacao: InsertPessoaSaldoMovimentacao) {
+    const [item] = await this.database.insert(pessoaSaldoMovimentacoes).values(movimentacao).returning();
+    return item;
+  }
 
   async getDividas(userId: string) { return this.database.select().from(dividas).where(eq(dividas.userId, userId)); }
   async getDividasByPessoa(pessoaId: string, userId: string) {
@@ -435,6 +453,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getServicoPessoas(userId: string) { return this.database.select().from(servicoPessoas).where(eq(servicoPessoas.userId, userId)); }
+  async getServicoPessoa(id: string, userId: string) {
+    const [row] = await this.database.select().from(servicoPessoas).where(
+      and(eq(servicoPessoas.id, id), eq(servicoPessoas.userId, userId)),
+    );
+    return row;
+  }
   async getServicoPessoasByServico(servicoId: string, userId: string) {
     return this.database.select().from(servicoPessoas).where(and(eq(servicoPessoas.servicoId, servicoId), eq(servicoPessoas.userId, userId)));
   }
@@ -506,6 +530,12 @@ export class DatabaseStorage implements IStorage {
       }
       return a.numero - b.numero;
     });
+  }
+  async getParcelaCompraById(id: string, userId: string) {
+    const [row] = await this.database.select().from(parcelasCompra).where(
+      and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId)),
+    );
+    return row;
   }
   async createParcelasCompraBulk(rows: InsertParcelaCompra[]) {
     if (rows.length === 0) return [];

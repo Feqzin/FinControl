@@ -3,6 +3,7 @@ import { insertPatrimonioSchema, insertRendaSchema } from "../../shared/schema.j
 
 const nonEmptyUpdateMessage = "Informe ao menos um campo para atualizar";
 const moneyField = z.string().or(z.number()).transform(String);
+const isoDateField = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Data invalida. Use o formato yyyy-MM-dd");
 
 export const pessoaBody = z.object({
   nome: z.string().min(1),
@@ -12,6 +13,20 @@ export const pessoaBody = z.object({
 });
 
 export const pessoaUpdateBody = pessoaBody.partial();
+
+export const pessoaSaldoMovimentacaoBody = z.object({
+  tipo: z.enum(["credito", "debito"]),
+  valor: moneyField,
+  data: isoDateField.optional().nullable(),
+  origem: z.string().trim().min(1).optional().default("manual"),
+  categoria: z.string().trim().optional().nullable(),
+  observacao: z.string().trim().optional().nullable(),
+  comprovanteReferencia: z.string().trim().optional().nullable(),
+  dividaId: z.string().trim().optional().nullable(),
+  compraCartaoId: z.string().trim().optional().nullable(),
+  parcelaCompraId: z.string().trim().optional().nullable(),
+  servicoPessoaId: z.string().trim().optional().nullable(),
+});
 
 export const servicoBody = z.object({
   nome: z.string().min(1),
@@ -90,6 +105,7 @@ export const patrimonioUpdateBody = insertPatrimonioSchema
 
 export type PessoaBodyInput = z.infer<typeof pessoaBody>;
 export type PessoaUpdateBodyInput = z.infer<typeof pessoaUpdateBody>;
+export type PessoaSaldoMovimentacaoBodyInput = z.infer<typeof pessoaSaldoMovimentacaoBody>;
 export type ServicoBodyInput = z.infer<typeof servicoBody>;
 export type ServicoUpdateBodyInput = z.infer<typeof servicoUpdateBody>;
 export type ServicoPessoaBodyInput = z.infer<typeof servicoPessoaBody>;

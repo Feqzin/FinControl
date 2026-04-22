@@ -19,6 +19,7 @@ import type {
   Meta,
   ParcelaCompra,
   Pessoa,
+  PessoaSaldoMovimentacao,
   Servico,
   ServicoPagamento,
   ServicoPessoa,
@@ -36,6 +37,7 @@ type ImportBackupResponse = {
   servicosImportados: number;
   servicoPessoasImportados?: number;
   servicoPagamentosImportados?: number;
+  saldoMovimentacoesImportadas?: number;
   metasImportadas: number;
 };
 
@@ -71,6 +73,9 @@ export default function PerfilPage() {
   const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
   const { data: servicoPessoas = [] } = useQuery<ServicoPessoa[]>({ queryKey: ["/api/servico-pessoas"] });
   const { data: servicoPagamentos = [] } = useQuery<ServicoPagamento[]>({ queryKey: ["/api/servico-pagamentos"] });
+  const { data: pessoaSaldoMovimentacoes = [] } = useQuery<PessoaSaldoMovimentacao[]>({
+    queryKey: ["/api/pessoas/saldo-movimentacoes"],
+  });
   const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
   const { data: parcelasCompra = [] } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"] });
@@ -118,6 +123,7 @@ export default function PerfilPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/servicos"] });
       queryClient.invalidateQueries({ queryKey: ["/api/servico-pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/servico-pagamentos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/metas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/financial/score"] });
       queryClient.invalidateQueries({ queryKey: ["/api/financial/insights"] });
@@ -125,7 +131,7 @@ export default function PerfilPage() {
 
       toast({
         title: "Importacao concluida",
-        description: `Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Vinculos de servico: ${resultado.servicoPessoasImportados ?? 0}, Pagamentos de servico: ${resultado.servicoPagamentosImportados ?? 0}, Metas: ${resultado.metasImportadas}`,
+        description: `Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Vinculos de servico: ${resultado.servicoPessoasImportados ?? 0}, Pagamentos de servico: ${resultado.servicoPagamentosImportados ?? 0}, Movimentações de saldo: ${resultado.saldoMovimentacoesImportadas ?? 0}, Metas: ${resultado.metasImportadas}`,
       });
     },
     onError: (error) => {
@@ -149,6 +155,7 @@ export default function PerfilPage() {
       servicos,
       servicoPessoas,
       servicoPagamentos,
+      pessoaSaldoMovimentacoes,
       metas,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -272,6 +279,7 @@ export default function PerfilPage() {
               { label: "Servicos", value: servicos.length },
               { label: "Metas", value: metas.length },
               { label: "Compras", value: compras.length },
+              { label: "Mov. saldo", value: pessoaSaldoMovimentacoes.length },
             ].map(({ label, value }) => (
               <div key={label} className="p-3 rounded-md bg-muted/40 text-center">
                 <p className="text-2xl font-bold">{value}</p>

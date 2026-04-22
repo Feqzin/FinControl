@@ -42,6 +42,60 @@ export type PagamentoTimelineEvent = {
   } | null;
 };
 
+export type PessoaSaldoMovimentacaoTipo = "credito" | "debito";
+
+export type PessoaSaldoMovimentacao = {
+  id: string;
+  userId: string;
+  pessoaId: string;
+  tipo: PessoaSaldoMovimentacaoTipo;
+  valor: string;
+  data: string;
+  origem: string;
+  categoria: string | null;
+  observacao: string | null;
+  comprovanteReferencia: string | null;
+  dividaId: string | null;
+  compraCartaoId: string | null;
+  parcelaCompraId: string | null;
+  servicoPessoaId: string | null;
+  createdAt: string;
+  saldoAposMovimentacao?: number;
+};
+
+export type PessoaSaldoMovimentacoesResponse = {
+  pessoa: {
+    id: string;
+    userId: string;
+    nome: string;
+    tipo: string;
+    telefone: string | null;
+    observacao: string | null;
+  };
+  resumo: {
+    creditos: number;
+    debitos: number;
+    saldoAtual: number;
+    movimentacoes: number;
+    ultimaMovimentacaoData: string | null;
+  };
+  movimentacoes: PessoaSaldoMovimentacao[];
+};
+
+export type PessoaSaldoMovimentacaoPayload = {
+  tipo: PessoaSaldoMovimentacaoTipo;
+  valor: string;
+  data?: string | null;
+  origem?: string;
+  categoria?: string | null;
+  observacao?: string | null;
+  comprovanteReferencia?: string | null;
+  dividaId?: string | null;
+  compraCartaoId?: string | null;
+  parcelaCompraId?: string | null;
+  servicoPessoaId?: string | null;
+};
+
 export type PessoaResumo = {
   pessoa: {
     id: string;
@@ -85,6 +139,13 @@ export type PessoaResumo = {
       pago: number;
       pendentesQuantidade: number;
       totalVinculos: number;
+    };
+    saldoPessoa: {
+      creditos: number;
+      debitos: number;
+      saldoAtual: number;
+      movimentacoes: number;
+      ultimaMovimentacaoData: string | null;
     };
     consolidadoPendente: number;
   };
@@ -160,6 +221,24 @@ export async function listTimelinePagamentosByPessoa(pessoaId: string): Promise<
 export async function getPessoaResumo(pessoaId: string): Promise<PessoaResumo> {
   const res = await apiRequest("GET", `/api/pessoas/${pessoaId}/resumo`);
   return (await res.json()) as PessoaResumo;
+}
+
+export async function listPessoaSaldoMovimentacoesByUser(): Promise<PessoaSaldoMovimentacao[]> {
+  const res = await apiRequest("GET", "/api/pessoas/saldo-movimentacoes");
+  return (await res.json()) as PessoaSaldoMovimentacao[];
+}
+
+export async function listPessoaSaldoMovimentacoes(pessoaId: string): Promise<PessoaSaldoMovimentacoesResponse> {
+  const res = await apiRequest("GET", `/api/pessoas/${pessoaId}/saldo-movimentacoes`);
+  return (await res.json()) as PessoaSaldoMovimentacoesResponse;
+}
+
+export async function createPessoaSaldoMovimentacao(
+  pessoaId: string,
+  payload: PessoaSaldoMovimentacaoPayload,
+): Promise<PessoaSaldoMovimentacao> {
+  const res = await apiRequest("POST", `/api/pessoas/${pessoaId}/saldo-movimentacoes`, payload);
+  return (await res.json()) as PessoaSaldoMovimentacao;
 }
 
 export async function updateTimelinePagamentoObservacao(params: {
