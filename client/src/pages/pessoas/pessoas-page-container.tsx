@@ -17,11 +17,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 import { usePessoas } from "@/hooks/usePessoas";
 import { PaymentTimeline } from "@/pages/pessoas/components/payment-timeline";
 import {
   Plus, Users, Phone, Trash2, Search, Receipt, Check,
-  Clock, ArrowUpRight, ArrowDownRight, Pencil, CreditCard, Repeat, ChevronRight,
+  Clock, ArrowUpRight, ArrowDownRight, Pencil, CreditCard, Repeat, ChevronRight, AlertTriangle, ExternalLink,
 } from "lucide-react";
 import { useUIPreferences } from "@/context/ui-preferences";
 import type { Pessoa, Divida, CompraCartao, Cartao, ServicoPessoa, ServicoPagamento, Servico } from "@shared/schema";
@@ -33,6 +34,7 @@ type PessoaKind = Pessoa["tipo"];
 export default function PessoasPage() {
   const { toast } = useToast();
   const { prefs } = useUIPreferences();
+  const [, setLocation] = useLocation();
   const [openPessoa, setOpenPessoa] = useState(false);
   const [openDivida, setOpenDivida] = useState(false);
   const [selectedPessoa, setSelectedPessoa] = useState<Pessoa | null>(null);
@@ -90,6 +92,7 @@ export default function PessoasPage() {
     updateTimelineObservacaoMutation,
     uploadTimelineComprovanteMutation,
     getPessoaStats,
+    getPessoaResumoConsolidado,
     duplicatePessoaByName,
   } = usePessoas({
     search,
@@ -110,6 +113,16 @@ export default function PessoasPage() {
   }
 
   const duplicatePessoa = duplicatePessoaByName(pessoaForm.nome);
+  const historyResumo = historyPessoa ? getPessoaResumoConsolidado(historyPessoa.id) : null;
+
+  const handleOpenCompraNoCartao = (cartaoId: string, compraId: string) => {
+    const params = new URLSearchParams({
+      cartaoId,
+      compraId,
+      origem: "pessoas",
+    });
+    setLocation(`/cartoes?${params.toString()}`);
+  };
 
   return (
     <div className="p-6 space-y-6" data-testid="pessoas-page">
@@ -226,7 +239,11 @@ export default function PessoasPage() {
         <div className="space-y-2">
           {filtered.map((p) => {
             const stats = getPessoaStats(p.id);
+            const resumo = getPessoaResumoConsolidado(p.id);
+            const comprasVinculadas =
+              resumo.comprasVinculadas.comprasComParcelasReais + resumo.comprasVinculadas.comprasEmFallbackLegado;
             const isMeDeve = p.tipo === "me_deve";
+            const hasAtraso = resumo.alertas.comprasAtrasadas > 0 || resumo.dividas.comigo.vencidas > 0;
             return (
               <div
                 key={p.id}
@@ -245,19 +262,28 @@ export default function PessoasPage() {
                       <span className={`text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${isMeDeve ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-red-500/10 text-red-700 dark:text-red-400"}`}>
                         {isMeDeve ? "Me deve" : "Eu devo"}
                       </span>
+                      {hasAtraso && <AlertTriangle className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />}
                     </div>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      {stats.pendente > 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          Pendente: <span className="font-semibold text-foreground">{formatCurrencyBRL(stats.pendente)}</span>
-                        </span>
-                      )}
-                      {stats.pendente === 0 && (
-                        <span className="text-xs text-emerald-600 font-medium">Quitado</span>
+                    <div className="space-y-0.5 mt-1">
+                      <p className="text-xs text-muted-foreground">
+                        Total pendente: <span className="font-semibold text-foreground">{formatCurrencyBRL(resumo.consolidadoPendente)}</span>
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Dívida: {formatCurrencyBRL(resumo.dividas.comigo.pendente + resumo.dividas.euDevo.pendente)} ·
+                        Compras: {formatCurrencyBRL(resumo.comprasVinculadas.pendentePessoa)} ·
+                        Serviços ({resumo.servicosMesAtual.mesReferencia}): {formatCurrencyBRL(resumo.servicosMesAtual.pendente)}
+                      </p>
+                      {resumo.alertas.comprasAtrasadas > 0 && (
+                        <p className="text-[11px] text-red-600">
+                          {resumo.alertas.comprasAtrasadas} compra(s) com atraso
+                        </p>
                       )}
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                </div>
+                <div className="px-4 pb-2 text-[11px] text-muted-foreground border-t border-border/30 pt-2">
+                  {comprasVinculadas} compra(s) vinculada(s) · {resumo.servicosMesAtual.totalVinculos} serviço(s) vinculado(s)
                 </div>
                 <div className="flex border-t border-border/40 divide-x divide-border/40">
                   <button
@@ -315,8 +341,11 @@ export default function PessoasPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((p) => {
             const stats = getPessoaStats(p.id);
-            const comprasVinculadas = comprasCartao.filter((c) => c.pessoaId === p.id).length;
-            const servicosVinculados = servicoPessoas.filter((sp) => sp.pessoaId === p.id).length;
+            const resumo = getPessoaResumoConsolidado(p.id);
+            const comprasVinculadas =
+              resumo.comprasVinculadas.comprasComParcelasReais + resumo.comprasVinculadas.comprasEmFallbackLegado;
+            const servicosVinculados = resumo.servicosMesAtual.totalVinculos;
+            const hasAtraso = resumo.alertas.comprasAtrasadas > 0 || resumo.dividas.comigo.vencidas > 0;
             return (
               <Card key={p.id} className="hover-elevate" data-testid={`card-pessoa-${p.id}`}>
                 <CardContent className="p-5 space-y-4">
@@ -345,16 +374,43 @@ export default function PessoasPage() {
                     <p className="text-sm text-muted-foreground line-clamp-2">{p.observacao}</p>
                   )}
 
-                  <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div className="rounded-md bg-muted/40 p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Total pendente consolidado</p>
+                    <p className="text-lg font-bold">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Dívidas + compras vinculadas + serviços do mês atual
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Pendente</p>
-                      <p className="text-base font-bold">{formatCurrencyBRL(stats.pendente)}</p>
+                      <p className="text-xs text-muted-foreground mb-1">Pessoa me deve</p>
+                      <p className="text-base font-bold text-emerald-600">{formatCurrencyBRL(resumo.dividas.comigo.pendente)}</p>
                     </div>
                     <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Ja pago</p>
-                      <p className="text-base font-bold text-emerald-600">{formatCurrencyBRL(stats.pago)}</p>
+                      <p className="text-xs text-muted-foreground mb-1">Eu devo / compartilhado</p>
+                      <p className="text-base font-bold text-red-600">{formatCurrencyBRL(resumo.dividas.euDevo.pendente)}</p>
+                    </div>
+                    <div className="rounded-md bg-muted/40 p-3">
+                      <p className="text-xs text-muted-foreground mb-1">Paguei do meu bolso</p>
+                      <p className="text-base font-bold text-blue-600">{formatCurrencyBRL(resumo.dividas.pagueiDoMeuBolso.pendente)}</p>
+                    </div>
+                    <div className="rounded-md bg-muted/40 p-3">
+                      <p className="text-xs text-muted-foreground mb-1">Serviços pendentes ({resumo.servicosMesAtual.mesReferencia})</p>
+                      <p className="text-base font-bold text-amber-600">{formatCurrencyBRL(resumo.servicosMesAtual.pendente)}</p>
                     </div>
                   </div>
+
+                  {hasAtraso && (
+                    <div className="rounded-md border border-red-300/40 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-300 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>
+                          Atrasos detectados: {resumo.dividas.comigo.vencidas} dívida(s) vencida(s), {resumo.alertas.comprasAtrasadas} compra(s) atrasada(s)
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between gap-2">
                     <Badge variant={stats.emAberto ? "outline" : "secondary"}>
@@ -371,6 +427,9 @@ export default function PessoasPage() {
                         <span className="flex items-center gap-1">
                           <Repeat className="w-3 h-3" /> {servicosVinculados}
                         </span>
+                      )}
+                      {resumo.source === "fallback" && (
+                        <span className="text-amber-600">transição</span>
                       )}
                     </div>
                   </div>
@@ -601,7 +660,7 @@ export default function PessoasPage() {
 
       <Sheet open={!!historyPessoa} onOpenChange={(v) => { if (!v) { setHistoryPessoa(null); setHistoryFilter("todos"); } }}>
         <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-          {historyPessoa && historyStats && (
+          {historyPessoa && historyStats && historyResumo && (
             <>
               <SheetHeader className="mb-4">
                 <SheetTitle>Histórico — {historyPessoa.nome}</SheetTitle>
@@ -626,16 +685,43 @@ export default function PessoasPage() {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 mb-6">
+              <div className="grid grid-cols-2 gap-3 mb-3">
                 <div className="rounded-md bg-muted/40 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Total pendente</p>
-                  <p className="text-lg font-bold">{formatCurrencyBRL(historyStats.pendente)}</p>
+                  <p className="text-xs text-muted-foreground mb-1">Total pendente consolidado</p>
+                  <p className="text-lg font-bold">{formatCurrencyBRL(historyResumo.consolidadoPendente)}</p>
                 </div>
                 <div className="rounded-md bg-emerald-500/5 p-3">
                   <p className="text-xs text-muted-foreground mb-1">Total pago</p>
-                  <p className="text-lg font-bold text-emerald-600">{formatCurrencyBRL(historyStats.pago)}</p>
+                  <p className="text-lg font-bold text-emerald-600">{formatCurrencyBRL(historyResumo.totalPago)}</p>
+                </div>
+                <div className="rounded-md bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Dívida pessoal pendente</p>
+                  <p className="text-lg font-bold">
+                    {formatCurrencyBRL(historyResumo.dividas.comigo.pendente + historyResumo.dividas.euDevo.pendente)}
+                  </p>
+                </div>
+                <div className="rounded-md bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Paguei do meu bolso</p>
+                  <p className="text-lg font-bold text-blue-600">{formatCurrencyBRL(historyResumo.dividas.pagueiDoMeuBolso.pendente)}</p>
+                </div>
+                <div className="rounded-md bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Serviços pendentes ({historyResumo.servicosMesAtual.mesReferencia})</p>
+                  <p className="text-lg font-bold text-amber-600">{formatCurrencyBRL(historyResumo.servicosMesAtual.pendente)}</p>
+                </div>
+                <div className="rounded-md bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Parcelas pendentes da pessoa</p>
+                  <p className="text-lg font-bold">{historyResumo.alertas.parcelasPendentesPessoa}</p>
                 </div>
               </div>
+
+              {(historyResumo.alertas.comprasAtrasadas > 0 || historyResumo.dividas.comigo.vencidas > 0) && (
+                <div className="mb-6 rounded-md border border-red-300/40 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>
+                    Atrasos: {historyResumo.dividas.comigo.vencidas} dívida(s) vencida(s) e {historyResumo.alertas.comprasAtrasadas} compra(s) atrasada(s).
+                  </span>
+                </div>
+              )}
 
               <div className="mb-6">
                 <PaymentTimeline
@@ -656,8 +742,8 @@ export default function PessoasPage() {
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
                   Dívidas ({historyDividas.length})
                 </h3>
-                <Badge variant={historyStats.emAberto ? "outline" : "secondary"}>
-                  {historyStats.emAberto ? "Em aberto" : "Quitado"}
+                <Badge variant={historyResumo.consolidadoPendente > 0 ? "outline" : "secondary"}>
+                  {historyResumo.consolidadoPendente > 0 ? "Em aberto" : "Quitado"}
                 </Badge>
               </div>
 
@@ -804,6 +890,16 @@ export default function PessoasPage() {
                                 <p className="text-sm font-bold text-blue-600">{formatCurrencyBRL(Number(c.valorParcela))}/mês</p>
                                 <p className="text-xs text-muted-foreground">Total: {formatCurrencyBRL(Number(c.valorTotal))}</p>
                               </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                title="Abrir no cartão"
+                                onClick={() => handleOpenCompraNoCartao(c.cartaoId, c.id)}
+                                data-testid={`button-abrir-compra-cartao-${c.id}`}
+                              >
+                                <ExternalLink className="w-3 h-3 text-muted-foreground" />
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="icon"

@@ -12,7 +12,7 @@ import {
   User, Download, Shield, Database, LogOut, CheckCircle, HelpCircle, Upload
 } from "lucide-react";
 import { TourRestartButton } from "@/components/onboarding-tour";
-import type { Divida, Servico, Cartao, CompraCartao, Pessoa, Meta } from "@shared/schema";
+import type { Divida, Servico, Cartao, CompraCartao, ParcelaCompra, Pessoa, Meta } from "@shared/schema";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -59,6 +59,7 @@ export default function PerfilPage() {
   const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
   const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
+  const { data: parcelasCompra = [] } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"] });
   const { data: pessoas = [] } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
   const { data: metas = [] } = useQuery<Meta[]>({ queryKey: ["/api/metas"] });
 
@@ -128,6 +129,7 @@ export default function PerfilPage() {
       dividas,
       cartoes,
       compras,
+      parcelasCompra,
       servicos,
       metas,
     };

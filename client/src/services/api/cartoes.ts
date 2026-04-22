@@ -40,6 +40,20 @@ export type CartaoPayload = {
   iconeId?: string | null;
 };
 
+export type CartaoResumo = {
+  cartaoId: string;
+  faturaAtual: number;
+  limiteComprometido: number;
+  limiteDisponivel: number;
+  saldoRestanteTotal: number;
+  quantidadeParcelasPendentes: number;
+};
+
+export async function fetchCartoesResumo(): Promise<CartaoResumo[]> {
+  const response = await apiRequest("GET", "/api/cartoes/resumo");
+  return response.json();
+}
+
 export async function createCartao(payload: CartaoPayload): Promise<void> {
   await apiRequest("POST", "/api/cartoes", {
     ...payload,
@@ -166,6 +180,8 @@ function toImportItemPayload(item: ParsedItem) {
     valorParcela: item.valorParcela,
     parcelas: item.parcelas,
     parcelaAtual: item.parcelaAtual,
+    // parcelasRestantes nao vai no payload: o backend recalcula a partir de
+    // (parcelas, parcelaAtual) para manter semantica unica.
     dataCompra: item.dataCompra,
     vencimentoFatura: item.vencimentoFatura ?? null,
     tipo: item.tipo,

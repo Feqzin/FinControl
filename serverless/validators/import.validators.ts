@@ -32,7 +32,10 @@ export const importPreviewItemBody = z.object({
   valor: moneyField,
   valorParcela: moneyField,
   parcelas: z.coerce.number().int().min(1).max(360),
+  // parcelaAtual = parcela corrente em aberto (1..parcelas).
   parcelaAtual: z.coerce.number().int().min(1).max(360),
+  // parcelasRestantes nao e aceito no contrato: backend deriva do par
+  // (parcelas, parcelaAtual) para manter semantica unica.
   dataCompra: isoDateRequired,
   vencimentoFatura: isoDateNullableOptional,
   tipo: z.enum(["compra", "taxa"]).optional(),

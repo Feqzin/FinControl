@@ -10,6 +10,8 @@ import {
   getOutstandingDebtInstallments,
 } from "./financial-debt-analytics.js";
 import {
+  type CardConsolidatedSummary,
+  getCardConsolidatedSummaries,
   getCardPortfolioSummary,
   getMonthlyCardObligations,
   getOutstandingCardInstallments,
@@ -478,6 +480,16 @@ export class FinancialService {
     return { dividas, parcelas, parcelasCompra, servicos, cartoes, compras, rendas };
   }
 
+  private async loadCardContext(userId: string): Promise<Pick<FinancialContext, "cartoes" | "compras" | "parcelasCompra">> {
+    const [cartoes, compras, parcelasCompra] = await Promise.all([
+      this.repository.getCartoes(userId),
+      this.repository.getComprasCartao(userId),
+      this.repository.getParcelasCompraByUser(userId),
+    ]);
+
+    return { cartoes, compras, parcelasCompra };
+  }
+
   async getSummary(
     userId: string,
     monthReference?: string,
@@ -535,5 +547,10 @@ export class FinancialService {
     const ctx = await this.loadContext(userId);
     const simulated = applyFinancialSimulation(ctx, simulation);
     return generateInsightsFromContext(simulated);
+  }
+
+  async getCardSummaries(userId: string): Promise<CardConsolidatedSummary[]> {
+    const { cartoes, compras, parcelasCompra } = await this.loadCardContext(userId);
+    return getCardConsolidatedSummaries({ cartoes, compras, parcelasCompra });
   }
 }

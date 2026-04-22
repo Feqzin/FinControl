@@ -1,4 +1,4 @@
-﻿import { useState, lazy, Suspense } from "react";
+import { useState, lazy, Suspense, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -32,6 +33,7 @@ import { ImportFaturaDialog } from "@/pages/cartoes/components/import-fatura-dia
 import { useCartoes } from "@/hooks/useCartoes";
 import { CartoesSummaryCards } from "@/pages/cartoes/components/cartoes-summary-cards";
 import { previewImportCompras } from "@/services/api/cartoes";
+import { isParcelaComprometendoLimite } from "@/lib/card-limit-usage";
 import {
   formatCartaoCurrency,
   getDaysUntilInvoice,
@@ -46,6 +48,7 @@ const IconPicker = lazy(() =>
 export default function CartoesPage() {
   const { toast } = useToast();
   const { prefs } = useUIPreferences();
+  const [location, setLocation] = useLocation();
 
   const [openCard, setOpenCard] = useState(false);
   const [openCompra, setOpenCompra] = useState(false);
@@ -94,6 +97,7 @@ export default function CartoesPage() {
     getCardCompras,
     getCardTotal,
     getCardUsedLimit,
+    getCardAvailableLimit,
     totalFaturas,
     totalAguardandoReembolso,
     createCardMutation,
@@ -110,6 +114,30 @@ export default function CartoesPage() {
     rollbackImportMutation,
   } = useCartoes(viewingCompra?.id);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const compraId = params.get("compraId");
+    const cartaoId = params.get("cartaoId");
+    if (!compraId) return;
+
+    const compra = compras.find((item) => item.id === compraId);
+    if (!compra) return;
+
+    setViewingCompra(compra);
+    if (cartaoId) {
+      const cardElement = document.querySelector(`[data-testid="card-cartao-${cartaoId}"]`) as HTMLElement | null;
+      cardElement?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    params.delete("compraId");
+    params.delete("cartaoId");
+    params.delete("origem");
+    const nextPath = params.toString().length > 0 ? `/cartoes?${params.toString()}` : "/cartoes";
+    if (location !== nextPath) {
+      setLocation(nextPath);
+    }
+  }, [compras, location, setLocation]);
   const getErrorMessage = (error: unknown) => (
     error instanceof Error ? error.message : "Erro inesperado"
   );
@@ -406,7 +434,7 @@ export default function CartoesPage() {
       valorParcela: vp > 0 ? vp : item.valorParcela,
       parcelas: p,
       parcelaAtual: pa,
-      parcelasRestantes: p - pa,
+      parcelasRestantes: Math.max(p - pa + 1, 0),
       dataCompra: importEditForm.dataCompra || item.dataCompra,
       vencimentoFatura: importEditForm.vencimentoFatura || null,
     } : item));
@@ -747,7 +775,7 @@ export default function CartoesPage() {
               <div className="mb-4 grid grid-cols-3 gap-2 text-sm">
                 {(() => {
                   const pagas = parcelasCompraData.filter((p) => p.statusCartao === "pago").length;
-                  const pendentes = parcelasCompraData.filter((p) => p.statusCartao !== "pago").length;
+                  const pendentes = parcelasCompraData.filter((p) => isParcelaComprometendoLimite(p.statusCartao)).length;
                   const vencidas = parcelasCompraData.filter(isParcelaVencida).length;
                   return (
                     <>
@@ -952,7 +980,7 @@ export default function CartoesPage() {
               const limite = Number(c.limite);
               const faturaAtual = getCardTotal(c.id);
               const limiteComprometido = getCardUsedLimit(c.id);
-              const limiteDisponivel = limite - limiteComprometido;
+              const limiteDisponivel = getCardAvailableLimit(c.id);
               const nextDate = getNextInvoiceDate(Number(c.diaVencimento));
               const [nextDay, nextMonth] = nextDate.split("/");
 
@@ -1040,6 +1068,7 @@ export default function CartoesPage() {
             const limite = Number(c.limite);
             const faturaAtual = getCardTotal(c.id);
             const limiteComprometido = getCardUsedLimit(c.id);
+            const limiteDisponivel = getCardAvailableLimit(c.id);
             const percentUsed = limite > 0 ? (limiteComprometido / limite) * 100 : 0;
             const cardCompras = getCardCompras(c.id);
             const daysUntil = getDaysUntilInvoice(Number(c.diaVencimento));
@@ -1081,7 +1110,7 @@ export default function CartoesPage() {
                     </div>
                     <div className="rounded-md bg-muted/40 p-3">
                       <p className="text-xs text-muted-foreground mb-1">Disponível</p>
-                      <p className="text-lg font-bold text-emerald-600">{formatCartaoCurrency(limite - limiteComprometido)}</p>
+                      <p className="text-lg font-bold text-emerald-600">{formatCartaoCurrency(limiteDisponivel)}</p>
                     </div>
                   </div>
 
@@ -1200,6 +1229,7 @@ export default function CartoesPage() {
     </div>
   );
 }
+
 
 
 

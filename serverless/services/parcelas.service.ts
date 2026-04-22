@@ -5,6 +5,7 @@ import {
   recomputeDebtAggregate,
 } from "./financial-aggregate-consistency.js";
 import { runFinancialTransaction } from "./transaction-utils.js";
+import { materializeParcelasCompraIfMissing } from "./parcelas-compra-materialization.js";
 import {
   type AnteciparParcelasBodyInput,
   type ParcelaCompraUpdateBodyInput,
@@ -78,14 +79,44 @@ export class ParcelasService {
   }
 
   async listParcelasCompra(compraId: string, userId: string) {
-    const compra = await this.repository.getCompraCartao(compraId, userId);
-    if (!compra) return { error: "COMPRA_NOT_FOUND" as const };
-    const rows = await this.repository.getParcelasCompra(compraId, userId);
-    return { rows };
+    return runFinancialTransaction(this.repository, async (repository) => {
+      const compra = await repository.getCompraCartao(compraId, userId);
+      if (!compra) return { error: "COMPRA_NOT_FOUND" as const };
+
+      let rows = await repository.getParcelasCompra(compraId, userId);
+      if (rows.length === 0) {
+        await materializeParcelasCompraIfMissing(repository, compra);
+        await recomputeCardPurchaseAggregate(repository, compraId, userId);
+        rows = await repository.getParcelasCompra(compraId, userId);
+      }
+
+      return { rows };
+    });
   }
 
   async listParcelasCompraByUser(userId: string) {
-    return this.repository.getParcelasCompraByUser(userId);
+    return runFinancialTransaction(this.repository, async (repository) => {
+      const rows = await repository.getParcelasCompraByUser(userId);
+      const compras = await repository.getComprasCartao(userId);
+
+      if (compras.length === 0) {
+        return rows;
+      }
+
+      const compraIdsWithParcelas = new Set(rows.map((row) => row.compraCartaoId));
+      const comprasSemParcelas = compras.filter((compra) => !compraIdsWithParcelas.has(compra.id));
+
+      if (comprasSemParcelas.length === 0) {
+        return rows;
+      }
+
+      for (const compra of comprasSemParcelas) {
+        await materializeParcelasCompraIfMissing(repository, compra);
+        await recomputeCardPurchaseAggregate(repository, compra.id, userId);
+      }
+
+      return repository.getParcelasCompraByUser(userId);
+    });
   }
 
   async updateParcelaCompra(id: string, userId: string, data: ParcelaCompraUpdateBodyInput) {

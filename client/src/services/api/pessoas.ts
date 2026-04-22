@@ -42,6 +42,59 @@ export type PagamentoTimelineEvent = {
   } | null;
 };
 
+export type PessoaResumo = {
+  pessoa: {
+    id: string;
+    userId: string;
+    nome: string;
+    tipo: string;
+    telefone: string | null;
+    observacao: string | null;
+  };
+  totais: {
+    dividas: {
+      comigo: {
+        pendente: number;
+        pago: number;
+        vencidas: number;
+        quantidadePendentes: number;
+      };
+      euDevo: {
+        pendente: number;
+        pago: number;
+        vencidas: number;
+        quantidadePendentes: number;
+      };
+      pagueiDoMeuBolso: {
+        pendente: number;
+        pago: number;
+        parcelasPendentes: number;
+      };
+    };
+    comprasVinculadas: {
+      pendentePessoa: number;
+      pagoPessoa: number;
+      parcelasPendentesPessoa: number;
+      comprasComParcelasReais: number;
+      comprasEmFallbackLegado: number;
+    };
+    servicosMesAtual: {
+      escopo: "mes_atual";
+      mesReferencia: string;
+      pendente: number;
+      pago: number;
+      pendentesQuantidade: number;
+      totalVinculos: number;
+    };
+    consolidadoPendente: number;
+  };
+  alertas: {
+    comprasAtrasadas: number;
+    servicosPendentes: number;
+    parcelasPendentesPessoa: number;
+  };
+};
+
 export async function createPessoa(payload: PessoaPayload): Promise<void> {
   await apiRequest("POST", "/api/pessoas", payload);
 }
@@ -94,6 +147,11 @@ export async function desvincularPessoaDeCompra(compraId: string): Promise<void>
 export async function listTimelinePagamentosByPessoa(pessoaId: string): Promise<PagamentoTimelineEvent[]> {
   const res = await apiRequest("GET", `/api/pessoas/${pessoaId}/timeline-pagamentos`);
   return (await res.json()) as PagamentoTimelineEvent[];
+}
+
+export async function getPessoaResumo(pessoaId: string): Promise<PessoaResumo> {
+  const res = await apiRequest("GET", `/api/pessoas/${pessoaId}/resumo`);
+  return (await res.json()) as PessoaResumo;
 }
 
 export async function updateTimelinePagamentoObservacao(params: {

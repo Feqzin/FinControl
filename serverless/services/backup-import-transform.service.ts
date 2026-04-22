@@ -6,6 +6,7 @@ type JsonRow = Record<string, unknown>;
 type BackupImportIdMaps = {
   oldPessoaIdToNewPessoaId: Record<string, string>;
   oldCartaoIdToNewCartaoId: Record<string, string>;
+  oldCompraIdToNewCompraId: Record<string, string>;
 };
 
 export type BackupImportTransformResult = {
@@ -13,6 +14,7 @@ export type BackupImportTransformResult = {
   dividas: JsonRow[];
   cartoes: JsonRow[];
   compras: JsonRow[];
+  parcelasCompra: JsonRow[];
   servicos: JsonRow[];
   metas: JsonRow[];
   idMaps: BackupImportIdMaps;
@@ -44,6 +46,7 @@ export function transformBackupForPersistence(
 ): BackupImportTransformResult {
   const oldPessoaIdToNewPessoaId: Record<string, string> = {};
   const oldCartaoIdToNewCartaoId: Record<string, string> = {};
+  const oldCompraIdToNewCompraId: Record<string, string> = {};
 
   const pessoas = backup.pessoas.map((item, index) => {
     const row = asRow(item, `pessoas[${index}]`);
@@ -87,6 +90,7 @@ export function transformBackupForPersistence(
 
   const compras = backup.compras.map((item, index) => {
     const row = asRow(item, `compras[${index}]`);
+    const oldCompraId = readRequiredString(row, "id", `compras[${index}]`);
     const oldCartaoId = readRequiredString(row, "cartaoId", `compras[${index}]`);
     const newCartaoId = oldCartaoIdToNewCartaoId[oldCartaoId];
 
@@ -108,11 +112,30 @@ export function transformBackupForPersistence(
       }
     }
 
+    const newCompraId = randomUUID();
+    oldCompraIdToNewCompraId[oldCompraId] = newCompraId;
+
+    return {
+      ...withCurrentUser(row, currentUserId),
+      id: newCompraId,
+      cartaoId: newCartaoId,
+      pessoaId: newPessoaId,
+    };
+  });
+
+  const parcelasCompra = backup.parcelasCompra.map((item, index) => {
+    const row = asRow(item, `parcelasCompra[${index}]`);
+    const oldCompraId = readRequiredString(row, "compraCartaoId", `parcelasCompra[${index}]`);
+    const newCompraId = oldCompraIdToNewCompraId[oldCompraId];
+
+    if (!newCompraId) {
+      throw new Error(`Relacionamento invalido: parcelasCompra[${index}].compraCartaoId`);
+    }
+
     return {
       ...withCurrentUser(row, currentUserId),
       id: randomUUID(),
-      cartaoId: newCartaoId,
-      pessoaId: newPessoaId,
+      compraCartaoId: newCompraId,
     };
   });
 
@@ -137,11 +160,13 @@ export function transformBackupForPersistence(
     dividas,
     cartoes,
     compras,
+    parcelasCompra,
     servicos,
     metas,
     idMaps: {
       oldPessoaIdToNewPessoaId,
       oldCartaoIdToNewCartaoId,
+      oldCompraIdToNewCompraId,
     },
   };
 }

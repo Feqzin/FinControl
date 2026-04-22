@@ -1,5 +1,5 @@
 import { addMonths, format, parseISO } from "date-fns";
-import type { CompraCartao, ParcelaCompra } from "../../shared/schema.js";
+import type { Cartao, CompraCartao, ParcelaCompra } from "../../shared/schema.js";
 import { parseMoney } from "../../utils/money.js";
 
 type MoneyValue = string | number | null | undefined;
@@ -36,8 +36,25 @@ export type CardPortfolioSummary = {
   };
 };
 
+export type CardConsolidatedSummary = {
+  cartaoId: string;
+  faturaAtual: number;
+  limiteComprometido: number;
+  limiteDisponivel: number;
+  saldoRestanteTotal: number;
+  quantidadeParcelasPendentes: number;
+};
+
+export type CardConsolidatedSummaryInput = CardAnalyticsInput & {
+  cartoes: Pick<Cartao, "id" | "limite">[];
+};
+
 function toMoneyNumber(value: MoneyValue): number {
   return parseMoney(value) ?? 0;
+}
+
+function round2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 function normalizeStatus(status: string): string {
@@ -75,6 +92,7 @@ function normalizeCurrentInstallment(
   parcelaAtual: number | null | undefined,
   totalParcelas: number,
 ): number {
+  // Semantica unica: parcelaAtual = primeira parcela em aberto (1..N).
   const parsed = Number(parcelaAtual ?? 1);
   if (!Number.isFinite(parsed)) return 1;
   return Math.min(totalParcelas, Math.max(1, Math.trunc(parsed)));
@@ -97,6 +115,8 @@ function buildFallbackInstallments(compra: CompraCartao): CardInstallmentObligat
 
   return Array.from({ length: totalParcelas }, (_, index) => {
     const numero = index + 1;
+    // Retrocompatibilidade para compras legadas sem parcelas_compra:
+    // 1..(parcelaAtual-1) pago, parcelaAtual..N pendente.
     const isPaid = numero < parcelaAtual;
     return {
       compraId: compra.id,
@@ -201,3 +221,51 @@ export function getCardPortfolioSummary(input: CardAnalyticsInput): CardPortfoli
   };
 }
 
+/**
+ * Resumo consolidado por cartao para consumo direto do frontend.
+ *
+ * Definicoes:
+ * - faturaAtual: soma da proxima parcela em aberto de cada compra do cartao.
+ * - limiteComprometido/saldoRestanteTotal: soma de todas as parcelas em aberto
+ *   (nao pagas e nao canceladas).
+ * - quantidadeParcelasPendentes: total de parcelas em aberto do cartao.
+ */
+export function getCardConsolidatedSummaries(input: CardConsolidatedSummaryInput): CardConsolidatedSummary[] {
+  const obligations = getCardObligations(input);
+  const byCard = new Map<string, CardInstallmentObligation[]>();
+
+  for (const obligation of obligations) {
+    const rows = byCard.get(obligation.cartaoId) ?? [];
+    rows.push(obligation);
+    byCard.set(obligation.cartaoId, rows);
+  }
+
+  return input.cartoes.map((cartao) => {
+    const rows = byCard.get(cartao.id) ?? [];
+    const pendingRows = rows.filter((row) => isOutstandingStatus(row.statusCartao));
+
+    const nextPendingByCompra = new Map<string, CardInstallmentObligation>();
+    for (const row of pendingRows) {
+      const current = nextPendingByCompra.get(row.compraId);
+      if (!current || row.numero < current.numero) {
+        nextPendingByCompra.set(row.compraId, row);
+      }
+    }
+
+    const faturaAtual = Array.from(nextPendingByCompra.values())
+      .reduce((sum, row) => sum + toMoneyNumber(row.valor), 0);
+    const limiteComprometido = pendingRows
+      .reduce((sum, row) => sum + toMoneyNumber(row.valor), 0);
+    const saldoRestanteTotal = limiteComprometido;
+    const limiteDisponivel = toMoneyNumber(cartao.limite) - limiteComprometido;
+
+    return {
+      cartaoId: cartao.id,
+      faturaAtual: round2(faturaAtual),
+      limiteComprometido: round2(limiteComprometido),
+      limiteDisponivel: round2(limiteDisponivel),
+      saldoRestanteTotal: round2(saldoRestanteTotal),
+      quantidadeParcelasPendentes: pendingRows.length,
+    };
+  });
+}

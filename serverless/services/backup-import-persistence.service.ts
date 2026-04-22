@@ -3,6 +3,7 @@ import type {
   InsertCompraCartao,
   InsertDivida,
   InsertMeta,
+  InsertParcelaCompra,
   InsertPessoa,
   InsertServico,
 } from "../../shared/schema.js";
@@ -16,6 +17,7 @@ type InsertPessoaWithId = InsertPessoa & { id: string };
 type InsertCartaoWithId = InsertCartao & { id: string };
 type InsertDividaWithId = InsertDivida & { id: string };
 type InsertCompraCartaoWithId = InsertCompraCartao & { id: string };
+type InsertParcelaCompraWithId = InsertParcelaCompra & { id: string };
 type InsertServicoWithId = InsertServico & { id: string };
 type InsertMetaWithId = InsertMeta & { id: string };
 
@@ -24,6 +26,7 @@ export type BackupImportPersistenceResult = {
   cartoesInseridos: number;
   dividasInseridas: number;
   comprasInseridas: number;
+  parcelasCompraInseridas: number;
   servicosInseridos: number;
   metasInseridas: number;
 };
@@ -165,6 +168,21 @@ function toCompraInsert(row: JsonRow, label: string): InsertCompraCartaoWithId {
   };
 }
 
+function toParcelaCompraInsert(row: JsonRow, label: string): InsertParcelaCompraWithId {
+  return {
+    id: readRequiredString(row, "id", label),
+    userId: readRequiredString(row, "userId", label),
+    compraCartaoId: readRequiredString(row, "compraCartaoId", label),
+    numero: readRequiredInteger(row, "numero", label),
+    valor: readRequiredDecimal(row, "valor", label),
+    dataVencimento: readOptionalDate(row, "dataVencimento", label),
+    statusCartao: readOptionalString(row, "statusCartao", label) ?? "pendente",
+    dataPagamentoCartao: readOptionalDate(row, "dataPagamentoCartao", label),
+    statusPessoa: readOptionalString(row, "statusPessoa", label),
+    dataPagamentoPessoa: readOptionalDate(row, "dataPagamentoPessoa", label),
+  };
+}
+
 function toServicoInsert(row: JsonRow, label: string): InsertServicoWithId {
   return {
     id: readRequiredString(row, "id", label),
@@ -199,6 +217,9 @@ export async function persistTransformedBackupImport(
   const cartoesRows = transformed.cartoes.map((item, index) => toCartaoInsert(asRow(item, `cartoes[${index}]`), `cartoes[${index}]`));
   const dividasRows = transformed.dividas.map((item, index) => toDividaInsert(asRow(item, `dividas[${index}]`), `dividas[${index}]`));
   const comprasRows = transformed.compras.map((item, index) => toCompraInsert(asRow(item, `compras[${index}]`), `compras[${index}]`));
+  const parcelasCompraRows = transformed.parcelasCompra.map((item, index) =>
+    toParcelaCompraInsert(asRow(item, `parcelasCompra[${index}]`), `parcelasCompra[${index}]`),
+  );
   const servicosRows = transformed.servicos.map((item, index) => toServicoInsert(asRow(item, `servicos[${index}]`), `servicos[${index}]`));
   const metasRows = transformed.metas.map((item, index) => toMetaInsert(asRow(item, `metas[${index}]`), `metas[${index}]`));
 
@@ -221,6 +242,10 @@ export async function persistTransformedBackupImport(
       await txStorage.createCompraCartao(compra as unknown as InsertCompraCartao);
     }
 
+    if (parcelasCompraRows.length > 0) {
+      await txStorage.createParcelasCompraBulk(parcelasCompraRows as unknown as InsertParcelaCompra[]);
+    }
+
     for (const servico of servicosRows) {
       await txStorage.createServico(servico as unknown as InsertServico);
     }
@@ -235,8 +260,8 @@ export async function persistTransformedBackupImport(
     cartoesInseridos: cartoesRows.length,
     dividasInseridas: dividasRows.length,
     comprasInseridas: comprasRows.length,
+    parcelasCompraInseridas: parcelasCompraRows.length,
     servicosInseridos: servicosRows.length,
     metasInseridas: metasRows.length,
   };
 }
-

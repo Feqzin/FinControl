@@ -249,6 +249,8 @@ export async function recomputeCardPurchaseAggregate(
   const derivedPessoaStatus = compra.pessoaId ? derivePessoaStatus(sorted) : null;
   const persistedPessoaStatus = compra.pessoaId ? pessoaStatusToPersisted(derivedPessoaStatus) : null;
 
+  // Semantica unica: `parcelaAtual` aponta para a primeira parcela em aberto.
+  // Quando nao existe parcela em aberto, mantemos o ultimo numero para retrocompatibilidade.
   const parcelaAtual = activePending[0]?.numero ?? sorted.length;
   const patch: Partial<InsertCompraCartao> = {
     parcelas: sorted.length,

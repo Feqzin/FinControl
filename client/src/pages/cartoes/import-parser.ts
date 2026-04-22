@@ -39,6 +39,15 @@ export interface ParseResult {
   stats: ParseStats;
 }
 
+/**
+ * Semantica padrao de importacao:
+ * - parcelaAtual representa a parcela corrente (em aberto).
+ * - parcelasRestantes inclui a parcelaAtual (ex.: 5/12 => 8 restantes).
+ */
+function calculateParcelasRestantes(totalParcelas: number, parcelaAtual: number): number {
+  return Math.max(totalParcelas - parcelaAtual + 1, 0);
+}
+
 function createParseStats(source: ParseSource, totalRows: number): ParseStats {
   return {
     source,
@@ -176,7 +185,7 @@ function parseLinha(linha: string, vencimentoFatura: string | null): Omit<Parsed
   const descricao = normalizarDescricao(working);
   const dataCompra = fullDates.length > 0 ? fullDates[0].iso : format(new Date(), "yyyy-MM-dd");
   const valor = toMoneyNumber(multiply(valorParcela, totalParcelas)); // true total
-  const parcelasRestantes = totalParcelas - parcelaAtual;
+  const parcelasRestantes = calculateParcelasRestantes(totalParcelas, parcelaAtual);
   const tipo = detectarTipo(linha);
 
   return { descricao, valor, valorParcela, parcelas: totalParcelas, parcelaAtual, parcelasRestantes, dataCompra, vencimentoFatura, tipo };
@@ -307,7 +316,7 @@ export function parseCsv(content: string, existentes: CompraCartao[], cartaoId: 
     const instResult = extractInstallment(rawDesc);
     const parcelaAtual = instResult ? instResult.parcelaAtual : 1;
     const totalParcelas = instResult ? instResult.totalParcelas : 1;
-    const parcelasRestantes = totalParcelas - parcelaAtual;
+    const parcelasRestantes = calculateParcelasRestantes(totalParcelas, parcelaAtual);
     const valorTotal = toMoneyNumber(multiply(valorParcela, totalParcelas));
 
     // Clean description after extracting installment info
@@ -391,7 +400,7 @@ export function parseOfx(content: string, existentes: CompraCartao[], cartaoId: 
     const parcelaAtual = instResult ? instResult.parcelaAtual : 1;
     const totalParcelas = instResult ? instResult.totalParcelas : 1;
     const valor = toMoneyNumber(multiply(valorParcela, totalParcelas));
-    const parcelasRestantes = totalParcelas - parcelaAtual;
+    const parcelasRestantes = calculateParcelasRestantes(totalParcelas, parcelaAtual);
     const tipo = detectarTipo(rawDesc);
     const duplicata = checkDuplicata({ valorParcela, descricao }, existentes, cartaoId);
     items.push({ id: String(idx++), descricao, valor, valorParcela, parcelas: totalParcelas, parcelaAtual, parcelasRestantes, dataCompra, vencimentoFatura, tipo, duplicata, action: duplicata ? "skip" : "import" });

@@ -47,6 +47,9 @@ export function buildParcelasCompraRows(compra: CompraScheduleSource): InsertPar
 
   return Array.from({ length: total }, (_, index) => {
     const numero = index + 1;
+    // Semantica unica:
+    // - parcelas anteriores a `parcelaAtual` sao historico pago.
+    // - `parcelaAtual` e posteriores ficam em aberto.
     const isPaid = numero < atual;
 
     return {

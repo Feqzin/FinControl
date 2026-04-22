@@ -188,7 +188,8 @@ function normalizeImportItem(input: ImportPreviewItemInput, index: number): Impo
     valorParcela: valorParcela ?? 0,
     parcelas,
     parcelaAtual,
-    parcelasRestantes: Math.max(0, parcelas - parcelaAtual),
+    // Semantica padrao: restantes inclui a parcela atual em aberto.
+    parcelasRestantes: calculateParcelasRestantes(parcelas, parcelaAtual),
     dataCompra,
     vencimentoFatura,
     tipo,
@@ -200,6 +201,10 @@ function normalizeImportItem(input: ImportPreviewItemInput, index: number): Impo
     canImport,
     reviewRequired,
   };
+}
+
+function calculateParcelasRestantes(parcelas: number, parcelaAtual: number): number {
+  return Math.max(0, parcelas - parcelaAtual + 1);
 }
 
 function summarizePreview(items: ImportPreviewItem[]): ImportPreviewSummary {
@@ -229,6 +234,7 @@ function toCompraInsert(userId: string, cartaoId: string, item: ImportPreviewIte
     descricao: item.descricao,
     valorTotal: formatMoneyFixed(item.valor) ?? "0.00",
     parcelas: item.parcelas,
+    // parcelaAtual representa a parcela corrente em aberto.
     parcelaAtual: item.parcelaAtual,
     valorParcela: formatMoneyFixed(item.valorParcela) ?? "0.00",
     dataCompra: item.dataCompra,

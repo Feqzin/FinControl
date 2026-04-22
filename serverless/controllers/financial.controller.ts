@@ -5,6 +5,11 @@ import { parseFinancialQuery } from "../validators/financial.validators.js";
 
 export function createFinancialController(service: FinancialService) {
   return {
+    cardSummary: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      return res.json(await service.getCardSummaries(userId));
+    },
+
     summary: async (req: Request, res: Response) => {
       const userId = getUserId(req);
       const parsedQuery = parseFinancialQuery(req.query as Record<string, unknown>);
