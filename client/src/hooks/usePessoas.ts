@@ -312,7 +312,7 @@ export function usePessoas({
     })
     : allHistoryServicoPessoas;
 
-  const getPessoaResumoConsolidado = (pessoaId: string): PessoaResumoConsolidado => {
+  function getPessoaResumoConsolidado(pessoaId: string): PessoaResumoConsolidado {
     const backendResumo = pessoaResumoById.get(pessoaId);
     if (backendResumo) {
       const totalPago = backendResumo.totais.dividas.comigo.pago
@@ -458,7 +458,7 @@ export function usePessoas({
         parcelasPendentesPessoa,
       },
     };
-  };
+  }
 
   return {
     pessoas,
