@@ -257,6 +257,8 @@ export function registerRoutes(app: Express): void {
         dividasImportadas: persisted.dividasInseridas,
         comprasImportadas: persisted.comprasInseridas,
         servicosImportados: persisted.servicosInseridos,
+        servicoPessoasImportados: persisted.servicoPessoasInseridas,
+        servicoPagamentosImportados: persisted.servicoPagamentosInseridos,
         metasImportadas: persisted.metasInseridas,
       });
     } catch (error) {

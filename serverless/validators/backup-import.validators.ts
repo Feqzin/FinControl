@@ -1,5 +1,15 @@
 import { z } from "zod";
-import type { Cartao, CompraCartao, Divida, Meta, ParcelaCompra, Pessoa, Servico } from "../../shared/schema.js";
+import type {
+  Cartao,
+  CompraCartao,
+  Divida,
+  Meta,
+  ParcelaCompra,
+  Pessoa,
+  Servico,
+  ServicoPagamento,
+  ServicoPessoa,
+} from "../../shared/schema.js";
 
 const backupItemSchema = z.object({
   userId: z.unknown().optional(),
@@ -16,6 +26,8 @@ export const backupJsonImportSchema = z.object({
   compras: backupSectionSchema.optional().default([]),
   parcelasCompra: backupSectionSchema.optional().default([]),
   servicos: backupSectionSchema.optional().default([]),
+  servicoPessoas: backupSectionSchema.optional().default([]),
+  servicoPagamentos: backupSectionSchema.optional().default([]),
   metas: backupSectionSchema.optional().default([]),
 }).passthrough();
 
@@ -41,6 +53,8 @@ export type BackupJsonImportPayload = {
   compras: WithoutUserId<CompraCartao>[];
   parcelasCompra: WithoutUserId<ParcelaCompra>[];
   servicos: WithoutUserId<Servico>[];
+  servicoPessoas: WithoutUserId<ServicoPessoa>[];
+  servicoPagamentos: WithoutUserId<ServicoPagamento>[];
   metas: WithoutUserId<Meta>[];
 };
 
@@ -89,6 +103,8 @@ export function parseBackupJsonImport(input: string | unknown): BackupJsonImport
     compras: sanitizeRows<CompraCartao>(parsed.data.compras),
     parcelasCompra: sanitizeRows<ParcelaCompra>(parsed.data.parcelasCompra),
     servicos: sanitizeRows<Servico>(parsed.data.servicos),
+    servicoPessoas: sanitizeRows<ServicoPessoa>(parsed.data.servicoPessoas),
+    servicoPagamentos: sanitizeRows<ServicoPagamento>(parsed.data.servicoPagamentos),
     metas: sanitizeRows<Meta>(parsed.data.metas),
   };
 }

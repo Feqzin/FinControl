@@ -30,7 +30,12 @@ import {
   reverterServicoPessoaPago,
   updateServicoPessoaValor,
 } from "@/services/api/servicos";
-import { getMeses, labelMes } from "@/pages/servicos/servicos.utils";
+import {
+  getMesAtualRef,
+  getMesesIntervalo,
+  getMesesRecentes,
+  labelMes,
+} from "@/pages/servicos/servicos.utils";
 
 interface DivisaoProps {
   servico: Servico;
@@ -39,13 +44,27 @@ interface DivisaoProps {
   pessoas: Pessoa[];
 }
 
+type PeriodoHistorico = "6m" | "12m" | "custom";
+
 export function DivisaoPanel({ servico, servicoPessoas, servicoPagamentos, pessoas }: DivisaoProps) {
   const { toast } = useToast();
   const [openAdd, setOpenAdd] = useState(false);
   const [addForm, setAddForm] = useState({ pessoaId: "", valorDevido: "" });
   const [editingValorId, setEditingValorId] = useState<string | null>(null);
   const [editingValor, setEditingValor] = useState("");
-  const meses = getMeses();
+  const mesAtual = getMesAtualRef();
+  const [periodoHistorico, setPeriodoHistorico] = useState<PeriodoHistorico>("6m");
+  const [mesInicioCustom, setMesInicioCustom] = useState(getMesesRecentes(6)[0] ?? mesAtual);
+  const [mesFimCustom, setMesFimCustom] = useState(mesAtual);
+
+  const meses = (() => {
+    if (periodoHistorico === "6m") return getMesesRecentes(6);
+    if (periodoHistorico === "12m") return getMesesRecentes(12);
+    const range = getMesesIntervalo(mesInicioCustom, mesFimCustom);
+    return range.length > 0 ? range : getMesesRecentes(6);
+  })();
+  // Semantica mensal: o resumo "pendente" sempre usa o ultimo mes exibido no periodo.
+  const mesReferencia = meses[meses.length - 1] ?? mesAtual;
 
   const updateValorMutation = useMutation({
     mutationFn: ({ id, valorDevido }: { id: string; valorDevido: string }) =>
@@ -60,8 +79,26 @@ export function DivisaoPanel({ servico, servicoPessoas, servicoPagamentos, pesso
 
   const vinculados = servicoPessoas.filter((sp) => sp.servicoId === servico.id);
 
+  const pagamentosIndex = new Map<string, ServicoPagamento>();
+  for (const pagamento of servicoPagamentos) {
+    const key = `${pagamento.servicoPessoaId}:${pagamento.mes}`;
+    const existente = pagamentosIndex.get(key);
+    if (!existente) {
+      pagamentosIndex.set(key, pagamento);
+      continue;
+    }
+
+    const dataExistente = String(existente.dataPagamento ?? "");
+    const dataAtual = String(pagamento.dataPagamento ?? "");
+    const deveTrocar = dataAtual > dataExistente || (dataAtual === dataExistente && pagamento.id > existente.id);
+    if (deveTrocar) {
+      pagamentosIndex.set(key, pagamento);
+    }
+  }
+
+  // Chave unica de leitura por vinculo+mes para evitar inflar totais com duplicatas legadas.
   const getPagamento = (servicoPessoaId: string, mes: string) =>
-    servicoPagamentos.find((p) => p.servicoPessoaId === servicoPessoaId && p.mes === mes);
+    pagamentosIndex.get(`${servicoPessoaId}:${mes}`);
 
   const addMutation = useMutation({
     mutationFn: ({ pessoaId, valorDevido }: { pessoaId: string; valorDevido: string }) =>
@@ -112,14 +149,22 @@ export function DivisaoPanel({ servico, servicoPessoas, servicoPagamentos, pesso
 
   const pessoasDisponiveis = pessoas.filter((p) => !vinculados.some((sp) => sp.pessoaId === p.id));
 
+  const pagamentosPorVinculo = new Map<string, number>();
+  for (const pagamento of Array.from(pagamentosIndex.values())) {
+    if (pagamento.status !== "pago") continue;
+    pagamentosPorVinculo.set(
+      pagamento.servicoPessoaId,
+      (pagamentosPorVinculo.get(pagamento.servicoPessoaId) ?? 0) + 1,
+    );
+  }
+
   const totalRecebido = vinculados.reduce((sum, sp) => {
-    const pagos = servicoPagamentos.filter((p) => p.servicoPessoaId === sp.id && p.status === "pago").length;
+    const pagos = pagamentosPorVinculo.get(sp.id) ?? 0;
     return sum + pagos * Number(sp.valorDevido);
   }, 0);
 
   const totalPendenteMes = vinculados.reduce((sum, sp) => {
-    const meAtual = meses[2];
-    const pago = getPagamento(sp.id, meAtual);
+    const pago = getPagamento(sp.id, mesReferencia);
     return sum + (pago ? 0 : Number(sp.valorDevido));
   }, 0);
 
@@ -127,13 +172,46 @@ export function DivisaoPanel({ servico, servicoPessoas, servicoPagamentos, pesso
     <div className="mt-3 pt-3 border-t space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Divisão entre pessoas</p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           {vinculados.length > 0 && (
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span className="text-emerald-600 font-medium">Recebido: {formatCurrencyBRL(totalRecebido)}</span>
-              <span className="text-amber-600 font-medium">Pendente este mês: {formatCurrencyBRL(totalPendenteMes)}</span>
+              <span className="text-amber-600 font-medium">
+                Pendente em {labelMes(mesReferencia)}: {formatCurrencyBRL(totalPendenteMes)}
+              </span>
             </div>
           )}
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground">Período</Label>
+            <Select value={periodoHistorico} onValueChange={(value) => setPeriodoHistorico(value as PeriodoHistorico)}>
+              <SelectTrigger className="h-8 w-[128px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="6m">Últimos 6 meses</SelectItem>
+                <SelectItem value="12m">Últimos 12 meses</SelectItem>
+                <SelectItem value="custom">Personalizado</SelectItem>
+              </SelectContent>
+            </Select>
+            {periodoHistorico === "custom" && (
+              <>
+                <Input
+                  type="month"
+                  className="h-8 w-[132px] text-xs"
+                  value={mesInicioCustom}
+                  onChange={(event) => setMesInicioCustom(event.target.value)}
+                  aria-label="Mês inicial"
+                />
+                <Input
+                  type="month"
+                  className="h-8 w-[132px] text-xs"
+                  value={mesFimCustom}
+                  onChange={(event) => setMesFimCustom(event.target.value)}
+                  aria-label="Mês final"
+                />
+              </>
+            )}
+          </div>
           {pessoasDisponiveis.length > 0 && (
             <Dialog open={openAdd} onOpenChange={setOpenAdd}>
               <DialogTrigger asChild>
@@ -266,7 +344,8 @@ export function DivisaoPanel({ servico, servicoPessoas, servicoPagamentos, pesso
                             <button
                               className="inline-flex items-center gap-1 text-emerald-600 hover:text-red-500"
                               onClick={() => marcarPendenteMutation.mutate(pg.id)}
-                              title="Reverter para pendente"
+                              title={`Reverter ${labelMes(m)} para pendente`}
+                              disabled={marcarPendenteMutation.isPending}
                             >
                               <Check className="w-4 h-4" />
                             </button>
@@ -274,7 +353,8 @@ export function DivisaoPanel({ servico, servicoPessoas, servicoPagamentos, pesso
                             <button
                               className="inline-flex items-center gap-1 text-muted-foreground hover:text-emerald-600"
                               onClick={() => marcarPagoMutation.mutate({ servicoPessoaId: sp.id, mes: m })}
-                              title="Marcar como pago"
+                              title={`Marcar ${labelMes(m)} como pago`}
+                              disabled={marcarPagoMutation.isPending}
                             >
                               <X className="w-4 h-4" />
                             </button>

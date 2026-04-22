@@ -7,6 +7,8 @@ type BackupImportIdMaps = {
   oldPessoaIdToNewPessoaId: Record<string, string>;
   oldCartaoIdToNewCartaoId: Record<string, string>;
   oldCompraIdToNewCompraId: Record<string, string>;
+  oldServicoIdToNewServicoId: Record<string, string>;
+  oldServicoPessoaIdToNewServicoPessoaId: Record<string, string>;
 };
 
 export type BackupImportTransformResult = {
@@ -16,6 +18,8 @@ export type BackupImportTransformResult = {
   compras: JsonRow[];
   parcelasCompra: JsonRow[];
   servicos: JsonRow[];
+  servicoPessoas: JsonRow[];
+  servicoPagamentos: JsonRow[];
   metas: JsonRow[];
   idMaps: BackupImportIdMaps;
 };
@@ -47,6 +51,8 @@ export function transformBackupForPersistence(
   const oldPessoaIdToNewPessoaId: Record<string, string> = {};
   const oldCartaoIdToNewCartaoId: Record<string, string> = {};
   const oldCompraIdToNewCompraId: Record<string, string> = {};
+  const oldServicoIdToNewServicoId: Record<string, string> = {};
+  const oldServicoPessoaIdToNewServicoPessoaId: Record<string, string> = {};
 
   const pessoas = backup.pessoas.map((item, index) => {
     const row = asRow(item, `pessoas[${index}]`);
@@ -141,9 +147,55 @@ export function transformBackupForPersistence(
 
   const servicos = backup.servicos.map((item, index) => {
     const row = asRow(item, `servicos[${index}]`);
+    const oldId = readRequiredString(row, "id", `servicos[${index}]`);
+    const newId = randomUUID();
+    oldServicoIdToNewServicoId[oldId] = newId;
+
+    return {
+      ...withCurrentUser(row, currentUserId),
+      id: newId,
+    };
+  });
+
+  const servicoPessoas = backup.servicoPessoas.map((item, index) => {
+    const row = asRow(item, `servicoPessoas[${index}]`);
+    const oldId = readRequiredString(row, "id", `servicoPessoas[${index}]`);
+    const oldServicoId = readRequiredString(row, "servicoId", `servicoPessoas[${index}]`);
+    const oldPessoaId = readRequiredString(row, "pessoaId", `servicoPessoas[${index}]`);
+    const newServicoId = oldServicoIdToNewServicoId[oldServicoId];
+    const newPessoaId = oldPessoaIdToNewPessoaId[oldPessoaId];
+
+    if (!newServicoId) {
+      throw new Error(`Relacionamento invalido: servicoPessoas[${index}].servicoId`);
+    }
+    if (!newPessoaId) {
+      throw new Error(`Relacionamento invalido: servicoPessoas[${index}].pessoaId`);
+    }
+
+    const newId = randomUUID();
+    oldServicoPessoaIdToNewServicoPessoaId[oldId] = newId;
+
+    return {
+      ...withCurrentUser(row, currentUserId),
+      id: newId,
+      servicoId: newServicoId,
+      pessoaId: newPessoaId,
+    };
+  });
+
+  const servicoPagamentos = backup.servicoPagamentos.map((item, index) => {
+    const row = asRow(item, `servicoPagamentos[${index}]`);
+    const oldServicoPessoaId = readRequiredString(row, "servicoPessoaId", `servicoPagamentos[${index}]`);
+    const newServicoPessoaId = oldServicoPessoaIdToNewServicoPessoaId[oldServicoPessoaId];
+
+    if (!newServicoPessoaId) {
+      throw new Error(`Relacionamento invalido: servicoPagamentos[${index}].servicoPessoaId`);
+    }
+
     return {
       ...withCurrentUser(row, currentUserId),
       id: randomUUID(),
+      servicoPessoaId: newServicoPessoaId,
     };
   });
 
@@ -162,11 +214,15 @@ export function transformBackupForPersistence(
     compras,
     parcelasCompra,
     servicos,
+    servicoPessoas,
+    servicoPagamentos,
     metas,
     idMaps: {
       oldPessoaIdToNewPessoaId,
       oldCartaoIdToNewCartaoId,
       oldCompraIdToNewCompraId,
+      oldServicoIdToNewServicoId,
+      oldServicoPessoaIdToNewServicoPessoaId,
     },
   };
 }

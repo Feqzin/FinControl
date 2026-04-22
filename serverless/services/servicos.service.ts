@@ -6,6 +6,7 @@ import type {
   ServicoPessoaUpdateBodyInput,
   ServicoUpdateBodyInput,
 } from "../validators/core-domain.validators.js";
+import { format } from "date-fns";
 
 type UpdateServicoPessoaResult =
   | { error: "SERVICO_NOT_FOUND" }
@@ -75,7 +76,11 @@ export class ServicosService {
   }
 
   async listServicoPagamentos(userId: string) {
-    return this.storage.getServicoPagamentos(userId);
+    const rows = await this.storage.getServicoPagamentos(userId);
+    return [...rows].sort(
+      (a, b) => String(b.mes).localeCompare(String(a.mes))
+        || String(b.dataPagamento ?? "").localeCompare(String(a.dataPagamento ?? "")),
+    );
   }
 
   async createServicoPagamento(userId: string, data: ServicoPagamentoBodyInput): Promise<CreateServicoPagamentoResult> {
@@ -83,7 +88,19 @@ export class ServicosService {
     const belongsToUser = servicoPessoas.some((item) => item.id === data.servicoPessoaId);
     if (!belongsToUser) return { error: "SERVICO_PESSOA_NOT_FOUND" };
 
-    const created = await this.storage.createServicoPagamento({ ...data, userId });
+    // Protecao idempotente: evita duplicidade para o mesmo vinculo no mesmo mes.
+    const existentes = await this.storage.getServicoPagamentosByServicoPessoa(data.servicoPessoaId, userId);
+    const jaRegistrado = existentes.find((item) => item.mes === data.mes);
+    if (jaRegistrado) {
+      return { created: jaRegistrado };
+    }
+
+    const created = await this.storage.createServicoPagamento({
+      ...data,
+      userId,
+      status: "pago",
+      dataPagamento: data.dataPagamento ?? format(new Date(), "yyyy-MM-dd"),
+    });
     return { created };
   }
 

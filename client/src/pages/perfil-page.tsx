@@ -12,7 +12,17 @@ import {
   User, Download, Shield, Database, LogOut, CheckCircle, HelpCircle, Upload
 } from "lucide-react";
 import { TourRestartButton } from "@/components/onboarding-tour";
-import type { Divida, Servico, Cartao, CompraCartao, ParcelaCompra, Pessoa, Meta } from "@shared/schema";
+import type {
+  Cartao,
+  CompraCartao,
+  Divida,
+  Meta,
+  ParcelaCompra,
+  Pessoa,
+  Servico,
+  ServicoPagamento,
+  ServicoPessoa,
+} from "@shared/schema";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -24,6 +34,8 @@ type ImportBackupResponse = {
   dividasImportadas: number;
   comprasImportadas: number;
   servicosImportados: number;
+  servicoPessoasImportados?: number;
+  servicoPagamentosImportados?: number;
   metasImportadas: number;
 };
 
@@ -57,6 +69,8 @@ export default function PerfilPage() {
 
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
+  const { data: servicoPessoas = [] } = useQuery<ServicoPessoa[]>({ queryKey: ["/api/servico-pessoas"] });
+  const { data: servicoPagamentos = [] } = useQuery<ServicoPagamento[]>({ queryKey: ["/api/servico-pagamentos"] });
   const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
   const { data: parcelasCompra = [] } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"] });
@@ -102,6 +116,8 @@ export default function PerfilPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
       queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
       queryClient.invalidateQueries({ queryKey: ["/api/servicos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/servico-pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/servico-pagamentos"] });
       queryClient.invalidateQueries({ queryKey: ["/api/metas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/financial/score"] });
       queryClient.invalidateQueries({ queryKey: ["/api/financial/insights"] });
@@ -109,7 +125,7 @@ export default function PerfilPage() {
 
       toast({
         title: "Importacao concluida",
-        description: `Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Metas: ${resultado.metasImportadas}`,
+        description: `Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Vinculos de servico: ${resultado.servicoPessoasImportados ?? 0}, Pagamentos de servico: ${resultado.servicoPagamentosImportados ?? 0}, Metas: ${resultado.metasImportadas}`,
       });
     },
     onError: (error) => {
@@ -131,6 +147,8 @@ export default function PerfilPage() {
       compras,
       parcelasCompra,
       servicos,
+      servicoPessoas,
+      servicoPagamentos,
       metas,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });

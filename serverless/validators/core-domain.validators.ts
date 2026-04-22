@@ -46,7 +46,8 @@ export const servicoPessoaUpdateBody = z.object({
 
 export const servicoPagamentoBody = z.object({
   servicoPessoaId: z.string().min(1),
-  mes: z.string().min(7).max(7),
+  // Semantica mensal unica: referencia no formato yyyy-MM (ex.: 2026-04).
+  mes: z.string().trim().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Mes invalido. Use o formato yyyy-MM"),
   status: z.string().optional().default("pago"),
   dataPagamento: z.string().optional().nullable(),
 });

@@ -6,6 +6,8 @@ import type {
   InsertParcelaCompra,
   InsertPessoa,
   InsertServico,
+  InsertServicoPagamento,
+  InsertServicoPessoa,
 } from "../../shared/schema.js";
 import { db } from "../db.js";
 import { DatabaseStorage } from "../storage.js";
@@ -19,6 +21,8 @@ type InsertDividaWithId = InsertDivida & { id: string };
 type InsertCompraCartaoWithId = InsertCompraCartao & { id: string };
 type InsertParcelaCompraWithId = InsertParcelaCompra & { id: string };
 type InsertServicoWithId = InsertServico & { id: string };
+type InsertServicoPessoaWithId = InsertServicoPessoa & { id: string };
+type InsertServicoPagamentoWithId = InsertServicoPagamento & { id: string };
 type InsertMetaWithId = InsertMeta & { id: string };
 
 export type BackupImportPersistenceResult = {
@@ -28,6 +32,8 @@ export type BackupImportPersistenceResult = {
   comprasInseridas: number;
   parcelasCompraInseridas: number;
   servicosInseridos: number;
+  servicoPessoasInseridas: number;
+  servicoPagamentosInseridos: number;
   metasInseridas: number;
 };
 
@@ -92,6 +98,14 @@ function readOptionalDate(row: JsonRow, field: string, label: string): string | 
     throw new Error(`Campo invalido: ${label}.${field}`);
   }
   return value;
+}
+
+function readRequiredMonth(row: JsonRow, field: string, label: string): string {
+  const value = row[field];
+  if (typeof value !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(value.trim())) {
+    throw new Error(`Campo obrigatorio invalido: ${label}.${field}`);
+  }
+  return value.trim();
 }
 
 function readOptionalTimestamp(row: JsonRow, field: string, label: string): Date | null {
@@ -197,6 +211,27 @@ function toServicoInsert(row: JsonRow, label: string): InsertServicoWithId {
   };
 }
 
+function toServicoPessoaInsert(row: JsonRow, label: string): InsertServicoPessoaWithId {
+  return {
+    id: readRequiredString(row, "id", label),
+    userId: readRequiredString(row, "userId", label),
+    servicoId: readRequiredString(row, "servicoId", label),
+    pessoaId: readRequiredString(row, "pessoaId", label),
+    valorDevido: readRequiredDecimal(row, "valorDevido", label),
+  };
+}
+
+function toServicoPagamentoInsert(row: JsonRow, label: string): InsertServicoPagamentoWithId {
+  return {
+    id: readRequiredString(row, "id", label),
+    userId: readRequiredString(row, "userId", label),
+    servicoPessoaId: readRequiredString(row, "servicoPessoaId", label),
+    mes: readRequiredMonth(row, "mes", label),
+    status: readOptionalString(row, "status", label) ?? "pago",
+    dataPagamento: readOptionalDate(row, "dataPagamento", label),
+  };
+}
+
 function toMetaInsert(row: JsonRow, label: string): InsertMetaWithId {
   return {
     id: readRequiredString(row, "id", label),
@@ -221,6 +256,29 @@ export async function persistTransformedBackupImport(
     toParcelaCompraInsert(asRow(item, `parcelasCompra[${index}]`), `parcelasCompra[${index}]`),
   );
   const servicosRows = transformed.servicos.map((item, index) => toServicoInsert(asRow(item, `servicos[${index}]`), `servicos[${index}]`));
+  const servicoPessoasRows = transformed.servicoPessoas.map((item, index) =>
+    toServicoPessoaInsert(asRow(item, `servicoPessoas[${index}]`), `servicoPessoas[${index}]`),
+  );
+  const servicoPagamentosRowsRaw = transformed.servicoPagamentos.map((item, index) =>
+    toServicoPagamentoInsert(asRow(item, `servicoPagamentos[${index}]`), `servicoPagamentos[${index}]`),
+  );
+  const servicoPagamentosByKey = new Map<string, InsertServicoPagamentoWithId>();
+  for (const row of servicoPagamentosRowsRaw) {
+    const key = `${row.servicoPessoaId}:${row.mes}`;
+    const previous = servicoPagamentosByKey.get(key);
+    if (!previous) {
+      servicoPagamentosByKey.set(key, row);
+      continue;
+    }
+
+    const prevDate = String(previous.dataPagamento ?? "");
+    const currDate = String(row.dataPagamento ?? "");
+    const pickCurrent = currDate > prevDate || (currDate === prevDate && row.id > previous.id);
+    if (pickCurrent) {
+      servicoPagamentosByKey.set(key, row);
+    }
+  }
+  const servicoPagamentosRows = Array.from(servicoPagamentosByKey.values());
   const metasRows = transformed.metas.map((item, index) => toMetaInsert(asRow(item, `metas[${index}]`), `metas[${index}]`));
 
   await db.transaction(async (tx) => {
@@ -250,6 +308,14 @@ export async function persistTransformedBackupImport(
       await txStorage.createServico(servico as unknown as InsertServico);
     }
 
+    for (const servicoPessoa of servicoPessoasRows) {
+      await txStorage.createServicoPessoa(servicoPessoa as unknown as InsertServicoPessoa);
+    }
+
+    for (const servicoPagamento of servicoPagamentosRows) {
+      await txStorage.createServicoPagamento(servicoPagamento as unknown as InsertServicoPagamento);
+    }
+
     for (const meta of metasRows) {
       await txStorage.createMeta(meta as unknown as InsertMeta);
     }
@@ -262,6 +328,8 @@ export async function persistTransformedBackupImport(
     comprasInseridas: comprasRows.length,
     parcelasCompraInseridas: parcelasCompraRows.length,
     servicosInseridos: servicosRows.length,
+    servicoPessoasInseridas: servicoPessoasRows.length,
+    servicoPagamentosInseridos: servicoPagamentosRows.length,
     metasInseridas: metasRows.length,
   };
 }
