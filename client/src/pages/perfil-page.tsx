@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import {
-  User, Download, Shield, Database, LogOut, CheckCircle, HelpCircle
+  User, Download, Shield, Database, LogOut, CheckCircle, HelpCircle, Upload
 } from "lucide-react";
 import { TourRestartButton } from "@/components/onboarding-tour";
 import type { Divida, Servico, Cartao, CompraCartao, Pessoa, Meta } from "@shared/schema";
@@ -18,10 +18,42 @@ function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
+type ImportBackupResponse = {
+  pessoasImportadas: number;
+  cartoesImportados: number;
+  dividasImportadas: number;
+  comprasImportadas: number;
+  servicosImportados: number;
+  metasImportadas: number;
+};
+
+function parseImportApiError(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return "Falha ao importar backup. Tente novamente.";
+  }
+
+  const message = error.message ?? "";
+  const jsonStart = message.indexOf("{");
+  if (jsonStart >= 0) {
+    try {
+      const parsed = JSON.parse(message.slice(jsonStart)) as { message?: unknown };
+      if (typeof parsed.message === "string" && parsed.message.trim() !== "") {
+        return parsed.message;
+      }
+    } catch {
+      // Mantem fallback padrao.
+    }
+  }
+
+  return message || "Falha ao importar backup. Tente novamente.";
+}
+
 export default function PerfilPage() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
   const [nomeCompleto, setNomeCompleto] = useState((user as any)?.nomeCompleto || "");
+  const [arquivoImportacao, setArquivoImportacao] = useState<File | null>(null);
+  const inputImportacaoRef = useRef<HTMLInputElement | null>(null);
 
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
@@ -40,6 +72,52 @@ export default function PerfilPage() {
       toast({ title: "Perfil atualizado" });
     },
     onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
+  });
+
+  const importBackup = useMutation({
+    mutationFn: async (arquivo: File): Promise<ImportBackupResponse> => {
+      const texto = await arquivo.text();
+      let backup: unknown;
+
+      try {
+        backup = JSON.parse(texto);
+      } catch {
+        throw new Error("Arquivo JSON invalido. Verifique o arquivo e tente novamente.");
+      }
+
+      const res = await apiRequest("POST", "/api/import", backup);
+      return res.json();
+    },
+    onSuccess: (resultado) => {
+      setArquivoImportacao(null);
+      if (inputImportacaoRef.current) {
+        inputImportacaoRef.current.value = "";
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cartoes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/servicos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/metas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/score"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/insights"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
+
+      toast({
+        title: "Importacao concluida",
+        description: `Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Metas: ${resultado.metasImportadas}`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro ao importar backup",
+        description: parseImportApiError(error),
+        variant: "destructive",
+      });
+    },
   });
 
   const exportarDados = () => {
@@ -61,6 +139,26 @@ export default function PerfilPage() {
     a.click();
     URL.revokeObjectURL(url);
     toast({ title: "Backup exportado com sucesso" });
+  };
+
+  const importarDados = () => {
+    if (!arquivoImportacao) {
+      toast({
+        title: "Selecione um arquivo",
+        description: "Escolha um arquivo .json de backup para importar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Importar novamente pode duplicar dados. Deseja continuar com a importacao?",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    importBackup.mutate(arquivoImportacao);
   };
 
   const totalReceber = dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
@@ -191,6 +289,35 @@ export default function PerfilPage() {
             className="w-full"
           >
             <Download className="w-4 h-4 mr-2" /> Exportar dados (JSON)
+          </Button>
+          <Separator />
+          <p className="text-sm text-muted-foreground">
+            Importe um backup JSON para restaurar seus dados nesta conta.
+          </p>
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
+            Importar novamente pode duplicar dados.
+          </p>
+          <Input
+            ref={inputImportacaoRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={(e) => setArquivoImportacao(e.target.files?.[0] ?? null)}
+            disabled={importBackup.isPending}
+            data-testid="input-import-backup"
+          />
+          <Button
+            onClick={importarDados}
+            disabled={!arquivoImportacao || importBackup.isPending}
+            data-testid="button-import-backup"
+            className="w-full"
+          >
+            {importBackup.isPending ? (
+              "Importando..."
+            ) : (
+              <>
+                <Upload className="w-4 h-4 mr-2" /> Importar dados (JSON)
+              </>
+            )}
           </Button>
         </CardContent>
       </Card>

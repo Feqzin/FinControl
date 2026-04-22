@@ -31,6 +31,9 @@ import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
 import { registerDebugDbPingRoute } from "./routes/debug-db-ping.route.js";
 import { PagamentosTimelineService } from "./services/pagamentos-timeline.service.js";
+import { BackupJsonParseError, parseBackupJsonImport } from "./validators/backup-import.validators.js";
+import { transformBackupForPersistence } from "./services/backup-import-transform.service.js";
+import { persistTransformedBackupImport } from "./services/backup-import-persistence.service.js";
 import { divide, parseMoney } from "../utils/money.js";
 import { pool } from "./db.js";
 import { ENV } from "./env.js";
@@ -236,6 +239,35 @@ export function registerRoutes(app: Express): void {
   app.post("/api/imports/preview", requireAuth, importsController.preview);
   app.post("/api/imports/confirm", requireAuth, importsController.confirm);
   app.post("/api/imports/:id/rollback", requireAuth, importsController.rollback);
+  app.post("/api/import", requireAuth, async (req, res) => {
+    const currentUserId = (req.user as { id?: unknown } | undefined)?.id;
+
+    if (typeof currentUserId !== "string" || currentUserId.trim() === "") {
+      return res.status(401).json({ message: "Nao autenticado" });
+    }
+
+    try {
+      const backup = parseBackupJsonImport(req.body);
+      const transformed = transformBackupForPersistence(backup, currentUserId);
+      const persisted = await persistTransformedBackupImport(transformed);
+
+      return res.status(201).json({
+        pessoasImportadas: persisted.pessoasInseridas,
+        cartoesImportados: persisted.cartoesInseridos,
+        dividasImportadas: persisted.dividasInseridas,
+        comprasImportadas: persisted.comprasInseridas,
+        servicosImportados: persisted.servicosInseridos,
+        metasImportadas: persisted.metasInseridas,
+      });
+    } catch (error) {
+      if (error instanceof BackupJsonParseError) {
+        return res.status(400).json({ message: error.message, details: error.details ?? [] });
+      }
+
+      const message = error instanceof Error ? error.message : "Erro ao importar backup";
+      return res.status(400).json({ message });
+    }
+  });
 
   app.post("/api/importar-texto", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;
