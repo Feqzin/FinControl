@@ -123,6 +123,14 @@ export async function marcarDividaPessoaComoPaga(params: {
   });
 }
 
+export async function reverterDividaPessoaParaPendente(id: string): Promise<void> {
+  await apiRequest("PATCH", `/api/dividas/${id}`, {
+    status: "pendente",
+    dataPagamento: null,
+    formaPagamento: null,
+  });
+}
+
 export async function marcarServicoPessoaComoPago(params: {
   servicoPessoaId: string;
   mes: string;

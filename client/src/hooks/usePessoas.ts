@@ -20,6 +20,7 @@ import {
   listTimelinePagamentosByPessoa,
   marcarDividaPessoaComoPaga,
   marcarServicoPessoaComoPago,
+  reverterDividaPessoaParaPendente,
   reverterServicoPessoaPago,
   type PessoaResumo,
   updateTimelinePagamentoObservacao,
@@ -182,6 +183,16 @@ export function usePessoas({
   const payMutation = useMutation({
     mutationFn: ({ id, formaPagamento }: { id: string; formaPagamento: string }) =>
       marcarDividaPessoaComoPaga({ id, formaPagamento }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      invalidateTimeline();
+    },
+  });
+
+  const reverterDividaPagamentoMutation = useMutation({
+    mutationFn: (id: string) => reverterDividaPessoaParaPendente(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
@@ -481,6 +492,7 @@ export function usePessoas({
     createPessoaMutation,
     createDividaMutation,
     payMutation,
+    reverterDividaPagamentoMutation,
     updatePessoaMutation,
     deleteMutation,
     marcarServicoPagoMutation,

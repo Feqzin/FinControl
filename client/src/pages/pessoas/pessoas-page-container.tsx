@@ -22,7 +22,7 @@ import { usePessoas } from "@/hooks/usePessoas";
 import { PaymentTimeline } from "@/pages/pessoas/components/payment-timeline";
 import {
   Plus, Users, Phone, Trash2, Search, Receipt, Check,
-  Clock, ArrowUpRight, ArrowDownRight, Pencil, CreditCard, Repeat, ChevronRight, AlertTriangle, ExternalLink,
+  Clock, ArrowUpRight, ArrowDownRight, Pencil, CreditCard, Repeat, ChevronRight, AlertTriangle, ExternalLink, RotateCcw,
 } from "lucide-react";
 import { useUIPreferences } from "@/context/ui-preferences";
 import type { Pessoa, Divida, CompraCartao, Cartao, ServicoPessoa, ServicoPagamento, Servico } from "@shared/schema";
@@ -84,6 +84,7 @@ export default function PessoasPage() {
     createPessoaMutation,
     createDividaMutation,
     payMutation,
+    reverterDividaPagamentoMutation,
     updatePessoaMutation,
     deleteMutation,
     marcarServicoPagoMutation,
@@ -841,7 +842,23 @@ export default function PessoasPage() {
                               {formatCurrencyBRL(Number(d.valor))}
                             </span>
                             {d.status === "pago" ? (
-                              <Badge variant="secondary">Pago</Badge>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 px-2 text-xs"
+                                onClick={() =>
+                                  reverterDividaPagamentoMutation.mutate(d.id, {
+                                    onSuccess: () => toast({ title: "Dívida marcada como pendente" }),
+                                    onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+                                  })
+                                }
+                                disabled={reverterDividaPagamentoMutation.isPending}
+                                title="Marcar como não paga"
+                                data-testid={`button-unpay-history-${d.id}`}
+                              >
+                                <RotateCcw className="w-3 h-3 mr-1" />
+                                Pago
+                              </Button>
                             ) : (
                               <Button
                                 variant="ghost"
