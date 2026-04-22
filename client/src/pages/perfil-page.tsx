@@ -152,7 +152,7 @@ export default function PerfilPage() {
     }
 
     const confirmed = window.confirm(
-      "Importar novamente pode duplicar dados. Deseja continuar com a importacao?",
+      "Importar novamente pode duplicar dados. Deseja continuar com a importação?",
     );
     if (!confirmed) {
       return;

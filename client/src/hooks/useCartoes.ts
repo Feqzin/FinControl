@@ -1,6 +1,8 @@
+import { useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Cartao, CompraCartao, ParcelaCompra, Pessoa } from "@shared/schema";
 import { toMoneyNumber } from "@/lib/money";
+import { calculateCardUsedLimit, groupParcelasCompraByCompraId } from "@/lib/card-limit-usage";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
 import { queryClient } from "@/lib/queryClient";
 import {
@@ -25,6 +27,7 @@ export function useCartoes(viewingCompraId?: string) {
   const { data: cartoes = [], isLoading } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
   const { data: pessoas = [] } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
+  const { data: parcelasCompraByUser = [] } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"] });
   const { data: parcelasCompraData = [], refetch: refetchParcelas } = useQuery<ParcelaCompra[]>({
     queryKey: ["/api/parcelas-compra", viewingCompraId],
     enabled: !!viewingCompraId,
@@ -55,6 +58,7 @@ export function useCartoes(viewingCompraId?: string) {
     mutationFn: (data: CompraPayload) => createCompraCartao(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
     },
   });
 
@@ -62,6 +66,7 @@ export function useCartoes(viewingCompraId?: string) {
     mutationFn: ({ id, data }: { id: string; data: UpdateCompraPayload }) => updateCompraCartao(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
     },
   });
 
@@ -69,6 +74,7 @@ export function useCartoes(viewingCompraId?: string) {
     mutationFn: (id: string) => deleteCompraCartao(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
     },
   });
 
@@ -84,6 +90,7 @@ export function useCartoes(viewingCompraId?: string) {
       updateParcelaCompraStatusCartao(id, pago, dataPagamento),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra", viewingCompraId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
     },
   });
 
@@ -91,6 +98,7 @@ export function useCartoes(viewingCompraId?: string) {
     mutationFn: ({ id, pago }: { id: string; pago: boolean }) => updateParcelaCompraStatusPessoa(id, pago),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra", viewingCompraId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
     },
   });
 
@@ -99,6 +107,7 @@ export function useCartoes(viewingCompraId?: string) {
       updateParcelaCompraValores(id, { valor, dataVencimento }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra", viewingCompraId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
     },
   });
 
@@ -112,6 +121,7 @@ export function useCartoes(viewingCompraId?: string) {
     }) => importComprasLote(items, cartaoId, { previewLogId, sourceType, sourceName }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
     },
   });
 
@@ -119,22 +129,19 @@ export function useCartoes(viewingCompraId?: string) {
     mutationFn: (importLogId: string) => rollbackImportCompras(importLogId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
     },
   });
 
   const getCardCompras = (cartaoId: string) => compras.filter((c) => c.cartaoId === cartaoId);
   const getCardTotal = (cartaoId: string) =>
     getCardCompras(cartaoId).reduce((sum, compra) => sum + toMoneyNumber(compra.valorParcela), 0);
-  const getCardUsedLimit = (cartaoId: string) =>
-    getCardCompras(cartaoId).reduce((sum, compra) => {
-      const parcelas = Math.max(1, Number(compra.parcelas) || 1);
-      const parcelaAtual = Math.min(Math.max(1, Number(compra.parcelaAtual) || 1), parcelas);
-      const parcelasRestantes = Math.max(parcelas - parcelaAtual + 1, 0);
-      const valorParcela = toMoneyNumber(compra.valorParcela);
-      const valorTotal = toMoneyNumber(compra.valorTotal);
-      const comprometido = Math.min(valorParcela * parcelasRestantes, valorTotal || valorParcela * parcelas);
-      return sum + comprometido;
-    }, 0);
+  const parcelasCompraByCompraId = useMemo(
+    () => groupParcelasCompraByCompraId(parcelasCompraByUser),
+    [parcelasCompraByUser],
+  );
+
+  const getCardUsedLimit = (cartaoId: string) => calculateCardUsedLimit(cartaoId, compras, parcelasCompraByCompraId);
 
   const totalFaturas = cartoes.reduce((sum, cartao) => sum + getCardTotal(cartao.id), 0);
   const totalAguardandoReembolso = compras

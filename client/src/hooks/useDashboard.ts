@@ -1,12 +1,13 @@
 ﻿import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Cartao, CompraCartao, Divida, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
+import type { Cartao, CompraCartao, Divida, ParcelaCompra, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
 import type { FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
 import { addDays, differenceInDays, format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AlertTriangle, Bell, CheckCircle, CreditCard, TrendingDown } from "lucide-react";
 import { maskValue } from "@/context/values-visibility";
 import { toMoneyNumber } from "@/lib/money";
+import { calculateCardUsedLimit, groupParcelasCompraByCompraId } from "@/lib/card-limit-usage";
 import { fetchFinancialSummary } from "@/services/api/dashboard";
 import { formatCurrencyBRL } from "@/utils/formatters";
 
@@ -60,6 +61,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const { data: pessoas = [], isLoading: l3 } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
   const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
+  const { data: parcelasCompra = [] } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"] });
   const { data: rendas = [] } = useQuery<Renda[]>({ queryKey: ["/api/rendas"] });
   const { data: patrimonios = [] } = useQuery<Patrimonio[]>({ queryKey: ["/api/patrimonios"] });
   const { data: financialScore, isLoading: l4 } = useQuery<FinancialScore>({ queryKey: ["/api/financial/score"] });
@@ -167,6 +169,13 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const getCardUsage = (cartaoId: string) =>
     compras.filter((c) => c.cartaoId === cartaoId).reduce((s, c) => s + toMoneyNumber(c.valorParcela), 0);
 
+  const parcelasCompraByCompraId = useMemo(
+    () => groupParcelasCompraByCompraId(parcelasCompra),
+    [parcelasCompra],
+  );
+
+  const getCardUsedLimit = (cartaoId: string) => calculateCardUsedLimit(cartaoId, compras, parcelasCompraByCompraId);
+
   const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "Desconhecido";
 
   const pagarSemana: PagarSemanaItem[] = useMemo(() => {
@@ -209,7 +218,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   }, [compras, dividas, in7Days, pessoas, servicos, today, cartoes]);
 
   const alertCartoes = cartoes.filter((c) => {
-    const usado = getCardUsage(c.id);
+    const usado = getCardUsedLimit(c.id);
     return (usado / toMoneyNumber(c.limite, 1)) >= 0.8;
   });
 
@@ -332,7 +341,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     });
   }
   for (const c of alertCartoes) {
-    const usado = getCardUsage(c.id);
+    const usado = getCardUsedLimit(c.id);
     const pct = Math.round((usado / toMoneyNumber(c.limite, 1)) * 100);
     alertas.push({
       icon: CreditCard,

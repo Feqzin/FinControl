@@ -84,6 +84,10 @@ export class ParcelasService {
     return { rows };
   }
 
+  async listParcelasCompraByUser(userId: string) {
+    return this.repository.getParcelasCompraByUser(userId);
+  }
+
   async updateParcelaCompra(id: string, userId: string, data: ParcelaCompraUpdateBodyInput) {
     return runFinancialTransaction(this.repository, async (repository) => {
       const updated = await repository.updateParcelaCompra(id, userId, data);

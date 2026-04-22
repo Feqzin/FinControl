@@ -18,6 +18,7 @@ type ParcelasController = {
   update: RequestHandler;
   antecipar: RequestHandler;
   delete: RequestHandler;
+  listCompraByUser: RequestHandler;
   listCompra: RequestHandler;
   updateCompra: RequestHandler;
   replaceCompraBulk: RequestHandler;
@@ -60,6 +61,7 @@ export function registerFinancialDomainRoutes(app: Express, controllers: Financi
   app.post("/api/parcelas/antecipar", requireAuth, parcelasController.antecipar);
   app.delete("/api/parcelas/:id", requireAuth, parcelasController.delete);
 
+  app.get("/api/parcelas-compra", requireAuth, parcelasController.listCompraByUser);
   app.get("/api/parcelas-compra/:compraId", requireAuth, parcelasController.listCompra);
   app.patch("/api/parcelas-compra/:id", requireAuth, parcelasController.updateCompra);
   app.post("/api/parcelas-compra/bulk", requireAuth, parcelasController.replaceCompraBulk);

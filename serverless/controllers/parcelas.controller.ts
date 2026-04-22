@@ -137,6 +137,12 @@ export function createParcelasController(service: ParcelasService) {
       return res.json(result.rows);
     },
 
+    listCompraByUser: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const rows = await service.listParcelasCompraByUser(userId);
+      return res.json(rows);
+    },
+
     updateCompra: async (req: Request, res: Response) => {
       const userId = getUserId(req);
       const parcelaCompraId = getParam(req, "id");
