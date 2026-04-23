@@ -836,7 +836,9 @@ export default function CartoesPage() {
                 {(() => {
                   const pagas = parcelasCompraData.filter((p) => p.statusCartao === "pago").length;
                   const pendentes = parcelasCompraData.filter((p) => isParcelaComprometendoLimite(p.statusCartao)).length;
-                  const vencidas = parcelasCompraData.filter(isParcelaVencida).length;
+                  const vencidas = parcelasCompraData.filter(
+                    (p) => isParcelaVencida(p) && getParcelaSaldoPendente(p) > 0,
+                  ).length;
                   return (
                     <>
                       <div className="rounded-md bg-emerald-500/5 p-2 text-center">
@@ -858,13 +860,13 @@ export default function CartoesPage() {
 
               <div className="space-y-2">
                 {parcelasCompraData.map((p) => {
-                  const vencida = isParcelaVencida(p);
+                  const saldoPendente = getParcelaSaldoPendente(p);
+                  const vencida = isParcelaVencida(p) && saldoPendente > 0;
                   const pago = p.statusCartao === "pago";
                   const isPaying = payingParcelaId === p.id;
                   const isEditing = editingParcelaId === p.id;
                   const pessoaVinculadaId = viewingCompra.pessoaId || null;
                   const saldoAbatido = getParcelaSaldoAbatido(p.id);
-                  const saldoPendente = getParcelaSaldoPendente(p);
                   const parcialViaSaldo = !pago && saldoAbatido > 0;
                   const saldoPessoaDisponivel = pessoaVinculadaId ? getPessoaSaldoDisponivel(pessoaVinculadaId) : 0;
                   const podeAbaterSaldo = Boolean(pessoaVinculadaId) && !pago && p.statusCartao !== "cancelado"

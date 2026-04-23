@@ -203,6 +203,7 @@ export type PessoaResumo = {
   };
   alertas: {
     comprasAtrasadas: number;
+    parcelasVencidasPessoa?: number;
     servicosPendentes: number;
     parcelasPendentesPessoa: number;
   };

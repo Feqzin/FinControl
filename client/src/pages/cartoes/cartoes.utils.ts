@@ -24,6 +24,7 @@ export function getDaysUntilInvoice(diaVencimento: number): number {
 
 export function isParcelaVencida(p: ParcelaCompra): boolean {
   if (p.statusCartao === "pago") return false;
+  if (p.statusCartao === "cancelado") return false;
   if (!p.dataVencimento) return false;
   try {
     return isPast(parseISO(`${p.dataVencimento}T23:59:59`));

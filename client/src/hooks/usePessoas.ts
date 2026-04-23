@@ -97,6 +97,7 @@ export type PessoaResumoConsolidado = {
   };
   alertas: {
     comprasAtrasadas: number;
+    parcelasVencidasPessoa?: number;
     servicosPendentes: number;
     parcelasPendentesPessoa: number;
   };
@@ -587,6 +588,7 @@ export function usePessoas({
       },
       alertas: {
         comprasAtrasadas: 0,
+        parcelasVencidasPessoa: 0,
         servicosPendentes: servicosPendentesQuantidade,
         parcelasPendentesPessoa,
       },

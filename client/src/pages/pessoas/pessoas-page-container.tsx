@@ -143,6 +143,9 @@ export default function PessoasPage() {
 
   const duplicatePessoa = duplicatePessoaByName(pessoaForm.nome);
   const historyResumo = historyPessoa ? getPessoaResumoConsolidado(historyPessoa.id) : null;
+  const historyParcelasVencidas = historyResumo
+    ? (historyResumo.alertas.parcelasVencidasPessoa ?? historyResumo.alertas.comprasAtrasadas)
+    : 0;
   const historySaldoResumo = historySaldo?.resumo ?? (historyResumo ? historyResumo.saldoPessoa : null);
   const historySaldoMovimentacoes = historySaldo?.movimentacoes ?? [];
   const historySaldoDisponivel = historySaldoResumo?.saldoAtual ?? 0;
@@ -283,6 +286,7 @@ export default function PessoasPage() {
           {filtered.map((p) => {
             const stats = getPessoaStats(p.id);
             const resumo = getPessoaResumoConsolidado(p.id);
+            const parcelasVencidasPessoa = resumo.alertas.parcelasVencidasPessoa ?? resumo.alertas.comprasAtrasadas;
             const comprasVinculadas =
               resumo.comprasVinculadas.comprasComParcelasReais + resumo.comprasVinculadas.comprasEmFallbackLegado;
             const isMeDeve = p.tipo === "me_deve";
@@ -321,7 +325,7 @@ export default function PessoasPage() {
                       </p>
                       {resumo.alertas.comprasAtrasadas > 0 && (
                         <p className="text-[11px] text-red-600">
-                          {resumo.alertas.comprasAtrasadas} compra(s) com atraso
+                          {resumo.alertas.comprasAtrasadas} compra(s) com atraso · {parcelasVencidasPessoa} parcela(s) vencida(s)
                         </p>
                       )}
                     </div>
@@ -388,6 +392,7 @@ export default function PessoasPage() {
           {filtered.map((p) => {
             const stats = getPessoaStats(p.id);
             const resumo = getPessoaResumoConsolidado(p.id);
+            const parcelasVencidasPessoa = resumo.alertas.parcelasVencidasPessoa ?? resumo.alertas.comprasAtrasadas;
             const comprasVinculadas =
               resumo.comprasVinculadas.comprasComParcelasReais + resumo.comprasVinculadas.comprasEmFallbackLegado;
             const servicosVinculados = resumo.servicosMesAtual.totalVinculos;
@@ -456,7 +461,7 @@ export default function PessoasPage() {
                       <div className="flex items-center gap-2">
                         <AlertTriangle className="w-3.5 h-3.5" />
                         <span>
-                          Atrasos detectados: {resumo.dividas.comigo.vencidas} dívida(s) vencida(s), {resumo.alertas.comprasAtrasadas} compra(s) atrasada(s)
+                          Atrasos detectados: {resumo.dividas.comigo.vencidas} dívida(s) vencida(s), {resumo.alertas.comprasAtrasadas} compra(s) com atraso e {parcelasVencidasPessoa} parcela(s) vencida(s)
                         </span>
                       </div>
                     </div>
@@ -806,7 +811,7 @@ export default function PessoasPage() {
                 <div className="mb-6 rounded-md border border-red-300/40 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
                   <span>
-                    Atrasos: {historyResumo.dividas.comigo.vencidas} dívida(s) vencida(s) e {historyResumo.alertas.comprasAtrasadas} compra(s) atrasada(s).
+                    Atrasos: {historyResumo.dividas.comigo.vencidas} dívida(s) vencida(s), {historyResumo.alertas.comprasAtrasadas} compra(s) com atraso e {historyParcelasVencidas} parcela(s) vencida(s).
                   </span>
                 </div>
               )}

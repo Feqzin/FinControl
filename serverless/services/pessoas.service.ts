@@ -73,6 +73,7 @@ export type PessoaResumo = {
   };
   alertas: {
     comprasAtrasadas: number;
+    parcelasVencidasPessoa?: number;
     servicosPendentes: number;
     parcelasPendentesPessoa: number;
   };
@@ -353,6 +354,7 @@ type CompraResumo = {
   pagoPessoa: number;
   parcelasPendentesPessoa: number;
   parcelasAtrasadasPessoa: number;
+  compraAtrasada: boolean;
   usaParcelasReais: boolean;
 };
 
@@ -399,6 +401,7 @@ async function summarizeCompraPessoa(
       pagoPessoa,
       parcelasPendentesPessoa,
       parcelasAtrasadasPessoa,
+      compraAtrasada: parcelasAtrasadasPessoa > 0,
       usaParcelasReais: true,
     };
   }
@@ -427,6 +430,7 @@ async function summarizeCompraPessoa(
     pagoPessoa: round2(parcelasPagasPessoa * valorParcela),
     parcelasPendentesPessoa,
     parcelasAtrasadasPessoa,
+    compraAtrasada: parcelasAtrasadasPessoa > 0,
     usaParcelasReais: false,
   };
 }
@@ -884,7 +888,11 @@ export class PessoasService {
       comprasResumo.reduce((sum, item) => sum + item.pagoPessoa, 0),
     );
     const parcelasPendentesPessoa = comprasResumo.reduce((sum, item) => sum + item.parcelasPendentesPessoa, 0);
-    const comprasAtrasadas = comprasResumo.reduce((sum, item) => sum + item.parcelasAtrasadasPessoa, 0);
+    // Semantica unica:
+    // - parcela vencida: parcela pendente com vencimento passado.
+    // - compra atrasada: compra com pelo menos uma parcela vencida.
+    const parcelasVencidasPessoa = comprasResumo.reduce((sum, item) => sum + item.parcelasAtrasadasPessoa, 0);
+    const comprasAtrasadas = comprasResumo.filter((item) => item.compraAtrasada).length;
     const comprasComParcelasReais = comprasResumo.filter((item) => item.usaParcelasReais).length;
     const comprasEmFallbackLegado = comprasResumo.length - comprasComParcelasReais;
 
@@ -968,6 +976,7 @@ export class PessoasService {
       },
       alertas: {
         comprasAtrasadas,
+        parcelasVencidasPessoa,
         servicosPendentes: servicosPendentesQuantidade,
         parcelasPendentesPessoa,
       },
