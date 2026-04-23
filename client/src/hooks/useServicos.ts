@@ -4,6 +4,7 @@ import type {
   CompraCartao,
   ParcelaCompra,
   Pessoa,
+  PessoaSaldoMovimentacao,
   Servico,
   ServicoPagamento,
   ServicoPessoa,
@@ -25,6 +26,9 @@ export function useServicos() {
   const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
   const { data: parcelasCompra = [] } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"] });
+  const { data: pessoaSaldoMovimentacoes = [] } = useQuery<PessoaSaldoMovimentacao[]>({
+    queryKey: ["/api/pessoas/saldo-movimentacoes"],
+  });
 
   const createMutation = useMutation({
     mutationFn: (payload: ServicoPayload) => createServico(payload),
@@ -64,6 +68,7 @@ export function useServicos() {
     cartoes,
     compras,
     parcelasCompra,
+    pessoaSaldoMovimentacoes,
     isLoading,
     createMutation,
     toggleStatusMutation,

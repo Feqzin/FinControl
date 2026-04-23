@@ -12,6 +12,8 @@ import type {
 import { format } from "date-fns";
 import { queryClient } from "@/lib/queryClient";
 import {
+  abaterSaldoDividaPessoa,
+  abaterSaldoServicoPessoa,
   createPessoaSaldoMovimentacao,
   createDividaPessoa,
   createPessoa,
@@ -263,6 +265,57 @@ export function usePessoas({
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "resumo"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
+    },
+  });
+
+  const abaterSaldoDividaMutation = useMutation({
+    mutationFn: ({
+      pessoaId,
+      dividaId,
+      valor,
+      data,
+      observacao,
+    }: {
+      pessoaId: string;
+      dividaId: string;
+      valor: string;
+      data?: string | null;
+      observacao?: string | null;
+    }) => abaterSaldoDividaPessoa(pessoaId, dividaId, { valor, data, observacao }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "saldo-movimentacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
+      invalidateTimeline();
+    },
+  });
+
+  const abaterSaldoServicoMutation = useMutation({
+    mutationFn: ({
+      pessoaId,
+      servicoPessoaId,
+      mes,
+      valor,
+      data,
+      observacao,
+    }: {
+      pessoaId: string;
+      servicoPessoaId: string;
+      mes: string;
+      valor: string;
+      data?: string | null;
+      observacao?: string | null;
+    }) => abaterSaldoServicoPessoa(pessoaId, servicoPessoaId, { mes, valor, data, observacao }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/servico-pagamentos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "saldo-movimentacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
+      invalidateTimeline();
     },
   });
 
@@ -542,6 +595,8 @@ export function usePessoas({
     marcarServicoPagoMutation,
     reverterServicoPagoMutation,
     createSaldoMovimentacaoMutation,
+    abaterSaldoDividaMutation,
+    abaterSaldoServicoMutation,
     desvincularCompraMutation,
     updateTimelineObservacaoMutation,
     uploadTimelineComprovanteMutation,

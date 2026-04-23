@@ -74,6 +74,7 @@ export default function ServicosPage() {
     cartoes,
     compras,
     parcelasCompra,
+    pessoaSaldoMovimentacoes,
     isLoading,
     createMutation,
     toggleStatusMutation,
@@ -514,6 +515,7 @@ export default function ServicosPage() {
                             servicoPessoas={servicoPessoas}
                             servicoPagamentos={servicoPagamentos}
                             pessoas={pessoas}
+                            pessoaSaldoMovimentacoes={pessoaSaldoMovimentacoes}
                           />
                         )}
                       </CardContent>

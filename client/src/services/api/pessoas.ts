@@ -96,6 +96,39 @@ export type PessoaSaldoMovimentacaoPayload = {
   servicoPessoaId?: string | null;
 };
 
+export type AbaterSaldoDividaPessoaPayload = {
+  valor: string;
+  data?: string | null;
+  observacao?: string | null;
+};
+
+export type AbaterSaldoDividaPessoaResponse = {
+  valorAbatido: number;
+  valorPendenteAnterior: number;
+  valorPendenteAtual: number;
+  saldoAnterior: number;
+  saldoAtual: number;
+  quitada: boolean;
+};
+
+export type AbaterSaldoServicoPessoaPayload = {
+  mes: string;
+  valor: string;
+  data?: string | null;
+  observacao?: string | null;
+};
+
+export type AbaterSaldoServicoPessoaResponse = {
+  mes: string;
+  valorAbatido: number;
+  valorPendenteAnterior: number;
+  valorPendenteAtual: number;
+  saldoAnterior: number;
+  saldoAtual: number;
+  quitado: boolean;
+  pagamentoStatus: "parcial" | "pago";
+};
+
 export type PessoaResumo = {
   pessoa: {
     id: string;
@@ -239,6 +272,24 @@ export async function createPessoaSaldoMovimentacao(
 ): Promise<PessoaSaldoMovimentacao> {
   const res = await apiRequest("POST", `/api/pessoas/${pessoaId}/saldo-movimentacoes`, payload);
   return (await res.json()) as PessoaSaldoMovimentacao;
+}
+
+export async function abaterSaldoDividaPessoa(
+  pessoaId: string,
+  dividaId: string,
+  payload: AbaterSaldoDividaPessoaPayload,
+): Promise<AbaterSaldoDividaPessoaResponse> {
+  const res = await apiRequest("POST", `/api/pessoas/${pessoaId}/dividas/${dividaId}/abater-saldo`, payload);
+  return (await res.json()) as AbaterSaldoDividaPessoaResponse;
+}
+
+export async function abaterSaldoServicoPessoa(
+  pessoaId: string,
+  servicoPessoaId: string,
+  payload: AbaterSaldoServicoPessoaPayload,
+): Promise<AbaterSaldoServicoPessoaResponse> {
+  const res = await apiRequest("POST", `/api/pessoas/${pessoaId}/servicos/${servicoPessoaId}/abater-saldo`, payload);
+  return (await res.json()) as AbaterSaldoServicoPessoaResponse;
 }
 
 export async function updateTimelinePagamentoObservacao(params: {

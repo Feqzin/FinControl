@@ -1,8 +1,11 @@
 import { addMonths, format, parseISO } from "date-fns";
-import type { CompraCartao, Pessoa, PessoaSaldoMovimentacao } from "../../shared/schema.js";
+import type { CompraCartao, Divida, Pessoa, PessoaSaldoMovimentacao, ServicoPagamento } from "../../shared/schema.js";
 import { parseMoney } from "../../utils/money.js";
-import type { IStorage } from "../storage.js";
+import { db } from "../db.js";
+import { DatabaseStorage, type IStorage } from "../storage.js";
 import type {
+  PessoaAbaterSaldoDividaBodyInput,
+  PessoaAbaterSaldoServicoBodyInput,
   PessoaBodyInput,
   PessoaSaldoMovimentacaoBodyInput,
   PessoaUpdateBodyInput,
@@ -85,6 +88,54 @@ type CreatePessoaSaldoMovimentacaoResult =
   | { error: "SERVICO_PESSOA_NOT_LINKED_TO_PESSOA" }
   | { created: PessoaSaldoMovimentacao };
 
+type AbaterSaldoDividaResult =
+  | { error: "PESSOA_NOT_FOUND" }
+  | { error: "DIVIDA_NOT_FOUND" }
+  | { error: "DIVIDA_NOT_LINKED_TO_PESSOA" }
+  | { error: "DIVIDA_TIPO_INVALIDO" }
+  | { error: "DIVIDA_PARCELADA_NAO_SUPORTADA" }
+  | { error: "DIVIDA_JA_PAGA" }
+  | { error: "DIVIDA_SEM_PENDENCIA" }
+  | { error: "VALOR_INVALIDO" }
+  | { error: "SALDO_INSUFICIENTE" }
+  | { error: "VALOR_MAIOR_QUE_SALDO" }
+  | { error: "VALOR_MAIOR_QUE_PENDENTE" }
+  | {
+    aplicado: {
+      divida: Divida;
+      movimentacao: PessoaSaldoMovimentacao;
+      valorAbatido: number;
+      valorPendenteAnterior: number;
+      valorPendenteAtual: number;
+      saldoAnterior: number;
+      saldoAtual: number;
+      quitada: boolean;
+    };
+  };
+
+type AbaterSaldoServicoResult =
+  | { error: "PESSOA_NOT_FOUND" }
+  | { error: "SERVICO_PESSOA_NOT_FOUND" }
+  | { error: "SERVICO_PESSOA_NOT_LINKED_TO_PESSOA" }
+  | { error: "VALOR_INVALIDO" }
+  | { error: "SALDO_INSUFICIENTE" }
+  | { error: "VALOR_MAIOR_QUE_SALDO" }
+  | { error: "SERVICO_MES_SEM_PENDENCIA" }
+  | { error: "VALOR_MAIOR_QUE_PENDENTE" }
+  | {
+    aplicado: {
+      movimentacao: PessoaSaldoMovimentacao;
+      mes: string;
+      valorAbatido: number;
+      valorPendenteAnterior: number;
+      valorPendenteAtual: number;
+      saldoAnterior: number;
+      saldoAtual: number;
+      quitado: boolean;
+      pagamentoStatus: "parcial" | "pago";
+    };
+  };
+
 function toMoneyNumber(value: MoneyValue): number {
   return parseMoney(value) ?? 0;
 }
@@ -101,6 +152,58 @@ function normalizeOptionalText(value: string | null | undefined): string | null 
   if (typeof value !== "string") return null;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function formatMoneyBRL(value: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value);
+}
+
+function appendObservacaoPagamento(current: string | null | undefined, nextLine: string): string {
+  const base = normalizeOptionalText(current);
+  if (!base) return nextLine;
+  return `${base}\n${nextLine}`;
+}
+
+function buildServicoMesCategoria(mes: string): string {
+  return `servico_mes:${mes}`;
+}
+
+function extractServicoMesFromCategoria(value: string | null | undefined): string | null {
+  const normalized = normalizeOptionalText(value);
+  if (!normalized) return null;
+  const prefix = "servico_mes:";
+  if (!normalized.startsWith(prefix)) return null;
+  const mes = normalized.slice(prefix.length);
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(mes) ? mes : null;
+}
+
+function getServicoMesSaldoAbatido(
+  rows: PessoaSaldoMovimentacao[],
+  servicoPessoaId: string,
+  mes: string,
+): number {
+  let total = 0;
+  for (const row of rows) {
+    if (row.tipo !== "debito") continue;
+    if (row.servicoPessoaId !== servicoPessoaId) continue;
+    if (normalizeStatus(row.origem) !== "abatimento_servico") continue;
+    if (extractServicoMesFromCategoria(row.categoria) !== mes) continue;
+    total += toMoneyNumber(row.valor);
+  }
+  return round2(total);
+}
+
+function getPagamentoServicoMesContexto(rows: ServicoPagamento[], mes: string): ServicoPagamento | null {
+  const sameMonth = rows.filter((row) => row.mes === mes);
+  if (sameMonth.length === 0) return null;
+  const pago = sameMonth.find((row) => normalizeStatus(row.status) === "pago");
+  if (pago) return pago;
+  const parcial = sameMonth.find((row) => normalizeStatus(row.status) === "parcial");
+  if (parcial) return parcial;
+  return sameMonth[0] ?? null;
 }
 
 function timestampToMillis(value: unknown): number {
@@ -380,6 +483,192 @@ export class PessoasService {
     return { created };
   }
 
+  async abaterSaldoEmDivida(
+    pessoaId: string,
+    dividaId: string,
+    userId: string,
+    data: PessoaAbaterSaldoDividaBodyInput,
+  ): Promise<AbaterSaldoDividaResult> {
+    const valorAbatimento = parseMoney(data.valor);
+    if (valorAbatimento == null || valorAbatimento <= 0) {
+      return { error: "VALOR_INVALIDO" };
+    }
+
+    return db.transaction(async (tx) => {
+      const txStorage = new DatabaseStorage(tx);
+      const pessoa = await txStorage.getPessoa(pessoaId, userId);
+      if (!pessoa) return { error: "PESSOA_NOT_FOUND" } as const;
+
+      const divida = await txStorage.getDivida(dividaId, userId);
+      if (!divida) return { error: "DIVIDA_NOT_FOUND" } as const;
+      if (divida.pessoaId !== pessoaId) return { error: "DIVIDA_NOT_LINKED_TO_PESSOA" } as const;
+      if (divida.tipo !== "receber") return { error: "DIVIDA_TIPO_INVALIDO" } as const;
+      if ((divida.totalParcelas ?? 1) > 1) return { error: "DIVIDA_PARCELADA_NAO_SUPORTADA" } as const;
+      if (isPaid(divida.status)) return { error: "DIVIDA_JA_PAGA" } as const;
+
+      const valorPendenteAnterior = toMoneyNumber(divida.valor);
+      if (valorPendenteAnterior <= 0) return { error: "DIVIDA_SEM_PENDENCIA" } as const;
+
+      const saldoRows = await txStorage.getPessoaSaldoMovimentacoesByPessoa(pessoaId, userId);
+      const saldoAnterior = buildPessoaSaldoResumo(saldoRows).saldoAtual;
+      if (saldoAnterior <= 0) return { error: "SALDO_INSUFICIENTE" } as const;
+      if (valorAbatimento > saldoAnterior) return { error: "VALOR_MAIOR_QUE_SALDO" } as const;
+      if (valorAbatimento > valorPendenteAnterior) return { error: "VALOR_MAIOR_QUE_PENDENTE" } as const;
+
+      const dataEfetiva = data.data ?? format(new Date(), "yyyy-MM-dd");
+      const valorAbatidoRound = round2(valorAbatimento);
+      const valorPendenteAtual = round2(valorPendenteAnterior - valorAbatidoRound);
+      const quitada = valorPendenteAtual <= 0;
+      const observacaoCustom = normalizeOptionalText(data.observacao);
+      const observacaoPadrao = `Abatimento via saldo da pessoa em ${dataEfetiva}: ${formatMoneyBRL(valorAbatidoRound)}.`;
+      const observacaoAplicada = observacaoCustom ?? observacaoPadrao;
+      const observacaoPagamento = appendObservacaoPagamento(divida.observacaoPagamento, observacaoAplicada);
+
+      const dividaPatch: Partial<Divida> = quitada
+        ? {
+          status: "pago",
+          dataPagamento: dataEfetiva,
+          formaPagamento: "saldo_pessoa",
+          observacaoPagamento,
+        }
+        : {
+          // Mantemos a dívida pendente com o saldo remanescente.
+          valor: valorPendenteAtual.toFixed(2),
+          status: "pendente",
+          dataPagamento: null,
+          formaPagamento: null,
+          observacaoPagamento,
+        };
+
+      const dividaAtualizada = await txStorage.updateDivida(dividaId, userId, dividaPatch);
+      if (!dividaAtualizada) return { error: "DIVIDA_NOT_FOUND" } as const;
+
+      const movimentacao = await txStorage.createPessoaSaldoMovimentacao({
+        userId,
+        pessoaId,
+        tipo: "debito",
+        valor: valorAbatidoRound.toFixed(2),
+        data: dataEfetiva,
+        origem: "abatimento_divida",
+        categoria: "divida",
+        observacao: observacaoAplicada,
+        comprovanteReferencia: null,
+        dividaId,
+        compraCartaoId: null,
+        parcelaCompraId: null,
+        servicoPessoaId: null,
+      });
+
+      return {
+        aplicado: {
+          divida: dividaAtualizada,
+          movimentacao,
+          valorAbatido: valorAbatidoRound,
+          valorPendenteAnterior: round2(valorPendenteAnterior),
+          valorPendenteAtual: quitada ? 0 : valorPendenteAtual,
+          saldoAnterior: round2(saldoAnterior),
+          saldoAtual: round2(saldoAnterior - valorAbatidoRound),
+          quitada,
+        },
+      } as const;
+    });
+  }
+
+  async abaterSaldoEmServico(
+    pessoaId: string,
+    servicoPessoaId: string,
+    userId: string,
+    data: PessoaAbaterSaldoServicoBodyInput,
+  ): Promise<AbaterSaldoServicoResult> {
+    const valorAbatimento = parseMoney(data.valor);
+    if (valorAbatimento == null || valorAbatimento <= 0) {
+      return { error: "VALOR_INVALIDO" };
+    }
+
+    return db.transaction(async (tx) => {
+      const txStorage = new DatabaseStorage(tx);
+      const pessoa = await txStorage.getPessoa(pessoaId, userId);
+      if (!pessoa) return { error: "PESSOA_NOT_FOUND" } as const;
+
+      const servicoPessoa = await txStorage.getServicoPessoa(servicoPessoaId, userId);
+      if (!servicoPessoa) return { error: "SERVICO_PESSOA_NOT_FOUND" } as const;
+      if (servicoPessoa.pessoaId !== pessoaId) return { error: "SERVICO_PESSOA_NOT_LINKED_TO_PESSOA" } as const;
+
+      const valorDevidoMes = toMoneyNumber(servicoPessoa.valorDevido);
+      if (valorDevidoMes <= 0) return { error: "SERVICO_MES_SEM_PENDENCIA" } as const;
+
+      const mes = data.mes;
+      const saldoRows = await txStorage.getPessoaSaldoMovimentacoesByPessoa(pessoaId, userId);
+      const saldoAnterior = buildPessoaSaldoResumo(saldoRows).saldoAtual;
+      if (saldoAnterior <= 0) return { error: "SALDO_INSUFICIENTE" } as const;
+      if (valorAbatimento > saldoAnterior) return { error: "VALOR_MAIOR_QUE_SALDO" } as const;
+
+      const pagamentosDoServico = await txStorage.getServicoPagamentosByServicoPessoa(servicoPessoaId, userId);
+      const pagamentoMesContexto = getPagamentoServicoMesContexto(pagamentosDoServico, mes);
+      const servicoMesJaPago = pagamentoMesContexto && normalizeStatus(pagamentoMesContexto.status) === "pago";
+      if (servicoMesJaPago) return { error: "SERVICO_MES_SEM_PENDENCIA" } as const;
+
+      const saldoAbatidoMesAnterior = getServicoMesSaldoAbatido(saldoRows, servicoPessoaId, mes);
+      const valorPendenteAnterior = round2(Math.max(0, valorDevidoMes - saldoAbatidoMesAnterior));
+      if (valorPendenteAnterior <= 0) return { error: "SERVICO_MES_SEM_PENDENCIA" } as const;
+      if (valorAbatimento > valorPendenteAnterior) return { error: "VALOR_MAIOR_QUE_PENDENTE" } as const;
+
+      const dataEfetiva = data.data ?? format(new Date(), "yyyy-MM-dd");
+      const valorAbatidoRound = round2(valorAbatimento);
+      const saldoAbatidoMesAtual = round2(saldoAbatidoMesAnterior + valorAbatidoRound);
+      const valorPendenteAtual = round2(Math.max(0, valorDevidoMes - saldoAbatidoMesAtual));
+      const quitado = valorPendenteAtual <= 0;
+      const pagamentoStatus: "parcial" | "pago" = quitado ? "pago" : "parcial";
+
+      const observacaoCustom = normalizeOptionalText(data.observacao);
+      const observacaoPadrao = `Abatimento via saldo em serviço (${mes}) em ${dataEfetiva}: ${formatMoneyBRL(valorAbatidoRound)}.`;
+      const observacaoAplicada = observacaoCustom ?? observacaoPadrao;
+
+      const movimentacao = await txStorage.createPessoaSaldoMovimentacao({
+        userId,
+        pessoaId,
+        tipo: "debito",
+        valor: valorAbatidoRound.toFixed(2),
+        data: dataEfetiva,
+        origem: "abatimento_servico",
+        categoria: buildServicoMesCategoria(mes),
+        observacao: observacaoAplicada,
+        comprovanteReferencia: null,
+        dividaId: null,
+        compraCartaoId: null,
+        parcelaCompraId: null,
+        servicoPessoaId,
+      });
+
+      const pagamentosMes = pagamentosDoServico.filter((item) => item.mes === mes);
+      for (const pagamento of pagamentosMes) {
+        await txStorage.deleteServicoPagamento(pagamento.id, userId);
+      }
+
+      await txStorage.createServicoPagamento({
+        userId,
+        servicoPessoaId,
+        mes,
+        status: pagamentoStatus,
+        dataPagamento: dataEfetiva,
+      });
+
+      return {
+        aplicado: {
+          movimentacao,
+          mes,
+          valorAbatido: valorAbatidoRound,
+          valorPendenteAnterior,
+          valorPendenteAtual,
+          saldoAnterior: round2(saldoAnterior),
+          saldoAtual: round2(saldoAnterior - valorAbatidoRound),
+          quitado,
+          pagamentoStatus,
+        },
+      } as const;
+    });
+  }
+
   async getResumo(pessoaId: string, userId: string): Promise<PessoaResumo | null> {
     const pessoa = await this.storage.getPessoa(pessoaId, userId);
     if (!pessoa) return null;
@@ -442,23 +731,31 @@ export class PessoasService {
     const comprasComParcelasReais = comprasResumo.filter((item) => item.usaParcelasReais).length;
     const comprasEmFallbackLegado = comprasResumo.length - comprasComParcelasReais;
 
-    const servicoPessoaIds = new Set(servicoPessoas.map((sp) => sp.id));
-    const pagamentosMesAtual = new Set(
-      servicoPagamentos
-        .filter((pagamento) => pagamento.mes === mesReferencia && servicoPessoaIds.has(pagamento.servicoPessoaId))
-        .map((pagamento) => pagamento.servicoPessoaId),
-    );
-
     let servicosPendentes = 0;
     let servicosPagos = 0;
     let servicosPendentesQuantidade = 0;
 
     for (const servicoPessoa of servicoPessoas) {
-      const valor = toMoneyNumber(servicoPessoa.valorDevido);
-      if (pagamentosMesAtual.has(servicoPessoa.id)) {
-        servicosPagos += valor;
-      } else {
-        servicosPendentes += valor;
+      const valorDevidoMes = toMoneyNumber(servicoPessoa.valorDevido);
+      const pagamentosDoServico = servicoPagamentos.filter((pagamento) =>
+        pagamento.servicoPessoaId === servicoPessoa.id,
+      );
+      const contextoMes = getPagamentoServicoMesContexto(pagamentosDoServico, mesReferencia);
+      const jaPagoNoMes = contextoMes && normalizeStatus(contextoMes.status) === "pago";
+
+      if (jaPagoNoMes) {
+        servicosPagos += valorDevidoMes;
+        continue;
+      }
+
+      // Semantica mensal: abatimento por saldo de servico acumula no ledger por servicoPessoaId+mes.
+      const abatidoSaldoMes = getServicoMesSaldoAbatido(saldoMovimentacoes, servicoPessoa.id, mesReferencia);
+      const pagoNoMes = Math.min(valorDevidoMes, abatidoSaldoMes);
+      const pendenteNoMes = Math.max(0, valorDevidoMes - pagoNoMes);
+
+      servicosPagos += pagoNoMes;
+      servicosPendentes += pendenteNoMes;
+      if (pendenteNoMes > 0) {
         servicosPendentesQuantidade += 1;
       }
     }

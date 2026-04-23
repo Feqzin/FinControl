@@ -44,6 +44,21 @@ export default function PessoasPage() {
   const [payOpen, setPayOpen] = useState(false);
   const [payingDivida, setPayingDivida] = useState<Divida | null>(null);
   const [payForm, setPayForm] = useState({ formaPagamento: "pix" });
+  const [abaterSaldoOpen, setAbaterSaldoOpen] = useState(false);
+  const [abaterSaldoDivida, setAbaterSaldoDivida] = useState<Divida | null>(null);
+  const [abaterSaldoForm, setAbaterSaldoForm] = useState({
+    valor: "",
+    data: format(new Date(), "yyyy-MM-dd"),
+    observacao: "",
+  });
+  const [abaterSaldoServicoOpen, setAbaterSaldoServicoOpen] = useState(false);
+  const [abaterSaldoServicoPessoaId, setAbaterSaldoServicoPessoaId] = useState<string | null>(null);
+  const [abaterSaldoServicoForm, setAbaterSaldoServicoForm] = useState({
+    mes: format(new Date(), "yyyy-MM"),
+    valor: "",
+    data: format(new Date(), "yyyy-MM-dd"),
+    observacao: "",
+  });
   const [saldoForm, setSaldoForm] = useState({
     tipo: "credito" as "credito" | "debito",
     valor: "",
@@ -100,6 +115,8 @@ export default function PessoasPage() {
     marcarServicoPagoMutation,
     reverterServicoPagoMutation,
     createSaldoMovimentacaoMutation,
+    abaterSaldoDividaMutation,
+    abaterSaldoServicoMutation,
     desvincularCompraMutation,
     updateTimelineObservacaoMutation,
     uploadTimelineComprovanteMutation,
@@ -128,6 +145,18 @@ export default function PessoasPage() {
   const historyResumo = historyPessoa ? getPessoaResumoConsolidado(historyPessoa.id) : null;
   const historySaldoResumo = historySaldo?.resumo ?? (historyResumo ? historyResumo.saldoPessoa : null);
   const historySaldoMovimentacoes = historySaldo?.movimentacoes ?? [];
+  const historySaldoDisponivel = historySaldoResumo?.saldoAtual ?? 0;
+
+  const getServicoMesCategoria = (mes: string) => `servico_mes:${mes}`;
+  const getSaldoAbatidoServicoMes = (servicoPessoaId: string, mes: string) => {
+    return historySaldoMovimentacoes.reduce((sum, row) => {
+      if (row.tipo !== "debito") return sum;
+      if (row.servicoPessoaId !== servicoPessoaId) return sum;
+      if ((row.origem ?? "").toLowerCase() !== "abatimento_servico") return sum;
+      if ((row.categoria ?? "").toLowerCase() !== getServicoMesCategoria(mes)) return sum;
+      return sum + (Number(row.valor) || 0);
+    }, 0);
+  };
 
   const handleOpenCompraNoCartao = (cartaoId: string, compraId: string) => {
     const params = new URLSearchParams({
@@ -683,6 +712,21 @@ export default function PessoasPage() {
         if (!v) {
           setHistoryPessoa(null);
           setHistoryFilter("todos");
+          setAbaterSaldoOpen(false);
+          setAbaterSaldoDivida(null);
+          setAbaterSaldoForm({
+            valor: "",
+            data: format(new Date(), "yyyy-MM-dd"),
+            observacao: "",
+          });
+          setAbaterSaldoServicoOpen(false);
+          setAbaterSaldoServicoPessoaId(null);
+          setAbaterSaldoServicoForm({
+            mes: format(new Date(), "yyyy-MM"),
+            valor: "",
+            data: format(new Date(), "yyyy-MM-dd"),
+            observacao: "",
+          });
           setSaldoForm({
             tipo: "credito",
             valor: "",
@@ -1037,6 +1081,203 @@ export default function PessoasPage() {
                 </DialogContent>
               </Dialog>
 
+              <Dialog open={abaterSaldoOpen} onOpenChange={setAbaterSaldoOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Abater com saldo positivo</DialogTitle>
+                  </DialogHeader>
+                  <form
+                    className="space-y-4"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (!historyPessoa || !abaterSaldoDivida) return;
+                      abaterSaldoDividaMutation.mutate(
+                        {
+                          pessoaId: historyPessoa.id,
+                          dividaId: abaterSaldoDivida.id,
+                          valor: abaterSaldoForm.valor,
+                          data: abaterSaldoForm.data,
+                          observacao: abaterSaldoForm.observacao || null,
+                        },
+                        {
+                          onSuccess: (result) => {
+                            setAbaterSaldoOpen(false);
+                            setAbaterSaldoDivida(null);
+                            setAbaterSaldoForm({
+                              valor: "",
+                              data: format(new Date(), "yyyy-MM-dd"),
+                              observacao: "",
+                            });
+                            toast({
+                              title: result.quitada ? "Dívida quitada com saldo" : "Saldo aplicado na dívida",
+                              description: `Abatido ${formatCurrencyBRL(result.valorAbatido)}.`,
+                            });
+                          },
+                          onError: (err: Error) => toast({
+                            title: "Erro",
+                            description: err.message,
+                            variant: "destructive",
+                          }),
+                        },
+                      );
+                    }}
+                  >
+                    {abaterSaldoDivida && (
+                      <div className="rounded-md bg-muted/40 p-3 space-y-1">
+                        <p className="text-sm text-muted-foreground">Saldo disponível</p>
+                        <p className="text-base font-bold text-emerald-600">{formatCurrencyBRL(historySaldoDisponivel)}</p>
+                        <p className="text-sm text-muted-foreground">Pendência da dívida</p>
+                        <p className="text-base font-bold">{formatCurrencyBRL(Number(abaterSaldoDivida.valor))}</p>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <Label>Valor do abatimento</Label>
+                      <Input
+                        value={abaterSaldoForm.valor}
+                        onChange={(e) => setAbaterSaldoForm((prev) => ({ ...prev, valor: e.target.value }))}
+                        placeholder="0,00"
+                        required
+                        data-testid="input-abater-saldo-valor"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Data</Label>
+                      <Input
+                        type="date"
+                        value={abaterSaldoForm.data}
+                        onChange={(e) => setAbaterSaldoForm((prev) => ({ ...prev, data: e.target.value }))}
+                        required
+                        data-testid="input-abater-saldo-data"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Observação (opcional)</Label>
+                      <Textarea
+                        value={abaterSaldoForm.observacao}
+                        onChange={(e) => setAbaterSaldoForm((prev) => ({ ...prev, observacao: e.target.value }))}
+                        placeholder="Ex.: abatimento de crédito já recebido da pessoa"
+                        data-testid="input-abater-saldo-observacao"
+                      />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={abaterSaldoDividaMutation.isPending}
+                      data-testid="button-confirmar-abater-saldo"
+                    >
+                      {abaterSaldoDividaMutation.isPending ? "Aplicando..." : "Aplicar abatimento"}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={abaterSaldoServicoOpen} onOpenChange={setAbaterSaldoServicoOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Abater saldo em serviço</DialogTitle>
+                  </DialogHeader>
+                  <form
+                    className="space-y-4"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (!historyPessoa || !abaterSaldoServicoPessoaId) return;
+                      abaterSaldoServicoMutation.mutate(
+                        {
+                          pessoaId: historyPessoa.id,
+                          servicoPessoaId: abaterSaldoServicoPessoaId,
+                          mes: abaterSaldoServicoForm.mes,
+                          valor: abaterSaldoServicoForm.valor,
+                          data: abaterSaldoServicoForm.data,
+                          observacao: abaterSaldoServicoForm.observacao || null,
+                        },
+                        {
+                          onSuccess: (result) => {
+                            setAbaterSaldoServicoOpen(false);
+                            setAbaterSaldoServicoPessoaId(null);
+                            setAbaterSaldoServicoForm({
+                              mes: format(new Date(), "yyyy-MM"),
+                              valor: "",
+                              data: format(new Date(), "yyyy-MM-dd"),
+                              observacao: "",
+                            });
+                            toast({
+                              title: result.quitado ? "Serviço quitado com saldo" : "Abatimento parcial em serviço registrado",
+                              description: `Mês ${result.mes} · abatido ${formatCurrencyBRL(result.valorAbatido)}.`,
+                            });
+                          },
+                          onError: (err: Error) => toast({
+                            title: "Erro",
+                            description: err.message,
+                            variant: "destructive",
+                          }),
+                        },
+                      );
+                    }}
+                  >
+                    <div className="rounded-md bg-muted/40 p-3 space-y-1">
+                      <p className="text-sm text-muted-foreground">Saldo disponível</p>
+                      <p className="text-base font-bold text-emerald-600">{formatCurrencyBRL(historySaldoDisponivel)}</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Mês de referência</Label>
+                      <Input
+                        type="month"
+                        value={abaterSaldoServicoForm.mes}
+                        onChange={(e) => setAbaterSaldoServicoForm((prev) => ({ ...prev, mes: e.target.value }))}
+                        required
+                        data-testid="input-abater-saldo-servico-mes"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Valor do abatimento</Label>
+                      <Input
+                        value={abaterSaldoServicoForm.valor}
+                        onChange={(e) => setAbaterSaldoServicoForm((prev) => ({ ...prev, valor: e.target.value }))}
+                        placeholder="0,00"
+                        required
+                        data-testid="input-abater-saldo-servico-valor"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Data</Label>
+                      <Input
+                        type="date"
+                        value={abaterSaldoServicoForm.data}
+                        onChange={(e) => setAbaterSaldoServicoForm((prev) => ({ ...prev, data: e.target.value }))}
+                        required
+                        data-testid="input-abater-saldo-servico-data"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Observação (opcional)</Label>
+                      <Textarea
+                        value={abaterSaldoServicoForm.observacao}
+                        onChange={(e) => setAbaterSaldoServicoForm((prev) => ({ ...prev, observacao: e.target.value }))}
+                        placeholder="Ex.: abatimento de saldo para esse serviço no mês"
+                        data-testid="input-abater-saldo-servico-observacao"
+                      />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={abaterSaldoServicoMutation.isPending}
+                      data-testid="button-confirmar-abater-saldo-servico"
+                    >
+                      {abaterSaldoServicoMutation.isPending ? "Aplicando..." : "Aplicar abatimento"}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+
               {historyDividas.length === 0 ? (
                 <div className="text-center py-6">
                   <Receipt className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
@@ -1070,6 +1311,11 @@ export default function PessoasPage() {
                                   : `Venc: ${d.dataVencimento}${isOverdue ? " · Vencido" : ""}`
                                 }
                               </p>
+                              {d.observacaoPagamento && (
+                                <p className="text-[11px] text-blue-600 mt-1 line-clamp-2">
+                                  {d.observacaoPagamento}
+                                </p>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-1 flex-shrink-0">
@@ -1095,14 +1341,38 @@ export default function PessoasPage() {
                                 Pago
                               </Button>
                             ) : (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => { setPayingDivida(d); setPayOpen(true); }}
-                                data-testid={`button-pay-history-${d.id}`}
-                              >
-                                <Check className="w-4 h-4 text-emerald-600" />
-                              </Button>
+                              <>
+                                {d.tipo === "receber" && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 px-2 text-xs"
+                                    onClick={() => {
+                                      setAbaterSaldoDivida(d);
+                                      setAbaterSaldoForm({
+                                        valor: "",
+                                        data: format(new Date(), "yyyy-MM-dd"),
+                                        observacao: "",
+                                      });
+                                      setAbaterSaldoOpen(true);
+                                    }}
+                                    disabled={abaterSaldoDividaMutation.isPending || historySaldoDisponivel <= 0}
+                                    title="Usar saldo positivo da pessoa para abater a dívida"
+                                    data-testid={`button-abater-saldo-divida-${d.id}`}
+                                  >
+                                    <Wallet className="w-3 h-3 mr-1" />
+                                    Abater saldo
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => { setPayingDivida(d); setPayOpen(true); }}
+                                  data-testid={`button-pay-history-${d.id}`}
+                                >
+                                  <Check className="w-4 h-4 text-emerald-600" />
+                                </Button>
+                              </>
                             )}
                           </div>
                         </div>
@@ -1185,7 +1455,19 @@ export default function PessoasPage() {
                   <div className="space-y-2">
                     {historyServicoPessoas.map((sp) => {
                       const servico = servicos.find((s) => s.id === sp.servicoId);
-                      const pagAtual = servicoPagamentos.find((p) => p.servicoPessoaId === sp.id && p.mes === meAtual);
+                      const pagamentosMesAtual = servicoPagamentos.filter((p) => p.servicoPessoaId === sp.id && p.mes === meAtual);
+                      const pagAtual =
+                        pagamentosMesAtual.find((p) => p.status === "pago")
+                        ?? pagamentosMesAtual.find((p) => p.status === "parcial")
+                        ?? pagamentosMesAtual[0];
+                      const valorDevidoMes = Number(sp.valorDevido) || 0;
+                      const saldoAbatidoMesAtual = getSaldoAbatidoServicoMes(sp.id, meAtual);
+                      const isPagoMesAtual = pagAtual?.status === "pago";
+                      const isParcialMesAtual = !isPagoMesAtual && (pagAtual?.status === "parcial" || saldoAbatidoMesAtual > 0);
+                      const pendenteMesAtual = Math.max(
+                        0,
+                        valorDevidoMes - (isPagoMesAtual ? valorDevidoMes : saldoAbatidoMesAtual),
+                      );
                       return (
                         <div
                           key={sp.id}
@@ -1200,38 +1482,65 @@ export default function PessoasPage() {
                                 <p className="text-xs text-muted-foreground">
                                   {formatCurrencyBRL(Number(sp.valorDevido))}/mês
                                 </p>
+                                {isParcialMesAtual && (
+                                  <p className="text-[11px] text-blue-600 mt-0.5">
+                                    Parcial no mês {meAtual}: abatido {formatCurrencyBRL(saldoAbatidoMesAtual)} · pendente {formatCurrencyBRL(pendenteMesAtual)}
+                                  </p>
+                                )}
                               </div>
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0">
-                              {pagAtual ? (
+                              {isPagoMesAtual ? (
                                 <button
                                   className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors"
-                                  onClick={() =>
+                                  onClick={() => {
+                                    if (saldoAbatidoMesAtual > 0) return;
                                     reverterServicoPagoMutation.mutate(pagAtual.id, {
                                       onSuccess: () => toast({ title: "Pagamento revertido" }),
                                       onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
-                                    })
-                                  }
+                                    });
+                                  }}
                                   data-testid={`button-reverter-servico-pag-${sp.id}`}
+                                  disabled={saldoAbatidoMesAtual > 0}
                                 >
-                                  <Check className="w-3 h-3" /> Pago
+                                  <Check className="w-3 h-3" /> {saldoAbatidoMesAtual > 0 ? "Pago via saldo" : "Pago"}
                                 </button>
                               ) : (
-                                <button
-                                  className="inline-flex items-center text-xs px-2 py-1 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
-                                  onClick={() =>
-                                    marcarServicoPagoMutation.mutate(
-                                      { servicoPessoaId: sp.id, mes: meAtual },
-                                      {
-                                        onSuccess: () => toast({ title: "Pagamento de serviço registrado" }),
-                                        onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
-                                      },
-                                    )
-                                  }
-                                  data-testid={`button-pagar-servico-${sp.id}`}
-                                >
-                                  Pendente
-                                </button>
+                                <>
+                                  <button
+                                    className="inline-flex items-center text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 transition-colors"
+                                    onClick={() => {
+                                      setAbaterSaldoServicoPessoaId(sp.id);
+                                      setAbaterSaldoServicoForm({
+                                        mes: meAtual,
+                                        valor: "",
+                                        data: format(new Date(), "yyyy-MM-dd"),
+                                        observacao: "",
+                                      });
+                                      setAbaterSaldoServicoOpen(true);
+                                    }}
+                                    disabled={abaterSaldoServicoMutation.isPending || historySaldoDisponivel <= 0 || pendenteMesAtual <= 0}
+                                    data-testid={`button-abater-saldo-servico-${sp.id}`}
+                                  >
+                                    <Wallet className="w-3 h-3 mr-1" />
+                                    Abater saldo
+                                  </button>
+                                  <button
+                                    className="inline-flex items-center text-xs px-2 py-1 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
+                                    onClick={() =>
+                                      marcarServicoPagoMutation.mutate(
+                                        { servicoPessoaId: sp.id, mes: meAtual },
+                                        {
+                                          onSuccess: () => toast({ title: "Pagamento de serviço registrado" }),
+                                          onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+                                        },
+                                      )
+                                    }
+                                    data-testid={`button-pagar-servico-${sp.id}`}
+                                  >
+                                    {isParcialMesAtual ? "Parcial" : "Pendente"}
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>

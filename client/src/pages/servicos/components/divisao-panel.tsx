@@ -22,7 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
-import type { Pessoa, Servico, ServicoPagamento, ServicoPessoa } from "@shared/schema";
+import type { Pessoa, PessoaSaldoMovimentacao, Servico, ServicoPagamento, ServicoPessoa } from "@shared/schema";
 import {
   addServicoPessoa,
   marcarServicoPessoaPago,
@@ -42,11 +42,18 @@ interface DivisaoProps {
   servicoPessoas: ServicoPessoa[];
   servicoPagamentos: ServicoPagamento[];
   pessoas: Pessoa[];
+  pessoaSaldoMovimentacoes: PessoaSaldoMovimentacao[];
 }
 
 type PeriodoHistorico = "6m" | "12m" | "custom";
 
-export function DivisaoPanel({ servico, servicoPessoas, servicoPagamentos, pessoas }: DivisaoProps) {
+export function DivisaoPanel({
+  servico,
+  servicoPessoas,
+  servicoPagamentos,
+  pessoas,
+  pessoaSaldoMovimentacoes,
+}: DivisaoProps) {
   const { toast } = useToast();
   const [openAdd, setOpenAdd] = useState(false);
   const [addForm, setAddForm] = useState({ pessoaId: "", valorDevido: "" });
@@ -88,6 +95,15 @@ export function DivisaoPanel({ servico, servicoPessoas, servicoPagamentos, pesso
       continue;
     }
 
+    if (existente.status !== "pago" && pagamento.status === "pago") {
+      pagamentosIndex.set(key, pagamento);
+      continue;
+    }
+    if (existente.status !== "parcial" && pagamento.status === "parcial") {
+      pagamentosIndex.set(key, pagamento);
+      continue;
+    }
+
     const dataExistente = String(existente.dataPagamento ?? "");
     const dataAtual = String(pagamento.dataPagamento ?? "");
     const deveTrocar = dataAtual > dataExistente || (dataAtual === dataExistente && pagamento.id > existente.id);
@@ -99,6 +115,17 @@ export function DivisaoPanel({ servico, servicoPessoas, servicoPagamentos, pesso
   // Chave unica de leitura por vinculo+mes para evitar inflar totais com duplicatas legadas.
   const getPagamento = (servicoPessoaId: string, mes: string) =>
     pagamentosIndex.get(`${servicoPessoaId}:${mes}`);
+
+  const getCategoriaServicoMes = (mes: string) => `servico_mes:${mes}`;
+  const getSaldoAbatidoServicoMes = (servicoPessoaId: string, mes: string) => {
+    return pessoaSaldoMovimentacoes.reduce((sum, row) => {
+      if (row.tipo !== "debito") return sum;
+      if (row.servicoPessoaId !== servicoPessoaId) return sum;
+      if ((row.origem ?? "").toLowerCase() !== "abatimento_servico") return sum;
+      if ((row.categoria ?? "").toLowerCase() !== getCategoriaServicoMes(mes)) return sum;
+      return sum + (Number(row.valor) || 0);
+    }, 0);
+  };
 
   const addMutation = useMutation({
     mutationFn: ({ pessoaId, valorDevido }: { pessoaId: string; valorDevido: string }) =>
@@ -165,7 +192,10 @@ export function DivisaoPanel({ servico, servicoPessoas, servicoPagamentos, pesso
 
   const totalPendenteMes = vinculados.reduce((sum, sp) => {
     const pago = getPagamento(sp.id, mesReferencia);
-    return sum + (pago ? 0 : Number(sp.valorDevido));
+    if (pago?.status === "pago") return sum;
+    const abatidoSaldo = getSaldoAbatidoServicoMes(sp.id, mesReferencia);
+    const pendente = Math.max(0, Number(sp.valorDevido) - abatidoSaldo);
+    return sum + pendente;
   }, 0);
 
   return (
@@ -337,17 +367,31 @@ export function DivisaoPanel({ servico, servicoPessoas, servicoPagamentos, pesso
                     </td>
                     {meses.map((m) => {
                       const pg = getPagamento(sp.id, m);
-                      const isPago = !!pg;
+                      const saldoAbatidoMes = getSaldoAbatidoServicoMes(sp.id, m);
+                      const isPago = pg?.status === "pago";
+                      const isParcial = !isPago && (pg?.status === "parcial" || saldoAbatidoMes > 0);
                       return (
                         <td key={m} className="text-center py-2 px-1">
                           {isPago ? (
                             <button
                               className="inline-flex items-center gap-1 text-emerald-600 hover:text-red-500"
-                              onClick={() => marcarPendenteMutation.mutate(pg.id)}
+                              onClick={() => {
+                                if (!pg?.id) return;
+                                marcarPendenteMutation.mutate(pg.id);
+                              }}
                               title={`Reverter ${labelMes(m)} para pendente`}
-                              disabled={marcarPendenteMutation.isPending}
+                              disabled={marcarPendenteMutation.isPending || saldoAbatidoMes > 0}
                             >
                               <Check className="w-4 h-4" />
+                            </button>
+                          ) : isParcial ? (
+                            <button
+                              className="inline-flex items-center gap-1 text-blue-600 hover:text-emerald-600"
+                              onClick={() => marcarPagoMutation.mutate({ servicoPessoaId: sp.id, mes: m })}
+                              title={`Parcial em ${labelMes(m)} (${formatCurrencyBRL(saldoAbatidoMes)} abatido). Marcar como pago.`}
+                              disabled={marcarPagoMutation.isPending}
+                            >
+                              ~
                             </button>
                           ) : (
                             <button

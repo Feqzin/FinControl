@@ -115,9 +115,17 @@ export class ServicosService {
 
     // Protecao idempotente: evita duplicidade para o mesmo vinculo no mesmo mes.
     const existentes = await this.storage.getServicoPagamentosByServicoPessoa(data.servicoPessoaId, userId);
-    const jaRegistrado = existentes.find((item) => item.mes === data.mes);
-    if (jaRegistrado) {
-      return { created: jaRegistrado };
+    const existentesNoMes = existentes.filter((item) => item.mes === data.mes);
+    const jaPagoNoMes = existentesNoMes.find((item) => item.status === "pago");
+    if (jaPagoNoMes) {
+      return { created: jaPagoNoMes };
+    }
+
+    if (existentesNoMes.length > 0) {
+      // Canonicaliza o mes para 1 registro "pago" e remove duplicidades legadas.
+      for (const item of existentesNoMes) {
+        await this.storage.deleteServicoPagamento(item.id, userId);
+      }
     }
 
     const created = await this.storage.createServicoPagamento({

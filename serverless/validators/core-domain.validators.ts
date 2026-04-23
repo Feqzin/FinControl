@@ -28,6 +28,20 @@ export const pessoaSaldoMovimentacaoBody = z.object({
   servicoPessoaId: z.string().trim().optional().nullable(),
 });
 
+export const pessoaAbaterSaldoDividaBody = z.object({
+  valor: moneyField,
+  data: isoDateField.optional().nullable(),
+  observacao: z.string().trim().optional().nullable(),
+});
+
+export const pessoaAbaterSaldoServicoBody = z.object({
+  // Semantica mensal unica para abatimento de servico.
+  mes: z.string().trim().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Mes invalido. Use o formato yyyy-MM"),
+  valor: moneyField,
+  data: isoDateField.optional().nullable(),
+  observacao: z.string().trim().optional().nullable(),
+});
+
 export const servicoBody = z.object({
   nome: z.string().min(1),
   categoria: z.string().min(1),
@@ -106,6 +120,8 @@ export const patrimonioUpdateBody = insertPatrimonioSchema
 export type PessoaBodyInput = z.infer<typeof pessoaBody>;
 export type PessoaUpdateBodyInput = z.infer<typeof pessoaUpdateBody>;
 export type PessoaSaldoMovimentacaoBodyInput = z.infer<typeof pessoaSaldoMovimentacaoBody>;
+export type PessoaAbaterSaldoDividaBodyInput = z.infer<typeof pessoaAbaterSaldoDividaBody>;
+export type PessoaAbaterSaldoServicoBodyInput = z.infer<typeof pessoaAbaterSaldoServicoBody>;
 export type ServicoBodyInput = z.infer<typeof servicoBody>;
 export type ServicoUpdateBodyInput = z.infer<typeof servicoUpdateBody>;
 export type ServicoPessoaBodyInput = z.infer<typeof servicoPessoaBody>;
