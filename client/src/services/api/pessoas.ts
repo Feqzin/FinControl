@@ -129,6 +129,25 @@ export type AbaterSaldoServicoPessoaResponse = {
   pagamentoStatus: "parcial" | "pago";
 };
 
+export type AbaterSaldoParcelaPessoaPayload = {
+  valor: string;
+  data?: string | null;
+  observacao?: string | null;
+};
+
+export type AbaterSaldoParcelaPessoaResponse = {
+  compraCartaoId: string;
+  parcelaCompraId: string;
+  valorAbatido: number;
+  valorPendenteAnterior: number;
+  valorPendenteAtual: number;
+  saldoAnterior: number;
+  saldoAtual: number;
+  quitada: boolean;
+  statusParcelaCartao: "parcial" | "pago";
+  statusParcelaPessoa: "parcial" | "pago";
+};
+
 export type PessoaResumo = {
   pessoa: {
     id: string;
@@ -290,6 +309,15 @@ export async function abaterSaldoServicoPessoa(
 ): Promise<AbaterSaldoServicoPessoaResponse> {
   const res = await apiRequest("POST", `/api/pessoas/${pessoaId}/servicos/${servicoPessoaId}/abater-saldo`, payload);
   return (await res.json()) as AbaterSaldoServicoPessoaResponse;
+}
+
+export async function abaterSaldoParcelaPessoa(
+  pessoaId: string,
+  parcelaId: string,
+  payload: AbaterSaldoParcelaPessoaPayload,
+): Promise<AbaterSaldoParcelaPessoaResponse> {
+  const res = await apiRequest("POST", `/api/pessoas/${pessoaId}/parcelas/${parcelaId}/abater-saldo`, payload);
+  return (await res.json()) as AbaterSaldoParcelaPessoaResponse;
 }
 
 export async function updateTimelinePagamentoObservacao(params: {

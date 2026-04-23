@@ -21,6 +21,61 @@ declare module "express-serve-static-core" {
 
 const app = express();
 
+const DATABASE_SCHEMA_ERROR_CODES = new Set(["42P01", "42703"]);
+
+function extractErrorMessage(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value instanceof Error) return value.message;
+  return String(value ?? "");
+}
+
+function extractErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === "string" && code.trim()) return code.trim();
+
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause && typeof cause === "object") {
+    const causeCode = (cause as { code?: unknown }).code;
+    if (typeof causeCode === "string" && causeCode.trim()) return causeCode.trim();
+  }
+
+  return null;
+}
+
+function isPessoaSaldoSchemaError(error: unknown): boolean {
+  const message = extractErrorMessage(error).toLowerCase();
+  const causeMessage = extractErrorMessage((error as { cause?: unknown })?.cause).toLowerCase();
+  const joined = `${message}\n${causeMessage}`;
+  const code = extractErrorCode(error);
+
+  if (code && DATABASE_SCHEMA_ERROR_CODES.has(code) && joined.includes("pessoa_saldo_movimentacoes")) {
+    return true;
+  }
+
+  if (!joined.includes("pessoa_saldo_movimentacoes")) {
+    return false;
+  }
+
+  return joined.includes("does not exist")
+    || joined.includes("undefined column")
+    || joined.includes("coluna")
+    || joined.includes("relation");
+}
+
+function buildSafeClientErrorMessage(error: unknown, status: number): string {
+  if (status < 500) {
+    const message = extractErrorMessage(error);
+    return message || "Bad Request";
+  }
+
+  if (isPessoaSaldoSchemaError(error)) {
+    return "Falha ao salvar movimentacao de saldo. Estrutura do banco desatualizada (coluna ou tabela ausente).";
+  }
+
+  return "Erro interno ao processar a requisicao.";
+}
+
 app.use(
   express.json({
     // Mantem margem para JSON/base64 e fica abaixo do limite de payload da Vercel Functions.
@@ -79,7 +134,7 @@ registerRoutes(app);
 
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   const status = err.status || err.statusCode || 500;
-  const message = err.message || "Internal Server Error";
+  const message = buildSafeClientErrorMessage(err, status);
 
   writeTechnicalLog({
     event: "http.request.error",

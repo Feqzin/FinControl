@@ -21,7 +21,7 @@ import {
 import {
   Plus, CreditCard, Trash2, CalendarClock, ShoppingBag, User, Pencil,
   RefreshCw, Upload, List, Check, X, ChevronRight,
-  Eye,
+  Eye, Wallet,
 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
 import { useUIPreferences } from "@/context/ui-preferences";
@@ -70,6 +70,12 @@ export default function CartoesPage() {
   const [editingParcelaData, setEditingParcelaData] = useState("");
   const [payingParcelaId, setPayingParcelaId] = useState<string | null>(null);
   const [payParcelaData, setPayParcelaData] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [abaterSaldoParcelaId, setAbaterSaldoParcelaId] = useState<string | null>(null);
+  const [abaterSaldoParcelaForm, setAbaterSaldoParcelaForm] = useState({
+    valor: "",
+    data: format(new Date(), "yyyy-MM-dd"),
+    observacao: "",
+  });
 
   const [openImport, setOpenImport] = useState(false);
   const [importCartaoId, setImportCartaoId] = useState<string>("");
@@ -92,6 +98,7 @@ export default function CartoesPage() {
     compras,
     servicos,
     pessoas,
+    pessoaSaldoMovimentacoes,
     parcelasCompraData,
     refetchParcelas,
     isLoading,
@@ -111,6 +118,7 @@ export default function CartoesPage() {
     payParcelaMutation,
     payParcelaPessoaMutation,
     editParcelaMutation,
+    abaterSaldoParcelaMutation,
     batchImportMutation,
     rollbackImportMutation,
   } = useCartoes(viewingCompra?.id);
@@ -142,6 +150,52 @@ export default function CartoesPage() {
   const getErrorMessage = (error: unknown) => (
     error instanceof Error ? error.message : "Erro inesperado"
   );
+
+  const getPessoaSaldoDisponivel = (pessoaId: string): number => {
+    const { creditos, debitos } = pessoaSaldoMovimentacoes.reduce(
+      (acc, mov) => {
+        if (mov.pessoaId !== pessoaId) return acc;
+        const valor = Number(mov.valor) || 0;
+        if (mov.tipo === "credito") acc.creditos += valor;
+        else acc.debitos += valor;
+        return acc;
+      },
+      { creditos: 0, debitos: 0 },
+    );
+    return Math.max(0, Number((creditos - debitos).toFixed(2)));
+  };
+
+  const getParcelaSaldoAbatido = (parcelaId: string): number => {
+    const total = pessoaSaldoMovimentacoes.reduce((sum, mov) => {
+      if (mov.tipo !== "debito") return sum;
+      if (mov.parcelaCompraId !== parcelaId) return sum;
+      if ((mov.origem ?? "").toLowerCase() !== "abatimento_parcela_cartao") return sum;
+      return sum + (Number(mov.valor) || 0);
+    }, 0);
+    return Number(total.toFixed(2));
+  };
+
+  const getParcelaSaldoPendente = (parcela: ParcelaCompra): number => {
+    const valor = Number(parcela.valor) || 0;
+    const abatido = getParcelaSaldoAbatido(parcela.id);
+    return Math.max(0, Number((valor - abatido).toFixed(2)));
+  };
+
+  const openAbaterSaldoParcelaDialog = (parcelaId: string, pessoaId: string) => {
+    const parcela = parcelasCompraData.find((item) => item.id === parcelaId);
+    if (!parcela) return;
+
+    const saldoDisponivel = getPessoaSaldoDisponivel(pessoaId);
+    const pendente = getParcelaSaldoPendente(parcela);
+    const sugestao = Math.min(saldoDisponivel, pendente);
+
+    setAbaterSaldoParcelaId(parcelaId);
+    setAbaterSaldoParcelaForm({
+      valor: sugestao > 0 ? sugestao.toFixed(2) : "",
+      data: format(new Date(), "yyyy-MM-dd"),
+      observacao: "",
+    });
+  };
 
   const resetImportState = () => {
     setOpenImport(false);
@@ -761,7 +815,12 @@ export default function CartoesPage() {
         </DialogContent>
       </Dialog>
 
-      <Sheet open={!!viewingCompra} onOpenChange={(v) => { if (!v) setViewingCompra(null); }}>
+      <Sheet open={!!viewingCompra} onOpenChange={(v) => {
+        if (!v) {
+          setViewingCompra(null);
+          setAbaterSaldoParcelaId(null);
+        }
+      }}>
         <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
           {viewingCompra && (
             <>
@@ -803,6 +862,13 @@ export default function CartoesPage() {
                   const pago = p.statusCartao === "pago";
                   const isPaying = payingParcelaId === p.id;
                   const isEditing = editingParcelaId === p.id;
+                  const pessoaVinculadaId = viewingCompra.pessoaId || null;
+                  const saldoAbatido = getParcelaSaldoAbatido(p.id);
+                  const saldoPendente = getParcelaSaldoPendente(p);
+                  const parcialViaSaldo = !pago && saldoAbatido > 0;
+                  const saldoPessoaDisponivel = pessoaVinculadaId ? getPessoaSaldoDisponivel(pessoaVinculadaId) : 0;
+                  const podeAbaterSaldo = Boolean(pessoaVinculadaId) && !pago && p.statusCartao !== "cancelado"
+                    && saldoPendente > 0 && saldoPessoaDisponivel > 0;
                   const aguardaReembolso = pago && viewingCompra.pessoaId && (!p.statusPessoa || p.statusPessoa === "pendente");
                   return (
                     <div
@@ -840,6 +906,11 @@ export default function CartoesPage() {
                                     Pago {p.dataPagamentoCartao ? `em ${p.dataPagamentoCartao}` : ""}
                                   </span>
                                 )}
+                                {parcialViaSaldo && (
+                                  <span className="text-xs text-blue-600">
+                                    Parcial via saldo: abatido {formatCartaoCurrency(saldoAbatido)} · pendente {formatCartaoCurrency(saldoPendente)}
+                                  </span>
+                                )}
                                 {!pago && p.dataVencimento && (
                                   <span className={`text-xs ${vencida ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
                                     Venc. {p.dataVencimento}{vencida ? " · VENCIDA" : ""}
@@ -847,6 +918,9 @@ export default function CartoesPage() {
                                 )}
                               </div>
                               <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                {saldoAbatido > 0 && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600">Saldo pessoa</span>
+                                )}
                                 {aguardaReembolso && (
                                   <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600">Ag. reembolso</span>
                                 )}
@@ -872,12 +946,30 @@ export default function CartoesPage() {
                                 data-testid={`button-pay-parcela-compra-${p.id}`}>
                                 <Check className="w-3 h-3 text-emerald-600" />
                               </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                title="Abater com saldo da pessoa"
+                                onClick={() => {
+                                  if (!pessoaVinculadaId) return;
+                                  openAbaterSaldoParcelaDialog(p.id, pessoaVinculadaId);
+                                }}
+                                data-testid={`button-abater-saldo-parcela-${p.id}`}
+                                disabled={!podeAbaterSaldo}
+                              >
+                                <Wallet className="w-3 h-3 text-blue-600" />
+                              </Button>
                             </>
                           )}
                           {pago && (
                             <Button variant="ghost" size="icon" className="h-7 w-7"
-                              title="Desfazer pagamento"
-                              onClick={() => handlePayParcela(p.id, false)}
+                              title={saldoAbatido > 0 ? "Pago via saldo da pessoa" : "Desfazer pagamento"}
+                              onClick={() => {
+                                if (saldoAbatido > 0) return;
+                                handlePayParcela(p.id, false);
+                              }}
+                              disabled={saldoAbatido > 0}
                               data-testid={`button-undo-parcela-compra-${p.id}`}>
                               <X className="w-3 h-3 text-muted-foreground" />
                             </Button>
@@ -911,6 +1003,111 @@ export default function CartoesPage() {
                   );
                 })}
               </div>
+
+              <Dialog open={!!abaterSaldoParcelaId} onOpenChange={(open) => { if (!open) setAbaterSaldoParcelaId(null); }}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Abater saldo na parcela</DialogTitle>
+                  </DialogHeader>
+                  <form
+                    className="space-y-4"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!viewingCompra?.pessoaId || !abaterSaldoParcelaId) return;
+
+                      abaterSaldoParcelaMutation.mutate(
+                        {
+                          pessoaId: viewingCompra.pessoaId,
+                          parcelaId: abaterSaldoParcelaId,
+                          valor: abaterSaldoParcelaForm.valor,
+                          data: abaterSaldoParcelaForm.data,
+                          observacao: abaterSaldoParcelaForm.observacao || null,
+                        },
+                        {
+                          onSuccess: (result) => {
+                            setAbaterSaldoParcelaId(null);
+                            toast({
+                              title: result.quitada ? "Parcela quitada com saldo" : "Abatimento parcial registrado",
+                              description: `Saldo utilizado: ${formatCartaoCurrency(result.valorAbatido)}`,
+                            });
+                            refetchParcelas();
+                          },
+                          onError: (error) => {
+                            toast({
+                              title: "Erro ao abater saldo",
+                              description: getErrorMessage(error),
+                              variant: "destructive",
+                            });
+                          },
+                        },
+                      );
+                    }}
+                  >
+                    {(() => {
+                      const parcela = parcelasCompraData.find((item) => item.id === abaterSaldoParcelaId);
+                      if (!parcela || !viewingCompra?.pessoaId) return null;
+                      const pessoa = pessoas.find((item) => item.id === viewingCompra.pessoaId);
+                      const saldoDisponivel = getPessoaSaldoDisponivel(viewingCompra.pessoaId);
+                      const pendente = getParcelaSaldoPendente(parcela);
+
+                      return (
+                        <div className="rounded-md bg-muted/40 p-3 text-sm space-y-1">
+                          <p className="font-medium">
+                            Parcela {parcela.numero} - {formatCartaoCurrency(Number(parcela.valor))}
+                          </p>
+                          <p className="text-muted-foreground">
+                            Pessoa: {pessoa?.nome ?? "Vinculada"} · Saldo disponível: {formatCartaoCurrency(saldoDisponivel)}
+                          </p>
+                          <p className="text-muted-foreground">
+                            Pendente atual da parcela: {formatCartaoCurrency(pendente)}
+                          </p>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="space-y-2">
+                      <Label>Valor do abatimento</Label>
+                      <Input
+                        value={abaterSaldoParcelaForm.valor}
+                        onChange={(e) => setAbaterSaldoParcelaForm((prev) => ({ ...prev, valor: e.target.value }))}
+                        placeholder="0,00"
+                        required
+                        data-testid="input-abater-saldo-parcela-valor"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Data</Label>
+                      <Input
+                        type="date"
+                        value={abaterSaldoParcelaForm.data}
+                        onChange={(e) => setAbaterSaldoParcelaForm((prev) => ({ ...prev, data: e.target.value }))}
+                        required
+                        data-testid="input-abater-saldo-parcela-data"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Observação (opcional)</Label>
+                      <Input
+                        value={abaterSaldoParcelaForm.observacao}
+                        onChange={(e) => setAbaterSaldoParcelaForm((prev) => ({ ...prev, observacao: e.target.value }))}
+                        placeholder="Ex.: abatimento usando saldo da pessoa"
+                        data-testid="input-abater-saldo-parcela-observacao"
+                      />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={abaterSaldoParcelaMutation.isPending}
+                      data-testid="button-confirmar-abater-saldo-parcela"
+                    >
+                      {abaterSaldoParcelaMutation.isPending ? "Aplicando..." : "Aplicar abatimento"}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
             </>
           )}
         </SheetContent>

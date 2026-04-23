@@ -551,6 +551,7 @@ export class FinancialService {
 
   async getCardSummaries(userId: string): Promise<CardConsolidatedSummary[]> {
     const { cartoes, compras, parcelasCompra } = await this.loadCardContext(userId);
-    return getCardConsolidatedSummaries({ cartoes, compras, parcelasCompra });
+    const saldoMovimentacoes = await this.repository.getPessoaSaldoMovimentacoes(userId);
+    return getCardConsolidatedSummaries({ cartoes, compras, parcelasCompra, saldoMovimentacoes });
   }
 }

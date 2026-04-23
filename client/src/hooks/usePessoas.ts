@@ -12,6 +12,7 @@ import type {
 import { format } from "date-fns";
 import { queryClient } from "@/lib/queryClient";
 import {
+  abaterSaldoParcelaPessoa,
   abaterSaldoDividaPessoa,
   abaterSaldoServicoPessoa,
   createPessoaSaldoMovimentacao,
@@ -319,6 +320,32 @@ export function usePessoas({
     },
   });
 
+  const abaterSaldoParcelaMutation = useMutation({
+    mutationFn: ({
+      pessoaId,
+      parcelaId,
+      valor,
+      data,
+      observacao,
+    }: {
+      pessoaId: string;
+      parcelaId: string;
+      valor: string;
+      data?: string | null;
+      observacao?: string | null;
+    }) => abaterSaldoParcelaPessoa(pessoaId, parcelaId, { valor, data, observacao }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "saldo-movimentacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
+      invalidateTimeline();
+    },
+  });
+
   const desvincularCompraMutation = useMutation({
     mutationFn: (id: string) => desvincularPessoaDeCompra(id),
     onSuccess: () => {
@@ -597,6 +624,7 @@ export function usePessoas({
     createSaldoMovimentacaoMutation,
     abaterSaldoDividaMutation,
     abaterSaldoServicoMutation,
+    abaterSaldoParcelaMutation,
     desvincularCompraMutation,
     updateTimelineObservacaoMutation,
     uploadTimelineComprovanteMutation,

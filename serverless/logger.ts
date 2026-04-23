@@ -211,6 +211,27 @@ export function summarizeResponsePayload(payload: unknown): Record<string, JsonL
 
 export function toErrorLog(error: unknown): Record<string, JsonLike> {
   if (error instanceof Error) {
+    const errorWithMeta = error as Error & {
+      code?: unknown;
+      detail?: unknown;
+      schema?: unknown;
+      table?: unknown;
+      column?: unknown;
+      constraint?: unknown;
+      cause?: unknown;
+    };
+    const cause = errorWithMeta.cause && typeof errorWithMeta.cause === "object"
+      ? errorWithMeta.cause as {
+        name?: unknown;
+        message?: unknown;
+        code?: unknown;
+        detail?: unknown;
+        schema?: unknown;
+        table?: unknown;
+        column?: unknown;
+        constraint?: unknown;
+      }
+      : null;
     const stack = typeof error.stack === "string"
       ? error.stack.split("\n").slice(0, 4).join("\n")
       : undefined;
@@ -219,7 +240,14 @@ export function toErrorLog(error: unknown): Record<string, JsonLike> {
         name: error.name,
         message: error.message,
         stack,
-        code: (error as { code?: unknown }).code ?? null,
+        code: errorWithMeta.code ?? cause?.code ?? null,
+        detail: errorWithMeta.detail ?? cause?.detail ?? null,
+        schema: errorWithMeta.schema ?? cause?.schema ?? null,
+        table: errorWithMeta.table ?? cause?.table ?? null,
+        column: errorWithMeta.column ?? cause?.column ?? null,
+        constraint: errorWithMeta.constraint ?? cause?.constraint ?? null,
+        causeName: typeof cause?.name === "string" ? cause.name : null,
+        causeMessage: typeof cause?.message === "string" ? cause.message : null,
       },
       {
         redactFinancial: true,

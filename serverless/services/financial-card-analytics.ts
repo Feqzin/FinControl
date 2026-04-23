@@ -1,5 +1,5 @@
 import { addMonths, format, parseISO } from "date-fns";
-import type { Cartao, CompraCartao, ParcelaCompra } from "../../shared/schema.js";
+import type { Cartao, CompraCartao, ParcelaCompra, PessoaSaldoMovimentacao } from "../../shared/schema.js";
 import { parseMoney } from "../../utils/money.js";
 
 type MoneyValue = string | number | null | undefined;
@@ -7,10 +7,12 @@ type MoneyValue = string | number | null | undefined;
 export type CardAnalyticsInput = {
   compras: CompraCartao[];
   parcelasCompra: ParcelaCompra[];
+  saldoMovimentacoes?: PessoaSaldoMovimentacao[];
 };
 
 export type CardInstallmentObligation = {
   compraId: string;
+  parcelaCompraId: string | null;
   cartaoId: string;
   source: "compra" | "parcela_compra";
   numero: number;
@@ -109,6 +111,37 @@ function byCompraId(parcelasCompra: ParcelaCompra[]): Map<string, ParcelaCompra[
   return grouped;
 }
 
+function buildParcelaSaldoAbatidoMap(rows: PessoaSaldoMovimentacao[] | undefined): Map<string, number> {
+  const grouped = new Map<string, number>();
+  if (!rows || rows.length === 0) return grouped;
+
+  for (const row of rows) {
+    // Fonte auditavel de abatimento parcial em parcela de cartao via saldo da pessoa.
+    if (row.tipo !== "debito") continue;
+    if (String(row.origem ?? "").trim().toLowerCase() !== "abatimento_parcela_cartao") continue;
+    if (!row.parcelaCompraId) continue;
+    const current = grouped.get(row.parcelaCompraId) ?? 0;
+    grouped.set(row.parcelaCompraId, round2(current + toMoneyNumber(row.valor)));
+  }
+
+  return grouped;
+}
+
+function getOutstandingAmount(
+  obligation: CardInstallmentObligation,
+  parcelaSaldoAbatidoMap: Map<string, number>,
+): number {
+  if (!isOutstandingStatus(obligation.statusCartao)) return 0;
+
+  const valorOriginal = toMoneyNumber(obligation.valor);
+  if (obligation.source !== "parcela_compra" || !obligation.parcelaCompraId) {
+    return round2(Math.max(0, valorOriginal));
+  }
+
+  const abatido = parcelaSaldoAbatidoMap.get(obligation.parcelaCompraId) ?? 0;
+  return round2(Math.max(0, valorOriginal - abatido));
+}
+
 function buildFallbackInstallments(compra: CompraCartao): CardInstallmentObligation[] {
   const totalParcelas = normalizeInstallmentCount(compra.parcelas);
   const parcelaAtual = normalizeCurrentInstallment(compra.parcelaAtual, totalParcelas);
@@ -120,6 +153,7 @@ function buildFallbackInstallments(compra: CompraCartao): CardInstallmentObligat
     const isPaid = numero < parcelaAtual;
     return {
       compraId: compra.id,
+      parcelaCompraId: null,
       cartaoId: compra.cartaoId,
       source: "compra" as const,
       numero,
@@ -152,6 +186,7 @@ export function getCardObligations(input: CardAnalyticsInput): CardInstallmentOb
       for (const row of rows) {
         obligations.push({
           compraId: compra.id,
+          parcelaCompraId: row.id,
           cartaoId: compra.cartaoId,
           source: "parcela_compra",
           numero: row.numero,
@@ -171,37 +206,44 @@ export function getCardObligations(input: CardAnalyticsInput): CardInstallmentOb
 }
 
 export function getOutstandingCardInstallments(input: CardAnalyticsInput): CardInstallmentObligation[] {
-  return getCardObligations(input).filter((row) => isOutstandingStatus(row.statusCartao));
+  const obligations = getCardObligations(input);
+  const parcelaSaldoAbatidoMap = buildParcelaSaldoAbatidoMap(input.saldoMovimentacoes);
+  return obligations
+    .filter((row) => getOutstandingAmount(row, parcelaSaldoAbatidoMap) > 0)
+    .map((row) => ({ ...row, valor: getOutstandingAmount(row, parcelaSaldoAbatidoMap) }));
 }
 
 export function getMonthlyCardObligations(input: CardAnalyticsInput, monthReference: string): CardInstallmentObligation[] {
-  return getOutstandingCardInstallments(input)
-    .filter((row) => String(row.dataVencimento || "").startsWith(monthReference));
+  const parcelaSaldoAbatidoMap = buildParcelaSaldoAbatidoMap(input.saldoMovimentacoes);
+  return getCardObligations(input)
+    .filter((row) => String(row.dataVencimento || "").startsWith(monthReference))
+    .filter((row) => getOutstandingAmount(row, parcelaSaldoAbatidoMap) > 0)
+    .map((row) => ({ ...row, valor: getOutstandingAmount(row, parcelaSaldoAbatidoMap) }));
 }
 
 export function getCardPortfolioSummary(input: CardAnalyticsInput): CardPortfolioSummary {
   const obligations = getCardObligations(input);
+  const parcelaSaldoAbatidoMap = buildParcelaSaldoAbatidoMap(input.saldoMovimentacoes);
   const totalContratado = input.compras
     .reduce((sum, compra) => sum + toMoneyNumber(compra.valorTotal), 0);
 
   let totalPago = 0;
   let totalPendente = 0;
   for (const obligation of obligations) {
-    const value = toMoneyNumber(obligation.valor);
-    if (isPaidStatus(obligation.statusCartao)) {
-      totalPago += value;
-      continue;
-    }
-
     if (isCanceledStatus(obligation.statusCartao)) {
       continue;
     }
 
-    totalPendente += value;
+    const value = toMoneyNumber(obligation.valor);
+    const outstanding = getOutstandingAmount(obligation, parcelaSaldoAbatidoMap);
+    const paid = round2(Math.max(0, value - outstanding));
+
+    totalPago += paid;
+    totalPendente += outstanding;
   }
 
   const pagas = obligations.filter((row) => isPaidStatus(row.statusCartao)).length;
-  const pendentes = obligations.filter((row) => isOutstandingStatus(row.statusCartao)).length;
+  const pendentes = obligations.filter((row) => getOutstandingAmount(row, parcelaSaldoAbatidoMap) > 0).length;
   const comprasParceladas = input.compras.filter((compra) => normalizeInstallmentCount(compra.parcelas) > 1).length;
 
   return {
@@ -232,6 +274,7 @@ export function getCardPortfolioSummary(input: CardAnalyticsInput): CardPortfoli
  */
 export function getCardConsolidatedSummaries(input: CardConsolidatedSummaryInput): CardConsolidatedSummary[] {
   const obligations = getCardObligations(input);
+  const parcelaSaldoAbatidoMap = buildParcelaSaldoAbatidoMap(input.saldoMovimentacoes);
   const byCard = new Map<string, CardInstallmentObligation[]>();
 
   for (const obligation of obligations) {
@@ -242,7 +285,7 @@ export function getCardConsolidatedSummaries(input: CardConsolidatedSummaryInput
 
   return input.cartoes.map((cartao) => {
     const rows = byCard.get(cartao.id) ?? [];
-    const pendingRows = rows.filter((row) => isOutstandingStatus(row.statusCartao));
+    const pendingRows = rows.filter((row) => getOutstandingAmount(row, parcelaSaldoAbatidoMap) > 0);
 
     const nextPendingByCompra = new Map<string, CardInstallmentObligation>();
     for (const row of pendingRows) {
@@ -253,9 +296,9 @@ export function getCardConsolidatedSummaries(input: CardConsolidatedSummaryInput
     }
 
     const faturaAtual = Array.from(nextPendingByCompra.values())
-      .reduce((sum, row) => sum + toMoneyNumber(row.valor), 0);
+      .reduce((sum, row) => sum + getOutstandingAmount(row, parcelaSaldoAbatidoMap), 0);
     const limiteComprometido = pendingRows
-      .reduce((sum, row) => sum + toMoneyNumber(row.valor), 0);
+      .reduce((sum, row) => sum + getOutstandingAmount(row, parcelaSaldoAbatidoMap), 0);
     const saldoRestanteTotal = limiteComprometido;
     const limiteDisponivel = toMoneyNumber(cartao.limite) - limiteComprometido;
 

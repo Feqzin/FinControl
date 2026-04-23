@@ -1,10 +1,11 @@
 import { useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Cartao, CompraCartao, ParcelaCompra, Pessoa, Servico } from "@shared/schema";
+import type { Cartao, CompraCartao, ParcelaCompra, Pessoa, PessoaSaldoMovimentacao, Servico } from "@shared/schema";
 import { toMoneyNumber } from "@/lib/money";
 import { calculateCardUsedLimit, groupParcelasCompraByCompraId } from "@/lib/card-limit-usage";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
 import { queryClient } from "@/lib/queryClient";
+import { abaterSaldoParcelaPessoa } from "@/services/api/pessoas";
 import {
   fetchCartoesResumo,
   createCartao,
@@ -32,6 +33,9 @@ export function useCartoes(viewingCompraId?: string) {
   const { data: cartoesResumo = [] } = useQuery<CartaoResumo[]>({
     queryKey: ["/api/cartoes/resumo"],
     queryFn: fetchCartoesResumo,
+  });
+  const { data: pessoaSaldoMovimentacoes = [] } = useQuery<PessoaSaldoMovimentacao[]>({
+    queryKey: ["/api/pessoas/saldo-movimentacoes"],
   });
   const { data: pessoas = [] } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
   const { data: parcelasCompraByUser = [] } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"] });
@@ -128,6 +132,32 @@ export function useCartoes(viewingCompraId?: string) {
     },
   });
 
+  const abaterSaldoParcelaMutation = useMutation({
+    mutationFn: ({
+      pessoaId,
+      parcelaId,
+      valor,
+      data,
+      observacao,
+    }: {
+      pessoaId: string;
+      parcelaId: string;
+      valor: string;
+      data?: string | null;
+      observacao?: string | null;
+    }) => abaterSaldoParcelaPessoa(pessoaId, parcelaId, { valor, data, observacao }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra", viewingCompraId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "saldo-movimentacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
+    },
+  });
+
   const batchImportMutation = useMutation({
     mutationFn: ({ items, cartaoId, previewLogId, sourceType, sourceName }: {
       items: ParsedItem[];
@@ -192,6 +222,7 @@ export function useCartoes(viewingCompraId?: string) {
     compras,
     servicos,
     pessoas,
+    pessoaSaldoMovimentacoes,
     parcelasCompraData,
     refetchParcelas,
     isLoading,
@@ -211,6 +242,7 @@ export function useCartoes(viewingCompraId?: string) {
     payParcelaMutation,
     payParcelaPessoaMutation,
     editParcelaMutation,
+    abaterSaldoParcelaMutation,
     batchImportMutation,
     rollbackImportMutation,
   };

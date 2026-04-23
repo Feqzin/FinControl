@@ -2,8 +2,11 @@ import { addMonths, format, parseISO } from "date-fns";
 import type { CompraCartao, Divida, Pessoa, PessoaSaldoMovimentacao, ServicoPagamento } from "../../shared/schema.js";
 import { parseMoney } from "../../utils/money.js";
 import { db } from "../db.js";
+import { createFinancialRepository } from "../repositories/financial.repository.js";
 import { DatabaseStorage, type IStorage } from "../storage.js";
+import { recomputeCardPurchaseAggregate } from "./financial-aggregate-consistency.js";
 import type {
+  PessoaAbaterSaldoParcelaBodyInput,
   PessoaAbaterSaldoDividaBodyInput,
   PessoaAbaterSaldoServicoBodyInput,
   PessoaBodyInput,
@@ -136,6 +139,31 @@ type AbaterSaldoServicoResult =
     };
   };
 
+type AbaterSaldoParcelaCompraResult =
+  | { error: "PESSOA_NOT_FOUND" }
+  | { error: "PARCELA_COMPRA_NOT_FOUND" }
+  | { error: "PARCELA_COMPRA_NOT_LINKED_TO_PESSOA" }
+  | { error: "PARCELA_COMPRA_SEM_PENDENCIA" }
+  | { error: "VALOR_INVALIDO" }
+  | { error: "SALDO_INSUFICIENTE" }
+  | { error: "VALOR_MAIOR_QUE_SALDO" }
+  | { error: "VALOR_MAIOR_QUE_PENDENTE" }
+  | {
+    aplicado: {
+      movimentacao: PessoaSaldoMovimentacao;
+      compraCartaoId: string;
+      parcelaCompraId: string;
+      valorAbatido: number;
+      valorPendenteAnterior: number;
+      valorPendenteAtual: number;
+      saldoAnterior: number;
+      saldoAtual: number;
+      quitada: boolean;
+      statusParcelaCartao: "parcial" | "pago";
+      statusParcelaPessoa: "parcial" | "pago";
+    };
+  };
+
 function toMoneyNumber(value: MoneyValue): number {
   return parseMoney(value) ?? 0;
 }
@@ -191,6 +219,20 @@ function getServicoMesSaldoAbatido(
     if (row.servicoPessoaId !== servicoPessoaId) continue;
     if (normalizeStatus(row.origem) !== "abatimento_servico") continue;
     if (extractServicoMesFromCategoria(row.categoria) !== mes) continue;
+    total += toMoneyNumber(row.valor);
+  }
+  return round2(total);
+}
+
+function getParcelaCompraSaldoAbatido(
+  rows: PessoaSaldoMovimentacao[],
+  parcelaCompraId: string,
+): number {
+  let total = 0;
+  for (const row of rows) {
+    if (row.tipo !== "debito") continue;
+    if (row.parcelaCompraId !== parcelaCompraId) continue;
+    if (normalizeStatus(row.origem) !== "abatimento_parcela_cartao") continue;
     total += toMoneyNumber(row.valor);
   }
   return round2(total);
@@ -319,6 +361,7 @@ async function summarizeCompraPessoa(
   compra: CompraCartao,
   userId: string,
   todayIso: string,
+  saldoMovimentacoes: PessoaSaldoMovimentacao[],
 ): Promise<CompraResumo> {
   const rows = await storage.getParcelasCompra(compra.id, userId);
   if (rows.length > 0) {
@@ -330,15 +373,22 @@ async function summarizeCompraPessoa(
     for (const row of rows) {
       if (isCanceled(row.statusPessoa)) continue;
       const valor = toMoneyNumber(row.valor);
+      const abatidoSaldo = getParcelaCompraSaldoAbatido(saldoMovimentacoes, row.id);
+      const pagoPorSaldo = Math.min(valor, abatidoSaldo);
+      const pendentePorSaldo = round2(Math.max(0, valor - pagoPorSaldo));
+
       if (isPaid(row.statusPessoa)) {
         pagoPessoa += valor;
         continue;
       }
 
       if (isOutstanding(row.statusPessoa)) {
-        pendentePessoa += valor;
-        parcelasPendentesPessoa += 1;
-        if (isOverdue(row.dataVencimento, todayIso)) {
+        pagoPessoa += pagoPorSaldo;
+        pendentePessoa += pendentePorSaldo;
+        if (pendentePorSaldo > 0) {
+          parcelasPendentesPessoa += 1;
+        }
+        if (pendentePorSaldo > 0 && isOverdue(row.dataVencimento, todayIso)) {
           parcelasAtrasadasPessoa += 1;
         }
       }
@@ -669,6 +719,107 @@ export class PessoasService {
     });
   }
 
+  async abaterSaldoEmParcelaCompra(
+    pessoaId: string,
+    parcelaCompraId: string,
+    userId: string,
+    data: PessoaAbaterSaldoParcelaBodyInput,
+  ): Promise<AbaterSaldoParcelaCompraResult> {
+    const valorAbatimento = parseMoney(data.valor);
+    if (valorAbatimento == null || valorAbatimento <= 0) {
+      return { error: "VALOR_INVALIDO" };
+    }
+
+    return db.transaction(async (tx) => {
+      const txStorage = new DatabaseStorage(tx);
+      const txRepository = createFinancialRepository(txStorage);
+      const pessoa = await txStorage.getPessoa(pessoaId, userId);
+      if (!pessoa) return { error: "PESSOA_NOT_FOUND" } as const;
+
+      const parcelaCompra = await txStorage.getParcelaCompraById(parcelaCompraId, userId);
+      if (!parcelaCompra) return { error: "PARCELA_COMPRA_NOT_FOUND" } as const;
+
+      const compra = await txStorage.getCompraCartao(parcelaCompra.compraCartaoId, userId);
+      if (!compra || compra.pessoaId !== pessoaId) {
+        return { error: "PARCELA_COMPRA_NOT_LINKED_TO_PESSOA" } as const;
+      }
+
+      if (isCanceled(parcelaCompra.statusCartao) || isPaid(parcelaCompra.statusCartao)) {
+        return { error: "PARCELA_COMPRA_SEM_PENDENCIA" } as const;
+      }
+
+      const valorParcela = toMoneyNumber(parcelaCompra.valor);
+      if (valorParcela <= 0) {
+        return { error: "PARCELA_COMPRA_SEM_PENDENCIA" } as const;
+      }
+
+      const saldoRows = await txStorage.getPessoaSaldoMovimentacoesByPessoa(pessoaId, userId);
+      const saldoAnterior = buildPessoaSaldoResumo(saldoRows).saldoAtual;
+      if (saldoAnterior <= 0) return { error: "SALDO_INSUFICIENTE" } as const;
+      if (valorAbatimento > saldoAnterior) return { error: "VALOR_MAIOR_QUE_SALDO" } as const;
+
+      const valorJaAbatido = getParcelaCompraSaldoAbatido(saldoRows, parcelaCompraId);
+      const valorPendenteAnterior = round2(Math.max(0, valorParcela - valorJaAbatido));
+      if (valorPendenteAnterior <= 0) return { error: "PARCELA_COMPRA_SEM_PENDENCIA" } as const;
+      if (valorAbatimento > valorPendenteAnterior) return { error: "VALOR_MAIOR_QUE_PENDENTE" } as const;
+
+      const dataEfetiva = data.data ?? format(new Date(), "yyyy-MM-dd");
+      const valorAbatidoRound = round2(valorAbatimento);
+      const valorPendenteAtual = round2(Math.max(0, valorPendenteAnterior - valorAbatidoRound));
+      const quitada = valorPendenteAtual <= 0;
+      // Semantica: parcial mantém a parcela em aberto; quitada encerra a parcela.
+      const statusParcelaCartao: "parcial" | "pago" = quitada ? "pago" : "parcial";
+      const statusParcelaPessoa: "parcial" | "pago" = quitada ? "pago" : "parcial";
+
+      const observacaoCustom = normalizeOptionalText(data.observacao);
+      const observacaoPadrao = `Abatimento via saldo da pessoa em ${dataEfetiva}: ${formatMoneyBRL(valorAbatidoRound)} (parcela ${parcelaCompra.numero}).`;
+      const observacaoAplicada = observacaoCustom ?? observacaoPadrao;
+
+      const movimentacao = await txStorage.createPessoaSaldoMovimentacao({
+        userId,
+        pessoaId,
+        tipo: "debito",
+        valor: valorAbatidoRound.toFixed(2),
+        data: dataEfetiva,
+        origem: "abatimento_parcela_cartao",
+        categoria: "parcela_cartao",
+        observacao: observacaoAplicada,
+        comprovanteReferencia: null,
+        dividaId: null,
+        compraCartaoId: compra.id,
+        parcelaCompraId,
+        servicoPessoaId: null,
+      });
+
+      const parcelaAtualizada = await txStorage.updateParcelaCompra(parcelaCompraId, userId, {
+        statusCartao: statusParcelaCartao,
+        dataPagamentoCartao: dataEfetiva,
+        statusPessoa: statusParcelaPessoa,
+        dataPagamentoPessoa: dataEfetiva,
+      });
+
+      if (!parcelaAtualizada) return { error: "PARCELA_COMPRA_NOT_FOUND" } as const;
+
+      await recomputeCardPurchaseAggregate(txRepository, compra.id, userId);
+
+      return {
+        aplicado: {
+          movimentacao,
+          compraCartaoId: compra.id,
+          parcelaCompraId,
+          valorAbatido: valorAbatidoRound,
+          valorPendenteAnterior,
+          valorPendenteAtual,
+          saldoAnterior: round2(saldoAnterior),
+          saldoAtual: round2(saldoAnterior - valorAbatidoRound),
+          quitada,
+          statusParcelaCartao,
+          statusParcelaPessoa,
+        },
+      } as const;
+    });
+  }
+
   async getResumo(pessoaId: string, userId: string): Promise<PessoaResumo | null> {
     const pessoa = await this.storage.getPessoa(pessoaId, userId);
     if (!pessoa) return null;
@@ -717,7 +868,13 @@ export class PessoasService {
     }
 
     const comprasResumo = await Promise.all(
-      comprasVinculadas.map((compra) => summarizeCompraPessoa(this.storage, compra, userId, todayIso)),
+      comprasVinculadas.map((compra) => summarizeCompraPessoa(
+        this.storage,
+        compra,
+        userId,
+        todayIso,
+        saldoMovimentacoes,
+      )),
     );
 
     const comprasPendentePessoa = round2(

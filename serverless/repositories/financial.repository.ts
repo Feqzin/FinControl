@@ -13,6 +13,10 @@ function createFinancialRepositoryBase(targetStorage: IStorage) {
       return targetStorage.getPessoa(id, userId);
     },
 
+    async getPessoaSaldoMovimentacoes(userId: string) {
+      return targetStorage.getPessoaSaldoMovimentacoes(userId);
+    },
+
     async getDividas(userId: string) {
       return targetStorage.getDividas(userId);
     },
