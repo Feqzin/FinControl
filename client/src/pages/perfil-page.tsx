@@ -30,6 +30,7 @@ function formatCurrency(value: number): string {
 }
 
 type ImportBackupResponse = {
+  modoImportacao?: "merge" | "replace";
   pessoasImportadas: number;
   cartoesImportados: number;
   dividasImportadas: number;
@@ -62,11 +63,14 @@ function parseImportApiError(error: unknown): string {
   return message || "Falha ao importar backup. Tente novamente.";
 }
 
+type ImportMode = "merge" | "replace";
+
 export default function PerfilPage() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
   const [nomeCompleto, setNomeCompleto] = useState((user as any)?.nomeCompleto || "");
   const [arquivoImportacao, setArquivoImportacao] = useState<File | null>(null);
+  const [modoImportacao, setModoImportacao] = useState<ImportMode>("merge");
   const inputImportacaoRef = useRef<HTMLInputElement | null>(null);
 
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
@@ -95,7 +99,13 @@ export default function PerfilPage() {
   });
 
   const importBackup = useMutation({
-    mutationFn: async (arquivo: File): Promise<ImportBackupResponse> => {
+    mutationFn: async ({
+      arquivo,
+      modo,
+    }: {
+      arquivo: File;
+      modo: ImportMode;
+    }): Promise<ImportBackupResponse> => {
       const texto = await arquivo.text();
       let backup: unknown;
 
@@ -105,7 +115,7 @@ export default function PerfilPage() {
         throw new Error("Arquivo JSON invalido. Verifique o arquivo e tente novamente.");
       }
 
-      const res = await apiRequest("POST", "/api/import", backup);
+      const res = await apiRequest("POST", "/api/import", { modo, backup });
       return res.json();
     },
     onSuccess: (resultado) => {
@@ -131,7 +141,7 @@ export default function PerfilPage() {
 
       toast({
         title: "Importacao concluida",
-        description: `Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Vinculos de servico: ${resultado.servicoPessoasImportados ?? 0}, Pagamentos de servico: ${resultado.servicoPagamentosImportados ?? 0}, Movimentações de saldo: ${resultado.saldoMovimentacoesImportadas ?? 0}, Metas: ${resultado.metasImportadas}`,
+        description: `Modo: ${(resultado.modoImportacao ?? modoImportacao) === "replace" ? "Substituir dados atuais" : "Mesclar com dados atuais"}. Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Vinculos de servico: ${resultado.servicoPessoasImportados ?? 0}, Pagamentos de servico: ${resultado.servicoPagamentosImportados ?? 0}, Movimentações de saldo: ${resultado.saldoMovimentacoesImportadas ?? 0}, Metas: ${resultado.metasImportadas}`,
       });
     },
     onError: (error) => {
@@ -178,14 +188,34 @@ export default function PerfilPage() {
       return;
     }
 
-    const confirmed = window.confirm(
-      "Importar novamente pode duplicar dados. Deseja continuar com a importação?",
-    );
-    if (!confirmed) {
-      return;
+    if (modoImportacao === "replace") {
+      const confirmado = window.confirm(
+        "Modo substituir: todos os seus dados financeiros atuais serao apagados e substituidos pelo backup. Sua conta/login permanecerao intactos. Deseja continuar?",
+      );
+      if (!confirmado) {
+        return;
+      }
+
+      const confirmacaoForte = window.prompt(
+        "Para confirmar a substituicao, digite SUBSTITUIR:",
+      );
+      if (confirmacaoForte !== "SUBSTITUIR") {
+        toast({
+          title: "Substituicao cancelada",
+          description: "Confirmacao nao realizada. Nenhum dado foi alterado.",
+        });
+        return;
+      }
+    } else {
+      const confirmed = window.confirm(
+        "Importar novamente pode duplicar dados. Deseja continuar com a importação?",
+      );
+      if (!confirmed) {
+        return;
+      }
     }
 
-    importBackup.mutate(arquivoImportacao);
+    importBackup.mutate({ arquivo: arquivoImportacao, modo: modoImportacao });
   };
 
   const totalReceber = dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
@@ -322,9 +352,30 @@ export default function PerfilPage() {
           <p className="text-sm text-muted-foreground">
             Importe um backup JSON para restaurar seus dados nesta conta.
           </p>
-          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
-            Importar novamente pode duplicar dados.
-          </p>
+          <div className="space-y-2">
+            <Label htmlFor="modo-importacao-backup">Modo de importacao</Label>
+            <select
+              id="modo-importacao-backup"
+              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={modoImportacao}
+              onChange={(event) => setModoImportacao(event.target.value as ImportMode)}
+              disabled={importBackup.isPending}
+              data-testid="select-import-mode"
+            >
+              <option value="merge">Mesclar com dados atuais (recomendado)</option>
+              <option value="replace">Substituir dados atuais pelo backup</option>
+            </select>
+          </div>
+          {modoImportacao === "replace" ? (
+            <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3">
+              Modo substituir: os dados financeiros atuais desta conta serao apagados antes da restauracao.
+              Recomenda-se exportar um backup novo antes de continuar.
+            </p>
+          ) : (
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
+              Modo mesclar: importar novamente pode duplicar dados.
+            </p>
+          )}
           <Input
             ref={inputImportacaoRef}
             type="file"

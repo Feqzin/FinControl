@@ -61,6 +61,13 @@ export type BackupJsonImportPayload = {
   metas: WithoutUserId<Meta>[];
 };
 
+export type BackupImportMode = "merge" | "replace";
+
+export type BackupJsonImportRequest = {
+  modo: BackupImportMode;
+  backup: BackupJsonImportPayload;
+};
+
 function removeUserIdFromRow(row: Row): Row {
   if (!Object.prototype.hasOwnProperty.call(row, "userId")) return row;
   const { userId: _ignoredUserId, ...rest } = row;
@@ -110,5 +117,38 @@ export function parseBackupJsonImport(input: string | unknown): BackupJsonImport
     servicoPagamentos: sanitizeRows<ServicoPagamento>(parsed.data.servicoPagamentos),
     pessoaSaldoMovimentacoes: sanitizeRows<PessoaSaldoMovimentacao>(parsed.data.pessoaSaldoMovimentacoes),
     metas: sanitizeRows<Meta>(parsed.data.metas),
+  };
+}
+
+function parseImportMode(value: unknown): BackupImportMode {
+  if (value == null || value === "") return "merge";
+  if (typeof value !== "string") {
+    throw new BackupJsonParseError("Modo de importacao invalido. Use 'merge' ou 'replace'.");
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "merge" || normalized === "replace") {
+    return normalized;
+  }
+
+  throw new BackupJsonParseError("Modo de importacao invalido. Use 'merge' ou 'replace'.");
+}
+
+export function parseBackupJsonImportRequest(input: string | unknown): BackupJsonImportRequest {
+  const payload = parseJsonInput(input);
+
+  if (typeof payload === "object" && payload !== null && !Array.isArray(payload)) {
+    const row = payload as Row;
+    if (Object.prototype.hasOwnProperty.call(row, "backup")) {
+      return {
+        modo: parseImportMode(row.modo ?? row.mode ?? row.importMode),
+        backup: parseBackupJsonImport(row.backup),
+      };
+    }
+  }
+
+  return {
+    modo: "merge",
+    backup: parseBackupJsonImport(payload),
   };
 }

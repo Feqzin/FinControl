@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import type {
   InsertCartao,
   InsertCompraCartao,
@@ -10,9 +11,24 @@ import type {
   InsertServicoPagamento,
   InsertServicoPessoa,
 } from "../../shared/schema.js";
+import {
+  cartoes as cartoesTable,
+  comprasCartao as comprasCartaoTable,
+  dividas as dividasTable,
+  importLogs as importLogsTable,
+  metas as metasTable,
+  parcelas as parcelasTable,
+  parcelasCompra as parcelasCompraTable,
+  pessoaSaldoMovimentacoes as pessoaSaldoMovimentacoesTable,
+  pessoas as pessoasTable,
+  servicoPagamentos as servicoPagamentosTable,
+  servicoPessoas as servicoPessoasTable,
+  servicos as servicosTable,
+} from "../../shared/schema.js";
 import { db } from "../db.js";
 import { DatabaseStorage } from "../storage.js";
 import type { BackupImportTransformResult } from "./backup-import-transform.service.js";
+import type { BackupImportMode } from "../validators/backup-import.validators.js";
 
 type JsonRow = Record<string, unknown>;
 
@@ -39,6 +55,13 @@ export type BackupImportPersistenceResult = {
   saldoMovimentacoesInseridas: number;
   metasInseridas: number;
 };
+
+type BackupImportPersistenceOptions = {
+  modo?: BackupImportMode;
+  userId: string;
+};
+
+type TxLike = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 function asRow(value: unknown, label: string): JsonRow {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -273,9 +296,28 @@ function toMetaInsert(row: JsonRow, label: string): InsertMetaWithId {
   };
 }
 
+async function clearUserFinancialDataForReplace(tx: TxLike, userId: string): Promise<void> {
+  // Ordem explicita: filhos -> pais para manter compatibilidade com bancos legados.
+  await tx.delete(importLogsTable).where(eq(importLogsTable.userId, userId));
+  await tx.delete(pessoaSaldoMovimentacoesTable).where(eq(pessoaSaldoMovimentacoesTable.userId, userId));
+  await tx.delete(servicoPagamentosTable).where(eq(servicoPagamentosTable.userId, userId));
+  await tx.delete(servicoPessoasTable).where(eq(servicoPessoasTable.userId, userId));
+  await tx.delete(servicosTable).where(eq(servicosTable.userId, userId));
+  await tx.delete(parcelasCompraTable).where(eq(parcelasCompraTable.userId, userId));
+  await tx.delete(comprasCartaoTable).where(eq(comprasCartaoTable.userId, userId));
+  await tx.delete(parcelasTable).where(eq(parcelasTable.userId, userId));
+  await tx.delete(dividasTable).where(eq(dividasTable.userId, userId));
+  await tx.delete(metasTable).where(eq(metasTable.userId, userId));
+  await tx.delete(cartoesTable).where(eq(cartoesTable.userId, userId));
+  await tx.delete(pessoasTable).where(eq(pessoasTable.userId, userId));
+}
+
 export async function persistTransformedBackupImport(
   transformed: BackupImportTransformResult,
+  options: BackupImportPersistenceOptions,
 ): Promise<BackupImportPersistenceResult> {
+  const modo = options.modo ?? "merge";
+  const userId = options.userId;
   const pessoasRows = transformed.pessoas.map((item, index) => toPessoaInsert(asRow(item, `pessoas[${index}]`), `pessoas[${index}]`));
   const cartoesRows = transformed.cartoes.map((item, index) => toCartaoInsert(asRow(item, `cartoes[${index}]`), `cartoes[${index}]`));
   const dividasRows = transformed.dividas.map((item, index) => toDividaInsert(asRow(item, `dividas[${index}]`), `dividas[${index}]`));
@@ -316,6 +358,10 @@ export async function persistTransformedBackupImport(
   const metasRows = transformed.metas.map((item, index) => toMetaInsert(asRow(item, `metas[${index}]`), `metas[${index}]`));
 
   await db.transaction(async (tx) => {
+    if (modo === "replace") {
+      await clearUserFinancialDataForReplace(tx, userId);
+    }
+
     const txStorage = new DatabaseStorage(tx);
 
     for (const pessoa of pessoasRows) {

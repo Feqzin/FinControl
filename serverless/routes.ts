@@ -31,9 +31,10 @@ import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
 import { registerDebugDbPingRoute } from "./routes/debug-db-ping.route.js";
 import { PagamentosTimelineService } from "./services/pagamentos-timeline.service.js";
-import { BackupJsonParseError, parseBackupJsonImport } from "./validators/backup-import.validators.js";
+import { BackupJsonParseError, parseBackupJsonImportRequest } from "./validators/backup-import.validators.js";
 import { transformBackupForPersistence } from "./services/backup-import-transform.service.js";
 import { persistTransformedBackupImport } from "./services/backup-import-persistence.service.js";
+import { toErrorLog, writeTechnicalLog } from "./logger.js";
 import { divide, parseMoney } from "../utils/money.js";
 import { pool } from "./db.js";
 import { ENV } from "./env.js";
@@ -50,6 +51,18 @@ function auditRoute(
     requestIp: req.ip ?? null,
     userAgent: req.get("user-agent") ?? null,
   });
+}
+
+function isBackupValidationError(error: unknown): error is Error {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+
+  return (
+    message.startsWith("registro invalido") ||
+    message.startsWith("campo obrigatorio invalido") ||
+    message.startsWith("campo invalido") ||
+    message.startsWith("relacionamento invalido")
+  );
 }
 
 export function registerRoutes(app: Express): void {
@@ -247,11 +260,15 @@ export function registerRoutes(app: Express): void {
     }
 
     try {
-      const backup = parseBackupJsonImport(req.body);
-      const transformed = transformBackupForPersistence(backup, currentUserId);
-      const persisted = await persistTransformedBackupImport(transformed);
+      const request = parseBackupJsonImportRequest(req.body);
+      const transformed = transformBackupForPersistence(request.backup, currentUserId);
+      const persisted = await persistTransformedBackupImport(transformed, {
+        modo: request.modo,
+        userId: currentUserId,
+      });
 
       return res.status(201).json({
+        modoImportacao: request.modo,
         pessoasImportadas: persisted.pessoasInseridas,
         cartoesImportados: persisted.cartoesInseridos,
         dividasImportadas: persisted.dividasInseridas,
@@ -267,8 +284,24 @@ export function registerRoutes(app: Express): void {
         return res.status(400).json({ message: error.message, details: error.details ?? [] });
       }
 
-      const message = error instanceof Error ? error.message : "Erro ao importar backup";
-      return res.status(400).json({ message });
+      if (isBackupValidationError(error)) {
+        return res.status(400).json({ message: error.message });
+      }
+
+      writeTechnicalLog({
+        event: "backup.import.failed",
+        source: "routes",
+        level: "error",
+        requestId: req.requestId,
+        data: {
+          userId: currentUserId,
+          error: toErrorLog(error),
+        },
+      });
+
+      return res.status(500).json({
+        message: "Falha ao importar backup. Tente novamente em alguns instantes.",
+      });
     }
   });
 
