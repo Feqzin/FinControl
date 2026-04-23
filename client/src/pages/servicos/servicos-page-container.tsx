@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useServicos } from "@/hooks/useServicos";
+import { CompraCartaoSearchPicker } from "@/components/compra-cartao-search-picker";
 import { DivisaoPanel } from "@/pages/servicos/components/divisao-panel";
 import { Plus, Repeat, Trash2, X, Check, Users, ChevronUp, Pencil, CreditCard, Unlink2 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
@@ -144,14 +145,6 @@ export default function ServicosPage() {
     }
 
     return { label: "Origem principal: Meu bolso", className: "text-muted-foreground" };
-  };
-
-  const comprasOrdenadas = [...compras].sort((a, b) => String(b.dataCompra).localeCompare(String(a.dataCompra)));
-  const getCompraOptionLabel = (compraId: string) => {
-    const compra = compraById.get(compraId);
-    if (!compra) return "Compra não encontrada";
-    const cartaoNome = cartaoById.get(compra.cartaoId)?.nome ?? "Cartão";
-    return `${cartaoNome} · ${compra.descricao}`;
   };
 
   const byCategory = categorias
@@ -299,22 +292,19 @@ export default function ServicosPage() {
               </div>
               <div className="space-y-2">
                 <Label>Compra de cartão vinculada (opcional)</Label>
-                <Select
-                  value={form.compraCartaoId}
-                  onValueChange={(value) => setForm({ ...form, compraCartaoId: value })}
-                >
-                  <SelectTrigger data-testid="select-servico-compra-vinculada">
-                    <SelectValue placeholder="Sem vínculo com cartão" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={COMPRA_NONE_VALUE}>Sem vínculo com cartão</SelectItem>
-                    {comprasOrdenadas.map((compra) => (
-                      <SelectItem key={compra.id} value={compra.id}>
-                        {getCompraOptionLabel(compra.id)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CompraCartaoSearchPicker
+                  compras={compras}
+                  cartoes={cartoes}
+                  value={form.compraCartaoId === COMPRA_NONE_VALUE ? null : form.compraCartaoId}
+                  onValueChange={(value) => setForm({ ...form, compraCartaoId: value ?? COMPRA_NONE_VALUE })}
+                  placeholder="Sem vínculo com cartão"
+                  noneLabel="Sem vínculo com cartão"
+                  context={{
+                    text: form.nome,
+                    value: Number(form.valorMensal) || null,
+                  }}
+                  testId="select-servico-compra-vinculada"
+                />
               </div>
               <Button type="submit" className="w-full" data-testid="button-save-servico" disabled={createMutation.isPending}>
                 {createMutation.isPending ? "Salvando..." : "Salvar"}
@@ -637,22 +627,19 @@ export default function ServicosPage() {
             </div>
             <div className="space-y-2">
               <Label>Compra de cartão vinculada (opcional)</Label>
-              <Select
-                value={editForm.compraCartaoId}
-                onValueChange={(value) => setEditForm({ ...editForm, compraCartaoId: value })}
-              >
-                <SelectTrigger data-testid="select-edit-servico-compra-vinculada">
-                  <SelectValue placeholder="Sem vínculo com cartão" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={COMPRA_NONE_VALUE}>Sem vínculo com cartão</SelectItem>
-                  {comprasOrdenadas.map((compra) => (
-                    <SelectItem key={compra.id} value={compra.id}>
-                      {getCompraOptionLabel(compra.id)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <CompraCartaoSearchPicker
+                compras={compras}
+                cartoes={cartoes}
+                value={editForm.compraCartaoId === COMPRA_NONE_VALUE ? null : editForm.compraCartaoId}
+                onValueChange={(value) => setEditForm({ ...editForm, compraCartaoId: value ?? COMPRA_NONE_VALUE })}
+                placeholder="Sem vínculo com cartão"
+                noneLabel="Sem vínculo com cartão"
+                context={{
+                  text: editForm.nome,
+                  value: Number(editForm.valorMensal) || null,
+                }}
+                testId="select-edit-servico-compra-vinculada"
+              />
             </div>
             <Button type="submit" className="w-full" data-testid="button-save-edit-servico" disabled={updateMutation.isPending}>
               {updateMutation.isPending ? "Salvando..." : "Salvar alterações"}

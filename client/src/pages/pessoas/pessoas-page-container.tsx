@@ -19,6 +19,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { usePessoas } from "@/hooks/usePessoas";
+import { CompraCartaoSearchPicker } from "@/components/compra-cartao-search-picker";
 import { PaymentTimeline } from "@/pages/pessoas/components/payment-timeline";
 import {
   Plus, Users, Phone, Trash2, Search, Receipt, Check,
@@ -76,6 +77,8 @@ export default function PessoasPage() {
     observacao: "",
   });
   const [historyFilter, setHistoryFilter] = useState<"todos" | "pendente">("todos");
+  const [vincularCompraOpen, setVincularCompraOpen] = useState(false);
+  const [compraSelecionadaParaVinculo, setCompraSelecionadaParaVinculo] = useState<string | null>(null);
 
   const [pessoaForm, setPessoaForm] = useState<{ nome: string; tipo: PessoaKind; telefone: string; observacao: string }>({
     nome: "",
@@ -118,6 +121,7 @@ export default function PessoasPage() {
     abaterSaldoDividaMutation,
     abaterSaldoServicoMutation,
     desvincularCompraMutation,
+    vincularCompraMutation,
     updateTimelineObservacaoMutation,
     uploadTimelineComprovanteMutation,
     getPessoaStats,
@@ -149,6 +153,18 @@ export default function PessoasPage() {
   const historySaldoResumo = historySaldo?.resumo ?? (historyResumo ? historyResumo.saldoPessoa : null);
   const historySaldoMovimentacoes = historySaldo?.movimentacoes ?? [];
   const historySaldoDisponivel = historySaldoResumo?.saldoAtual ?? 0;
+  const comprasDisponiveisParaVinculo = historyPessoa
+    ? comprasCartao.filter((compra) => compra.pessoaId !== historyPessoa.id)
+    : [];
+  const contextoVinculoCompraTexto = historyPessoa
+    ? [
+      historyPessoa.nome,
+      ...historyDividas
+        .map((divida) => (typeof divida.descricao === "string" ? divida.descricao : ""))
+        .filter((descricao) => descricao.trim().length > 0)
+        .slice(0, 5),
+    ].join(" ")
+    : "";
 
   const getServicoMesCategoria = (mes: string) => `servico_mes:${mes}`;
   const getSaldoAbatidoServicoMes = (servicoPessoaId: string, mes: string) => {
@@ -168,6 +184,38 @@ export default function PessoasPage() {
       origem: "pessoas",
     });
     setLocation(`/cartoes?${params.toString()}`);
+  };
+
+  const handleVincularCompraNaPessoa = () => {
+    if (!historyPessoa || !compraSelecionadaParaVinculo) return;
+
+    const compra = comprasCartao.find((item) => item.id === compraSelecionadaParaVinculo) ?? null;
+    if (!compra) {
+      toast({ title: "Compra não encontrada", variant: "destructive" });
+      return;
+    }
+
+    if (compra.pessoaId && compra.pessoaId !== historyPessoa.id) {
+      const pessoaAtual = pessoas.find((pessoa) => pessoa.id === compra.pessoaId);
+      const confirmarTransferencia = window.confirm(
+        `Essa compra está vinculada a ${pessoaAtual?.nome ?? "outra pessoa"}. Deseja transferir o vínculo para ${historyPessoa.nome}?`,
+      );
+      if (!confirmarTransferencia) return;
+    }
+
+    vincularCompraMutation.mutate(
+      { compraId: compra.id, pessoaId: historyPessoa.id },
+      {
+        onSuccess: () => {
+          setVincularCompraOpen(false);
+          setCompraSelecionadaParaVinculo(null);
+          toast({ title: "Compra vinculada com sucesso" });
+        },
+        onError: (err: Error) => {
+          toast({ title: "Erro ao vincular compra", description: err.message, variant: "destructive" });
+        },
+      },
+    );
   };
 
   return (
@@ -1387,12 +1435,72 @@ export default function PessoasPage() {
                 </div>
               )}
 
-              {historyCompras.length > 0 && (
-                <>
-                  <Separator className="my-5" />
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              <>
+                <Separator className="my-5" />
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
                     Compras de Cartao ({historyCompras.length})
                   </h3>
+                  <Dialog
+                    open={vincularCompraOpen}
+                    onOpenChange={(value) => {
+                      setVincularCompraOpen(value);
+                      if (!value) {
+                        setCompraSelecionadaParaVinculo(null);
+                      }
+                    }}
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCompraSelecionadaParaVinculo(null)}
+                        data-testid="button-vincular-compra-pessoa"
+                      >
+                        <Plus className="w-3.5 h-3.5 mr-1" />
+                        Vincular compra
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Vincular compra de cartão</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                          Selecione uma compra para vincular com {historyPessoa.nome}. O vínculo continua manual e auditável.
+                        </p>
+                        <CompraCartaoSearchPicker
+                          compras={comprasDisponiveisParaVinculo}
+                          cartoes={cartoes}
+                          pessoas={pessoas}
+                          value={compraSelecionadaParaVinculo}
+                          onValueChange={setCompraSelecionadaParaVinculo}
+                          placeholder="Buscar compra para vincular"
+                          noneLabel="Nenhuma compra selecionada"
+                          context={{
+                            text: contextoVinculoCompraTexto,
+                          }}
+                          testId="select-vincular-compra-pessoa"
+                        />
+                        <Button
+                          type="button"
+                          className="w-full"
+                          onClick={handleVincularCompraNaPessoa}
+                          disabled={!compraSelecionadaParaVinculo || vincularCompraMutation.isPending}
+                          data-testid="button-confirm-vincular-compra-pessoa"
+                        >
+                          {vincularCompraMutation.isPending ? "Vinculando..." : "Confirmar vínculo"}
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+
+                {historyCompras.length === 0 ? (
+                  <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                    Nenhuma compra vinculada no momento.
+                  </div>
+                ) : (
                   <div className="space-y-2">
                     {historyCompras.map((c) => {
                       const cartao = cartoes.find((ct) => ct.id === c.cartaoId);
@@ -1448,8 +1556,8 @@ export default function PessoasPage() {
                       );
                     })}
                   </div>
-                </>
-              )}
+                )}
+              </>
 
               {historyServicoPessoas.length > 0 && (
                 <>

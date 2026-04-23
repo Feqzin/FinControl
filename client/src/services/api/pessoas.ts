@@ -266,6 +266,14 @@ export async function desvincularPessoaDeCompra(compraId: string): Promise<void>
   await apiRequest("PATCH", `/api/compras-cartao/${compraId}`, { pessoaId: null });
 }
 
+export async function vincularPessoaEmCompra(compraId: string, pessoaId: string): Promise<void> {
+  await apiRequest("PATCH", `/api/compras-cartao/${compraId}`, {
+    pessoaId,
+    statusPessoa: "pendente",
+    dataPagamentoPessoa: null,
+  });
+}
+
 export async function listTimelinePagamentosByPessoa(pessoaId: string): Promise<PagamentoTimelineEvent[]> {
   const res = await apiRequest("GET", `/api/pessoas/${pessoaId}/timeline-pagamentos`);
   return (await res.json()) as PagamentoTimelineEvent[];

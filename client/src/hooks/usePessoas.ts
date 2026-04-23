@@ -27,6 +27,7 @@ import {
   marcarServicoPessoaComoPago,
   reverterDividaPessoaParaPendente,
   reverterServicoPessoaPago,
+  vincularPessoaEmCompra,
   type PessoaSaldoMovimentacaoPayload,
   type PessoaSaldoMovimentacoesResponse,
   type PessoaResumo,
@@ -355,6 +356,18 @@ export function usePessoas({
     },
   });
 
+  const vincularCompraMutation = useMutation({
+    mutationFn: ({ compraId, pessoaId }: { compraId: string; pessoaId: string }) =>
+      vincularPessoaEmCompra(compraId, pessoaId),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "resumo"] });
+      invalidateTimeline();
+    },
+  });
+
   const updateTimelineObservacaoMutation = useMutation({
     mutationFn: (payload: {
       sourceType: PagamentoTimelineSourceType;
@@ -628,6 +641,7 @@ export function usePessoas({
     abaterSaldoServicoMutation,
     abaterSaldoParcelaMutation,
     desvincularCompraMutation,
+    vincularCompraMutation,
     updateTimelineObservacaoMutation,
     uploadTimelineComprovanteMutation,
     getPessoaStats,
