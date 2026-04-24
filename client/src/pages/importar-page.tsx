@@ -102,20 +102,15 @@ export default function ImportarPage() {
           let cartaoId = cartaoMap.get(item.cartao.toLowerCase());
 
           if (!cartaoId) {
-            const first = cartoes[0];
-            if (first) {
-              cartaoId = first.id;
-            } else {
-              const res = await apiRequest("POST", "/api/cartoes", {
-                nome: item.cartao,
-                limite: "5000",
-                melhorDiaCompra: 1,
-                diaVencimento: 10,
-              });
-              const newCartao = await res.json();
-              cartaoId = newCartao.id;
-              cartaoMap.set(item.cartao.toLowerCase(), cartaoId!);
-            }
+            const res = await apiRequest("POST", "/api/cartoes", {
+              nome: item.cartao,
+              limite: "5000",
+              melhorDiaCompra: 1,
+              diaVencimento: 10,
+            });
+            const newCartao = await res.json();
+            cartaoId = newCartao.id;
+            cartaoMap.set(item.cartao.toLowerCase(), cartaoId!);
           }
 
           await apiRequest("POST", "/api/compras-cartao", {

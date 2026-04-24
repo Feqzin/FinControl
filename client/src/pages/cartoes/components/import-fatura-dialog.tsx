@@ -30,6 +30,8 @@ interface ImportFaturaDialogProps {
   cartoes: Cartao[];
   importCartaoId: string;
   setImportCartaoId: (value: string) => void;
+  importCartaoHint: string;
+  formatCartaoOptionLabel: (cartao: Cartao) => string;
   importTab: ImportTab;
   setImportTab: (value: ImportTab) => void;
   importTexto: string;
@@ -58,6 +60,8 @@ export function ImportFaturaDialog({
   cartoes,
   importCartaoId,
   setImportCartaoId,
+  importCartaoHint,
+  formatCartaoOptionLabel,
   importTab,
   setImportTab,
   importTexto,
@@ -92,17 +96,28 @@ export function ImportFaturaDialog({
           <DialogTitle>Importar Fatura</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          {cartoes.length > 1 && (
-            <div className="space-y-2">
-              <Label>Cartao de destino</Label>
-              <Select value={importCartaoId} onValueChange={setImportCartaoId}>
-                <SelectTrigger data-testid="select-import-cartao"><SelectValue placeholder="Selecione o cartao" /></SelectTrigger>
-                <SelectContent>
-                  {cartoes.map((cartao) => <SelectItem key={cartao.id} value={cartao.id}>{cartao.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label>Cartao de destino (obrigatorio)</Label>
+            <Select value={importCartaoId} onValueChange={setImportCartaoId}>
+              <SelectTrigger data-testid="select-import-cartao">
+                <SelectValue placeholder="Selecione o cartao para esta importacao" />
+              </SelectTrigger>
+              <SelectContent>
+                {cartoes.map((cartao) => (
+                  <SelectItem key={cartao.id} value={cartao.id}>
+                    {formatCartaoOptionLabel(cartao)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {importCartaoHint ? (
+              <p className="text-xs text-amber-700">{importCartaoHint}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                O cartao e obrigatorio. O sistema nao usa mais o primeiro cartao automaticamente.
+              </p>
+            )}
+          </div>
 
           <Tabs value={importTab} onValueChange={(value) => setImportTab(value as ImportTab)}>
             <TabsList className="w-full">
@@ -120,7 +135,11 @@ export function ImportFaturaDialog({
                 rows={6}
                 className="font-mono text-sm"
               />
-              <Button onClick={onParseTexto} className="w-full" data-testid="button-parse-texto">
+              <Button
+                onClick={onParseTexto}
+                className="w-full"
+                data-testid="button-parse-texto"
+              >
                 <FileText className="w-4 h-4 mr-2" /> Detectar compras
               </Button>
             </TabsContent>
@@ -385,7 +404,7 @@ export function ImportFaturaDialog({
                 </p>
                 <Button
                   data-testid="button-confirmar-importacao"
-                  disabled={totalImportar === 0 || isBatchImportPending}
+                  disabled={totalImportar === 0 || isBatchImportPending || !importCartaoId}
                   onClick={onConfirmImport}
                 >
                   {isBatchImportPending ? "Importando..." : "Confirmar importacao"}

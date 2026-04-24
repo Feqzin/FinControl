@@ -32,6 +32,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { buildIgnoredDetails, countIgnoredRows, findVencimentoFatura, parseCsv, parseOfx, type ParseResult, type ParsedItem } from "@/pages/cartoes/import-parser";
 import { ImportFaturaDialog } from "@/pages/cartoes/components/import-fatura-dialog";
+import { formatImportCardOptionLabel, suggestImportCardByText } from "@/pages/cartoes/import-card-matching";
 import { useCartoes } from "@/hooks/useCartoes";
 import { CartoesSummaryCards } from "@/pages/cartoes/components/cartoes-summary-cards";
 import { previewImportCompras } from "@/services/api/cartoes";
@@ -91,6 +92,7 @@ export default function CartoesPage() {
 
   const [openImport, setOpenImport] = useState(false);
   const [importCartaoId, setImportCartaoId] = useState<string>("");
+  const [importCartaoHint, setImportCartaoHint] = useState("");
   const [importTexto, setImportTexto] = useState("");
   const [importItems, setImportItems] = useState<ParsedItem[]>([]);
   const [importTab, setImportTab] = useState<"texto" | "arquivo">("texto");
@@ -186,7 +188,16 @@ export default function CartoesPage() {
       showSmartImportPremiumToast();
       return;
     }
-    setImportCartaoId(cartoes[0]?.id ?? "");
+    if (cartoes.length === 0) {
+      toast({
+        title: "Cadastre um cartao antes de importar",
+        description: "A importacao de fatura precisa de um cartao de destino.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setImportCartaoId("");
+    setImportCartaoHint("");
     setOpenImport(true);
   };
 
@@ -258,6 +269,8 @@ export default function CartoesPage() {
 
   const resetImportState = () => {
     setOpenImport(false);
+    setImportCartaoId("");
+    setImportCartaoHint("");
     setImportItems([]);
     setImportTexto("");
     setImportVencimento("");
@@ -265,6 +278,61 @@ export default function CartoesPage() {
     setImportPreviewLogId(null);
     setImportSourceType("manual");
     setImportSourceName("");
+  };
+
+  const handleImportCartaoChange = (value: string) => {
+    const changed = value !== importCartaoId;
+    setImportCartaoId(value);
+    setImportCartaoHint("");
+
+    if (changed && (importItems.length > 0 || importPreviewLogId)) {
+      setImportItems([]);
+      setImportPreviewLogId(null);
+      setImportEditingId(null);
+      setImportSourceType("manual");
+      setImportSourceName("");
+      toast({
+        title: "Cartao de destino alterado",
+        description: "Gere o preview novamente para importar no cartao selecionado.",
+      });
+    }
+  };
+
+  const resolveImportCartaoId = (sourceText: string): string | null => {
+    if (importCartaoId) return importCartaoId;
+
+    const suggestion = suggestImportCardByText(sourceText, cartoes);
+    if (suggestion.kind === "single_match") {
+      setImportCartaoId(suggestion.card.id);
+      setImportCartaoHint(
+        `Cartao sugerido automaticamente: ${suggestion.issuerLabel} -> ${formatImportCardOptionLabel(suggestion.card)}`,
+      );
+      return suggestion.card.id;
+    }
+
+    if (suggestion.kind === "multiple_cards") {
+      setImportCartaoHint(
+        `Detectamos ${suggestion.issuerLabel}, mas existem ${suggestion.cards.length} cartoes compatíveis. Selecione manualmente.`,
+      );
+      return null;
+    }
+
+    if (suggestion.kind === "issuer_without_card") {
+      setImportCartaoHint(
+        `Detectamos ${suggestion.issuerLabel}, mas nao encontramos cartao cadastrado correspondente. Selecione manualmente.`,
+      );
+      return null;
+    }
+
+    if (suggestion.kind === "multiple_issuers") {
+      setImportCartaoHint(
+        `Detectamos mais de um emissor (${suggestion.issuerLabels.join(", ")}). Selecione o cartao manualmente.`,
+      );
+      return null;
+    }
+
+    setImportCartaoHint("Nao foi possivel detectar o emissor. Selecione manualmente o cartao de destino.");
+    return null;
   };
 
   const handleCreateCard = () => {
@@ -421,7 +489,7 @@ export default function CartoesPage() {
       return;
     }
 
-    const cartaoId = importCartaoId || cartoes[0]?.id;
+    const cartaoId = importCartaoId;
     if (!cartaoId) {
       toast({ title: "Selecione um cartao para importar", variant: "destructive" });
       return;
@@ -492,7 +560,7 @@ export default function CartoesPage() {
       return;
     }
 
-    const cartaoId = importCartaoId || (cartoes[0]?.id ?? "");
+    const cartaoId = resolveImportCartaoId(importTexto);
     if (!cartaoId) {
       toast({ title: "Selecione um cartao para importar", variant: "destructive" });
       return;
@@ -589,7 +657,7 @@ export default function CartoesPage() {
     setImportLoading(true);
     try {
       const content = await file.text();
-      const cartaoId = importCartaoId || (cartoes[0]?.id ?? "");
+      const cartaoId = resolveImportCartaoId(`${file.name}\n${content}`);
       if (!cartaoId) {
         toast({ title: "Selecione um cartao para importar", variant: "destructive" });
         return;
@@ -1242,6 +1310,8 @@ export default function CartoesPage() {
         onOpenChange={(v) => {
           if (!v) {
             setOpenImport(false);
+            setImportCartaoId("");
+            setImportCartaoHint("");
             setImportItems([]);
             setImportTexto("");
             setImportVencimento("");
@@ -1260,7 +1330,9 @@ export default function CartoesPage() {
         }}
         cartoes={cartoes}
         importCartaoId={importCartaoId}
-        setImportCartaoId={setImportCartaoId}
+        setImportCartaoId={handleImportCartaoChange}
+        importCartaoHint={importCartaoHint}
+        formatCartaoOptionLabel={formatImportCardOptionLabel}
         importTab={importTab}
         setImportTab={(value) => setImportTab(value)}
         importTexto={importTexto}
