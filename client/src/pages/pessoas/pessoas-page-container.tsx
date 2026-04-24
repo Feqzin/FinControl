@@ -82,7 +82,7 @@ export default function PessoasPage() {
     observacao: "",
   });
   const [historyFilter, setHistoryFilter] = useState<"todos" | "pendente">("todos");
-  const [historyTab, setHistoryTab] = useState<"resumo" | "pendencias" | "saldo" | "servicos" | "historico">("resumo");
+  const [historyTab, setHistoryTab] = useState<"visao_geral" | "pendencias" | "saldo" | "servicos" | "historico">("visao_geral");
   const [historyVisible, setHistoryVisible] = useState({
     dividas: 8,
     compras: 6,
@@ -165,6 +165,39 @@ export default function PessoasPage() {
   const historySaldoResumo = historySaldo?.resumo ?? (historyResumo ? historyResumo.saldoPessoa : null);
   const historySaldoMovimentacoes = historySaldo?.movimentacoes ?? [];
   const historySaldoDisponivel = historySaldoResumo?.saldoAtual ?? 0;
+  const historyDividasPendentes = historyResumo
+    ? historyResumo.dividas.comigo.pendente + historyResumo.dividas.euDevo.pendente
+    : 0;
+  const historyComprasPendentes = historyResumo?.comprasVinculadas.pendentePessoa ?? 0;
+  const historyServicosPendentes = historyResumo?.servicosMesAtual.pendente ?? 0;
+  const historySaldoCreditos = historyResumo?.saldoPessoa.saldoAtual ?? 0;
+  const composicaoPendenteItems = [
+    { key: "dividas", label: "Dívida pessoal", colorClass: "bg-blue-500", valor: historyDividasPendentes },
+    { key: "cartao", label: "Cartão / compras", colorClass: "bg-violet-500", valor: historyComprasPendentes },
+    { key: "servicos", label: "Serviços", colorClass: "bg-amber-500", valor: historyServicosPendentes },
+  ].filter((item) => item.valor > 0);
+  const composicaoPendenteTotal = composicaoPendenteItems.reduce((sum, item) => sum + item.valor, 0);
+  const composicaoPrincipal = composicaoPendenteItems.length > 0
+    ? [...composicaoPendenteItems].sort((a, b) => b.valor - a.valor)[0]
+    : null;
+  const hasVisaoComposicao = composicaoPendenteItems.length > 0 || historySaldoCreditos > 0;
+  const progressoTotalBase = (historyResumo?.totalPago ?? 0) + (historyResumo?.consolidadoPendente ?? 0);
+  const hasVisaoProgresso = progressoTotalBase > 0;
+  const progressoPagoPercent = hasVisaoProgresso
+    ? Math.round(((historyResumo?.totalPago ?? 0) / progressoTotalBase) * 100)
+    : 0;
+  const progressoPendentePercent = hasVisaoProgresso ? Math.max(0, 100 - progressoPagoPercent) : 0;
+  const insightVisaoGeral = !historyResumo
+    ? ""
+    : historyResumo.consolidadoPendente <= 0
+      ? "Sem pendências em aberto no momento. O relacionamento está equilibrado."
+      : (historyResumo.alertas.comprasAtrasadas > 0 || historyResumo.dividas.comigo.vencidas > 0 || historyParcelasVencidas > 0)
+        ? `Atenção aos atrasos: ${historyParcelasVencidas} parcela(s) vencida(s) e ${historyResumo.dividas.comigo.vencidas} dívida(s) pessoal(is) vencida(s).`
+        : historySaldoCreditos > 0
+          ? `Há ${formatCurrencyBRL(historySaldoCreditos)} de saldo positivo disponível para abatimentos.`
+          : composicaoPrincipal
+            ? `Maior impacto atual em ${composicaoPrincipal.label.toLowerCase()}: ${formatCurrencyBRL(composicaoPrincipal.valor)}.`
+            : "Acompanhe as pendências por origem para priorizar os próximos pagamentos.";
   const filteredByStatus = filterTipo === "atrasados"
     ? filtered.filter((pessoa) => {
       const resumoPessoa = getPessoaResumoConsolidado(pessoa.id);
@@ -789,7 +822,7 @@ export default function PessoasPage() {
         if (!v) {
           setHistoryPessoa(null);
           setHistoryFilter("todos");
-          setHistoryTab("resumo");
+          setHistoryTab("visao_geral");
           setHistoryVisible({ dividas: 8, compras: 6, servicos: 6 });
           setAbaterSaldoOpen(false);
           setAbaterSaldoDivida(null);
@@ -884,7 +917,7 @@ export default function PessoasPage() {
                 className="mb-4"
               >
                 <TabsList className="mobile-tabs-scroll h-9 w-full justify-start rounded-xl">
-                  <TabsTrigger value="resumo" data-testid="tab-history-resumo">Resumo</TabsTrigger>
+                  <TabsTrigger value="visao_geral" data-testid="tab-history-resumo">Visão geral</TabsTrigger>
                   <TabsTrigger value="pendencias" data-testid="tab-history-pendencias">Pendências</TabsTrigger>
                   <TabsTrigger value="saldo" data-testid="tab-history-saldo">Saldo</TabsTrigger>
                   <TabsTrigger value="servicos" data-testid="tab-history-servicos">Serviços</TabsTrigger>
@@ -911,46 +944,87 @@ export default function PessoasPage() {
                 </Button>
               </div>
 
-              <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3 ${historyTab === "resumo" ? "" : "hidden"}`}>
-                <div className="rounded-md bg-emerald-500/5 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Saldo positivo atual</p>
-                  <p className="text-lg font-bold text-emerald-600">{formatCurrencyBRL(historyResumo.saldoPessoa.saldoAtual)}</p>
-                </div>
-                <div className="rounded-md bg-muted/40 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Créditos / Débitos</p>
-                  <p className="text-lg font-bold">
-                    {formatCurrencyBRL(historyResumo.saldoPessoa.creditos)} / {formatCurrencyBRL(historyResumo.saldoPessoa.debitos)}
-                  </p>
-                </div>
-                <div className="rounded-md bg-muted/40 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Total pendente consolidado</p>
-                  <p className="text-lg font-bold">{formatCurrencyBRL(historyResumo.consolidadoPendente)}</p>
-                </div>
-                <div className="rounded-md bg-emerald-500/5 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Total pago</p>
-                  <p className="text-lg font-bold text-emerald-600">{formatCurrencyBRL(historyResumo.totalPago)}</p>
-                </div>
-                <div className="rounded-md bg-muted/40 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Dívida pessoal pendente</p>
-                  <p className="text-lg font-bold">
-                    {formatCurrencyBRL(historyResumo.dividas.comigo.pendente + historyResumo.dividas.euDevo.pendente)}
-                  </p>
-                </div>
-                <div className="rounded-md bg-muted/40 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Paguei do meu bolso</p>
-                  <p className="text-lg font-bold text-blue-600">{formatCurrencyBRL(historyResumo.dividas.pagueiDoMeuBolso.pendente)}</p>
-                </div>
-                <div className="rounded-md bg-muted/40 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Serviços pendentes ({historyResumo.servicosMesAtual.mesReferencia})</p>
-                  <p className="text-lg font-bold text-amber-600">{formatCurrencyBRL(historyResumo.servicosMesAtual.pendente)}</p>
-                </div>
-                <div className="rounded-md bg-muted/40 p-3">
-                  <p className="text-xs text-muted-foreground mb-1">Parcelas pendentes da pessoa</p>
-                  <p className="text-lg font-bold">{historyResumo.alertas.parcelasPendentesPessoa}</p>
-                </div>
+              <div className={`space-y-3 mb-3 ${historyTab === "visao_geral" ? "" : "hidden"}`}>
+                {hasVisaoComposicao && (
+                  <div className="rounded-md border border-border/60 bg-card p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold">Composição do pendente</p>
+                      <Badge variant="outline" className="text-[11px]">
+                        {formatCurrencyBRL(historyResumo.consolidadoPendente)}
+                      </Badge>
+                    </div>
+                    {composicaoPendenteItems.length > 0 && composicaoPendenteTotal > 0 && (
+                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted/60">
+                        <div className="h-full flex">
+                          {composicaoPendenteItems.map((item) => (
+                            <div
+                              key={item.key}
+                              className={item.colorClass}
+                              style={{ width: `${(item.valor / composicaoPendenteTotal) * 100}%` }}
+                              aria-hidden
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      {composicaoPendenteItems.map((item) => (
+                        <div key={item.key} className="rounded-md bg-muted/40 px-2.5 py-2 flex items-center justify-between gap-2">
+                          <span className="inline-flex items-center gap-2 text-muted-foreground">
+                            <span className={`h-2 w-2 rounded-full ${item.colorClass}`} />
+                            {item.label}
+                          </span>
+                          <span className="font-semibold text-foreground">{formatCurrencyBRL(item.valor)}</span>
+                        </div>
+                      ))}
+                      {historySaldoCreditos > 0 && (
+                        <div className="rounded-md bg-emerald-500/5 px-2.5 py-2 flex items-center justify-between gap-2">
+                          <span className="inline-flex items-center gap-2 text-emerald-700">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                            Saldo / créditos disponíveis
+                          </span>
+                          <span className="font-semibold text-emerald-700">{formatCurrencyBRL(historySaldoCreditos)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {hasVisaoProgresso && (
+                  <div className="rounded-md border border-border/60 bg-card p-3 space-y-2.5">
+                    <p className="text-sm font-semibold">Evolução financeira</p>
+                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted/60">
+                      <div className="h-full flex">
+                        <div className="bg-emerald-500" style={{ width: `${progressoPagoPercent}%` }} aria-hidden />
+                        <div className="bg-amber-500" style={{ width: `${progressoPendentePercent}%` }} aria-hidden />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-md bg-emerald-500/5 px-2.5 py-2 flex items-center justify-between">
+                        <span className="text-emerald-700">Total pago</span>
+                        <span className="font-semibold text-emerald-700">
+                          {formatCurrencyBRL(historyResumo.totalPago)} ({progressoPagoPercent}%)
+                        </span>
+                      </div>
+                      <div className="rounded-md bg-amber-500/5 px-2.5 py-2 flex items-center justify-between">
+                        <span className="text-amber-700">Total pendente</span>
+                        <span className="font-semibold text-amber-700">
+                          {formatCurrencyBRL(historyResumo.consolidadoPendente)} ({progressoPendentePercent}%)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {insightVisaoGeral && (
+                  <div className="rounded-md border border-blue-200/60 bg-blue-50/70 px-3 py-2.5 text-xs text-blue-900">
+                    <p className="font-medium mb-1">Insight</p>
+                    <p>{insightVisaoGeral}</p>
+                  </div>
+                )}
               </div>
 
-              {historyTab === "resumo" && (historyResumo.alertas.comprasAtrasadas > 0 || historyResumo.dividas.comigo.vencidas > 0) && (
+              {historyTab === "visao_geral" && (historyResumo.alertas.comprasAtrasadas > 0 || historyResumo.dividas.comigo.vencidas > 0) && (
                 <div className="mb-6 rounded-md border border-red-300/40 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
                   <span>

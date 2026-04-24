@@ -46,7 +46,11 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
       if (stored) {
         const parsed = JSON.parse(stored) as Partial<UIPreferences>;
         const merged = { ...defaultPrefs, ...parsed };
-        const mobileModePreference = merged.mobileModePreference === "manual" ? "manual" : "auto";
+        const hasExplicitPreference = parsed.mobileModePreference === "manual" || parsed.mobileModePreference === "auto";
+        const hasLegacyMobileMode = Object.prototype.hasOwnProperty.call(parsed, "mobileMode");
+        const mobileModePreference: MobileModePreference = hasExplicitPreference
+          ? (parsed.mobileModePreference as MobileModePreference)
+          : (hasLegacyMobileMode ? "manual" : "auto");
         const mobileMode = mobileModePreference === "manual"
           ? Boolean(merged.mobileMode)
           : detectMobileViewport();
