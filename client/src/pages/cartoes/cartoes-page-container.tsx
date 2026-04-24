@@ -35,6 +35,10 @@ import { CartoesSummaryCards } from "@/pages/cartoes/components/cartoes-summary-
 import { previewImportCompras } from "@/services/api/cartoes";
 import { isParcelaComprometendoLimite } from "@/lib/card-limit-usage";
 import {
+  buildPlanLimitFriendlyMessage,
+  parsePlanLimitError,
+} from "@/lib/subscription-plan-limit";
+import {
   formatCartaoCurrency,
   getDaysUntilInvoice,
   getNextInvoiceDate,
@@ -147,9 +151,13 @@ export default function CartoesPage() {
       setLocation(nextPath);
     }
   }, [compras, location, setLocation]);
-  const getErrorMessage = (error: unknown) => (
-    error instanceof Error ? error.message : "Erro inesperado"
-  );
+  const getErrorMessage = (error: unknown) => {
+    const planLimitError = parsePlanLimitError(error);
+    if (planLimitError) {
+      return buildPlanLimitFriendlyMessage(planLimitError);
+    }
+    return error instanceof Error ? error.message : "Erro inesperado";
+  };
 
   const getPessoaSaldoDisponivel = (pessoaId: string): number => {
     const { creditos, debitos } = pessoaSaldoMovimentacoes.reduce(
@@ -222,7 +230,12 @@ export default function CartoesPage() {
           toast({ title: "Cartao adicionado" });
         },
         onError: (error) => {
-          toast({ title: "Erro", description: getErrorMessage(error), variant: "destructive" });
+          const planLimitError = parsePlanLimitError(error);
+          toast({
+            title: planLimitError ? "Limite do plano Free atingido" : "Erro",
+            description: getErrorMessage(error),
+            variant: "destructive",
+          });
         },
       },
     );

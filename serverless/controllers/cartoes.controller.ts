@@ -1,8 +1,16 @@
 import type { Request, Response } from "express";
 import { formatMoneyFixed } from "../../utils/money.js";
+import { enforcePlanLimit } from "../subscription-access.js";
 import { CartoesService } from "../services/cartoes.service.js";
 import { cartaoBody, cartaoUpdateBody } from "../validators/financial.validators.js";
-import { auditRequest, getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils.js";
+import {
+  auditRequest,
+  getParam,
+  getUserId,
+  sendBadRequest,
+  sendNotFound,
+  sendPlanLimitConflict,
+} from "./controller-utils.js";
 
 export function createCartoesController(service: CartoesService) {
   return {
@@ -23,6 +31,29 @@ export function createCartoesController(service: CartoesService) {
           details: { reason: "validation_error" },
         });
         return sendBadRequest(res, parsed.error.message);
+      }
+
+      const currentUsage = (await service.list(userId)).length;
+      const limitResult = enforcePlanLimit(
+        req.user as { subscriptionTier?: unknown } | undefined,
+        "cartoes",
+        currentUsage,
+      );
+      if (!limitResult.allowed) {
+        auditRequest(req, {
+          action: "create",
+          status: "failure",
+          domain: "cartoes",
+          userId,
+          details: {
+            reason: "plan_limit_reached",
+            resource: limitResult.error.resource,
+            currentUsage: limitResult.error.currentUsage,
+            limit: limitResult.error.limit,
+            subscriptionTier: limitResult.error.subscriptionTier,
+          },
+        });
+        return sendPlanLimitConflict(res, limitResult.error);
       }
 
       const created = await service.create(userId, parsed.data);

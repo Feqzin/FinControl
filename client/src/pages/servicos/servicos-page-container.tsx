@@ -22,6 +22,10 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useServicos } from "@/hooks/useServicos";
+import {
+  buildPlanLimitFriendlyMessage,
+  parsePlanLimitError,
+} from "@/lib/subscription-plan-limit";
 import { CompraCartaoSearchPicker } from "@/components/compra-cartao-search-picker";
 import { DivisaoPanel } from "@/pages/servicos/components/divisao-panel";
 import { Plus, Repeat, Trash2, X, Check, Users, ChevronUp, Pencil, CreditCard, Unlink2 } from "lucide-react";
@@ -210,8 +214,19 @@ export default function ServicosPage() {
                       setNewServicoIcone(null);
                       toast({ title: "Serviço adicionado" });
                     },
-                    onError: (e: Error) =>
-                      toast({ title: "Erro", description: e.message, variant: "destructive" }),
+                    onError: (e: Error) => {
+                      const planLimitError = parsePlanLimitError(e);
+                      if (planLimitError) {
+                        toast({
+                          title: "Limite do plano Free atingido",
+                          description: buildPlanLimitFriendlyMessage(planLimitError),
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+
+                      toast({ title: "Erro", description: e.message, variant: "destructive" });
+                    },
                   },
                 );
               }}

@@ -49,6 +49,7 @@ export function useCartoes(viewingCompraId?: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cartoes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
     },
   });
 
@@ -65,6 +66,7 @@ export function useCartoes(viewingCompraId?: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cartoes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
     },
   });
 

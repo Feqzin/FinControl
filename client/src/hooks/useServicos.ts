@@ -34,6 +34,7 @@ export function useServicos() {
     mutationFn: (payload: ServicoPayload) => createServico(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servicos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
     },
   });
 
@@ -49,6 +50,7 @@ export function useServicos() {
     mutationFn: (id: string) => deleteServico(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servicos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
     },
   });
 

@@ -19,6 +19,10 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { usePessoas } from "@/hooks/usePessoas";
+import {
+  buildPlanLimitFriendlyMessage,
+  parsePlanLimitError,
+} from "@/lib/subscription-plan-limit";
 import { CompraCartaoSearchPicker } from "@/components/compra-cartao-search-picker";
 import { PaymentTimeline } from "@/pages/pessoas/components/payment-timeline";
 import {
@@ -244,7 +248,19 @@ export default function PessoasPage() {
                     setPessoaForm({ nome: "", tipo: "me_deve", telefone: "", observacao: "" });
                     toast({ title: "Pessoa adicionada" });
                   },
-                  onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+                  onError: (err: Error) => {
+                    const planLimitError = parsePlanLimitError(err);
+                    if (planLimitError) {
+                      toast({
+                        title: "Limite do plano Free atingido",
+                        description: buildPlanLimitFriendlyMessage(planLimitError),
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+
+                    toast({ title: "Erro", description: err.message, variant: "destructive" });
+                  },
                 });
               }}
               className="space-y-4"

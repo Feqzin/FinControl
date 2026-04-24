@@ -8,7 +8,14 @@ import {
   pessoaSaldoMovimentacaoBody,
   pessoaUpdateBody,
 } from "../validators/core-domain.validators.js";
-import { getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils.js";
+import { enforcePlanLimit } from "../subscription-access.js";
+import {
+  getParam,
+  getUserId,
+  sendBadRequest,
+  sendNotFound,
+  sendPlanLimitConflict,
+} from "./controller-utils.js";
 
 export function createPessoasController(service: PessoasService) {
   return {
@@ -214,6 +221,17 @@ export function createPessoasController(service: PessoasService) {
       if (!parsed.success) {
         return sendBadRequest(res, parsed.error.message);
       }
+
+      const currentUsage = (await service.list(userId)).length;
+      const limitResult = enforcePlanLimit(
+        req.user as { subscriptionTier?: unknown } | undefined,
+        "pessoas",
+        currentUsage,
+      );
+      if (!limitResult.allowed) {
+        return sendPlanLimitConflict(res, limitResult.error);
+      }
+
       return res.json(await service.create(userId, parsed.data));
     },
 

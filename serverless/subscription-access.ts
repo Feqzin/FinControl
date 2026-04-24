@@ -3,6 +3,8 @@ import {
   buildSubscriptionAccess,
   isLimitReached,
   type PremiumFeature,
+  type SubscriptionResourceKey,
+  type SubscriptionTier,
   type SubscriptionLimitKey,
   type SubscriptionLimitValue,
   type SubscriptionAccess,
@@ -11,6 +13,38 @@ import {
 type UserLike = {
   subscriptionTier?: unknown;
 } | null | undefined;
+
+export type PlanLimitExceededErrorPayload = {
+  code: "PLAN_LIMIT_REACHED";
+  message: string;
+  resource: SubscriptionResourceKey;
+  currentUsage: number;
+  limit: number;
+  subscriptionTier: SubscriptionTier;
+};
+
+export type PlanLimitEnforcementResult =
+  | { allowed: true }
+  | { allowed: false; error: PlanLimitExceededErrorPayload };
+
+const RESOURCE_LIMIT_KEY_MAP: Record<SubscriptionResourceKey, SubscriptionLimitKey> = {
+  cartoes: "maxCartoes",
+  pessoas: "maxPessoas",
+  servicos: "maxServicos",
+  metas: "maxMetas",
+};
+
+const RESOURCE_LABEL_MAP: Record<SubscriptionResourceKey, string> = {
+  cartoes: "cartões",
+  pessoas: "pessoas",
+  servicos: "serviços",
+  metas: "metas",
+};
+
+function sanitizeUsageCount(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.trunc(value));
+}
 
 export function getUserSubscriptionAccess(user: UserLike): SubscriptionAccess {
   return buildSubscriptionAccess(user?.subscriptionTier);
@@ -26,6 +60,37 @@ export function getUserLimit(user: UserLike, key: SubscriptionLimitKey): Subscri
 
 export function isUserLimitReached(user: UserLike, key: SubscriptionLimitKey, currentCount: number): boolean {
   return isLimitReached(currentCount, getUserLimit(user, key));
+}
+
+export function enforcePlanLimit(
+  user: UserLike,
+  resource: SubscriptionResourceKey,
+  currentUsage: number,
+): PlanLimitEnforcementResult {
+  const access = getUserSubscriptionAccess(user);
+  const limitKey = RESOURCE_LIMIT_KEY_MAP[resource];
+  const limit = access.limits[limitKey];
+
+  if (limit === null) {
+    return { allowed: true };
+  }
+
+  const usage = sanitizeUsageCount(currentUsage);
+  if (!isLimitReached(usage, limit)) {
+    return { allowed: true };
+  }
+
+  return {
+    allowed: false,
+    error: {
+      code: "PLAN_LIMIT_REACHED",
+      message: `Limite de ${RESOURCE_LABEL_MAP[resource]} atingido no plano atual. Faça upgrade para Premium para continuar criando.`,
+      resource,
+      currentUsage: usage,
+      limit,
+      subscriptionTier: access.subscriptionTier,
+    },
+  };
 }
 
 export function requirePremiumFeature(feature: PremiumFeature) {

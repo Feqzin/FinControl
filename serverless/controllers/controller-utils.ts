@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { writeAuditLog, type AuditEvent } from "../audit-log.js";
+import type { PlanLimitExceededErrorPayload } from "../subscription-access.js";
 
 export function getUserId(req: Request): string {
   return (req.user as any).id;
@@ -31,4 +32,8 @@ export function sendBadRequest(res: Response, message: string) {
 
 export function sendNotFound(res: Response, message = "Not found") {
   return res.status(404).json({ message });
+}
+
+export function sendPlanLimitConflict(res: Response, payload: PlanLimitExceededErrorPayload) {
+  return res.status(409).json(payload);
 }

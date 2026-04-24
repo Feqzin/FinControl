@@ -194,6 +194,7 @@ export function usePessoas({
     mutationFn: (payload: PessoaPayload) => createPessoa(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
     },
   });
 
@@ -240,6 +241,7 @@ export function usePessoas({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
     },
   });
 

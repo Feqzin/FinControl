@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { enforcePlanLimit } from "../subscription-access.js";
 import { ServicosService } from "../services/servicos.service.js";
 import {
   servicoBody,
@@ -7,7 +8,13 @@ import {
   servicoPessoaUpdateBody,
   servicoUpdateBody,
 } from "../validators/core-domain.validators.js";
-import { getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils.js";
+import {
+  getParam,
+  getUserId,
+  sendBadRequest,
+  sendNotFound,
+  sendPlanLimitConflict,
+} from "./controller-utils.js";
 
 export function createServicosController(service: ServicosService) {
   return {
@@ -22,6 +29,17 @@ export function createServicosController(service: ServicosService) {
       if (!parsed.success) {
         return sendBadRequest(res, parsed.error.message);
       }
+
+      const currentUsage = (await service.listServicos(userId)).length;
+      const limitResult = enforcePlanLimit(
+        req.user as { subscriptionTier?: unknown } | undefined,
+        "servicos",
+        currentUsage,
+      );
+      if (!limitResult.allowed) {
+        return sendPlanLimitConflict(res, limitResult.error);
+      }
+
       const result = await service.createServico(userId, parsed.data);
       if ("error" in result) {
         return sendBadRequest(res, "Compra de cartao nao encontrada para vinculo");
