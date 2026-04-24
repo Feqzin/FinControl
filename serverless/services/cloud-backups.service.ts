@@ -1,11 +1,18 @@
 import { createHash } from "node:crypto";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db.js";
 import { storage } from "../storage.js";
 import { ENV } from "../env.js";
 import { toErrorLog, writeTechnicalLog } from "../logger.js";
 import { SupabaseStorageServerClient } from "./supabase-storage.client.js";
 import { userCloudBackups } from "../../shared/schema.js";
+import {
+  type BackupImportMode,
+  BackupJsonParseError,
+  parseBackupJsonImport,
+} from "../validators/backup-import.validators.js";
+import { transformBackupForPersistence } from "./backup-import-transform.service.js";
+import { persistTransformedBackupImport } from "./backup-import-persistence.service.js";
 
 export type CloudBackupListItem = {
   id: string;
@@ -16,6 +23,25 @@ export type CloudBackupListItem = {
   status: string;
   isEncrypted: boolean;
   createdAt: Date;
+};
+
+export type CloudBackupRestoreSummary = {
+  modoImportacao: BackupImportMode;
+  pessoasImportadas: number;
+  cartoesImportados: number;
+  dividasImportadas: number;
+  comprasImportadas: number;
+  servicosImportados: number;
+  servicoPessoasImportados: number;
+  servicoPagamentosImportados: number;
+  saldoMovimentacoesImportados: number;
+  metasImportadas: number;
+};
+
+type CloudBackupDownloadResult = {
+  backup: CloudBackupListItem;
+  fileName: string;
+  content: Buffer;
 };
 
 type CloudBackupPayload = {
@@ -105,6 +131,39 @@ function mapUploadErrorToUserMessage(bucket: string, error: { message: string; s
   return "Nao foi possivel salvar backup na nuvem. Verifique a configuracao do storage.";
 }
 
+function mapDownloadErrorToUserMessage(error: { message: string; statusCode?: number }): {
+  status: number;
+  message: string;
+} {
+  if (error.statusCode === 404) {
+    return {
+      status: 404,
+      message: "Arquivo de backup nao encontrado no storage.",
+    };
+  }
+
+  if (error.statusCode === 401 || error.statusCode === 403 || isAuthStorageError(error.message)) {
+    return {
+      status: 503,
+      message: "Nao foi possivel autenticar no storage para baixar o backup.",
+    };
+  }
+
+  return {
+    status: 503,
+    message: "Falha temporaria ao baixar backup na nuvem.",
+  };
+}
+
+function isTransformValidationError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const normalized = error.message.toLowerCase();
+  return normalized.startsWith("registro invalido")
+    || normalized.startsWith("campo obrigatorio invalido")
+    || normalized.startsWith("campo invalido")
+    || normalized.startsWith("relacionamento invalido");
+}
+
 export class CloudBackupsService {
   private readonly storageClient?: SupabaseStorageServerClient;
 
@@ -124,6 +183,18 @@ export class CloudBackupsService {
         "Backup na nuvem indisponivel: configuracao de storage pendente no servidor.",
       );
     }
+  }
+
+  private async getBackupRow(userId: string, backupId: string): Promise<typeof userCloudBackups.$inferSelect> {
+    const [row] = await db.select().from(userCloudBackups)
+      .where(and(eq(userCloudBackups.userId, userId), eq(userCloudBackups.id, backupId)))
+      .limit(1);
+
+    if (!row) {
+      throw new CloudBackupsServiceError(404, "Backup na nuvem nao encontrado.");
+    }
+
+    return row;
   }
 
   async createManualBackup(userId: string): Promise<CloudBackupListItem> {
@@ -246,5 +317,103 @@ export class CloudBackupsService {
       .limit(clampLimit(limit));
 
     return rows.map(toListItem);
+  }
+
+  async downloadById(userId: string, backupId: string): Promise<CloudBackupDownloadResult> {
+    const backupRow = await this.getBackupRow(userId, backupId);
+    const storageClient = this.resolveStorageClient();
+
+    let downloadResult;
+    try {
+      downloadResult = await storageClient.downloadObject(backupRow.filePath);
+    } catch (error) {
+      writeTechnicalLog({
+        event: "cloud_backup.download.exception",
+        source: "cloud-backups.service",
+        level: "error",
+        data: {
+          userId,
+          backupId,
+          bucket: storageClient.getBucket(),
+          filePath: backupRow.filePath,
+          error: toErrorLog(error),
+        },
+      });
+      throw new CloudBackupsServiceError(503, "Falha temporaria ao baixar backup na nuvem.");
+    }
+
+    if (downloadResult.error || !downloadResult.data) {
+      if (downloadResult.error) {
+        writeTechnicalLog({
+          event: "cloud_backup.download.failed",
+          source: "cloud-backups.service",
+          level: "error",
+          data: {
+            userId,
+            backupId,
+            bucket: storageClient.getBucket(),
+            filePath: backupRow.filePath,
+            statusCode: downloadResult.error.statusCode ?? null,
+            providerMessage: downloadResult.error.message,
+          },
+        });
+
+        const mapped = mapDownloadErrorToUserMessage(downloadResult.error);
+        throw new CloudBackupsServiceError(mapped.status, mapped.message);
+      }
+
+      throw new CloudBackupsServiceError(500, "Falha ao ler o arquivo do backup na nuvem.");
+    }
+
+    return {
+      backup: toListItem(backupRow),
+      fileName: backupRow.fileName,
+      content: downloadResult.data,
+    };
+  }
+
+  async restoreById(userId: string, backupId: string, modo: BackupImportMode): Promise<CloudBackupRestoreSummary> {
+    const downloaded = await this.downloadById(userId, backupId);
+
+    let parsedBackup;
+    try {
+      parsedBackup = parseBackupJsonImport(downloaded.content.toString("utf8"));
+    } catch (error) {
+      if (error instanceof BackupJsonParseError) {
+        throw new CloudBackupsServiceError(
+          400,
+          `Arquivo de backup na nuvem invalido: ${error.message}`,
+        );
+      }
+      throw error;
+    }
+
+    let transformed;
+    try {
+      transformed = transformBackupForPersistence(parsedBackup, userId);
+    } catch (error) {
+      if (isTransformValidationError(error)) {
+        throw new CloudBackupsServiceError(400, error.message);
+      }
+      throw error;
+    }
+
+    const persisted = await persistTransformedBackupImport(transformed, {
+      modo,
+      userId,
+    });
+
+    return {
+      modoImportacao: modo,
+      pessoasImportadas: persisted.pessoasInseridas,
+      cartoesImportados: persisted.cartoesInseridos,
+      dividasImportadas: persisted.dividasInseridas,
+      comprasImportadas: persisted.comprasInseridas,
+      servicosImportados: persisted.servicosInseridos,
+      servicoPessoasImportados: persisted.servicoPessoasInseridas,
+      servicoPagamentosImportados: persisted.servicoPagamentosInseridos,
+      saldoMovimentacoesImportados: persisted.saldoMovimentacoesInseridas,
+      metasImportadas: persisted.metasInseridas,
+    };
   }
 }

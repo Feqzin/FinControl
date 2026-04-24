@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { getUserSubscriptionTier, hasCloudBackupAccess, useAuth } from "@/hooks/use-auth";
-import { createCloudBackup, listCloudBackups, type CloudBackupItem } from "@/services/api/cloud-backups";
+import { createCloudBackup, listCloudBackups, restoreCloudBackup, type CloudBackupItem } from "@/services/api/cloud-backups";
 import {
   User, Download, Shield, Database, LogOut, CheckCircle, HelpCircle, Upload, Cloud
 } from "lucide-react";
@@ -95,6 +95,8 @@ export default function PerfilPage() {
   const [nomeCompleto, setNomeCompleto] = useState(user?.nomeCompleto || "");
   const [arquivoImportacao, setArquivoImportacao] = useState<File | null>(null);
   const [modoImportacao, setModoImportacao] = useState<ImportMode>("merge");
+  const [modoRestauracaoCloud, setModoRestauracaoCloud] = useState<ImportMode>("merge");
+  const [backupRestaurandoId, setBackupRestaurandoId] = useState<string | null>(null);
   const inputImportacaoRef = useRef<HTMLInputElement | null>(null);
   const planoAtual = getUserSubscriptionTier(user);
   const backupNuvemLiberado = hasCloudBackupAccess(user);
@@ -124,6 +126,23 @@ export default function PerfilPage() {
     onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
   });
 
+  const invalidateFinancialQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/cartoes"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/servicos"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/servico-pessoas"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/servico-pagamentos"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/metas"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/financial/score"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/financial/insights"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
+  };
+
   const cloudBackupsQuery = useQuery<CloudBackupItem[]>({
     queryKey: ["/api/backups/cloud"],
     queryFn: () => listCloudBackups(30),
@@ -146,6 +165,37 @@ export default function PerfilPage() {
         description: parseImportApiError(error),
         variant: "destructive",
       });
+    },
+  });
+
+  const restoreCloudBackupMutation = useMutation({
+    mutationFn: async ({
+      backupId,
+      modo,
+    }: {
+      backupId: string;
+      modo: ImportMode;
+    }) => restoreCloudBackup(backupId, modo),
+    onMutate: ({ backupId }) => {
+      setBackupRestaurandoId(backupId);
+    },
+    onSuccess: (resultado) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/backups/cloud"] });
+      invalidateFinancialQueries();
+      toast({
+        title: "Backup restaurado da nuvem",
+        description: `Modo: ${resultado.modoImportacao === "replace" ? "Substituir dados atuais" : "Mesclar com dados atuais"}. Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Vinculos de servico: ${resultado.servicoPessoasImportados ?? 0}, Pagamentos de servico: ${resultado.servicoPagamentosImportados ?? 0}, Movimentações de saldo: ${resultado.saldoMovimentacoesImportados ?? 0}, Metas: ${resultado.metasImportadas}`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro ao restaurar backup da nuvem",
+        description: parseImportApiError(error),
+        variant: "destructive",
+      });
+    },
+    onSettled: () => {
+      setBackupRestaurandoId(null);
     },
   });
 
@@ -175,20 +225,7 @@ export default function PerfilPage() {
         inputImportacaoRef.current.value = "";
       }
 
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/servicos"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/servico-pessoas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/servico-pagamentos"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/metas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/financial/score"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/financial/insights"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
+      invalidateFinancialQueries();
 
       toast({
         title: "Importacao concluida",
@@ -267,6 +304,40 @@ export default function PerfilPage() {
     }
 
     importBackup.mutate({ arquivo: arquivoImportacao, modo: modoImportacao });
+  };
+
+  const restaurarBackupNuvem = (backup: CloudBackupItem) => {
+    if (modoRestauracaoCloud === "replace") {
+      const confirmado = window.confirm(
+        "Modo substituir: todos os seus dados financeiros atuais serao apagados e substituidos pelo backup da nuvem. Sua conta/login permanecerao intactos. Deseja continuar?",
+      );
+      if (!confirmado) {
+        return;
+      }
+
+      const confirmacaoForte = window.prompt(
+        "Para confirmar a restauracao com substituicao, digite SUBSTITUIR:",
+      );
+      if (confirmacaoForte !== "SUBSTITUIR") {
+        toast({
+          title: "Restauracao cancelada",
+          description: "Confirmacao nao realizada. Nenhum dado foi alterado.",
+        });
+        return;
+      }
+    } else {
+      const confirmed = window.confirm(
+        "Restaurar em modo mesclar pode adicionar dados sem apagar os atuais. Deseja continuar?",
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    restoreCloudBackupMutation.mutate({
+      backupId: backup.id,
+      modo: modoRestauracaoCloud,
+    });
   };
 
   const totalReceber = dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
@@ -426,7 +497,7 @@ export default function PerfilPage() {
             </div>
             <p className="text-xs text-muted-foreground">
               {backupNuvemLiberado
-                ? "Seu plano premium ja possui permissão para backup na nuvem. O fluxo de upload/listagem/restauracao sera liberado em uma próxima etapa."
+                ? "Seu plano premium permite salvar e restaurar backups na nuvem privada."
                 : "Seu plano free nao inclui backup na nuvem. Upgrade para Premium liberara esse recurso."}
             </p>
             <Button
@@ -442,6 +513,29 @@ export default function PerfilPage() {
             </Button>
             {backupNuvemLiberado && (
               <div className="rounded-md border p-3 space-y-2">
+                <div className="space-y-2">
+                  <Label htmlFor="modo-restauracao-cloud">Modo de restauracao da nuvem</Label>
+                  <select
+                    id="modo-restauracao-cloud"
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    value={modoRestauracaoCloud}
+                    onChange={(event) => setModoRestauracaoCloud(event.target.value as ImportMode)}
+                    disabled={restoreCloudBackupMutation.isPending}
+                    data-testid="select-cloud-restore-mode"
+                  >
+                    <option value="merge">Mesclar com dados atuais (recomendado)</option>
+                    <option value="replace">Substituir dados atuais pelo backup</option>
+                  </select>
+                  {modoRestauracaoCloud === "replace" ? (
+                    <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-md p-2">
+                      Modo substituir: os dados financeiros atuais serao apagados antes da restauracao.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2">
+                      Modo mesclar: pode manter dados atuais e adicionar registros do backup.
+                    </p>
+                  )}
+                </div>
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Backups salvos na nuvem
                 </p>
@@ -468,9 +562,23 @@ export default function PerfilPage() {
                             {formatDateTimeBR(backup.createdAt)} · {formatBytes(backup.sizeBytes)}
                           </p>
                         </div>
-                        <Badge variant={backup.status === "completed" ? "default" : "destructive"}>
-                          {backup.status}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={backup.status === "completed" ? "default" : "destructive"}>
+                            {backup.status}
+                          </Badge>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => restaurarBackupNuvem(backup)}
+                            disabled={restoreCloudBackupMutation.isPending}
+                            data-testid={`button-cloud-restore-${backup.id}`}
+                          >
+                            {restoreCloudBackupMutation.isPending && backupRestaurandoId === backup.id
+                              ? "Restaurando..."
+                              : "Restaurar"}
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
