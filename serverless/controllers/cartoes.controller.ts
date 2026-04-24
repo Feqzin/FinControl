@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { formatMoneyFixed } from "../../utils/money.js";
 import { enforcePlanLimit } from "../subscription-access.js";
+import { BillingService } from "../services/billing.service.js";
 import { CartoesService } from "../services/cartoes.service.js";
 import { cartaoBody, cartaoUpdateBody } from "../validators/financial.validators.js";
 import {
@@ -13,6 +14,8 @@ import {
 } from "./controller-utils.js";
 
 export function createCartoesController(service: CartoesService) {
+  const billingService = new BillingService();
+
   return {
     list: async (req: Request, res: Response) => {
       const userId = getUserId(req);
@@ -34,8 +37,12 @@ export function createCartoesController(service: CartoesService) {
       }
 
       const currentUsage = (await service.list(userId)).length;
+      const effectiveAccess = await billingService.syncUserSubscriptionTier(
+        userId,
+        "plan_limit_cartoes_create",
+      );
       const limitResult = enforcePlanLimit(
-        req.user as { subscriptionTier?: unknown } | undefined,
+        { subscriptionTier: effectiveAccess.effectiveTier },
         "cartoes",
         currentUsage,
       );

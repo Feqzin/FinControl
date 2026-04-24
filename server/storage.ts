@@ -145,6 +145,9 @@ export class DatabaseStorage implements IStorage {
       (
         combined.includes("nome_completo") ||
         combined.includes("subscription_tier") ||
+        combined.includes("trial_started_at") ||
+        combined.includes("trial_ends_at") ||
+        combined.includes("trial_used_at") ||
         combined.includes("reset_token") ||
         combined.includes("reset_token_expiry")
       )
@@ -162,6 +165,9 @@ export class DatabaseStorage implements IStorage {
       password: user.password,
       nomeCompleto: null,
       subscriptionTier: "free",
+      trialStartedAt: null,
+      trialEndsAt: null,
+      trialUsedAt: null,
       resetToken: null,
       resetTokenExpiry: null,
     };
@@ -215,6 +221,9 @@ export class DatabaseStorage implements IStorage {
       const fallbackData: Partial<User> = { ...data };
       delete fallbackData.nomeCompleto;
       delete fallbackData.subscriptionTier;
+      delete fallbackData.trialStartedAt;
+      delete fallbackData.trialEndsAt;
+      delete fallbackData.trialUsedAt;
       delete fallbackData.resetToken;
       delete fallbackData.resetTokenExpiry;
 

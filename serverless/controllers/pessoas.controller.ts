@@ -9,6 +9,7 @@ import {
   pessoaUpdateBody,
 } from "../validators/core-domain.validators.js";
 import { enforcePlanLimit } from "../subscription-access.js";
+import { BillingService } from "../services/billing.service.js";
 import {
   getParam,
   getUserId,
@@ -18,6 +19,8 @@ import {
 } from "./controller-utils.js";
 
 export function createPessoasController(service: PessoasService) {
+  const billingService = new BillingService();
+
   return {
     listSaldoMovimentacoesByUser: async (req: Request, res: Response) => {
       const userId = getUserId(req);
@@ -223,8 +226,12 @@ export function createPessoasController(service: PessoasService) {
       }
 
       const currentUsage = (await service.list(userId)).length;
+      const effectiveAccess = await billingService.syncUserSubscriptionTier(
+        userId,
+        "plan_limit_pessoas_create",
+      );
       const limitResult = enforcePlanLimit(
-        req.user as { subscriptionTier?: unknown } | undefined,
+        { subscriptionTier: effectiveAccess.effectiveTier },
         "pessoas",
         currentUsage,
       );

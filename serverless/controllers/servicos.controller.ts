@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { enforcePlanLimit } from "../subscription-access.js";
+import { BillingService } from "../services/billing.service.js";
 import { ServicosService } from "../services/servicos.service.js";
 import {
   servicoBody,
@@ -17,6 +18,8 @@ import {
 } from "./controller-utils.js";
 
 export function createServicosController(service: ServicosService) {
+  const billingService = new BillingService();
+
   return {
     listServicos: async (req: Request, res: Response) => {
       const userId = getUserId(req);
@@ -31,8 +34,12 @@ export function createServicosController(service: ServicosService) {
       }
 
       const currentUsage = (await service.listServicos(userId)).length;
+      const effectiveAccess = await billingService.syncUserSubscriptionTier(
+        userId,
+        "plan_limit_servicos_create",
+      );
       const limitResult = enforcePlanLimit(
-        req.user as { subscriptionTier?: unknown } | undefined,
+        { subscriptionTier: effectiveAccess.effectiveTier },
         "servicos",
         currentUsage,
       );

@@ -7,8 +7,60 @@ export function createBillingController(service: BillingService) {
   return {
     getStatus: async (req: Request, res: Response) => {
       const userId = getUserId(req);
-      const status = await service.getStatus(userId, req.user as { subscriptionTier?: unknown } | undefined);
+      const status = await service.getStatus(userId);
       return res.json(status);
+    },
+
+    startTrial: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+
+      try {
+        const status = await service.startTrial(userId);
+        auditRequest(req, {
+          action: "create",
+          status: "success",
+          domain: "billing.trial.start",
+          userId,
+          details: {
+            billingStatus: status.billingStatus,
+            effectiveTier: status.effectiveTier,
+            trialEndsAt: status.trial.endsAt?.toISOString() ?? null,
+          },
+        });
+        return res.status(201).json(status);
+      } catch (error) {
+        if (error instanceof BillingServiceError) {
+          auditRequest(req, {
+            action: "create",
+            status: "failure",
+            domain: "billing.trial.start",
+            userId,
+            details: { message: error.message },
+          });
+          return res.status(error.status).json({ message: error.message });
+        }
+
+        writeTechnicalLog({
+          event: "billing.trial.start.unexpected_error",
+          source: "billing.controller",
+          level: "error",
+          requestId: req.requestId,
+          data: {
+            userId,
+            error: toErrorLog(error),
+          },
+        });
+
+        auditRequest(req, {
+          action: "create",
+          status: "error",
+          domain: "billing.trial.start",
+          userId,
+          error: error instanceof Error ? error.message : "Erro inesperado",
+        });
+
+        return res.status(500).json({ message: "Falha ao iniciar teste gratis." });
+      }
     },
 
     createMercadoPagoCheckout: async (req: Request, res: Response) => {

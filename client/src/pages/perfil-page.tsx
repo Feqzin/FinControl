@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,6 @@ import { useToast } from "@/hooks/use-toast";
 import {
   getUserSubscriptionLimits,
   getUserSubscriptionTier,
-  hasCloudBackupAccess,
   useAuth,
 } from "@/hooks/use-auth";
 import { useSubscriptionUsage } from "@/hooks/useSubscriptionUsage";
@@ -20,6 +19,7 @@ import {
   cancelMercadoPagoSubscription,
   createMercadoPagoCheckout,
   getBillingStatus,
+  startPremiumTrial,
   type BillingStatusResponse,
 } from "@/services/api/billing";
 import {
@@ -85,6 +85,27 @@ function resolveBillingStatusUi(status: BillingStatusResponse | undefined): {
       title: "Plano Free ativo",
       description: "Sem assinatura ativa no momento.",
       tone: "secondary",
+    };
+  }
+
+  if (status.billingStatus === "trialing") {
+    const trialEndsAtLabel = status.trial.endsAt ? formatDateTimeBR(status.trial.endsAt) : null;
+    if (status.subscription?.status === "pending") {
+      return {
+        title: "Premium em teste + pagamento pendente",
+        description: trialEndsAtLabel
+          ? `Seu teste gratis esta ativo ate ${trialEndsAtLabel}. Conclua o pagamento para manter o Premium.`
+          : "Seu teste gratis esta ativo. Conclua o pagamento para manter o Premium.",
+        tone: "default",
+      };
+    }
+
+    return {
+      title: "Premium em teste",
+      description: trialEndsAtLabel
+        ? `Teste gratis ativo ate ${trialEndsAtLabel}.`
+        : "Teste gratis ativo.",
+      tone: "default",
     };
   }
 
@@ -180,9 +201,8 @@ export default function PerfilPage() {
   const [modoRestauracaoCloud, setModoRestauracaoCloud] = useState<ImportMode>("merge");
   const [backupRestaurandoId, setBackupRestaurandoId] = useState<string | null>(null);
   const inputImportacaoRef = useRef<HTMLInputElement | null>(null);
-  const planoAtual = getUserSubscriptionTier(user);
+  const planoAtualAutenticado = getUserSubscriptionTier(user);
   const limitsFromAuth = getUserSubscriptionLimits(user);
-  const backupNuvemLiberado = hasCloudBackupAccess(user);
   const usageQuery = useSubscriptionUsage();
   const billingStatusQuery = useQuery({
     queryKey: ["/api/billing/status"],
@@ -190,6 +210,21 @@ export default function PerfilPage() {
     enabled: Boolean(user),
     retry: false,
   });
+  const billingStatus = billingStatusQuery.data;
+  const planoEfetivo = billingStatus?.effectiveTier ?? planoAtualAutenticado;
+  const backupNuvemLiberado = billingStatus?.features.cloudBackup ?? (planoAtualAutenticado === "premium");
+  const billingLimits = billingStatus?.limits ?? limitsFromAuth;
+  const canStartTrial = billingStatus?.canStartTrial ?? false;
+  const canSubscribe = billingStatus ? billingStatus.canSubscribe : planoEfetivo === "free";
+  const canCancelSubscription = billingStatus?.canCancel ?? false;
+
+  useEffect(() => {
+    if (!user || !billingStatus) return;
+    if (billingStatus.effectiveTier === planoAtualAutenticado) return;
+
+    queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
+  }, [billingStatus, planoAtualAutenticado, user]);
 
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
@@ -331,10 +366,33 @@ export default function PerfilPage() {
     },
   });
 
+  const startTrialMutation = useMutation({
+    mutationFn: startPremiumTrial,
+    onSuccess: (status) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/billing/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
+      toast({
+        title: "Teste grátis iniciado",
+        description: status.trial.endsAt
+          ? `Premium liberado por 7 dias. Termina em ${formatDateTimeBR(status.trial.endsAt)}.`
+          : "Premium liberado por 7 dias.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Não foi possível iniciar o teste grátis",
+        description: parseImportApiError(error),
+        variant: "destructive",
+      });
+    },
+  });
+
   const createBillingCheckoutMutation = useMutation({
     mutationFn: createMercadoPagoCheckout,
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["/api/billing/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
       if (typeof window !== "undefined") {
         window.location.assign(result.checkoutUrl);
       }
@@ -368,10 +426,7 @@ export default function PerfilPage() {
     },
   });
 
-  const billingStatusUi = resolveBillingStatusUi(billingStatusQuery.data);
-  const canCancelSubscription = billingStatusQuery.data?.billingStatus === "active"
-    || billingStatusQuery.data?.billingStatus === "pending"
-    || billingStatusQuery.data?.billingStatus === "paused";
+  const billingStatusUi = resolveBillingStatusUi(billingStatus);
 
   const handleCancelSubscription = () => {
     if (!canCancelSubscription || cancelBillingSubscriptionMutation.isPending) return;
@@ -485,8 +540,8 @@ export default function PerfilPage() {
   const totalReceber = dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
   const totalPagar = dividas.filter((d) => d.tipo === "pagar" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
   const usageSnapshot = usageQuery.data ?? {
-    subscriptionTier: planoAtual,
-    limits: limitsFromAuth,
+    subscriptionTier: planoEfetivo,
+    limits: billingLimits,
     usage: {
       cartoes: cartoes.length,
       pessoas: pessoas.length,
@@ -494,10 +549,21 @@ export default function PerfilPage() {
       metas: metas.length,
     },
     remaining: {
-      cartoes: calculateRemaining(limitsFromAuth.maxCartoes, cartoes.length),
-      pessoas: calculateRemaining(limitsFromAuth.maxPessoas, pessoas.length),
-      servicos: calculateRemaining(limitsFromAuth.maxServicos, servicos.length),
-      metas: calculateRemaining(limitsFromAuth.maxMetas, metas.length),
+      cartoes: calculateRemaining(billingLimits.maxCartoes, cartoes.length),
+      pessoas: calculateRemaining(billingLimits.maxPessoas, pessoas.length),
+      servicos: calculateRemaining(billingLimits.maxServicos, servicos.length),
+      metas: calculateRemaining(billingLimits.maxMetas, metas.length),
+    },
+  };
+  const usageComLimitesAtuais = {
+    ...usageSnapshot,
+    subscriptionTier: planoEfetivo,
+    limits: billingLimits,
+    remaining: {
+      cartoes: calculateRemaining(billingLimits.maxCartoes, usageSnapshot.usage.cartoes),
+      pessoas: calculateRemaining(billingLimits.maxPessoas, usageSnapshot.usage.pessoas),
+      servicos: calculateRemaining(billingLimits.maxServicos, usageSnapshot.usage.servicos),
+      metas: calculateRemaining(billingLimits.maxMetas, usageSnapshot.usage.metas),
     },
   };
 
@@ -574,13 +640,13 @@ export default function PerfilPage() {
               <div>
                 <p className="text-sm font-medium">Plano atual</p>
                 <p className="text-xs text-muted-foreground">
-                  {planoAtual === "premium"
+                  {planoEfetivo === "premium"
                     ? "Recursos premium liberados para sua conta."
                     : "Plano free ativo. Recursos premium aparecem bloqueados."}
                 </p>
               </div>
-              <Badge variant={planoAtual === "premium" ? "default" : "secondary"}>
-                {planoAtual === "premium" ? "Premium" : "Free"}
+              <Badge variant={planoEfetivo === "premium" ? "default" : "secondary"}>
+                {planoEfetivo === "premium" ? "Premium" : "Free"}
               </Badge>
             </div>
           </div>
@@ -600,7 +666,7 @@ export default function PerfilPage() {
               <p className="text-xs text-muted-foreground">{billingStatusUi.description}</p>
             </div>
             <Badge variant={billingStatusUi.tone}>
-              {usageSnapshot.subscriptionTier === "premium" ? "Premium" : "Free"}
+              {usageComLimitesAtuais.subscriptionTier === "premium" ? "Premium" : "Free"}
             </Badge>
           </div>
 
@@ -610,28 +676,28 @@ export default function PerfilPage() {
               <div className="rounded-md border p-3 bg-muted/20">
                 <p className="text-xs text-muted-foreground">Cartões</p>
                 <p className="text-lg font-semibold">
-                  {usageSnapshot.usage.cartoes} / {formatPlanLimit(usageSnapshot.limits.maxCartoes)}
+                  {usageComLimitesAtuais.usage.cartoes} / {formatPlanLimit(usageComLimitesAtuais.limits.maxCartoes)}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Restante: {formatRemainingLimit(usageSnapshot.remaining.cartoes)}
+                  Restante: {formatRemainingLimit(usageComLimitesAtuais.remaining.cartoes)}
                 </p>
               </div>
               <div className="rounded-md border p-3 bg-muted/20">
                 <p className="text-xs text-muted-foreground">Pessoas</p>
                 <p className="text-lg font-semibold">
-                  {usageSnapshot.usage.pessoas} / {formatPlanLimit(usageSnapshot.limits.maxPessoas)}
+                  {usageComLimitesAtuais.usage.pessoas} / {formatPlanLimit(usageComLimitesAtuais.limits.maxPessoas)}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Restante: {formatRemainingLimit(usageSnapshot.remaining.pessoas)}
+                  Restante: {formatRemainingLimit(usageComLimitesAtuais.remaining.pessoas)}
                 </p>
               </div>
               <div className="rounded-md border p-3 bg-muted/20">
                 <p className="text-xs text-muted-foreground">Serviços</p>
                 <p className="text-lg font-semibold">
-                  {usageSnapshot.usage.servicos} / {formatPlanLimit(usageSnapshot.limits.maxServicos)}
+                  {usageComLimitesAtuais.usage.servicos} / {formatPlanLimit(usageComLimitesAtuais.limits.maxServicos)}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Restante: {formatRemainingLimit(usageSnapshot.remaining.servicos)}
+                  Restante: {formatRemainingLimit(usageComLimitesAtuais.remaining.servicos)}
                 </p>
               </div>
             </div>
@@ -670,7 +736,21 @@ export default function PerfilPage() {
             </div>
           </div>
 
-          {usageSnapshot.subscriptionTier === "free" && (
+          {canStartTrial && (
+            <Button
+              className="w-full"
+              variant="secondary"
+              onClick={() => startTrialMutation.mutate()}
+              data-testid="button-start-trial"
+              disabled={startTrialMutation.isPending}
+            >
+              {startTrialMutation.isPending
+                ? "Iniciando teste grátis..."
+                : "Testar Premium grátis por 7 dias"}
+            </Button>
+          )}
+
+          {canSubscribe && (
             <Button
               className="w-full"
               onClick={() => createBillingCheckoutMutation.mutate()}
@@ -679,13 +759,13 @@ export default function PerfilPage() {
             >
               {createBillingCheckoutMutation.isPending
                 ? "Redirecionando..."
-                : billingStatusQuery.data?.billingStatus === "pending"
+                : billingStatus?.billingStatus === "pending"
                   ? "Continuar pagamento"
                   : "Assinar Premium"}
             </Button>
           )}
 
-          {(usageSnapshot.subscriptionTier === "premium" || canCancelSubscription) && (
+          {(usageComLimitesAtuais.subscriptionTier === "premium" || canCancelSubscription) && (
             <Button
               type="button"
               variant="outline"

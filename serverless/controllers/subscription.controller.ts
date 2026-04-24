@@ -6,9 +6,8 @@ export function createSubscriptionController(service: SubscriptionService) {
   return {
     getUsage: async (req: Request, res: Response) => {
       const userId = getUserId(req);
-      const usage = await service.getUsage(userId, req.user as { subscriptionTier?: unknown } | undefined);
+      const usage = await service.getUsage(userId);
       return res.json(usage);
     },
   };
 }
-

@@ -265,6 +265,7 @@ export function registerRoutes(app: Express): void {
   app.get("/api/subscription/usage", requireAuth, subscriptionController.getUsage);
   app.post("/api/billing/mercadopago/webhook", billingController.processMercadoPagoWebhook);
   app.get("/api/billing/status", requireAuth, billingController.getStatus);
+  app.post("/api/billing/trial/start", requireAuth, billingController.startTrial);
   app.post("/api/billing/mercadopago/checkout", requireAuth, billingController.createMercadoPagoCheckout);
   app.post("/api/billing/mercadopago/cancel", requireAuth, billingController.cancelMercadoPagoSubscription);
   app.post("/api/backups/cloud", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.createManual);

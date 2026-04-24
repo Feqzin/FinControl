@@ -1,9 +1,26 @@
 import { apiRequest } from "@/lib/queryClient";
-import type { SubscriptionTier } from "@shared/subscription";
+import type {
+  SubscriptionFeatures,
+  SubscriptionLimits,
+  SubscriptionTier,
+} from "@shared/subscription";
 
 export type BillingStatusResponse = {
   subscriptionTier: SubscriptionTier;
-  billingStatus: "no_subscription" | "pending" | "active" | "paused" | "canceled" | "expired" | "rejected";
+  effectiveTier: SubscriptionTier;
+  subscriptionTierStored: SubscriptionTier;
+  billingStatus: "no_subscription" | "trialing" | "pending" | "active" | "paused" | "canceled" | "expired" | "rejected";
+  trial: {
+    startedAt: string | null;
+    endsAt: string | null;
+    usedAt: string | null;
+    isActive: boolean;
+  };
+  features: SubscriptionFeatures;
+  limits: SubscriptionLimits;
+  canStartTrial: boolean;
+  canSubscribe: boolean;
+  canCancel: boolean;
   subscription: {
     id: string;
     provider: string;
@@ -45,6 +62,11 @@ export type MercadoPagoCancelResponse = {
 
 export async function getBillingStatus(): Promise<BillingStatusResponse> {
   const res = await apiRequest("GET", "/api/billing/status");
+  return res.json() as Promise<BillingStatusResponse>;
+}
+
+export async function startPremiumTrial(): Promise<BillingStatusResponse> {
+  const res = await apiRequest("POST", "/api/billing/trial/start");
   return res.json() as Promise<BillingStatusResponse>;
 }
 

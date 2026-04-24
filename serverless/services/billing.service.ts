@@ -1,6 +1,11 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
-import { buildSubscriptionAccess, type SubscriptionTier } from "../../shared/subscription.js";
+import {
+  buildSubscriptionAccess,
+  type SubscriptionFeatures,
+  type SubscriptionLimits,
+  type SubscriptionTier,
+} from "../../shared/subscription.js";
 import {
   billingWebhookEvents,
   users,
@@ -26,11 +31,26 @@ type BillingSubscriptionStatus =
   | "expired"
   | "rejected";
 
+type BillingEffectiveStatus = BillingSubscriptionStatus | "trialing";
+
 type BillingWebhookEventStatus = "received" | "processed" | "ignored" | "error";
 
 export type BillingStatusResponse = {
   subscriptionTier: SubscriptionTier;
-  billingStatus: BillingSubscriptionStatus;
+  effectiveTier: SubscriptionTier;
+  subscriptionTierStored: SubscriptionTier;
+  billingStatus: BillingEffectiveStatus;
+  trial: {
+    startedAt: Date | null;
+    endsAt: Date | null;
+    usedAt: Date | null;
+    isActive: boolean;
+  };
+  features: SubscriptionFeatures;
+  limits: SubscriptionLimits;
+  canStartTrial: boolean;
+  canSubscribe: boolean;
+  canCancel: boolean;
   subscription: {
     id: string;
     provider: string;
@@ -49,6 +69,19 @@ export type BillingStatusResponse = {
     createdAt: Date;
     updatedAt: Date;
   } | null;
+};
+
+type EffectiveSubscriptionAccess = {
+  effectiveTier: SubscriptionTier;
+  subscriptionTierStored: SubscriptionTier;
+  billingStatus: BillingEffectiveStatus;
+  trial: BillingStatusResponse["trial"];
+  features: SubscriptionFeatures;
+  limits: SubscriptionLimits;
+  canStartTrial: boolean;
+  canSubscribe: boolean;
+  canCancel: boolean;
+  subscription: BillingStatusResponse["subscription"];
 };
 
 export type BillingCheckoutResponse = {
@@ -75,6 +108,8 @@ export type BillingCancelResponse = {
   message: string;
   status: BillingStatusResponse;
 };
+
+const TRIAL_DURATION_DAYS = 7;
 
 export type UpsertLocalSubscriptionInput = {
   userId: string;
@@ -179,6 +214,32 @@ function toBillingStatus(status: string | null | undefined): BillingSubscription
     return status;
   }
   return "pending";
+}
+
+function isPaidSubscriptionStatus(status: BillingSubscriptionStatus): boolean {
+  return status === "active";
+}
+
+function toSubscriptionResponse(subscription: UserSubscription | null): BillingStatusResponse["subscription"] {
+  if (!subscription) return null;
+  return {
+    id: subscription.id,
+    provider: subscription.provider,
+    providerSubscriptionId: subscription.providerSubscriptionId ?? null,
+    providerPlanId: subscription.providerPlanId ?? null,
+    externalReference: subscription.externalReference ?? null,
+    status: subscription.status,
+    providerStatus: subscription.providerStatus ?? null,
+    amount: subscription.amount ?? null,
+    currency: subscription.currency,
+    startedAt: subscription.startedAt ?? null,
+    currentPeriodEnd: subscription.currentPeriodEnd ?? null,
+    canceledAt: subscription.canceledAt ?? null,
+    lastWebhookAt: subscription.lastWebhookAt ?? null,
+    lastSyncAt: subscription.lastSyncAt ?? null,
+    createdAt: subscription.createdAt,
+    updatedAt: subscription.updatedAt,
+  };
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -317,16 +378,15 @@ function normalizeMercadoPagoStatus(status: string | null | undefined): string {
 
 function mapMercadoPagoStatus(status: string | null | undefined): {
   localStatus: Exclude<BillingSubscriptionStatus, "no_subscription">;
-  subscriptionTier: SubscriptionTier;
 } {
   const normalized = normalizeMercadoPagoStatus(status);
 
   if (normalized === "authorized" || normalized === "approved" || normalized === "active") {
-    return { localStatus: "active", subscriptionTier: "premium" };
+    return { localStatus: "active" };
   }
 
   if (normalized === "paused") {
-    return { localStatus: "paused", subscriptionTier: "free" };
+    return { localStatus: "paused" };
   }
 
   if (
@@ -335,18 +395,18 @@ function mapMercadoPagoStatus(status: string | null | undefined): {
     || normalized === "cancelled_by_user"
     || normalized === "stopped"
   ) {
-    return { localStatus: "canceled", subscriptionTier: "free" };
+    return { localStatus: "canceled" };
   }
 
   if (normalized === "expired") {
-    return { localStatus: "expired", subscriptionTier: "free" };
+    return { localStatus: "expired" };
   }
 
   if (normalized === "rejected") {
-    return { localStatus: "rejected", subscriptionTier: "free" };
+    return { localStatus: "rejected" };
   }
 
-  return { localStatus: "pending", subscriptionTier: "free" };
+  return { localStatus: "pending" };
 }
 
 function toSafeProviderEventId(value: string): string {
@@ -780,40 +840,153 @@ export class BillingService {
     };
   }
 
-  async getStatus(userId: string, user: BillingUserLike): Promise<BillingStatusResponse> {
-    const access = buildSubscriptionAccess(user?.subscriptionTier);
-    const currentSubscription = await this.getCurrentSubscription(userId);
+  private buildEffectiveAccessFromState(params: {
+    user: {
+      subscriptionTier?: unknown;
+      trialStartedAt?: Date | null;
+      trialEndsAt?: Date | null;
+      trialUsedAt?: Date | null;
+    };
+    currentSubscription: UserSubscription | null;
+    now: Date;
+  }): EffectiveSubscriptionAccess {
+    const { user, currentSubscription, now } = params;
+    const storedAccess = buildSubscriptionAccess(user.subscriptionTier);
+    const subscriptionStatus = currentSubscription
+      ? toBillingStatus(currentSubscription.status)
+      : "no_subscription";
 
-    if (!currentSubscription) {
-      return {
-        subscriptionTier: access.subscriptionTier,
-        billingStatus: "no_subscription",
-        subscription: null,
-      };
-    }
+    const trialStartedAt = user.trialStartedAt ?? null;
+    const trialEndsAt = user.trialEndsAt ?? null;
+    const trialUsedAt = user.trialUsedAt ?? null;
+    const trialIsActive = Boolean(
+      trialEndsAt
+      && trialEndsAt.getTime() > now.getTime(),
+    );
+    const trialWasUsed = Boolean(trialUsedAt || trialStartedAt || trialEndsAt);
+
+    const effectiveTier: SubscriptionTier =
+      isPaidSubscriptionStatus(subscriptionStatus) || trialIsActive
+        ? "premium"
+        : "free";
+    const effectiveAccess = buildSubscriptionAccess(effectiveTier);
+    const billingStatus: BillingEffectiveStatus = isPaidSubscriptionStatus(subscriptionStatus)
+      ? "active"
+      : (trialIsActive ? "trialing" : subscriptionStatus);
 
     return {
-      subscriptionTier: access.subscriptionTier,
-      billingStatus: toBillingStatus(currentSubscription.status),
-      subscription: {
-        id: currentSubscription.id,
-        provider: currentSubscription.provider,
-        providerSubscriptionId: currentSubscription.providerSubscriptionId ?? null,
-        providerPlanId: currentSubscription.providerPlanId ?? null,
-        externalReference: currentSubscription.externalReference ?? null,
-        status: currentSubscription.status,
-        providerStatus: currentSubscription.providerStatus ?? null,
-        amount: currentSubscription.amount ?? null,
-        currency: currentSubscription.currency,
-        startedAt: currentSubscription.startedAt ?? null,
-        currentPeriodEnd: currentSubscription.currentPeriodEnd ?? null,
-        canceledAt: currentSubscription.canceledAt ?? null,
-        lastWebhookAt: currentSubscription.lastWebhookAt ?? null,
-        lastSyncAt: currentSubscription.lastSyncAt ?? null,
-        createdAt: currentSubscription.createdAt,
-        updatedAt: currentSubscription.updatedAt,
+      effectiveTier,
+      subscriptionTierStored: storedAccess.subscriptionTier,
+      billingStatus,
+      trial: {
+        startedAt: trialStartedAt,
+        endsAt: trialEndsAt,
+        usedAt: trialUsedAt,
+        isActive: trialIsActive,
       },
+      features: effectiveAccess.features,
+      limits: effectiveAccess.limits,
+      canStartTrial: !trialWasUsed,
+      canSubscribe: !isPaidSubscriptionStatus(subscriptionStatus),
+      canCancel:
+        subscriptionStatus === "active"
+        || subscriptionStatus === "pending"
+        || subscriptionStatus === "paused",
+      subscription: toSubscriptionResponse(currentSubscription),
     };
+  }
+
+  async getEffectiveSubscriptionAccess(userId: string): Promise<EffectiveSubscriptionAccess> {
+    const user = await this.dataStorage.getUser(userId);
+    if (!user) {
+      throw new BillingServiceError(404, "Usuario nao encontrado.");
+    }
+
+    const currentSubscription = await this.getCurrentSubscription(userId);
+    return this.buildEffectiveAccessFromState({
+      user,
+      currentSubscription,
+      now: new Date(),
+    });
+  }
+
+  async syncUserSubscriptionTier(userId: string, reason: string): Promise<EffectiveSubscriptionAccess> {
+    const access = await this.getEffectiveSubscriptionAccess(userId);
+
+    if (access.subscriptionTierStored === access.effectiveTier) {
+      return access;
+    }
+
+    await db.update(users)
+      .set({
+        subscriptionTier: access.effectiveTier,
+      })
+      .where(eq(users.id, userId));
+
+    writeTechnicalLog({
+      event: "billing.subscription_tier.synced",
+      source: "billing.service",
+      level: "info",
+      data: {
+        userId,
+        reason,
+        previousTier: access.subscriptionTierStored,
+        nextTier: access.effectiveTier,
+        billingStatus: access.billingStatus,
+      },
+    });
+
+    return {
+      ...access,
+      subscriptionTierStored: access.effectiveTier,
+    };
+  }
+
+  async getStatus(userId: string, _user?: BillingUserLike): Promise<BillingStatusResponse> {
+    const access = await this.syncUserSubscriptionTier(userId, "billing_status_read");
+    return {
+      subscriptionTier: access.effectiveTier,
+      effectiveTier: access.effectiveTier,
+      subscriptionTierStored: access.subscriptionTierStored,
+      billingStatus: access.billingStatus,
+      trial: access.trial,
+      features: access.features,
+      limits: access.limits,
+      canStartTrial: access.canStartTrial,
+      canSubscribe: access.canSubscribe,
+      canCancel: access.canCancel,
+      subscription: access.subscription,
+    };
+  }
+
+  async startTrial(userId: string): Promise<BillingStatusResponse> {
+    const user = await this.dataStorage.getUser(userId);
+    if (!user) {
+      throw new BillingServiceError(404, "Usuario nao encontrado.");
+    }
+
+    if (user.trialUsedAt || user.trialStartedAt || user.trialEndsAt) {
+      throw new BillingServiceError(409, "Seu teste gratis de 7 dias ja foi utilizado.");
+    }
+
+    const currentSubscription = await this.getCurrentSubscription(userId);
+    if (currentSubscription && toBillingStatus(currentSubscription.status) === "active") {
+      throw new BillingServiceError(409, "Sua assinatura premium ja esta ativa.");
+    }
+
+    const now = new Date();
+    const trialEndsAt = new Date(now.getTime() + (TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000));
+
+    await db.update(users)
+      .set({
+        trialStartedAt: now,
+        trialEndsAt,
+        trialUsedAt: now,
+      })
+      .where(eq(users.id, userId));
+
+    await this.syncUserSubscriptionTier(userId, "trial_started");
+    return this.getStatus(userId);
   }
 
   async processMercadoPagoWebhook(input: {
@@ -956,12 +1129,6 @@ export class BillingService {
           })
           .where(eq(userSubscriptions.id, localSubscription.id));
 
-        await tx.update(users)
-          .set({
-            subscriptionTier: mappedStatus.subscriptionTier,
-          })
-          .where(eq(users.id, localSubscription.userId));
-
         await tx.update(billingWebhookEvents)
           .set({
             status: "processed",
@@ -969,6 +1136,8 @@ export class BillingService {
           })
           .where(eq(billingWebhookEvents.id, eventRegistration.event.id));
       });
+
+      await this.syncUserSubscriptionTier(localSubscription.userId, "mercadopago_webhook");
 
       return {
         outcome: "processed",
@@ -1066,33 +1235,32 @@ export class BillingService {
     const mapped = mapMercadoPagoStatus(providerStatus);
     const now = new Date();
 
-    await db.transaction(async (tx) => {
-      await tx.update(userSubscriptions)
-        .set({
-          status: mapped.localStatus,
-          providerStatus,
-          canceledAt: now,
-          lastSyncAt: now,
-          updatedAt: now,
-          rawPayload: {
-            cancelByUser: true,
-            requestedAt: now.toISOString(),
-            providerResponse: providerPayload ?? payloadText,
-          },
-        })
-        .where(eq(userSubscriptions.id, currentSubscription.id));
+    await db.update(userSubscriptions)
+      .set({
+        status: mapped.localStatus,
+        providerStatus,
+        canceledAt: now,
+        lastSyncAt: now,
+        updatedAt: now,
+        rawPayload: {
+          cancelByUser: true,
+          requestedAt: now.toISOString(),
+          providerResponse: providerPayload ?? payloadText,
+        },
+      })
+      .where(eq(userSubscriptions.id, currentSubscription.id));
 
-      // Regra escolhida: cancelamento manual rebaixa imediatamente para free.
-      await tx.update(users)
-        .set({
-          subscriptionTier: "free",
-        })
-        .where(eq(users.id, userId));
-    });
+    const syncedAccess = await this.syncUserSubscriptionTier(userId, "mercadopago_cancel");
+    const status = await this.getStatus(userId);
+    const trialEndsAtLabel = syncedAccess.trial.endsAt
+      ? syncedAccess.trial.endsAt.toISOString().slice(0, 10)
+      : "o fim do periodo de teste";
+    const message = syncedAccess.trial.isActive
+      ? `Assinatura cancelada com sucesso. Seu teste gratis permanece ativo ate ${trialEndsAtLabel}.`
+      : "Assinatura cancelada com sucesso. O plano foi rebaixado para Free.";
 
-    const status = await this.getStatus(userId, { subscriptionTier: "free" });
     return {
-      message: "Assinatura cancelada com sucesso. O plano foi rebaixado para Free.",
+      message,
       status,
     };
   }
