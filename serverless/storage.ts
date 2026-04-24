@@ -93,6 +93,8 @@ function toUserWithOptionalDefaults(user: {
   id: string;
   username: string;
   password: string;
+  subscriptionTier?: unknown;
+  subscription_tier?: unknown;
 }): User {
   return {
     id: user.id,
