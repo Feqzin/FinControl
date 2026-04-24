@@ -24,7 +24,8 @@ const usersBaseProjection = {
   id: users.id,
   username: users.username,
   password: users.password,
-} as const;
+  subscriptionTier: users.subscriptionTier,
+};
 
 const USERNAME_LOOKUP_QUERY =
   `select * from "users" where lower("users"."username") = lower($1) limit 1`;
@@ -102,9 +103,9 @@ function toUserWithOptionalDefaults(user: {
     password: user.password,
     nomeCompleto: null,
     subscriptionTier:
-    user.subscriptionTier ??
-    user.subscription_tier ??
-    "free",
+      (user.subscriptionTier as string | undefined) ??
+      (user.subscription_tier as string | undefined) ??
+      "free",
     trialStartedAt: null,
     trialEndsAt: null,
     trialUsedAt: null,
