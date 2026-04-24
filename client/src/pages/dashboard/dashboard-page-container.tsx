@@ -66,8 +66,6 @@ export default function Dashboard() {
     totalCartoesMes,
     totalPagarMes,
     saldoPrevisto,
-    saldoColor,
-    saldoIconBg,
     today,
     in7Days,
     proximosVencimentos,
@@ -75,7 +73,6 @@ export default function Dashboard() {
     aReceberTooltip,
     aPagarTooltip,
     gastosFixosTooltip,
-    saldoMesTooltip,
     rendaMensalTooltip,
     patrimonioTooltip,
     alertas,
@@ -85,6 +82,7 @@ export default function Dashboard() {
     scoreLabelColor,
     allDashCards,
   } = useDashboard({ selectedMonth, visible });
+  const selectedMonthLabel = monthOptions.find((o) => o.value === selectedMonth)?.label || selectedMonth;
   if (isLoading) {
     return (
       <div className="p-6 space-y-6" data-testid="dashboard-loading">
@@ -107,8 +105,6 @@ export default function Dashboard() {
       renda: { value: maskValue(formatCurrencyBRL(totalRenda), visible), icon: DollarSign, iconColor: "text-emerald-600", bg: "bg-emerald-500/10", valueColor: "text-emerald-600" },
       patrimonio: { value: maskValue(formatCurrencyBRL(totalPatrimonio), visible), icon: PiggyBank, iconColor: "text-blue-500", bg: "bg-blue-500/10", valueColor: "text-blue-600" },
     };
-
-    const selectedMonthLabel = monthOptions.find(o => o.value === selectedMonth)?.label || selectedMonth;
 
     return (
       <div className="min-h-screen bg-background pb-24" data-testid="dashboard-mobile">
@@ -329,98 +325,124 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-6 space-y-6" data-testid="dashboard-page">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Painel</h1>
-            <p className="text-muted-foreground text-sm">Resumo financeiro geral</p>
-          </div>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8" title="Personalizar Painel">
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Personalizar Painel</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-4">
-                <div className="flex items-center justify-between p-3 rounded-xl border bg-muted/30">
-                  <div className="flex items-center gap-2">
-                    <Smartphone className="w-4 h-4 text-primary" />
-                    <div>
-                      <Label htmlFor="mobile-mode" className="font-medium cursor-pointer">Modo Celular</Label>
-                      <p className="text-xs text-muted-foreground">Interface otimizada para toque</p>
+    <div className="p-4 sm:p-6 space-y-5" data-testid="dashboard-page">
+      <div className="rounded-2xl border border-border/60 bg-card/90 p-4 sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Painel</h1>
+              <p className="text-sm text-muted-foreground capitalize">{selectedMonthLabel}</p>
+            </div>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" title="Personalizar Painel">
+                  <Settings2 className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Personalizar Painel</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <div className="flex items-center justify-between p-3 rounded-xl border bg-muted/30">
+                    <div className="flex items-center gap-2">
+                      <Smartphone className="w-4 h-4 text-primary" />
+                      <div>
+                        <Label htmlFor="mobile-mode" className="font-medium cursor-pointer">Modo Celular</Label>
+                        <p className="text-xs text-muted-foreground">Interface otimizada para toque</p>
+                      </div>
                     </div>
+                    <Switch
+                      id="mobile-mode"
+                      checked={prefs.mobileMode}
+                      onCheckedChange={toggleMobileMode}
+                      data-testid="toggle-mobile-mode"
+                    />
                   </div>
-                  <Switch
-                    id="mobile-mode"
-                    checked={prefs.mobileMode}
-                    onCheckedChange={toggleMobileMode}
-                    data-testid="toggle-mobile-mode"
-                  />
+                  <div className="flex items-center justify-between p-2 rounded-lg border bg-muted/30">
+                    <Label htmlFor="compact-mode" className="font-medium">Modo Compacto</Label>
+                    <Switch
+                      id="compact-mode"
+                      checked={prefs.dashboardCompact}
+                      onCheckedChange={toggleCompact}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm text-muted-foreground px-2">Cards visíveis</Label>
+                    {allDashCards.map((card) => (
+                      <div key={card.id} className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-lg transition-colors">
+                        <span className="text-sm">{card.title}</span>
+                        <Switch
+                          checked={!prefs.hiddenDashCards.includes(card.id)}
+                          onCheckedChange={() => toggleDashCard(card.id)}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex items-center justify-between p-2 rounded-lg border bg-muted/30">
-                  <Label htmlFor="compact-mode" className="font-medium">Modo Compacto</Label>
-                  <Switch
-                    id="compact-mode"
-                    checked={prefs.dashboardCompact}
-                    onCheckedChange={toggleCompact}
-                  />
+              </DialogContent>
+            </Dialog>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+              <SelectTrigger className="h-9 w-full sm:w-[210px] text-sm rounded-xl" data-testid="select-month">
+                <SelectValue placeholder="Selecionar mês" />
+              </SelectTrigger>
+              <SelectContent>
+                {monthOptions.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div
+              className="flex items-center gap-3 px-4 py-2 rounded-xl border border-border/50 bg-background min-w-[220px]"
+              data-testid="score-financeiro"
+            >
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-muted-foreground">Score financeiro</span>
+                  <span className={`text-xs font-bold ${scoreLabelColor}`}>{score.classificacao}</span>
                 </div>
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground px-2">Cards visíveis</Label>
-                  {allDashCards.map((card) => (
-                    <div key={card.id} className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-lg transition-colors">
-                      <span className="text-sm">{card.title}</span>
-                      <Switch
-                        checked={!prefs.hiddenDashCards.includes(card.id)}
-                        onCheckedChange={() => toggleDashCard(card.id)}
-                      />
-                    </div>
-                  ))}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${scoreBarColor}`}
+                      style={{ width: `${score.valor}%` }}
+                    />
+                  </div>
+                  <span className={`text-sm font-bold ${scoreLabelColor}`}>{score.valor}</span>
                 </div>
               </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger className="h-9 w-[200px] text-sm" data-testid="select-month">
-              <SelectValue placeholder="Selecionar mês" />
-            </SelectTrigger>
-            <SelectContent>
-              {monthOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        <div
-          className="flex items-center gap-3 px-4 py-2 rounded-xl border bg-card min-w-[200px]"
-          data-testid="score-financeiro"
-        >
-          <div className="flex-1">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-muted-foreground">Score financeiro</span>
-              <span className={`text-xs font-bold ${scoreLabelColor}`}>{score.classificacao}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${scoreBarColor}`}
-                  style={{ width: `${score.valor}%` }}
-                />
-              </div>
-              <span className={`text-sm font-bold ${scoreLabelColor}`}>{score.valor}</span>
             </div>
           </div>
-        </div>
         </div>
       </div>
 
-      <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 ${prefs.dashboardCompact ? "gap-2" : "gap-4"}`}>
+      {!prefs.hiddenDashCards.includes("saldo") && (
+        <Card
+          className={`border-0 shadow-sm ${saldoPrevisto >= 0 ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}
+          data-testid="desktop-saldo-hero"
+        >
+          <CardContent className="p-5 sm:p-6">
+            <p className="text-xs uppercase tracking-wider opacity-85 mb-1">Saldo do mês</p>
+            <p className="text-3xl sm:text-4xl font-bold tracking-tight">{maskValue(formatCurrencyBRL(saldoPrevisto), visible)}</p>
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="rounded-xl bg-white/10 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide opacity-80">Entradas</p>
+                <p className="text-sm font-semibold">{maskValue(formatCurrencyBRL(totalRenda), visible)}</p>
+              </div>
+              <div className="rounded-xl bg-white/10 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-wide opacity-80">Saídas</p>
+                <p className="text-sm font-semibold">
+                  {maskValue(formatCurrencyBRL(totalCartoesMes + totalPagarMes + totalServicos), visible)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className={`grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 ${prefs.dashboardCompact ? "gap-2" : "gap-3"}`}>
         {!prefs.hiddenDashCards.includes("receber") && (
           <StatCard
             title="A receber"
@@ -430,7 +452,7 @@ export default function Dashboard() {
             color="bg-emerald-500/10 text-emerald-600"
             valueColor="text-emerald-600"
             tooltipLines={aReceberTooltip}
-            compact={prefs.dashboardCompact}
+            compact
           />
         )}
         {!prefs.hiddenDashCards.includes("pagar") && (
@@ -442,7 +464,7 @@ export default function Dashboard() {
             color="bg-red-500/10 text-red-600"
             valueColor="text-red-600"
             tooltipLines={aPagarTooltip}
-            compact={prefs.dashboardCompact}
+            compact
           />
         )}
         {!prefs.hiddenDashCards.includes("servicos") && (
@@ -453,19 +475,7 @@ export default function Dashboard() {
             trend={`${servicos.filter((s) => s.status === "ativo").length} ativos`}
             color="bg-amber-500/10 text-amber-600"
             tooltipLines={gastosFixosTooltip}
-            compact={prefs.dashboardCompact}
-          />
-        )}
-        {!prefs.hiddenDashCards.includes("saldo") && (
-          <StatCard
-            title="Saldo do mês"
-            value={maskValue(formatCurrencyBRL(saldoPrevisto), visible)}
-            icon={saldoPrevisto >= 0 ? TrendingUp : TrendingDown}
-            trend="Entradas - Saídas"
-            color={saldoIconBg}
-            valueColor={saldoColor}
-            tooltipLines={saldoMesTooltip}
-            compact={prefs.dashboardCompact}
+            compact
           />
         )}
         {!prefs.hiddenDashCards.includes("renda") && (
@@ -477,19 +487,19 @@ export default function Dashboard() {
             color="bg-emerald-500/10 text-emerald-600"
             valueColor="text-emerald-600"
             tooltipLines={rendaMensalTooltip}
-            compact={prefs.dashboardCompact}
+            compact
           />
         )}
         {!prefs.hiddenDashCards.includes("patrimonio") && (
           <StatCard
-            title="Patrimônio total"
+            title="Patrimônio"
             value={maskValue(formatCurrencyBRL(totalPatrimonio), visible)}
             icon={PiggyBank}
             trend={`${patrimonios.length} itens`}
             color="bg-blue-500/10 text-blue-600"
             valueColor="text-blue-600"
             tooltipLines={patrimonioTooltip}
-            compact={prefs.dashboardCompact}
+            compact
           />
         )}
       </div>

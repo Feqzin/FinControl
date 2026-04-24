@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,6 +88,7 @@ export default function PessoasPage() {
     compras: 6,
     servicos: 6,
   });
+  const [visiblePessoasCount, setVisiblePessoasCount] = useState(prefs.mobileMode ? 12 : 18);
   const [vincularCompraOpen, setVincularCompraOpen] = useState(false);
   const [compraSelecionadaParaVinculo, setCompraSelecionadaParaVinculo] = useState<string | null>(null);
 
@@ -170,6 +171,8 @@ export default function PessoasPage() {
       return resumoPessoa.alertas.comprasAtrasadas > 0 || resumoPessoa.dividas.comigo.vencidas > 0;
     })
     : filtered;
+  const visiblePessoas = filteredByStatus.slice(0, visiblePessoasCount);
+  const hasMorePessoas = filteredByStatus.length > visiblePessoas.length;
   const visibleHistoryDividas = historyDividas.slice(0, historyVisible.dividas);
   const visibleHistoryCompras = historyCompras.slice(0, historyVisible.compras);
   const visibleHistoryServicos = historyServicoPessoas.slice(0, historyVisible.servicos);
@@ -238,16 +241,20 @@ export default function PessoasPage() {
     );
   };
 
+  useEffect(() => {
+    setVisiblePessoasCount(prefs.mobileMode ? 12 : 18);
+  }, [prefs.mobileMode, search, filterTipo]);
+
   return (
-    <div className="p-6 space-y-6" data-testid="pessoas-page">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+    <div className="p-4 sm:p-6 space-y-5" data-testid="pessoas-page">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Pessoas</h1>
-          <p className="text-muted-foreground">Gerencie pessoas vinculadas as dividas</p>
+          <p className="text-sm text-muted-foreground">Controle dívidas, compras vinculadas e serviços por pessoa.</p>
         </div>
         <Dialog open={openPessoa} onOpenChange={setOpenPessoa}>
           <DialogTrigger asChild>
-            <Button data-testid="button-add-pessoa">
+            <Button className="w-full sm:w-auto" data-testid="button-add-pessoa">
               <Plus className="w-4 h-4 mr-2" /> Adicionar pessoa
             </Button>
           </DialogTrigger>
@@ -332,50 +339,65 @@ export default function PessoasPage() {
         </Dialog>
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            data-testid="input-search-pessoa"
-            className="pl-9"
-            placeholder="Buscar pessoa..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      <div className="rounded-2xl border border-border/60 bg-card p-3 sm:p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative flex-1 min-w-[200px] sm:max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              data-testid="input-search-pessoa"
+              className="pl-9 rounded-xl"
+              placeholder="Buscar por nome..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <Tabs value={filterTipo} onValueChange={setFilterTipo} className="w-full sm:w-auto">
+            <TabsList className="h-9 w-full sm:w-auto justify-start overflow-x-auto whitespace-nowrap rounded-xl">
+              <TabsTrigger value="todos" data-testid="filter-pessoas-todos">Todos</TabsTrigger>
+              <TabsTrigger value="me_deve" data-testid="filter-pessoas-me-devem">Me devem</TabsTrigger>
+              <TabsTrigger value="eu_devo" data-testid="filter-pessoas-eu-devo">Eu devo</TabsTrigger>
+              <TabsTrigger value="atrasados" data-testid="filter-pessoas-atrasados">Atrasados</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
-        <Tabs value={filterTipo} onValueChange={setFilterTipo} className="w-full sm:w-auto">
-          <TabsList className="w-full sm:w-auto overflow-x-auto">
-            <TabsTrigger value="todos" data-testid="filter-pessoas-todos">Todos</TabsTrigger>
-            <TabsTrigger value="me_deve" data-testid="filter-pessoas-me-devem">Me devem</TabsTrigger>
-            <TabsTrigger value="eu_devo" data-testid="filter-pessoas-eu-devo">Eu devo</TabsTrigger>
-            <TabsTrigger value="atrasados" data-testid="filter-pessoas-atrasados">Atrasados</TabsTrigger>
-          </TabsList>
-        </Tabs>
       </div>
 
       {filteredByStatus.length === 0 ? (
-        <div className="text-center py-16" data-testid="empty-pessoas">
+        <div className="rounded-2xl border border-dashed border-border/60 bg-card/70 p-8 text-center" data-testid="empty-pessoas">
           <Users className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
-          <p className="text-lg font-medium text-muted-foreground">Nenhuma pessoa encontrada</p>
-          <p className="text-sm text-muted-foreground mt-1">Adicione uma pessoa para comecar</p>
+          <p className="text-lg font-semibold">Nenhuma pessoa cadastrada ainda</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Adicione alguém para controlar dívidas, compras compartilhadas e serviços.
+          </p>
+          <Button
+            className="mt-4"
+            onClick={() => setOpenPessoa(true)}
+            data-testid="button-empty-add-pessoa"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Adicionar pessoa
+          </Button>
         </div>
       ) : prefs.mobileMode ? (
-        <div className="space-y-2">
-          {filteredByStatus.map((p) => {
+        <div className="space-y-2.5">
+          {visiblePessoas.map((p) => {
             const stats = getPessoaStats(p.id);
             const resumo = getPessoaResumoConsolidado(p.id);
             const parcelasVencidasPessoa = resumo.alertas.parcelasVencidasPessoa ?? resumo.alertas.comprasAtrasadas;
-            const comprasVinculadas =
-              resumo.comprasVinculadas.comprasComParcelasReais + resumo.comprasVinculadas.comprasEmFallbackLegado;
             const isMeDeve = p.tipo === "me_deve";
             const hasAtraso = resumo.alertas.comprasAtrasadas > 0 || resumo.dividas.comigo.vencidas > 0;
+            const totalDividasPendente = resumo.dividas.comigo.pendente + resumo.dividas.euDevo.pendente;
             return (
               <div
                 key={p.id}
-                className="bg-card border border-border/60 rounded-2xl overflow-hidden"
+                className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden"
                 data-testid={`card-pessoa-${p.id}`}
               >
-                <div className="flex items-center gap-3 px-4 py-3">
+                <div
+                  className="flex items-start gap-3 px-3.5 py-3 cursor-pointer"
+                  onClick={() => setHistoryPessoa(p)}
+                  role="button"
+                >
                   <div className={`flex items-center justify-center w-10 h-10 rounded-full flex-shrink-0 ${isMeDeve ? "bg-emerald-500/15" : "bg-red-500/15"}`}>
                     <span className={`text-sm font-bold ${isMeDeve ? "text-emerald-600" : "text-red-600"}`}>
                       {p.nome.charAt(0).toUpperCase()}
@@ -384,38 +406,32 @@ export default function PessoasPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-sm truncate">{p.nome}</p>
-                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${isMeDeve ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-red-500/10 text-red-700 dark:text-red-400"}`}>
+                      <Badge variant={isMeDeve ? "default" : "destructive"} className="h-5 text-[10px] px-1.5">
                         {isMeDeve ? "Me deve" : "Eu devo"}
-                      </span>
+                      </Badge>
                       {hasAtraso && <AlertTriangle className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />}
                     </div>
-                    <div className="space-y-0.5 mt-1">
-                      <p className="text-xs text-muted-foreground">
-                        Total pendente: <span className="font-semibold text-foreground">{formatCurrencyBRL(resumo.consolidadoPendente)}</span>
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Dívida: {formatCurrencyBRL(resumo.dividas.comigo.pendente + resumo.dividas.euDevo.pendente)} ·
-                        Compras: {formatCurrencyBRL(resumo.comprasVinculadas.pendentePessoa)} ·
-                        Serviços ({resumo.servicosMesAtual.mesReferencia}): {formatCurrencyBRL(resumo.servicosMesAtual.pendente)}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Saldo positivo: <span className="font-medium text-emerald-600">{formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}</span>
-                      </p>
-                      {resumo.alertas.comprasAtrasadas > 0 && (
-                        <p className="text-[11px] text-red-600">
-                          {resumo.alertas.comprasAtrasadas} compra(s) com atraso · {parcelasVencidasPessoa} parcela(s) vencida(s)
-                        </p>
+                    <p className="text-base font-bold mt-1">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1 line-clamp-1">
+                      Dívidas {formatCurrencyBRL(totalDividasPendente)} • Compras {formatCurrencyBRL(resumo.comprasVinculadas.pendentePessoa)} • Serviços {formatCurrencyBRL(resumo.servicosMesAtual.pendente)}
+                    </p>
+                    <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <span>Saldo {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}</span>
+                      <span>•</span>
+                      <span>{stats.total} dívida(s)</span>
+                      {hasAtraso && (
+                        <>
+                          <span>•</span>
+                          <span className="text-red-600">{parcelasVencidasPessoa} parcela(s) vencida(s)</span>
+                        </>
                       )}
                     </div>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
                 </div>
-                <div className="px-4 pb-2 text-[11px] text-muted-foreground border-t border-border/30 pt-2">
-                  {comprasVinculadas} compra(s) vinculada(s) · {resumo.servicosMesAtual.totalVinculos} serviço(s) vinculado(s)
-                </div>
-                <div className="flex border-t border-border/40 divide-x divide-border/40">
+                <div className="grid grid-cols-4 border-t border-border/40">
                   <button
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium text-primary active:bg-muted/50 transition-colors"
+                    className="flex items-center justify-center gap-1 py-2.5 text-[11px] font-medium text-primary active:bg-muted/60 transition-colors"
                     onClick={() => {
                       setSelectedPessoa(p);
                       setDividaForm({
@@ -426,17 +442,17 @@ export default function PessoasPage() {
                     }}
                     data-testid={`button-add-divida-pessoa-${p.id}`}
                   >
-                    <Plus className="w-3.5 h-3.5" /> Nova dívida
+                    <Plus className="w-3.5 h-3.5" /> Dívida
                   </button>
                   <button
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium text-muted-foreground active:bg-muted/50 transition-colors"
+                    className="flex items-center justify-center gap-1 py-2.5 text-[11px] font-medium text-muted-foreground active:bg-muted/60 transition-colors"
                     onClick={() => setHistoryPessoa(p)}
                     data-testid={`button-history-pessoa-${p.id}`}
                   >
                     <Clock className="w-3.5 h-3.5" /> Histórico
                   </button>
                   <button
-                    className="flex items-center justify-center px-4 py-2.5 text-muted-foreground active:bg-muted/50 transition-colors"
+                    className="flex items-center justify-center py-2.5 text-muted-foreground active:bg-muted/60 transition-colors"
                     onClick={() => {
                       setEditingPessoa(p);
                       setEditForm({ nome: p.nome, tipo: p.tipo, telefone: p.telefone || "", observacao: p.observacao || "" });
@@ -446,7 +462,7 @@ export default function PessoasPage() {
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
-                    className="flex items-center justify-center px-4 py-2.5 text-red-500 active:bg-red-50 dark:active:bg-red-950/30 transition-colors"
+                    className="flex items-center justify-center py-2.5 text-red-500 active:bg-red-50 dark:active:bg-red-950/30 transition-colors"
                     onClick={() =>
                       deleteMutation.mutate(p.id, {
                         onSuccess: () => {
@@ -466,22 +482,21 @@ export default function PessoasPage() {
           })}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredByStatus.map((p) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {visiblePessoas.map((p) => {
             const stats = getPessoaStats(p.id);
             const resumo = getPessoaResumoConsolidado(p.id);
             const parcelasVencidasPessoa = resumo.alertas.parcelasVencidasPessoa ?? resumo.alertas.comprasAtrasadas;
-            const comprasVinculadas =
-              resumo.comprasVinculadas.comprasComParcelasReais + resumo.comprasVinculadas.comprasEmFallbackLegado;
-            const servicosVinculados = resumo.servicosMesAtual.totalVinculos;
+            const comprasVinculadas = resumo.comprasVinculadas.comprasComParcelasReais + resumo.comprasVinculadas.comprasEmFallbackLegado;
             const hasAtraso = resumo.alertas.comprasAtrasadas > 0 || resumo.dividas.comigo.vencidas > 0;
+            const totalDividasPendente = resumo.dividas.comigo.pendente + resumo.dividas.euDevo.pendente;
             return (
-              <Card key={p.id} className="hover-elevate" data-testid={`card-pessoa-${p.id}`}>
-                <CardContent className="p-5 space-y-4">
+              <Card key={p.id} className="hover-elevate rounded-2xl" data-testid={`card-pessoa-${p.id}`}>
+                <CardContent className="p-4 space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex items-center justify-center w-11 h-11 rounded-full bg-primary/10 flex-shrink-0">
-                        <span className="text-base font-bold text-primary">
+                      <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 flex-shrink-0">
+                        <span className="text-sm font-bold text-primary">
                           {p.nome.charAt(0).toUpperCase()}
                         </span>
                       </div>
@@ -494,86 +509,51 @@ export default function PessoasPage() {
                         )}
                       </div>
                     </div>
-                    <Badge variant={p.tipo === "me_deve" ? "default" : "destructive"}>
-                      {p.tipo === "me_deve" ? "Me deve" : "Eu devo"}
-                    </Badge>
+                    <div className="text-right">
+                      <Badge variant={p.tipo === "me_deve" ? "default" : "destructive"} className="text-[11px]">
+                        {p.tipo === "me_deve" ? "Me deve" : "Eu devo"}
+                      </Badge>
+                      <p className="text-lg font-bold mt-2">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
+                    </div>
                   </div>
 
-                  {p.observacao && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">{p.observacao}</p>
-                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Dívidas {formatCurrencyBRL(totalDividasPendente)} • Compras {formatCurrencyBRL(resumo.comprasVinculadas.pendentePessoa)} • Serviços {formatCurrencyBRL(resumo.servicosMesAtual.pendente)}
+                  </p>
 
-                  <div className="rounded-md bg-muted/40 p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Total pendente consolidado</p>
-                    <p className="text-lg font-bold">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
-                    <p className="text-[11px] text-muted-foreground mt-1">
-                      Dívidas + compras vinculadas + serviços do mês atual
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Pessoa me deve</p>
-                      <p className="text-base font-bold text-emerald-600">{formatCurrencyBRL(resumo.dividas.comigo.pendente)}</p>
-                    </div>
-                    <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Eu devo / compartilhado</p>
-                      <p className="text-base font-bold text-red-600">{formatCurrencyBRL(resumo.dividas.euDevo.pendente)}</p>
-                    </div>
-                    <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Paguei do meu bolso</p>
-                      <p className="text-base font-bold text-blue-600">{formatCurrencyBRL(resumo.dividas.pagueiDoMeuBolso.pendente)}</p>
-                    </div>
-                    <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Serviços pendentes ({resumo.servicosMesAtual.mesReferencia})</p>
-                      <p className="text-base font-bold text-amber-600">{formatCurrencyBRL(resumo.servicosMesAtual.pendente)}</p>
-                    </div>
-                    <div className="rounded-md bg-emerald-500/5 p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Saldo positivo disponível</p>
-                      <p className="text-base font-bold text-emerald-600">{formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}</p>
-                    </div>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-400">
+                      Saldo + {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}
+                    </span>
+                    <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
+                      {stats.total} dívida(s)
+                    </span>
+                    {comprasVinculadas > 0 && (
+                      <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
+                        Compras vinculadas {comprasVinculadas}
+                      </span>
+                    )}
+                    {resumo.source === "fallback" && (
+                      <span className="rounded-full bg-amber-500/15 px-2 py-1 text-amber-700 dark:text-amber-300">
+                        Transição
+                      </span>
+                    )}
                   </div>
 
                   {hasAtraso && (
-                    <div className="rounded-md border border-red-300/40 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-300 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        <span>
-                          Atrasos detectados: {resumo.dividas.comigo.vencidas} dívida(s) vencida(s), {resumo.alertas.comprasAtrasadas} compra(s) com atraso e {parcelasVencidasPessoa} parcela(s) vencida(s)
-                        </span>
-                      </div>
+                    <div className="rounded-xl border border-red-300/40 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span>{resumo.alertas.comprasAtrasadas} compra(s) atrasada(s) • {parcelasVencidasPessoa} parcela(s) vencida(s)</span>
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between gap-2">
-                    <Badge variant={stats.emAberto ? "outline" : "secondary"}>
-                      {stats.emAberto ? "Em aberto" : "Quitado"}
-                    </Badge>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{stats.total} divida(s)</span>
-                      {comprasVinculadas > 0 && (
-                        <span className="flex items-center gap-1">
-                          <CreditCard className="w-3 h-3" /> {comprasVinculadas}
-                        </span>
-                      )}
-                      {servicosVinculados > 0 && (
-                        <span className="flex items-center gap-1">
-                          <Repeat className="w-3 h-3" /> {servicosVinculados}
-                        </span>
-                      )}
-                      {resumo.source === "fallback" && (
-                        <span className="text-amber-600">transição</span>
-                      )}
-                    </div>
-                  </div>
-
                   <Separator />
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1"
+                      className="flex-1 h-8"
                       onClick={() => {
                         setSelectedPessoa(p);
                         setDividaForm({
@@ -584,12 +564,12 @@ export default function PessoasPage() {
                       }}
                       data-testid={`button-add-divida-pessoa-${p.id}`}
                     >
-                      <Plus className="w-3 h-3 mr-1" /> Nova divida
+                      <Plus className="w-3 h-3 mr-1" /> Nova dívida
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="flex-1"
+                      className="flex-1 h-8"
                       onClick={() => setHistoryPessoa(p)}
                       data-testid={`button-history-pessoa-${p.id}`}
                     >
@@ -598,6 +578,7 @@ export default function PessoasPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      className="h-8 w-8"
                       onClick={() => {
                         setEditingPessoa(p);
                         setEditForm({ nome: p.nome, tipo: p.tipo, telefone: p.telefone || "", observacao: p.observacao || "" });
@@ -609,6 +590,7 @@ export default function PessoasPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      className="h-8 w-8"
                       onClick={() =>
                         deleteMutation.mutate(p.id, {
                           onSuccess: () => {
@@ -627,6 +609,18 @@ export default function PessoasPage() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {hasMorePessoas && (
+        <div className="flex justify-center">
+          <Button
+            variant="outline"
+            onClick={() => setVisiblePessoasCount((prev) => prev + (prefs.mobileMode ? 8 : 12))}
+            data-testid="button-load-more-pessoas"
+          >
+            Carregar mais pessoas
+          </Button>
         </div>
       )}
 
@@ -822,11 +816,11 @@ export default function PessoasPage() {
           });
         }
       }}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto px-4 sm:px-6">
           {historyPessoa && historyStats && historyResumo && (
             <>
-              <SheetHeader className="mb-4">
-                <SheetTitle>Histórico — {historyPessoa.nome}</SheetTitle>
+              <SheetHeader className="mb-3 sticky top-0 z-10 bg-background/95 backdrop-blur pb-2 border-b border-border/50">
+                <SheetTitle className="text-base sm:text-lg">Histórico — {historyPessoa.nome}</SheetTitle>
               </SheetHeader>
 
               <div className="mb-4 rounded-lg border border-border/60 bg-muted/30 p-3">
@@ -889,7 +883,7 @@ export default function PessoasPage() {
                 onValueChange={(value) => setHistoryTab(value as typeof historyTab)}
                 className="mb-4"
               >
-                <TabsList className="w-full justify-start overflow-x-auto">
+                <TabsList className="h-9 w-full justify-start overflow-x-auto whitespace-nowrap rounded-xl">
                   <TabsTrigger value="resumo" data-testid="tab-history-resumo">Resumo</TabsTrigger>
                   <TabsTrigger value="pendencias" data-testid="tab-history-pendencias">Pendências</TabsTrigger>
                   <TabsTrigger value="saldo" data-testid="tab-history-saldo">Saldo</TabsTrigger>
@@ -898,7 +892,7 @@ export default function PessoasPage() {
                 </TabsList>
               </Tabs>
 
-              <div className={`flex items-center gap-2 mb-5 ${historyTab === "pendencias" || historyTab === "historico" ? "" : "hidden"}`}>
+              <div className={`flex items-center gap-2 mb-5 flex-wrap ${historyTab === "pendencias" || historyTab === "historico" ? "" : "hidden"}`}>
                 <Button
                   variant={historyFilter === "todos" ? "default" : "outline"}
                   size="sm"
@@ -1847,6 +1841,3 @@ export default function PessoasPage() {
     </div>
   );
 }
-
-
-
