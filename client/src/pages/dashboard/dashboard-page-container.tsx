@@ -47,7 +47,14 @@ const insightIconMap: Record<string, any> = {
 
 export default function Dashboard() {
   const { visible } = useValuesVisibility();
-  const { prefs, toggleDashCard, toggleCompact, toggleMobileMode } = useUIPreferences();
+  const {
+    prefs,
+    isMobileModeAuto,
+    toggleDashCard,
+    toggleCompact,
+    setMobileModeAuto,
+    setMobileModeManual,
+  } = useUIPreferences();
   const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), "yyyy-MM"));
 
   const {
@@ -107,7 +114,7 @@ export default function Dashboard() {
     };
 
     return (
-      <div className="min-h-screen bg-background pb-24" data-testid="dashboard-mobile">
+      <div className="min-h-full w-full max-w-full overflow-x-hidden bg-background pb-[calc(var(--app-bottom-nav-height)+env(safe-area-inset-bottom))]" data-testid="dashboard-mobile">
         <div className="bg-card/80 backdrop-blur-sm border-b px-4 pt-5 pb-4 sticky top-0 z-10">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -134,7 +141,26 @@ export default function Dashboard() {
                           <p className="text-xs text-muted-foreground">Interface otimizada para toque</p>
                         </div>
                       </div>
-                      <Switch id="mobile-mode-m" checked={prefs.mobileMode} onCheckedChange={toggleMobileMode} />
+                      <Switch
+                        id="mobile-mode-m"
+                        checked={prefs.mobileMode}
+                        onCheckedChange={(checked) => setMobileModeManual(checked)}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between px-1">
+                      <p className="text-xs text-muted-foreground">
+                        {isMobileModeAuto ? "Modo automático ativo (segue tamanho da tela)." : "Modo manual ativo."}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={setMobileModeAuto}
+                        disabled={isMobileModeAuto}
+                      >
+                        Usar automático
+                      </Button>
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs text-muted-foreground px-1 uppercase tracking-wide">Cards visíveis</Label>
@@ -325,7 +351,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-5" data-testid="dashboard-page">
+    <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="dashboard-page">
       <div className="rounded-2xl border border-border/60 bg-card/90 p-4 sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
@@ -355,9 +381,24 @@ export default function Dashboard() {
                     <Switch
                       id="mobile-mode"
                       checked={prefs.mobileMode}
-                      onCheckedChange={toggleMobileMode}
+                      onCheckedChange={(checked) => setMobileModeManual(checked)}
                       data-testid="toggle-mobile-mode"
                     />
+                  </div>
+                  <div className="flex items-center justify-between px-1">
+                    <p className="text-xs text-muted-foreground">
+                      {isMobileModeAuto ? "Modo automático ativo (segue tamanho da tela)." : "Modo manual ativo."}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={setMobileModeAuto}
+                      disabled={isMobileModeAuto}
+                    >
+                      Usar automático
+                    </Button>
                   </div>
                   <div className="flex items-center justify-between p-2 rounded-lg border bg-muted/30">
                     <Label htmlFor="compact-mode" className="font-medium">Modo Compacto</Label>

@@ -131,6 +131,8 @@ function AuthenticatedLayout() {
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
+    "--app-header-height": "3.5rem",
+    "--app-bottom-nav-height": "4rem",
   };
 
   const navItems = [
@@ -143,19 +145,25 @@ function AuthenticatedLayout() {
 
   return (
     <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex h-screen w-full">
+      <div className="flex h-dvh min-h-dvh w-full max-w-full overflow-hidden">
         <AppSidebar />
-        <div className="flex flex-col flex-1 min-w-0 pb-16 md:pb-0">
-          <header className="flex items-center justify-between gap-2 p-3 border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="flex max-w-full flex-1 min-w-0 flex-col md:pb-0">
+          <header
+            className="sticky top-0 z-50 flex h-[calc(var(--app-header-height)+env(safe-area-inset-top))] min-h-[calc(var(--app-header-height)+env(safe-area-inset-top))] items-center justify-between gap-2 border-b bg-background/90 px-3 pt-[env(safe-area-inset-top)] backdrop-blur-sm"
+            style={{ paddingTop: "env(safe-area-inset-top)" }}
+          >
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <EyeToggle />
           </header>
-          <main className="flex-1 overflow-y-auto overscroll-contain">
+          <main className="flex-1 min-h-0 w-full max-w-full overflow-y-auto overflow-x-hidden overscroll-contain pb-[calc(var(--app-bottom-nav-height)+env(safe-area-inset-bottom))] md:pb-0 [&>*]:w-full [&>*]:max-w-full">
             <Router />
           </main>
           <OnboardingTour />
 
-          <nav className="fixed bottom-0 left-0 right-0 md:hidden border-t bg-background z-40 flex h-16 items-center justify-around px-2">
+          <nav
+            className="fixed bottom-0 left-0 right-0 z-40 flex h-[calc(var(--app-bottom-nav-height)+env(safe-area-inset-bottom))] items-center justify-around border-t bg-background px-2 pb-[env(safe-area-inset-bottom)] md:hidden"
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          >
             {navItems.map((item) => (
               <Link key={item.path} href={item.path} className={`flex flex-col items-center gap-1 p-2 min-w-0 flex-1 ${location === item.path ? "text-primary" : "text-muted-foreground"}`}>
                 <item.icon className="h-5 w-5 flex-shrink-0" />

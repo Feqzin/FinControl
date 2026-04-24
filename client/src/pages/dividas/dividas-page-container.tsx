@@ -243,7 +243,7 @@ export default function DividasPage() {
   };
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="w-full max-w-full overflow-x-hidden p-6 space-y-6">
         <Skeleton className="h-8 w-32" />
         <div className="space-y-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20" />)}
@@ -253,7 +253,7 @@ export default function DividasPage() {
   }
 
   return (
-    <div className="p-6 space-y-6" data-testid="dividas-page">
+    <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="dividas-page">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Dividas</h1>
@@ -403,7 +403,7 @@ export default function DividasPage() {
             value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select value={filterTipo} onValueChange={setFilterTipo}>
-          <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-[140px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos tipos</SelectItem>
             <SelectItem value="receber">A receber</SelectItem>
@@ -411,7 +411,7 @@ export default function DividasPage() {
           </SelectContent>
         </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-[140px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos status</SelectItem>
             <SelectItem value="pendente">Pendente</SelectItem>

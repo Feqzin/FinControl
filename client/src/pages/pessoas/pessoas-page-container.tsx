@@ -246,7 +246,7 @@ export default function PessoasPage() {
   }, [prefs.mobileMode, search, filterTipo]);
 
   return (
-    <div className="p-4 sm:p-6 space-y-5" data-testid="pessoas-page">
+    <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="pessoas-page">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Pessoas</h1>
@@ -352,7 +352,7 @@ export default function PessoasPage() {
             />
           </div>
           <Tabs value={filterTipo} onValueChange={setFilterTipo} className="w-full sm:w-auto">
-            <TabsList className="h-9 w-full sm:w-auto justify-start overflow-x-auto whitespace-nowrap rounded-xl">
+            <TabsList className="mobile-tabs-scroll h-9 w-full sm:w-auto justify-start rounded-xl">
               <TabsTrigger value="todos" data-testid="filter-pessoas-todos">Todos</TabsTrigger>
               <TabsTrigger value="me_deve" data-testid="filter-pessoas-me-devem">Me devem</TabsTrigger>
               <TabsTrigger value="eu_devo" data-testid="filter-pessoas-eu-devo">Eu devo</TabsTrigger>
@@ -883,7 +883,7 @@ export default function PessoasPage() {
                 onValueChange={(value) => setHistoryTab(value as typeof historyTab)}
                 className="mb-4"
               >
-                <TabsList className="h-9 w-full justify-start overflow-x-auto whitespace-nowrap rounded-xl">
+                <TabsList className="mobile-tabs-scroll h-9 w-full justify-start rounded-xl">
                   <TabsTrigger value="resumo" data-testid="tab-history-resumo">Resumo</TabsTrigger>
                   <TabsTrigger value="pendencias" data-testid="tab-history-pendencias">Pendências</TabsTrigger>
                   <TabsTrigger value="saldo" data-testid="tab-history-saldo">Saldo</TabsTrigger>

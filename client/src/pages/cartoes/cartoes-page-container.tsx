@@ -660,7 +660,7 @@ export default function CartoesPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="w-full max-w-full overflow-x-hidden p-6 space-y-6">
         <Skeleton className="h-8 w-32" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[1, 2].map((i) => <Skeleton key={i} className="h-64" />)}
@@ -670,26 +670,31 @@ export default function CartoesPage() {
   }
 
   return (
-    <div className="p-6 space-y-6" data-testid="cartoes-page">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+    <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="cartoes-page">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Cartoes de Credito</h1>
           <p className="text-muted-foreground">Gerencie seus cartoes e compras parceladas</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
           <Button variant="outline" onClick={openImportDialog}
+            className="max-w-full min-w-0 flex-1 lg:flex-none"
             data-testid="button-importar-fatura">
             <Upload className="w-4 h-4 mr-2" />
-            {smartImportLiberado ? "Importar Fatura" : "Importação inteligente (Premium)"}
+            <span className="truncate">
+              <span className="sm:hidden">{smartImportLiberado ? "Importar" : "Importação Premium"}</span>
+              <span className="hidden sm:inline">{smartImportLiberado ? "Importar Fatura" : "Importação inteligente (Premium)"}</span>
+            </span>
           </Button>
           {!smartImportLiberado && (
-            <Badge variant="secondary" data-testid="badge-smart-import-premium">
+            <Badge variant="secondary" className="shrink-0" data-testid="badge-smart-import-premium">
               Premium
             </Badge>
           )}
           {smartImportLiberado && lastImportLogId && (
             <Button
               variant="outline"
+              className="max-w-full min-w-0 flex-1 lg:flex-none"
               onClick={handleRollbackLastImport}
               disabled={rollbackImportMutation.isPending}
               data-testid="button-rollback-import"
@@ -700,7 +705,7 @@ export default function CartoesPage() {
           )}
           <Dialog open={openCard} onOpenChange={setOpenCard}>
             <DialogTrigger asChild>
-              <Button data-testid="button-add-cartao">
+              <Button className="flex-1 lg:flex-none" data-testid="button-add-cartao">
                 <Plus className="w-4 h-4 mr-2" /> Novo cartao
               </Button>
             </DialogTrigger>
@@ -755,7 +760,7 @@ export default function CartoesPage() {
       {cartoes.length > 0 && (
         <div className="space-y-3">
           <Tabs value={cartoesTab} onValueChange={(value) => setCartoesTab(value as typeof cartoesTab)}>
-            <TabsList className="w-full justify-start overflow-x-auto">
+            <TabsList className="mobile-tabs-scroll w-full justify-start">
               <TabsTrigger value="resumo" data-testid="tab-cartoes-resumo">Resumo</TabsTrigger>
               <TabsTrigger value="fatura" data-testid="tab-cartoes-fatura">Fatura atual</TabsTrigger>
               <TabsTrigger value="compras" data-testid="tab-cartoes-compras">Compras</TabsTrigger>
@@ -765,7 +770,7 @@ export default function CartoesPage() {
           </Tabs>
 
           {(cartoesTab === "compras" || cartoesTab === "fatura" || cartoesTab === "parcelas") && (
-            <div className="relative max-w-md">
+            <div className="relative w-full max-w-md min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 value={compraSearch}

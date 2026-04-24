@@ -257,7 +257,7 @@ export default function RelatoriosPageContainer() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5">
         <div className="flex justify-between items-center">
           <Skeleton className="h-10 w-48" />
           <Skeleton className="h-10 w-32" />
@@ -274,15 +274,15 @@ export default function RelatoriosPageContainer() {
   const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "—";
 
   return (
-    <div className="p-6 space-y-6" data-testid="relatorios-page">
+    <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="relatorios-page">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Relatórios</h1>
           <p className="text-muted-foreground">Análise detalhada da sua saúde financeira</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <Select value={periodo} onValueChange={(v: Periodo) => setPeriodo(v)}>
-            <SelectTrigger className="w-[180px]" data-testid="select-periodo">
+            <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-periodo">
               <SelectValue placeholder="Selecione o período" />
             </SelectTrigger>
             <SelectContent>
@@ -400,7 +400,7 @@ export default function RelatoriosPageContainer() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border overflow-hidden">
+            <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -462,7 +462,7 @@ export default function RelatoriosPageContainer() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border overflow-hidden">
+            <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -512,7 +512,7 @@ export default function RelatoriosPageContainer() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border overflow-hidden">
+            <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>

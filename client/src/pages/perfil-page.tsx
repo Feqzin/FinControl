@@ -581,14 +581,14 @@ export default function PerfilPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl" data-testid="perfil-page">
+    <div className="w-full max-w-2xl overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="perfil-page">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Meu Perfil</h1>
         <p className="text-muted-foreground">Gerencie sua conta e exporte seus dados</p>
       </div>
 
       <Tabs value={perfilTab} onValueChange={(value) => setPerfilTab(value as typeof perfilTab)}>
-        <TabsList className="w-full justify-start overflow-x-auto">
+        <TabsList className="mobile-tabs-scroll w-full justify-start">
           <TabsTrigger value="planos" data-testid="tab-perfil-planos">Planos</TabsTrigger>
           <TabsTrigger value="backup" data-testid="tab-perfil-backup">Backup</TabsTrigger>
           <TabsTrigger value="conta" data-testid="tab-perfil-conta">Conta</TabsTrigger>
