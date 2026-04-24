@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -51,6 +52,8 @@ export default function ServicosPage() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [expandedDivisao, setExpandedDivisao] = useState<Set<string>>(new Set());
+  const [servicosTab, setServicosTab] = useState<"ativos" | "pendentes" | "pagos" | "divisao" | "vinculos">("ativos");
+  const [mesReferencia, setMesReferencia] = useState(format(new Date(), "yyyy-MM"));
   const [form, setForm] = useState({
     nome: "",
     categoria: "streaming",
@@ -100,7 +103,7 @@ export default function ServicosPage() {
     .filter((s) => s.status === "ativo")
     .reduce((sum, sv) => sum + Number(sv.valorMensal), 0);
 
-  const mesAtual = format(new Date(), "yyyy-MM");
+  const mesAtual = mesReferencia;
 
   const totalPessoasPendente = (() => {
     return servicoPessoas.reduce((sum, sp) => {
@@ -151,11 +154,40 @@ export default function ServicosPage() {
     return { label: "Origem principal: Meu bolso", className: "text-muted-foreground" };
   };
 
+  const getResumoServicoMes = (servico: Servico) => {
+    const vinculados = servicoPessoasByServicoId.get(servico.id) ?? [];
+    const totalVinculos = vinculados.length;
+    const pagos = vinculados.filter((sp) => {
+      const pagamento = servicoPagamentos.find((item) => item.servicoPessoaId === sp.id && item.mes === mesAtual);
+      return pagamento?.status === "pago";
+    }).length;
+    const pendentes = Math.max(0, totalVinculos - pagos);
+    return { totalVinculos, pagos, pendentes };
+  };
+
+  const servicosFiltradosPorAba = servicos.filter((servico) => {
+    const resumoMes = getResumoServicoMes(servico);
+    switch (servicosTab) {
+      case "ativos":
+        return servico.status === "ativo";
+      case "pendentes":
+        return servico.status === "ativo" && resumoMes.pendentes > 0;
+      case "pagos":
+        return servico.status === "ativo" && resumoMes.totalVinculos > 0 && resumoMes.pendentes === 0;
+      case "divisao":
+        return resumoMes.totalVinculos > 0;
+      case "vinculos":
+        return Boolean(servico.compraCartaoId);
+      default:
+        return true;
+    }
+  });
+
   const byCategory = categorias
     .map((cat) => ({
       ...cat,
-      servicos: servicos.filter((s) => s.categoria === cat.value),
-      total: servicos
+      servicos: servicosFiltradosPorAba.filter((s) => s.categoria === cat.value),
+      total: servicosFiltradosPorAba
         .filter((s) => s.categoria === cat.value && s.status === "ativo")
         .reduce((sum, s) => sum + Number(s.valorMensal), 0),
     }))
@@ -329,6 +361,31 @@ export default function ServicosPage() {
         </Dialog>
       </div>
 
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Tabs value={servicosTab} onValueChange={(value) => setServicosTab(value as typeof servicosTab)}>
+          <TabsList className="w-full sm:w-auto justify-start overflow-x-auto">
+            <TabsTrigger value="ativos" data-testid="tab-servicos-ativos">Ativos</TabsTrigger>
+            <TabsTrigger value="pendentes" data-testid="tab-servicos-pendentes">Pendentes</TabsTrigger>
+            <TabsTrigger value="pagos" data-testid="tab-servicos-pagos">Pagos</TabsTrigger>
+            <TabsTrigger value="divisao" data-testid="tab-servicos-divisao">Divisão</TabsTrigger>
+            <TabsTrigger value="vinculos" data-testid="tab-servicos-vinculos">Vínculos cartão</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="servicos-mes-referencia" className="text-xs text-muted-foreground whitespace-nowrap">
+            Mês referência
+          </Label>
+          <Input
+            id="servicos-mes-referencia"
+            type="month"
+            value={mesReferencia}
+            onChange={(event) => setMesReferencia(event.target.value)}
+            className="h-9 w-[160px]"
+            data-testid="input-servicos-mes-referencia"
+          />
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Card className="hover-elevate">
           <CardContent className="p-5">
@@ -348,7 +405,7 @@ export default function ServicosPage() {
             <CardContent className="p-5">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <p className="text-sm text-muted-foreground">Pendente de pessoas (mês atual)</p>
+                  <p className="text-sm text-muted-foreground">Pendente de pessoas ({mesReferencia})</p>
                   <p className="text-2xl font-bold text-amber-600">{formatCurrencyBRL(totalPessoasPendente)}</p>
                 </div>
                 <div className="flex items-center justify-center w-10 h-10 rounded-md bg-blue-500/10">
@@ -365,6 +422,12 @@ export default function ServicosPage() {
           <Repeat className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
           <p className="text-lg font-medium text-muted-foreground">Nenhum serviço cadastrado</p>
           <p className="text-sm text-muted-foreground mt-1">Adicione seus serviços e assinaturas</p>
+        </div>
+      ) : byCategory.length === 0 ? (
+        <div className="text-center py-12 rounded-md border border-dashed">
+          <p className="text-sm text-muted-foreground">
+            Nenhum serviço encontrado para a aba <span className="font-medium">{servicosTab}</span> no mês {mesReferencia}.
+          </p>
         </div>
       ) : (
         <div className="space-y-6">

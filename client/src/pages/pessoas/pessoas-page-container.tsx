@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -81,6 +82,12 @@ export default function PessoasPage() {
     observacao: "",
   });
   const [historyFilter, setHistoryFilter] = useState<"todos" | "pendente">("todos");
+  const [historyTab, setHistoryTab] = useState<"resumo" | "pendencias" | "saldo" | "servicos" | "historico">("resumo");
+  const [historyVisible, setHistoryVisible] = useState({
+    dividas: 8,
+    compras: 6,
+    servicos: 6,
+  });
   const [vincularCompraOpen, setVincularCompraOpen] = useState(false);
   const [compraSelecionadaParaVinculo, setCompraSelecionadaParaVinculo] = useState<string | null>(null);
 
@@ -157,6 +164,15 @@ export default function PessoasPage() {
   const historySaldoResumo = historySaldo?.resumo ?? (historyResumo ? historyResumo.saldoPessoa : null);
   const historySaldoMovimentacoes = historySaldo?.movimentacoes ?? [];
   const historySaldoDisponivel = historySaldoResumo?.saldoAtual ?? 0;
+  const filteredByStatus = filterTipo === "atrasados"
+    ? filtered.filter((pessoa) => {
+      const resumoPessoa = getPessoaResumoConsolidado(pessoa.id);
+      return resumoPessoa.alertas.comprasAtrasadas > 0 || resumoPessoa.dividas.comigo.vencidas > 0;
+    })
+    : filtered;
+  const visibleHistoryDividas = historyDividas.slice(0, historyVisible.dividas);
+  const visibleHistoryCompras = historyCompras.slice(0, historyVisible.compras);
+  const visibleHistoryServicos = historyServicoPessoas.slice(0, historyVisible.servicos);
   const comprasDisponiveisParaVinculo = historyPessoa
     ? comprasCartao.filter((compra) => compra.pessoaId !== historyPessoa.id)
     : [];
@@ -327,19 +343,17 @@ export default function PessoasPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <Select value={filterTipo} onValueChange={setFilterTipo}>
-          <SelectTrigger className="w-[150px]" data-testid="filter-tipo-pessoa">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos</SelectItem>
-            <SelectItem value="me_deve">Me devem</SelectItem>
-            <SelectItem value="eu_devo">Eu devo</SelectItem>
-          </SelectContent>
-        </Select>
+        <Tabs value={filterTipo} onValueChange={setFilterTipo} className="w-full sm:w-auto">
+          <TabsList className="w-full sm:w-auto overflow-x-auto">
+            <TabsTrigger value="todos" data-testid="filter-pessoas-todos">Todos</TabsTrigger>
+            <TabsTrigger value="me_deve" data-testid="filter-pessoas-me-devem">Me devem</TabsTrigger>
+            <TabsTrigger value="eu_devo" data-testid="filter-pessoas-eu-devo">Eu devo</TabsTrigger>
+            <TabsTrigger value="atrasados" data-testid="filter-pessoas-atrasados">Atrasados</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
-      {filtered.length === 0 ? (
+      {filteredByStatus.length === 0 ? (
         <div className="text-center py-16" data-testid="empty-pessoas">
           <Users className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
           <p className="text-lg font-medium text-muted-foreground">Nenhuma pessoa encontrada</p>
@@ -347,7 +361,7 @@ export default function PessoasPage() {
         </div>
       ) : prefs.mobileMode ? (
         <div className="space-y-2">
-          {filtered.map((p) => {
+          {filteredByStatus.map((p) => {
             const stats = getPessoaStats(p.id);
             const resumo = getPessoaResumoConsolidado(p.id);
             const parcelasVencidasPessoa = resumo.alertas.parcelasVencidasPessoa ?? resumo.alertas.comprasAtrasadas;
@@ -453,7 +467,7 @@ export default function PessoasPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((p) => {
+          {filteredByStatus.map((p) => {
             const stats = getPessoaStats(p.id);
             const resumo = getPessoaResumoConsolidado(p.id);
             const parcelasVencidasPessoa = resumo.alertas.parcelasVencidasPessoa ?? resumo.alertas.comprasAtrasadas;
@@ -781,6 +795,8 @@ export default function PessoasPage() {
         if (!v) {
           setHistoryPessoa(null);
           setHistoryFilter("todos");
+          setHistoryTab("resumo");
+          setHistoryVisible({ dividas: 8, compras: 6, servicos: 6 });
           setAbaterSaldoOpen(false);
           setAbaterSaldoDivida(null);
           setAbaterSaldoForm({
@@ -813,7 +829,76 @@ export default function PessoasPage() {
                 <SheetTitle>Histórico — {historyPessoa.nome}</SheetTitle>
               </SheetHeader>
 
-              <div className="flex items-center gap-2 mb-5">
+              <div className="mb-4 rounded-lg border border-border/60 bg-muted/30 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">{historyPessoa.nome}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Total pendente consolidado: {formatCurrencyBRL(historyResumo.consolidadoPendente)}
+                    </p>
+                  </div>
+                  <Badge variant={historyResumo.consolidadoPendente > 0 ? "outline" : "secondary"}>
+                    {historyResumo.consolidadoPendente > 0 ? "Em aberto" : "Quitado"}
+                  </Badge>
+                </div>
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  <div className="rounded-md bg-emerald-500/5 p-2.5">
+                    <p className="text-muted-foreground">Saldo positivo</p>
+                    <p className="font-semibold text-emerald-600">{formatCurrencyBRL(historyResumo.saldoPessoa.saldoAtual)}</p>
+                  </div>
+                  <div className="rounded-md bg-muted/40 p-2.5">
+                    <p className="text-muted-foreground">Parcelas pendentes</p>
+                    <p className="font-semibold">{historyResumo.alertas.parcelasPendentesPessoa}</p>
+                  </div>
+                  <div className="rounded-md bg-muted/40 p-2.5">
+                    <p className="text-muted-foreground">Parcelas vencidas</p>
+                    <p className="font-semibold text-red-600">{historyParcelasVencidas}</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setSelectedPessoa(historyPessoa);
+                      setDividaForm({
+                        tipo: historyPessoa.tipo === "me_deve" ? "receber" : "pagar",
+                        valor: "",
+                        dataVencimento: "",
+                        descricao: "",
+                        formaPagamento: "pix",
+                      });
+                      setOpenDivida(true);
+                    }}
+                    data-testid="button-quick-add-divida-history"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Nova dívida
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setHistoryTab("saldo")}
+                    data-testid="button-quick-open-saldo-history"
+                  >
+                    <Wallet className="w-3.5 h-3.5 mr-1" /> Saldo
+                  </Button>
+                </div>
+              </div>
+
+              <Tabs
+                value={historyTab}
+                onValueChange={(value) => setHistoryTab(value as typeof historyTab)}
+                className="mb-4"
+              >
+                <TabsList className="w-full justify-start overflow-x-auto">
+                  <TabsTrigger value="resumo" data-testid="tab-history-resumo">Resumo</TabsTrigger>
+                  <TabsTrigger value="pendencias" data-testid="tab-history-pendencias">Pendências</TabsTrigger>
+                  <TabsTrigger value="saldo" data-testid="tab-history-saldo">Saldo</TabsTrigger>
+                  <TabsTrigger value="servicos" data-testid="tab-history-servicos">Serviços</TabsTrigger>
+                  <TabsTrigger value="historico" data-testid="tab-history-historico">Histórico</TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              <div className={`flex items-center gap-2 mb-5 ${historyTab === "pendencias" || historyTab === "historico" ? "" : "hidden"}`}>
                 <Button
                   variant={historyFilter === "todos" ? "default" : "outline"}
                   size="sm"
@@ -832,7 +917,7 @@ export default function PessoasPage() {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3 ${historyTab === "resumo" ? "" : "hidden"}`}>
                 <div className="rounded-md bg-emerald-500/5 p-3">
                   <p className="text-xs text-muted-foreground mb-1">Saldo positivo atual</p>
                   <p className="text-lg font-bold text-emerald-600">{formatCurrencyBRL(historyResumo.saldoPessoa.saldoAtual)}</p>
@@ -871,7 +956,7 @@ export default function PessoasPage() {
                 </div>
               </div>
 
-              {(historyResumo.alertas.comprasAtrasadas > 0 || historyResumo.dividas.comigo.vencidas > 0) && (
+              {historyTab === "resumo" && (historyResumo.alertas.comprasAtrasadas > 0 || historyResumo.dividas.comigo.vencidas > 0) && (
                 <div className="mb-6 rounded-md border border-red-300/40 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
                   <span>
@@ -880,7 +965,7 @@ export default function PessoasPage() {
                 </div>
               )}
 
-              <div className="mb-6 rounded-md border border-border/60 p-4 space-y-4">
+              <div className={`mb-6 rounded-md border border-border/60 p-4 space-y-4 ${historyTab === "saldo" ? "" : "hidden"}`}>
                 <div className="flex items-center gap-2">
                   <Wallet className="w-4 h-4 text-emerald-600" />
                   <h3 className="text-sm font-semibold">Saldo positivo da pessoa</h3>
@@ -1072,7 +1157,7 @@ export default function PessoasPage() {
                 </div>
               </div>
 
-              <div className="mb-6">
+              <div className={`mb-6 ${historyTab === "historico" ? "" : "hidden"}`}>
                 <PaymentTimeline
                   events={historyTimelineEvents}
                   isLoading={isTimelineLoading}
@@ -1087,7 +1172,7 @@ export default function PessoasPage() {
                 />
               </div>
 
-              <div className="flex items-center justify-between mb-3">
+              <div className={`flex items-center justify-between mb-3 ${historyTab === "pendencias" ? "" : "hidden"}`}>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
                   Dívidas ({historyDividas.length})
                 </h3>
@@ -1347,14 +1432,14 @@ export default function PessoasPage() {
                 </DialogContent>
               </Dialog>
 
-              {historyDividas.length === 0 ? (
+              {historyTab === "pendencias" && (historyDividas.length === 0 ? (
                 <div className="text-center py-6">
                   <Receipt className="w-8 h-8 mx-auto mb-2 text-muted-foreground/40" />
                   <p className="text-sm text-muted-foreground">Nenhuma divida registrada</p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {historyDividas.map((d) => {
+                  {visibleHistoryDividas.map((d) => {
                     const isOverdue = d.status === "pendente"
                       && !!d.dataVencimento
                       && d.dataVencimento < format(new Date(), "yyyy-MM-dd");
@@ -1449,8 +1534,21 @@ export default function PessoasPage() {
                     );
                   })}
                 </div>
+              ))}
+
+              {historyTab === "pendencias" && historyDividas.length > visibleHistoryDividas.length && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => setHistoryVisible((prev) => ({ ...prev, dividas: prev.dividas + 8 }))}
+                  data-testid="button-load-more-dividas-history"
+                >
+                  Carregar mais dívidas
+                </Button>
               )}
 
+              {historyTab === "pendencias" && (
               <>
                 <Separator className="my-5" />
                 <div className="mb-3 flex items-center justify-between gap-2">
@@ -1518,7 +1616,7 @@ export default function PessoasPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {historyCompras.map((c) => {
+                    {visibleHistoryCompras.map((c) => {
                       const cartao = cartoes.find((ct) => ct.id === c.cartaoId);
                       return (
                         <div
@@ -1574,15 +1672,34 @@ export default function PessoasPage() {
                   </div>
                 )}
               </>
+              )}
 
-              {historyServicoPessoas.length > 0 && (
+              {historyTab === "pendencias" && historyCompras.length > visibleHistoryCompras.length && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => setHistoryVisible((prev) => ({ ...prev, compras: prev.compras + 6 }))}
+                  data-testid="button-load-more-compras-history"
+                >
+                  Carregar mais compras
+                </Button>
+              )}
+
+              {historyTab === "servicos" && historyServicoPessoas.length === 0 && (
+                <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                  Nenhum serviço compartilhado para essa pessoa.
+                </div>
+              )}
+
+              {historyTab === "servicos" && historyServicoPessoas.length > 0 && (
                 <>
                   <Separator className="my-5" />
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                     Serviços Compartilhados ({historyServicoPessoas.length})
                   </h3>
                   <div className="space-y-2">
-                    {historyServicoPessoas.map((sp) => {
+                    {visibleHistoryServicos.map((sp) => {
                       const servico = servicos.find((s) => s.id === sp.servicoId);
                       const pagamentosMesAtual = servicoPagamentos.filter((p) => p.servicoPessoaId === sp.id && p.mes === meAtual);
                       const pagAtual =
@@ -1678,6 +1795,18 @@ export default function PessoasPage() {
                     })}
                   </div>
                 </>
+              )}
+
+              {historyTab === "servicos" && historyServicoPessoas.length > visibleHistoryServicos.length && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => setHistoryVisible((prev) => ({ ...prev, servicos: prev.servicos + 6 }))}
+                  data-testid="button-load-more-servicos-history"
+                >
+                  Carregar mais serviços
+                </Button>
               )}
 
               <div className="mt-6 pt-4 border-t flex gap-2">

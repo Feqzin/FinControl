@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
   getUserSubscriptionLimits,
@@ -200,6 +201,7 @@ export default function PerfilPage() {
   const [modoImportacao, setModoImportacao] = useState<ImportMode>("merge");
   const [modoRestauracaoCloud, setModoRestauracaoCloud] = useState<ImportMode>("merge");
   const [backupRestaurandoId, setBackupRestaurandoId] = useState<string | null>(null);
+  const [perfilTab, setPerfilTab] = useState<"conta" | "planos" | "backup" | "ajuda">("planos");
   const inputImportacaoRef = useRef<HTMLInputElement | null>(null);
   const planoAtualAutenticado = getUserSubscriptionTier(user);
   const limitsFromAuth = getUserSubscriptionLimits(user);
@@ -574,7 +576,16 @@ export default function PerfilPage() {
         <p className="text-muted-foreground">Gerencie sua conta e exporte seus dados</p>
       </div>
 
-      <Card>
+      <Tabs value={perfilTab} onValueChange={(value) => setPerfilTab(value as typeof perfilTab)}>
+        <TabsList className="w-full justify-start overflow-x-auto">
+          <TabsTrigger value="planos" data-testid="tab-perfil-planos">Planos</TabsTrigger>
+          <TabsTrigger value="backup" data-testid="tab-perfil-backup">Backup</TabsTrigger>
+          <TabsTrigger value="conta" data-testid="tab-perfil-conta">Conta</TabsTrigger>
+          <TabsTrigger value="ajuda" data-testid="tab-perfil-ajuda">Ajuda</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      <Card className={perfilTab === "conta" ? "" : "hidden"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <User className="w-4 h-4" /> Informacoes pessoais
@@ -616,7 +627,7 @@ export default function PerfilPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className={perfilTab === "conta" ? "" : "hidden"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <Shield className="w-4 h-4" /> Status da conta
@@ -653,7 +664,7 @@ export default function PerfilPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className={perfilTab === "planos" ? "" : "hidden"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <Shield className="w-4 h-4" /> Planos e benefícios
@@ -780,7 +791,7 @@ export default function PerfilPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className={perfilTab === "conta" ? "" : "hidden"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <Database className="w-4 h-4" /> Resumo dos dados
@@ -816,7 +827,7 @@ export default function PerfilPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className={perfilTab === "backup" ? "" : "hidden"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <Download className="w-4 h-4" /> Backup de dados
@@ -990,7 +1001,7 @@ export default function PerfilPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className={perfilTab === "ajuda" ? "" : "hidden"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <HelpCircle className="w-4 h-4" /> Ajuda e Tutorial
@@ -1004,7 +1015,7 @@ export default function PerfilPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className={perfilTab === "conta" ? "" : "hidden"}>
         <CardContent className="p-4">
           <Button
             variant="destructive"

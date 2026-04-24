@@ -410,7 +410,7 @@ export function usePessoas({
     () =>
       pessoas
         .filter((p) => p.nome.toLowerCase().includes(search.toLowerCase()))
-        .filter((p) => filterTipo === "todos" || p.tipo === filterTipo),
+        .filter((p) => filterTipo === "todos" || filterTipo === "atrasados" || p.tipo === filterTipo),
     [filterTipo, pessoas, search],
   );
 

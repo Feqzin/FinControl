@@ -6,17 +6,10 @@ import {
   LayoutDashboard,
   Users,
   CreditCard,
-  DollarSign,
-  FileText,
-  Eye,
+  Repeat,
+  Database,
   CheckCircle2,
   HelpCircle,
-  TrendingUp,
-  Bell,
-  Settings2,
-  Moon,
-  Sparkles,
-  Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,83 +33,64 @@ const TOOLTIP_H = 220;
 
 const steps: TourStep[] = [
   {
-    id: "welcome",
-    type: "modal",
-    title: "Bem-vindo ao FinControl!",
-    description:
-      "Seu assistente de controle financeiro pessoal. Em menos de 2 minutos você vai conhecer tudo que o app oferece.",
-    icon: Sparkles,
-    badge: "Novo por aqui?",
-  },
-  {
-    id: "nav",
+    id: "dashboard",
     type: "spotlight",
     target: "[data-testid='nav-dashboard']",
     preferredPlacement: "right",
-    title: "Navegação lateral",
+    title: "Passo 1 · Dashboard",
     description:
-      "O menu lateral dá acesso a todas as seções: Painel, Pessoas, Dívidas, Cartões, Renda, Patrimônio, Metas, Previsão e muito mais.",
+      "Acompanhe visão geral, alertas e próximos vencimentos para decidir rápido no dia a dia.",
     icon: LayoutDashboard,
+    badge: "Comece por aqui",
   },
   {
-    id: "score",
+    id: "pessoas",
     type: "spotlight",
-    target: "[data-testid='score-financeiro']",
-    preferredPlacement: "bottom",
-    title: "Score Financeiro",
-    description:
-      "Seu Score é calculado automaticamente com base em dívidas, cartões, renda e patrimônio. Quanto maior, melhor sua saúde financeira.",
-    icon: TrendingUp,
-    badge: "Score 2.0",
-  },
-  {
-    id: "alertas",
-    type: "spotlight",
-    target: "[data-testid='alertas-section']",
-    preferredPlacement: "top",
-    title: "Alertas e Insights",
-    description:
-      "Aqui aparecem alertas de vencimentos próximos, saldo negativo e dicas personalizadas para melhorar sua situação financeira.",
-    icon: Bell,
-  },
-  {
-    id: "eye",
-    type: "spotlight",
-    target: "[data-testid='button-toggle-visibility']",
-    preferredPlacement: "bottom",
-    title: "Ocultar Valores",
-    description:
-      "Toque no ícone de olho para mascarar todos os valores monetários. Ideal quando estiver usando o app em lugares públicos.",
-    icon: Eye,
-  },
-  {
-    id: "personalizar",
-    type: "spotlight",
-    target: "[data-testid='button-personalizar']",
+    target: "[data-testid='nav-pessoas']",
     preferredPlacement: "right",
-    title: "Personalizar o App",
+    title: "Passo 2 · Pessoas",
     description:
-      "Escolha quais telas aparecem no menu e quais cards ficam visíveis no painel. Deixe o FinControl do seu jeito.",
-    icon: Settings2,
+      "Registre quem te deve, quem você deve e use o histórico por abas para reduzir rolagem no mobile.",
+    icon: Users,
   },
   {
-    id: "tema",
+    id: "cartoes",
     type: "spotlight",
-    target: "[data-testid='button-theme-toggle']",
+    target: "[data-testid='nav-cartoes']",
     preferredPlacement: "right",
-    title: "Tema Claro / Escuro",
+    title: "Passo 3 · Cartões",
     description:
-      "Alterne entre o tema claro e escuro com um clique. Sua preferência é salva automaticamente.",
-    icon: Moon,
+      "Gerencie limite, fatura e parcelas em abas internas para encontrar compras mais rápido.",
+    icon: CreditCard,
   },
   {
-    id: "done",
+    id: "servicos",
+    type: "spotlight",
+    target: "[data-testid='nav-servicos']",
+    preferredPlacement: "right",
+    title: "Passo 4 · Serviços",
+    description:
+      "Acompanhe serviços recorrentes, divisão por pessoa e vínculos com cartão usando filtro de mês.",
+    icon: Repeat,
+  },
+  {
+    id: "backup",
+    type: "spotlight",
+    target: "[data-testid='nav-perfil']",
+    preferredPlacement: "right",
+    title: "Passo 5 · Backup",
+    description:
+      "No Perfil você exporta/importa backup local JSON e, no Premium, pode salvar backups na nuvem.",
+    icon: Database,
+  },
+  {
+    id: "premium",
     type: "modal",
-    title: "Tudo pronto!",
+    title: "Passo 6 · Premium e Trial",
     description:
-      "Agora é só explorar! Registre suas rendas, dívidas, cartões e patrimônio. O FinControl cuida dos cálculos por você.",
+      "Ative o teste grátis de 7 dias para liberar backup na nuvem e recursos avançados, mantendo seu fluxo local funcionando.",
     icon: CheckCircle2,
-    badge: "Vamos lá!",
+    badge: "Finalizar tour",
   },
 ];
 

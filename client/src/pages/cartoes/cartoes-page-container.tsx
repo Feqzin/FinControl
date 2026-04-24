@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -21,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import {
   Plus, CreditCard, Trash2, CalendarClock, ShoppingBag, User, Pencil,
-  RefreshCw, Upload, List, Check, X, ChevronRight,
+  RefreshCw, Upload, List, Check, X, ChevronRight, Search,
   Eye, Wallet,
 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
@@ -100,6 +101,8 @@ export default function CartoesPage() {
   const [importSourceType, setImportSourceType] = useState<"texto" | "csv" | "ofx" | "qfx" | "manual">("manual");
   const [importSourceName, setImportSourceName] = useState("");
   const [lastImportLogId, setLastImportLogId] = useState<string | null>(null);
+  const [cartoesTab, setCartoesTab] = useState<"resumo" | "fatura" | "compras" | "parcelas" | "limite">("resumo");
+  const [compraSearch, setCompraSearch] = useState("");
   const [importEditForm, setImportEditForm] = useState({
     descricao: "", valor: "", dataCompra: "", parcelas: "", parcelaAtual: "", vencimentoFatura: "",
   });
@@ -215,6 +218,26 @@ export default function CartoesPage() {
     const valor = Number(parcela.valor) || 0;
     const abatido = getParcelaSaldoAbatido(parcela.id);
     return Math.max(0, Number((valor - abatido).toFixed(2)));
+  };
+
+  const compraSearchNormalized = compraSearch.trim().toLowerCase();
+
+  const getFilteredCardCompras = (cartaoId: string) => {
+    const card = cartoes.find((item) => item.id === cartaoId);
+    return getCardCompras(cartaoId).filter((compra) => {
+      if (!compraSearchNormalized) return true;
+      const texto = [
+        compra.descricao,
+        card?.nome,
+        compra.dataCompra,
+        String(compra.valorParcela),
+        String(compra.valorTotal),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return texto.includes(compraSearchNormalized);
+    });
   };
 
   const openAbaterSaldoParcelaDialog = (parcelaId: string, pessoaId: string) => {
@@ -729,6 +752,33 @@ export default function CartoesPage() {
         />
       )}
 
+      {cartoes.length > 0 && (
+        <div className="space-y-3">
+          <Tabs value={cartoesTab} onValueChange={(value) => setCartoesTab(value as typeof cartoesTab)}>
+            <TabsList className="w-full justify-start overflow-x-auto">
+              <TabsTrigger value="resumo" data-testid="tab-cartoes-resumo">Resumo</TabsTrigger>
+              <TabsTrigger value="fatura" data-testid="tab-cartoes-fatura">Fatura atual</TabsTrigger>
+              <TabsTrigger value="compras" data-testid="tab-cartoes-compras">Compras</TabsTrigger>
+              <TabsTrigger value="parcelas" data-testid="tab-cartoes-parcelas">Parcelas</TabsTrigger>
+              <TabsTrigger value="limite" data-testid="tab-cartoes-limite">Limite</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {(cartoesTab === "compras" || cartoesTab === "fatura" || cartoesTab === "parcelas") && (
+            <div className="relative max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={compraSearch}
+                onChange={(event) => setCompraSearch(event.target.value)}
+                placeholder="Buscar compra, cartão, valor ou data"
+                className="pl-9"
+                data-testid="input-cartoes-busca-compras"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       <Dialog open={openCompra} onOpenChange={setOpenCompra}>
         <DialogContent>
           <DialogHeader><DialogTitle>Nova Compra Parcelada</DialogTitle></DialogHeader>
@@ -1228,6 +1278,172 @@ export default function CartoesPage() {
         onConfirmImport={handleConfirmImport}
       />
 
+      {cartoes.length > 0 && cartoesTab !== "compras" && (
+        <div className="space-y-3" data-testid={`cartoes-tab-${cartoesTab}`}>
+          {cartoesTab === "resumo" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {cartoes.map((cartao) => {
+                const faturaAtual = getCardTotal(cartao.id);
+                const limiteDisponivel = getCardAvailableLimit(cartao.id);
+                const totalCompras = getCardCompras(cartao.id).length;
+                return (
+                  <Card key={cartao.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <BrandIconDisplay name={cartao.nome} iconeId={cartao.iconeId} size="sm" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold truncate">{cartao.nome}</p>
+                            <p className="text-xs text-muted-foreground">{totalCompras} compra(s) parcelada(s)</p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setCartoesTab("compras");
+                            setSelectedCartao(cartao.id);
+                          }}
+                          data-testid={`button-open-cartao-compras-${cartao.id}`}
+                        >
+                          Ver compras
+                        </Button>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className="rounded-md bg-muted/40 p-2.5">
+                          <p className="text-[11px] text-muted-foreground">Fatura atual</p>
+                          <p className="font-semibold">{formatCartaoCurrency(faturaAtual)}</p>
+                        </div>
+                        <div className="rounded-md bg-emerald-500/5 p-2.5">
+                          <p className="text-[11px] text-muted-foreground">Disponível</p>
+                          <p className="font-semibold text-emerald-600">{formatCartaoCurrency(limiteDisponivel)}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {cartoesTab === "fatura" && (
+            <div className="space-y-3">
+              {cartoes.map((cartao) => {
+                const comprasFiltradas = getFilteredCardCompras(cartao.id);
+                return (
+                  <Card key={cartao.id}>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold">{cartao.nome}</p>
+                        <Badge variant="outline">{formatCartaoCurrency(getCardTotal(cartao.id))}</Badge>
+                      </div>
+                      {comprasFiltradas.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">Nenhuma compra encontrada para o filtro.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {comprasFiltradas.slice(0, 12).map((compra) => (
+                            <div key={compra.id} className="rounded-md border p-2.5 flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{compra.descricao}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {compra.parcelaAtual}/{compra.parcelas}x · {compra.dataCompra}
+                                </p>
+                              </div>
+                              <span className="text-sm font-semibold">{formatCartaoCurrency(Number(compra.valorParcela))}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {cartoesTab === "parcelas" && (
+            <div className="space-y-3">
+              {cartoes.map((cartao) => {
+                const comprasFiltradas = getFilteredCardCompras(cartao.id);
+                return (
+                  <Card key={cartao.id}>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold">{cartao.nome}</p>
+                        <Badge variant="secondary">{comprasFiltradas.length} compra(s)</Badge>
+                      </div>
+                      {comprasFiltradas.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">Nenhuma compra encontrada para o filtro.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {comprasFiltradas.slice(0, 12).map((compra) => (
+                            <div key={compra.id} className="rounded-md border p-2.5 flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{compra.descricao}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Parcela atual {compra.parcelaAtual}/{compra.parcelas}
+                                </p>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setViewingCompra(compra)}
+                                data-testid={`button-open-parcelas-tab-${compra.id}`}
+                              >
+                                Ver parcelas
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {cartoesTab === "limite" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {cartoes.map((cartao) => {
+                const limite = Number(cartao.limite);
+                const comprometido = getCardUsedLimit(cartao.id);
+                const disponivel = getCardAvailableLimit(cartao.id);
+                const percentual = limite > 0 ? Math.min((comprometido / limite) * 100, 100) : 0;
+                return (
+                  <Card key={cartao.id}>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold">{cartao.nome}</p>
+                        <Badge variant={percentual >= 85 ? "destructive" : percentual >= 65 ? "secondary" : "default"}>
+                          {percentual.toFixed(0)}%
+                        </Badge>
+                      </div>
+                      <Progress value={percentual} className="h-2" />
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div className="rounded-md bg-muted/40 p-2">
+                          <p className="text-muted-foreground">Limite</p>
+                          <p className="font-semibold">{formatCartaoCurrency(limite)}</p>
+                        </div>
+                        <div className="rounded-md bg-muted/40 p-2">
+                          <p className="text-muted-foreground">Comprom.</p>
+                          <p className="font-semibold">{formatCartaoCurrency(comprometido)}</p>
+                        </div>
+                        <div className="rounded-md bg-emerald-500/5 p-2">
+                          <p className="text-muted-foreground">Disponível</p>
+                          <p className="font-semibold text-emerald-600">{formatCartaoCurrency(disponivel)}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className={cartoesTab === "compras" || cartoes.length === 0 ? "" : "hidden"}>
       {cartoes.length === 0 ? (
         <div className="text-center py-16" data-testid="empty-cartoes">
           <CreditCard className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
@@ -1298,10 +1514,10 @@ export default function CartoesPage() {
 
                   {selectedCartao === c.id && (
                     <div className="border-t border-border/50 divide-y divide-border/30">
-                      {getCardCompras(c.id).length === 0 ? (
+                      {getFilteredCardCompras(c.id).length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-4">Nenhuma compra na fatura</p>
                       ) : (
-                        getCardCompras(c.id).map((compra) => {
+                        getFilteredCardCompras(c.id).map((compra) => {
                           const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
                           return (
                             <div key={compra.id} className="flex items-center gap-3 px-4 py-3">
@@ -1350,7 +1566,7 @@ export default function CartoesPage() {
             const limiteComprometido = getCardUsedLimit(c.id);
             const limiteDisponivel = getCardAvailableLimit(c.id);
             const percentUsed = limite > 0 ? (limiteComprometido / limite) * 100 : 0;
-            const cardCompras = getCardCompras(c.id);
+            const cardCompras = getFilteredCardCompras(c.id);
             const daysUntil = getDaysUntilInvoice(Number(c.diaVencimento));
             const nextDate = getNextInvoiceDate(Number(c.diaVencimento));
             const isUrgent = daysUntil <= 5;
@@ -1513,6 +1729,7 @@ export default function CartoesPage() {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }
