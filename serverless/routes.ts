@@ -264,6 +264,7 @@ export function registerRoutes(app: Express): void {
   app.post("/api/imports/:id/rollback", requireAuth, requirePremiumFeature("smartImport"), importsController.rollback);
   app.get("/api/subscription/usage", requireAuth, subscriptionController.getUsage);
   app.get("/api/billing/status", requireAuth, billingController.getStatus);
+  app.post("/api/billing/mercadopago/checkout", requireAuth, billingController.createMercadoPagoCheckout);
   app.post("/api/backups/cloud", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.createManual);
   app.get("/api/backups/cloud", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.listByUser);
   app.get("/api/backups/cloud/:id/download", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.downloadById);

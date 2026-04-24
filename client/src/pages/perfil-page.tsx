@@ -16,6 +16,7 @@ import {
 } from "@/hooks/use-auth";
 import { useSubscriptionUsage } from "@/hooks/useSubscriptionUsage";
 import { createCloudBackup, listCloudBackups, restoreCloudBackup, type CloudBackupItem } from "@/services/api/cloud-backups";
+import { createMercadoPagoCheckout, getBillingStatus } from "@/services/api/billing";
 import {
   User, Download, Shield, Database, LogOut, CheckCircle, HelpCircle, Upload, Cloud
 } from "lucide-react";
@@ -118,6 +119,12 @@ export default function PerfilPage() {
   const limitsFromAuth = getUserSubscriptionLimits(user);
   const backupNuvemLiberado = hasCloudBackupAccess(user);
   const usageQuery = useSubscriptionUsage();
+  const billingStatusQuery = useQuery({
+    queryKey: ["/api/billing/status"],
+    queryFn: getBillingStatus,
+    enabled: Boolean(user),
+    retry: false,
+  });
 
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
@@ -253,6 +260,23 @@ export default function PerfilPage() {
     onError: (error) => {
       toast({
         title: "Erro ao importar backup",
+        description: parseImportApiError(error),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createBillingCheckoutMutation = useMutation({
+    mutationFn: createMercadoPagoCheckout,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/billing/status"] });
+      if (typeof window !== "undefined") {
+        window.location.assign(result.checkoutUrl);
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro ao iniciar assinatura",
         description: parseImportApiError(error),
         variant: "destructive",
       });
@@ -553,18 +577,20 @@ export default function PerfilPage() {
           </div>
 
           {usageSnapshot.subscriptionTier === "free" ? (
-            <Button
-              className="w-full"
-              onClick={() => {
-                toast({
-                  title: "Upgrade para Premium",
-                  description: "Checkout em breve. Entre em contato para ativar o plano premium na sua conta.",
-                });
-              }}
-              data-testid="button-upgrade-premium"
-            >
-              Fazer upgrade para Premium
-            </Button>
+            billingStatusQuery.data?.billingStatus === "pending" ? (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-700">
+                Pagamento pendente: aguardando confirmacao da assinatura no Mercado Pago.
+              </div>
+            ) : (
+              <Button
+                className="w-full"
+                onClick={() => createBillingCheckoutMutation.mutate()}
+                data-testid="button-upgrade-premium"
+                disabled={createBillingCheckoutMutation.isPending}
+              >
+                {createBillingCheckoutMutation.isPending ? "Redirecionando..." : "Assinar Premium"}
+              </Button>
+            )
           ) : (
             <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm text-emerald-700">
               Premium ativo: recursos premium disponíveis para sua conta.
