@@ -8,7 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { getUserSubscriptionTier, hasCloudBackupAccess, useAuth } from "@/hooks/use-auth";
+import {
+  getUserSubscriptionLimits,
+  getUserSubscriptionTier,
+  hasCloudBackupAccess,
+  useAuth,
+} from "@/hooks/use-auth";
+import { useSubscriptionUsage } from "@/hooks/useSubscriptionUsage";
 import { createCloudBackup, listCloudBackups, restoreCloudBackup, type CloudBackupItem } from "@/services/api/cloud-backups";
 import {
   User, Download, Shield, Database, LogOut, CheckCircle, HelpCircle, Upload, Cloud
@@ -26,6 +32,7 @@ import type {
   ServicoPagamento,
   ServicoPessoa,
 } from "@shared/schema";
+import { calculateRemaining, type SubscriptionLimitValue } from "@shared/subscription";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -51,6 +58,15 @@ function formatBytes(value: number): string {
   }
   const decimals = unitIndex === 0 ? 0 : 1;
   return `${size.toFixed(decimals)} ${units[unitIndex]}`;
+}
+
+function formatPlanLimit(limit: SubscriptionLimitValue): string {
+  return limit === null ? "Ilimitado" : String(limit);
+}
+
+function formatRemainingLimit(limit: SubscriptionLimitValue): string {
+  if (limit === null) return "Ilimitado";
+  return String(Math.max(0, limit));
 }
 
 type ImportBackupResponse = {
@@ -99,7 +115,9 @@ export default function PerfilPage() {
   const [backupRestaurandoId, setBackupRestaurandoId] = useState<string | null>(null);
   const inputImportacaoRef = useRef<HTMLInputElement | null>(null);
   const planoAtual = getUserSubscriptionTier(user);
+  const limitsFromAuth = getUserSubscriptionLimits(user);
   const backupNuvemLiberado = hasCloudBackupAccess(user);
+  const usageQuery = useSubscriptionUsage();
 
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
@@ -342,6 +360,22 @@ export default function PerfilPage() {
 
   const totalReceber = dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
   const totalPagar = dividas.filter((d) => d.tipo === "pagar" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
+  const usageSnapshot = usageQuery.data ?? {
+    subscriptionTier: planoAtual,
+    limits: limitsFromAuth,
+    usage: {
+      cartoes: cartoes.length,
+      pessoas: pessoas.length,
+      servicos: servicos.length,
+      metas: metas.length,
+    },
+    remaining: {
+      cartoes: calculateRemaining(limitsFromAuth.maxCartoes, cartoes.length),
+      pessoas: calculateRemaining(limitsFromAuth.maxPessoas, pessoas.length),
+      servicos: calculateRemaining(limitsFromAuth.maxServicos, servicos.length),
+      metas: calculateRemaining(limitsFromAuth.maxMetas, metas.length),
+    },
+  };
 
   return (
     <div className="p-6 space-y-6 max-w-2xl" data-testid="perfil-page">
@@ -426,6 +460,116 @@ export default function PerfilPage() {
               </Badge>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Shield className="w-4 h-4" /> Planos e benefícios
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-md border p-3 bg-muted/20 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">
+                {usageSnapshot.subscriptionTier === "premium" ? "Premium ativo" : "Plano Free ativo"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {usageSnapshot.subscriptionTier === "premium"
+                  ? "Todos os recursos premium desta etapa estão liberados para sua conta."
+                  : "Seu plano free continua funcional para uso diário. Faça upgrade quando quiser recursos avançados."}
+              </p>
+            </div>
+            <Badge variant={usageSnapshot.subscriptionTier === "premium" ? "default" : "secondary"}>
+              {usageSnapshot.subscriptionTier === "premium" ? "Premium" : "Free"}
+            </Badge>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Uso atual do plano</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-md border p-3 bg-muted/20">
+                <p className="text-xs text-muted-foreground">Cartões</p>
+                <p className="text-lg font-semibold">
+                  {usageSnapshot.usage.cartoes} / {formatPlanLimit(usageSnapshot.limits.maxCartoes)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Restante: {formatRemainingLimit(usageSnapshot.remaining.cartoes)}
+                </p>
+              </div>
+              <div className="rounded-md border p-3 bg-muted/20">
+                <p className="text-xs text-muted-foreground">Pessoas</p>
+                <p className="text-lg font-semibold">
+                  {usageSnapshot.usage.pessoas} / {formatPlanLimit(usageSnapshot.limits.maxPessoas)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Restante: {formatRemainingLimit(usageSnapshot.remaining.pessoas)}
+                </p>
+              </div>
+              <div className="rounded-md border p-3 bg-muted/20">
+                <p className="text-xs text-muted-foreground">Serviços</p>
+                <p className="text-lg font-semibold">
+                  {usageSnapshot.usage.servicos} / {formatPlanLimit(usageSnapshot.limits.maxServicos)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Restante: {formatRemainingLimit(usageSnapshot.remaining.servicos)}
+                </p>
+              </div>
+            </div>
+            {usageQuery.isError && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2">
+                Não foi possível atualizar o uso do plano agora. Exibindo contagem local como fallback.
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="rounded-md border p-3">
+              <p className="text-sm font-semibold mb-2">Plano Free</p>
+              <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+                <li>Dashboard financeiro básico</li>
+                <li>Pessoas até 20</li>
+                <li>Cartões até 4</li>
+                <li>Serviços até 10</li>
+                <li>Export/import local JSON</li>
+                <li>Saldo por pessoa e abatimentos</li>
+              </ul>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-sm font-semibold mb-2">Plano Premium</p>
+              <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+                <li>Backup na nuvem</li>
+                <li>Restauração na nuvem</li>
+                <li>Pessoas ilimitadas</li>
+                <li>Cartões ilimitados</li>
+                <li>Serviços ilimitados</li>
+                <li>Relatórios avançados</li>
+                <li>Previsão financeira</li>
+                <li>Importação inteligente</li>
+                <li>Automações futuras</li>
+              </ul>
+            </div>
+          </div>
+
+          {usageSnapshot.subscriptionTier === "free" ? (
+            <Button
+              className="w-full"
+              onClick={() => {
+                toast({
+                  title: "Upgrade para Premium",
+                  description: "Checkout em breve. Entre em contato para ativar o plano premium na sua conta.",
+                });
+              }}
+              data-testid="button-upgrade-premium"
+            >
+              Fazer upgrade para Premium
+            </Button>
+          ) : (
+            <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm text-emerald-700">
+              Premium ativo: recursos premium disponíveis para sua conta.
+            </div>
+          )}
         </CardContent>
       </Card>
 
