@@ -76,18 +76,27 @@ function formatRemainingLimit(limit: SubscriptionLimitValue): string {
   return String(Math.max(0, limit));
 }
 
-function resolveBillingStatusUi(status: BillingStatusResponse | undefined): {
+function resolveBillingStatusUi(
+  status: BillingStatusResponse | undefined,
+  subscriptionAccess?: SubscriptionAccess
+): {
   title: string;
   description: string;
   tone: "default" | "secondary" | "destructive";
 } {
-  if (!status) {
-    return {
-      title: "Plano Free ativo",
-      description: "Sem assinatura ativa no momento.",
-      tone: "secondary",
-    };
-  }
+if (!status) {
+  return {
+    title:
+      subscriptionAccess?.subscriptionTier === "premium"
+        ? "Plano Premium ativo"
+        : "Plano Free ativo",
+    description:
+      subscriptionAccess?.subscriptionTier === "premium"
+        ? "Assinatura premium ativa no momento."
+        : "Sem assinatura ativa no momento.",
+    tone: "secondary",
+  };
+}
 
   if (status.billingStatus === "trialing") {
     const trialEndsAtLabel = status.trial.endsAt ? formatDateTimeBR(status.trial.endsAt) : null;
