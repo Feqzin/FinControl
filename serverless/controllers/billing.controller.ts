@@ -63,5 +63,58 @@ export function createBillingController(service: BillingService) {
         return res.status(500).json({ message: "Falha ao iniciar checkout de assinatura." });
       }
     },
+
+    processMercadoPagoWebhook: async (req: Request, res: Response) => {
+      const rawBody = Buffer.isBuffer(req.rawBody)
+        ? req.rawBody.toString("utf8")
+        : typeof req.rawBody === "string"
+          ? req.rawBody
+          : JSON.stringify(req.body ?? {});
+
+      try {
+        const result = await service.processMercadoPagoWebhook({
+          query: req.query as Record<string, unknown>,
+          payload: req.body,
+          rawBody,
+          xSignature: req.get("x-signature"),
+          xRequestId: req.get("x-request-id"),
+        });
+
+        auditRequest(req, {
+          action: "update",
+          status: result.outcome === "processed" ? "success" : "failure",
+          domain: "billing.webhook.mercado_pago",
+          details: {
+            provider: "mercado_pago",
+            outcome: result.outcome,
+            reason: result.reason,
+            providerEventId: result.providerEventId,
+          },
+        });
+
+        return res.status(200).json({ received: true });
+      } catch (error) {
+        writeTechnicalLog({
+          event: "billing.webhook.unexpected_error",
+          source: "billing.controller",
+          level: "error",
+          requestId: req.requestId,
+          data: {
+            error: toErrorLog(error),
+          },
+        });
+
+        auditRequest(req, {
+          action: "update",
+          status: "error",
+          domain: "billing.webhook.mercado_pago",
+          error: error instanceof Error ? error.message : "Erro inesperado",
+        });
+
+        // Sempre responde 200 para evitar vazamento de erro tecnico
+        // e permitir reprocessamento controlado por idempotencia local.
+        return res.status(200).json({ received: true });
+      }
+    },
   };
 }

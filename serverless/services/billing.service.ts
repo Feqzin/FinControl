@@ -1,8 +1,9 @@
-import { randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { buildSubscriptionAccess, type SubscriptionTier } from "../../shared/subscription.js";
 import {
   billingWebhookEvents,
+  users,
   userSubscriptions,
   type BillingWebhookEvent,
   type UserSubscription,
@@ -63,6 +64,12 @@ export type BillingCheckoutResponse = {
   };
 };
 
+export type BillingWebhookProcessResult = {
+  outcome: "processed" | "ignored";
+  reason: string;
+  providerEventId: string;
+};
+
 export type UpsertLocalSubscriptionInput = {
   userId: string;
   provider: BillingProvider;
@@ -99,8 +106,33 @@ type MercadoPagoPreapprovalResponse = {
   id?: unknown;
   status?: unknown;
   preapproval_plan_id?: unknown;
+  external_reference?: unknown;
+  reason?: unknown;
+  date_created?: unknown;
+  date_last_updated?: unknown;
+  next_payment_date?: unknown;
+  auto_recurring?: {
+    transaction_amount?: unknown;
+    currency_id?: unknown;
+  } | unknown;
   init_point?: unknown;
   sandbox_init_point?: unknown;
+};
+
+type MercadoPagoSearchResponse = {
+  results?: unknown;
+};
+
+type ResolvedMercadoPagoSubscription = {
+  providerSubscriptionId: string | null;
+  externalReference: string | null;
+  providerStatus: string;
+  providerPlanId: string | null;
+  amount: string | null;
+  currency: string | null;
+  startedAt: Date | null;
+  currentPeriodEnd: Date | null;
+  rawPayload: MercadoPagoPreapprovalResponse;
 };
 
 type MercadoPagoConfig = {
@@ -250,6 +282,109 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
+function parseIsoDate(value: unknown): Date | null {
+  if (typeof value !== "string" || value.trim().length === 0) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function normalizeMercadoPagoStatus(status: string | null | undefined): string {
+  if (!status) return "pending";
+  return status.trim().toLowerCase();
+}
+
+function mapMercadoPagoStatus(status: string | null | undefined): {
+  localStatus: Exclude<BillingSubscriptionStatus, "no_subscription">;
+  subscriptionTier: SubscriptionTier;
+} {
+  const normalized = normalizeMercadoPagoStatus(status);
+
+  if (normalized === "authorized" || normalized === "approved" || normalized === "active") {
+    return { localStatus: "active", subscriptionTier: "premium" };
+  }
+
+  if (normalized === "paused") {
+    return { localStatus: "paused", subscriptionTier: "free" };
+  }
+
+  if (
+    normalized === "cancelled"
+    || normalized === "canceled"
+    || normalized === "cancelled_by_user"
+    || normalized === "stopped"
+  ) {
+    return { localStatus: "canceled", subscriptionTier: "free" };
+  }
+
+  if (normalized === "expired") {
+    return { localStatus: "expired", subscriptionTier: "free" };
+  }
+
+  if (normalized === "rejected") {
+    return { localStatus: "rejected", subscriptionTier: "free" };
+  }
+
+  return { localStatus: "pending", subscriptionTier: "free" };
+}
+
+function toSafeProviderEventId(value: string): string {
+  return value.slice(0, 180);
+}
+
+function parseMercadoPagoSignature(signatureHeader: string): { ts: string; v1: string } | null {
+  const parts = signatureHeader
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+
+  let ts = "";
+  let v1 = "";
+  for (const part of parts) {
+    const [keyRaw, valueRaw] = part.split("=", 2);
+    const key = keyRaw?.trim().toLowerCase();
+    const value = valueRaw?.trim();
+    if (!key || !value) continue;
+    if (key === "ts") ts = value;
+    if (key === "v1") v1 = value;
+  }
+
+  if (!ts || !v1) return null;
+  return { ts, v1: v1.toLowerCase() };
+}
+
+function safeCompareHexSignature(expectedHex: string, actualHex: string): boolean {
+  const normalizedExpected = expectedHex.toLowerCase();
+  const normalizedActual = actualHex.toLowerCase();
+  if (normalizedExpected.length !== normalizedActual.length) return false;
+  const expectedBuffer = Buffer.from(normalizedExpected, "hex");
+  const actualBuffer = Buffer.from(normalizedActual, "hex");
+  if (expectedBuffer.length === 0 || expectedBuffer.length !== actualBuffer.length) return false;
+  return timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
+function extractString(value: unknown): string | null {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+}
+
+function buildFallbackProviderEventId(payload: unknown, queryId: string | null, topic: string | null): string {
+  const content = JSON.stringify({
+    queryId,
+    topic,
+    payload,
+  });
+  const hash = createHash("sha256").update(content ?? "empty").digest("hex").slice(0, 32);
+  return `generated:${hash}`;
+}
+
 export class BillingServiceError extends Error {
   readonly status: number;
 
@@ -261,6 +396,207 @@ export class BillingServiceError extends Error {
 
 export class BillingService {
   constructor(private readonly dataStorage: IStorage = storage) {}
+
+  private async getMercadoPagoConfig(): Promise<MercadoPagoConfig> {
+    return resolveMercadoPagoConfig();
+  }
+
+  private async fetchMercadoPagoPreapprovalById(
+    config: MercadoPagoConfig,
+    providerSubscriptionId: string,
+  ): Promise<ResolvedMercadoPagoSubscription | null> {
+    let response;
+    try {
+      response = await fetch(`${config.endpoint}/preapproval/${encodeURIComponent(providerSubscriptionId)}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${config.accessToken}`,
+        },
+      });
+    } catch (error) {
+      writeTechnicalLog({
+        event: "billing.webhook.provider_fetch_failed",
+        source: "billing.service",
+        level: "error",
+        data: {
+          providerSubscriptionId,
+          error: toErrorLog(error),
+        },
+      });
+      throw new BillingServiceError(503, "Falha ao consultar assinatura no Mercado Pago.");
+    }
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    const payloadText = await response.text();
+    if (!response.ok) {
+      writeTechnicalLog({
+        event: "billing.webhook.provider_fetch_error",
+        source: "billing.service",
+        level: "error",
+        data: {
+          providerSubscriptionId,
+          statusCode: response.status,
+          payloadText,
+        },
+      });
+      throw new BillingServiceError(503, "Mercado Pago indisponivel para validar assinatura.");
+    }
+
+    let payload: MercadoPagoPreapprovalResponse;
+    try {
+      payload = JSON.parse(payloadText) as MercadoPagoPreapprovalResponse;
+    } catch {
+      throw new BillingServiceError(502, "Resposta invalida do Mercado Pago ao validar assinatura.");
+    }
+
+    const resolvedId = extractString(payload.id) ?? providerSubscriptionId;
+    const status = normalizeMercadoPagoStatus(extractString(payload.status));
+    const amount = normalizeAmount(payload.auto_recurring && typeof payload.auto_recurring === "object"
+      ? extractString((payload.auto_recurring as { transaction_amount?: unknown }).transaction_amount)
+      : null);
+    const currency = payload.auto_recurring && typeof payload.auto_recurring === "object"
+      ? normalizeOptionalText(extractString((payload.auto_recurring as { currency_id?: unknown }).currency_id))
+      : null;
+
+    return {
+      providerSubscriptionId: resolvedId,
+      externalReference: normalizeOptionalText(extractString(payload.external_reference)),
+      providerStatus: status,
+      providerPlanId: normalizeOptionalText(extractString(payload.preapproval_plan_id)),
+      amount,
+      currency,
+      startedAt: parseIsoDate(payload.date_created),
+      currentPeriodEnd: parseIsoDate(payload.next_payment_date),
+      rawPayload: payload,
+    };
+  }
+
+  private async searchMercadoPagoPreapprovalByExternalReference(
+    config: MercadoPagoConfig,
+    externalReference: string,
+  ): Promise<ResolvedMercadoPagoSubscription | null> {
+    let response;
+    try {
+      response = await fetch(
+        `${config.endpoint}/preapproval/search?external_reference=${encodeURIComponent(externalReference)}&limit=1&sort=date_created&criteria=desc`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+          },
+        },
+      );
+    } catch (error) {
+      writeTechnicalLog({
+        event: "billing.webhook.provider_search_failed",
+        source: "billing.service",
+        level: "error",
+        data: {
+          externalReference,
+          error: toErrorLog(error),
+        },
+      });
+      throw new BillingServiceError(503, "Falha ao consultar assinatura no Mercado Pago.");
+    }
+
+    const payloadText = await response.text();
+    if (!response.ok) {
+      writeTechnicalLog({
+        event: "billing.webhook.provider_search_error",
+        source: "billing.service",
+        level: "error",
+        data: {
+          externalReference,
+          statusCode: response.status,
+          payloadText,
+        },
+      });
+      throw new BillingServiceError(503, "Mercado Pago indisponivel para validar assinatura.");
+    }
+
+    let payload: MercadoPagoSearchResponse;
+    try {
+      payload = JSON.parse(payloadText) as MercadoPagoSearchResponse;
+    } catch {
+      throw new BillingServiceError(502, "Resposta invalida do Mercado Pago ao buscar assinatura.");
+    }
+
+    const first = Array.isArray(payload.results) && payload.results.length > 0
+      ? payload.results[0] as MercadoPagoPreapprovalResponse
+      : null;
+
+    if (!first) return null;
+
+    const providerSubscriptionId = extractString(first.id);
+    if (!providerSubscriptionId) return null;
+
+    return this.fetchMercadoPagoPreapprovalById(config, providerSubscriptionId);
+  }
+
+  private async findLocalSubscriptionByProviderIdentifiers(params: {
+    providerSubscriptionId?: string | null;
+    externalReference?: string | null;
+  }): Promise<UserSubscription | null> {
+    const providerSubscriptionId = normalizeOptionalText(params.providerSubscriptionId);
+    if (providerSubscriptionId) {
+      const [row] = await db.select().from(userSubscriptions)
+        .where(and(
+          eq(userSubscriptions.provider, "mercado_pago"),
+          eq(userSubscriptions.providerSubscriptionId, providerSubscriptionId),
+        ))
+        .limit(1);
+      if (row) return row;
+    }
+
+    const externalReference = normalizeOptionalText(params.externalReference);
+    if (externalReference) {
+      const [row] = await db.select().from(userSubscriptions)
+        .where(and(
+          eq(userSubscriptions.provider, "mercado_pago"),
+          eq(userSubscriptions.externalReference, externalReference),
+        ))
+        .limit(1);
+      if (row) return row;
+    }
+
+    return null;
+  }
+
+  private validateMercadoPagoWebhookSignature(input: {
+    webhookSecret: string;
+    dataId: string | null;
+    xRequestId: string | null;
+    xSignature: string | null;
+  }): boolean {
+    if (!input.webhookSecret) return true;
+    if (!input.dataId || !input.xRequestId || !input.xSignature) return false;
+
+    const parsedSignature = parseMercadoPagoSignature(input.xSignature);
+    if (!parsedSignature) return false;
+
+    const manifest = `id:${input.dataId};request-id:${input.xRequestId};ts:${parsedSignature.ts};`;
+    const expected = createHmac("sha256", input.webhookSecret)
+      .update(manifest)
+      .digest("hex");
+
+    return safeCompareHexSignature(expected, parsedSignature.v1);
+  }
+
+  private async updateWebhookEventStatus(
+    eventId: string,
+    status: BillingWebhookEventStatus,
+    processedAt: Date | null = new Date(),
+  ): Promise<void> {
+    await db.update(billingWebhookEvents)
+      .set({
+        status,
+        processedAt,
+      })
+      .where(eq(billingWebhookEvents.id, eventId));
+  }
 
   async getCurrentSubscription(userId: string): Promise<UserSubscription | null> {
     const [row] = await db.select().from(userSubscriptions)
@@ -413,8 +749,173 @@ export class BillingService {
     };
   }
 
+  async processMercadoPagoWebhook(input: {
+    query: Record<string, unknown>;
+    payload: unknown;
+    rawBody: string;
+    xSignature: string | null;
+    xRequestId: string | null;
+  }): Promise<BillingWebhookProcessResult> {
+    const topic =
+      normalizeOptionalText(extractString(input.query.topic))
+      ?? normalizeOptionalText(extractString(input.query.type))
+      ?? normalizeOptionalText(extractString((input.payload as { topic?: unknown } | null | undefined)?.topic))
+      ?? normalizeOptionalText(extractString((input.payload as { type?: unknown } | null | undefined)?.type));
+
+    const queryId = normalizeOptionalText(extractString(input.query.id));
+    const payloadId = normalizeOptionalText(extractString((input.payload as { id?: unknown } | null | undefined)?.id));
+    const providerEventId = toSafeProviderEventId(
+      normalizeOptionalText(input.xRequestId)
+      ?? queryId
+      ?? payloadId
+      ?? buildFallbackProviderEventId(input.payload, queryId, topic),
+    );
+
+    const dataIdFromPayload = normalizeOptionalText(
+      extractString((input.payload as { data?: { id?: unknown } } | null | undefined)?.data?.id),
+    );
+    const dataIdFromQuery = normalizeOptionalText(
+      extractString((input.query as Record<string, unknown>)["data.id"]),
+    );
+    const dataId = dataIdFromPayload ?? dataIdFromQuery ?? queryId;
+
+    const webhookSecret = process.env.MERCADO_PAGO_WEBHOOK_SECRET?.trim() ?? "";
+    if (webhookSecret.length > 0) {
+      const signatureValid = this.validateMercadoPagoWebhookSignature({
+        webhookSecret,
+        dataId,
+        xRequestId: normalizeOptionalText(input.xRequestId),
+        xSignature: normalizeOptionalText(input.xSignature),
+      });
+
+      if (!signatureValid) {
+        return {
+          outcome: "ignored",
+          reason: "invalid_signature",
+          providerEventId,
+        };
+      }
+    }
+
+    const eventRegistration = await this.registerWebhookEventIdempotent({
+      provider: "mercado_pago",
+      providerEventId,
+      topic,
+      payload: {
+        query: input.query,
+        body: input.payload,
+        rawBody: input.rawBody,
+      },
+      status: "received",
+    });
+
+    if (eventRegistration.alreadyExists) {
+      return {
+        outcome: "ignored",
+        reason: "duplicate_event",
+        providerEventId,
+      };
+    }
+
+    try {
+      const externalReferenceFromPayload = normalizeOptionalText(
+        extractString((input.payload as { external_reference?: unknown } | null | undefined)?.external_reference),
+      );
+      const externalReferenceFromQuery = normalizeOptionalText(
+        extractString((input.query as Record<string, unknown>).external_reference),
+      );
+      const webhookExternalReference = externalReferenceFromPayload ?? externalReferenceFromQuery;
+
+      const providerSubscriptionIdHint = dataId;
+      const config = await this.getMercadoPagoConfig();
+
+      let remoteSubscription: ResolvedMercadoPagoSubscription | null = null;
+      if (providerSubscriptionIdHint) {
+        remoteSubscription = await this.fetchMercadoPagoPreapprovalById(config, providerSubscriptionIdHint);
+      }
+      if (!remoteSubscription && webhookExternalReference) {
+        remoteSubscription = await this.searchMercadoPagoPreapprovalByExternalReference(config, webhookExternalReference);
+      }
+
+      if (!remoteSubscription) {
+        await this.updateWebhookEventStatus(eventRegistration.event.id, "ignored", new Date());
+        return {
+          outcome: "ignored",
+          reason: "subscription_not_found_in_provider",
+          providerEventId,
+        };
+      }
+
+      const localSubscription = await this.findLocalSubscriptionByProviderIdentifiers({
+        providerSubscriptionId: remoteSubscription.providerSubscriptionId,
+        externalReference: remoteSubscription.externalReference ?? webhookExternalReference,
+      });
+
+      if (!localSubscription) {
+        await this.updateWebhookEventStatus(eventRegistration.event.id, "ignored", new Date());
+        return {
+          outcome: "ignored",
+          reason: "local_subscription_not_found",
+          providerEventId,
+        };
+      }
+
+      const mappedStatus = mapMercadoPagoStatus(remoteSubscription.providerStatus);
+      const now = new Date();
+
+      await db.transaction(async (tx) => {
+        await tx.update(userSubscriptions)
+          .set({
+            providerSubscriptionId: remoteSubscription.providerSubscriptionId,
+            providerPlanId: remoteSubscription.providerPlanId,
+            externalReference: remoteSubscription.externalReference ?? localSubscription.externalReference,
+            status: mappedStatus.localStatus,
+            providerStatus: remoteSubscription.providerStatus,
+            amount: remoteSubscription.amount ?? localSubscription.amount,
+            currency: remoteSubscription.currency ?? localSubscription.currency,
+            startedAt: remoteSubscription.startedAt ?? localSubscription.startedAt,
+            currentPeriodEnd: remoteSubscription.currentPeriodEnd ?? localSubscription.currentPeriodEnd,
+            canceledAt: mappedStatus.localStatus === "canceled" ? now : null,
+            lastWebhookAt: now,
+            lastSyncAt: now,
+            rawPayload: {
+              webhook: {
+                query: input.query,
+                body: input.payload,
+              },
+              provider: remoteSubscription.rawPayload,
+            },
+            updatedAt: now,
+          })
+          .where(eq(userSubscriptions.id, localSubscription.id));
+
+        await tx.update(users)
+          .set({
+            subscriptionTier: mappedStatus.subscriptionTier,
+          })
+          .where(eq(users.id, localSubscription.userId));
+
+        await tx.update(billingWebhookEvents)
+          .set({
+            status: "processed",
+            processedAt: now,
+          })
+          .where(eq(billingWebhookEvents.id, eventRegistration.event.id));
+      });
+
+      return {
+        outcome: "processed",
+        reason: `status_synced_${mappedStatus.localStatus}`,
+        providerEventId,
+      };
+    } catch (error) {
+      await this.updateWebhookEventStatus(eventRegistration.event.id, "error", new Date());
+      throw error;
+    }
+  }
+
   async createMercadoPagoCheckout(userId: string): Promise<BillingCheckoutResponse> {
-    const config = resolveMercadoPagoConfig();
+    const config = await this.getMercadoPagoConfig();
     const currentSubscription = await this.getCurrentSubscription(userId);
 
     if (currentSubscription?.status === "active") {
