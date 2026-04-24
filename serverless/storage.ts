@@ -99,7 +99,10 @@ function toUserWithOptionalDefaults(user: {
     username: user.username,
     password: user.password,
     nomeCompleto: null,
-    subscriptionTier: "free",
+    subscriptionTier:
+    user.subscriptionTier ??
+    user.subscription_tier ??
+    "free",
     trialStartedAt: null,
     trialEndsAt: null,
     trialUsedAt: null,
