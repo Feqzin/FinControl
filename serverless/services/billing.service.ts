@@ -220,6 +220,41 @@ function isPaidSubscriptionStatus(status: BillingSubscriptionStatus): boolean {
   return status === "active";
 }
 
+function resolveEffectiveTierByPriority(params: {
+  subscriptionTierStored: SubscriptionTier;
+  subscriptionStatus: BillingSubscriptionStatus;
+  trialIsActive: boolean;
+}): SubscriptionTier {
+  const { subscriptionTierStored, subscriptionStatus, trialIsActive } = params;
+
+  if (
+    (subscriptionStatus === "canceled"
+      || subscriptionStatus === "expired"
+      || subscriptionStatus === "rejected")
+    && !trialIsActive
+  ) {
+    return "free";
+  }
+
+  if (subscriptionStatus === "pending" && !trialIsActive) {
+    return "free";
+  }
+
+  if (subscriptionTierStored === "premium") {
+    return "premium";
+  }
+
+  if (isPaidSubscriptionStatus(subscriptionStatus)) {
+    return "premium";
+  }
+
+  if (trialIsActive) {
+    return "premium";
+  }
+
+  return "free";
+}
+
 function toSubscriptionResponse(subscription: UserSubscription | null): BillingStatusResponse["subscription"] {
   if (!subscription) return null;
   return {
@@ -852,6 +887,7 @@ export class BillingService {
   }): EffectiveSubscriptionAccess {
     const { user, currentSubscription, now } = params;
     const storedAccess = buildSubscriptionAccess(user.subscriptionTier);
+    const subscriptionTierStored = storedAccess.subscriptionTier;
     const subscriptionStatus = currentSubscription
       ? toBillingStatus(currentSubscription.status)
       : "no_subscription";
@@ -865,18 +901,29 @@ export class BillingService {
     );
     const trialWasUsed = Boolean(trialUsedAt || trialStartedAt || trialEndsAt);
 
-    const effectiveTier: SubscriptionTier =
-      isPaidSubscriptionStatus(subscriptionStatus) || trialIsActive
-        ? "premium"
-        : "free";
+    const effectiveTier = resolveEffectiveTierByPriority({
+      subscriptionTierStored,
+      subscriptionStatus,
+      trialIsActive,
+    });
     const effectiveAccess = buildSubscriptionAccess(effectiveTier);
-    const billingStatus: BillingEffectiveStatus = isPaidSubscriptionStatus(subscriptionStatus)
-      ? "active"
-      : (trialIsActive ? "trialing" : subscriptionStatus);
+    let billingStatus: BillingEffectiveStatus;
+    if (isPaidSubscriptionStatus(subscriptionStatus)) {
+      billingStatus = "active";
+    } else if (trialIsActive) {
+      billingStatus = "trialing";
+    } else if (subscriptionStatus !== "no_subscription") {
+      billingStatus = subscriptionStatus;
+    } else if (subscriptionTierStored === "premium") {
+      // Mantém a leitura do Perfil coerente quando o tier armazenado já é premium.
+      billingStatus = "active";
+    } else {
+      billingStatus = "no_subscription";
+    }
 
     return {
       effectiveTier,
-      subscriptionTierStored: storedAccess.subscriptionTier,
+      subscriptionTierStored,
       billingStatus,
       trial: {
         startedAt: trialStartedAt,
@@ -887,7 +934,7 @@ export class BillingService {
       features: effectiveAccess.features,
       limits: effectiveAccess.limits,
       canStartTrial: !trialWasUsed,
-      canSubscribe: !isPaidSubscriptionStatus(subscriptionStatus),
+      canSubscribe: effectiveTier !== "premium" && !isPaidSubscriptionStatus(subscriptionStatus),
       canCancel:
         subscriptionStatus === "active"
         || subscriptionStatus === "pending"
