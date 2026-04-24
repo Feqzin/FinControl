@@ -1,17 +1,19 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, getQueryFn } from "@/lib/queryClient";
-import type { SubscriptionTier } from "@shared/subscription";
-
-type AuthFeatures = {
-  cloudBackup: boolean;
-};
+import {
+  buildSubscriptionAccess,
+  type SubscriptionFeatures,
+  type SubscriptionLimits,
+  type SubscriptionTier,
+} from "@shared/subscription";
 
 type AuthUser = {
   id: string;
   username: string;
   nomeCompleto: string | null;
   subscriptionTier?: SubscriptionTier | null;
-  features?: AuthFeatures | null;
+  features?: SubscriptionFeatures | null;
+  limits?: SubscriptionLimits | null;
 };
 
 const AUTH_ME_QUERY_KEY = ["/api/auth/me"] as const;
@@ -28,12 +30,21 @@ async function refreshAuthenticatedUser(): Promise<void> {
 }
 
 export function getUserSubscriptionTier(user: AuthUser | null | undefined): SubscriptionTier {
-  return user?.subscriptionTier === "premium" ? "premium" : "free";
+  return buildSubscriptionAccess(user?.subscriptionTier).subscriptionTier;
+}
+
+export function getUserSubscriptionFeatures(user: AuthUser | null | undefined): SubscriptionFeatures {
+  const fallback = buildSubscriptionAccess(user?.subscriptionTier);
+  return user?.features ?? fallback.features;
+}
+
+export function getUserSubscriptionLimits(user: AuthUser | null | undefined): SubscriptionLimits {
+  const fallback = buildSubscriptionAccess(user?.subscriptionTier);
+  return user?.limits ?? fallback.limits;
 }
 
 export function hasCloudBackupAccess(user: AuthUser | null | undefined): boolean {
-  if (user?.features?.cloudBackup === true) return true;
-  return getUserSubscriptionTier(user) === "premium";
+  return getUserSubscriptionFeatures(user).cloudBackup === true;
 }
 
 export function useAuth() {

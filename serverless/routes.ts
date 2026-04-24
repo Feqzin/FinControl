@@ -28,6 +28,7 @@ import { createRendasController } from "./controllers/rendas.controller.js";
 import { createPatrimoniosController } from "./controllers/patrimonios.controller.js";
 import { createPagamentosTimelineController } from "./controllers/pagamentos-timeline.controller.js";
 import { createCloudBackupsController } from "./controllers/cloud-backups.controller.js";
+import { createSubscriptionController } from "./controllers/subscription.controller.js";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.js";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
 import { registerDebugDbPingRoute } from "./routes/debug-db-ping.route.js";
@@ -37,6 +38,7 @@ import { transformBackupForPersistence } from "./services/backup-import-transfor
 import { persistTransformedBackupImport } from "./services/backup-import-persistence.service.js";
 import { toErrorLog, writeTechnicalLog } from "./logger.js";
 import { CloudBackupsService } from "./services/cloud-backups.service.js";
+import { SubscriptionService } from "./services/subscription.service.js";
 import { requirePremiumFeature } from "./subscription-access.js";
 import { divide, parseMoney } from "../utils/money.js";
 import { pool } from "./db.js";
@@ -85,6 +87,7 @@ export function registerRoutes(app: Express): void {
   const patrimoniosController = createPatrimoniosController(new PatrimoniosService(storage));
   const pagamentosTimelineController = createPagamentosTimelineController(new PagamentosTimelineService(financialRepository));
   const cloudBackupsController = createCloudBackupsController(new CloudBackupsService());
+  const subscriptionController = createSubscriptionController(new SubscriptionService(storage));
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -256,6 +259,7 @@ export function registerRoutes(app: Express): void {
   app.post("/api/imports/preview", requireAuth, importsController.preview);
   app.post("/api/imports/confirm", requireAuth, importsController.confirm);
   app.post("/api/imports/:id/rollback", requireAuth, importsController.rollback);
+  app.get("/api/subscription/usage", requireAuth, subscriptionController.getUsage);
   app.post("/api/backups/cloud", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.createManual);
   app.get("/api/backups/cloud", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.listByUser);
   app.get("/api/backups/cloud/:id/download", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.downloadById);

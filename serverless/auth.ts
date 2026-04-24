@@ -158,6 +158,7 @@ function toAuthUserResponse(user: {
     nomeCompleto: user.nomeCompleto ?? null,
     subscriptionTier: access.subscriptionTier,
     features: access.features,
+    limits: access.limits,
   };
 }
 
