@@ -64,6 +64,7 @@ function isMissingUsersOptionalColumnsError(error: unknown): boolean {
     combined.includes("\"users\"") &&
     (
       combined.includes("\"nome_completo\"") ||
+      combined.includes("\"subscription_tier\"") ||
       combined.includes("\"reset_token\"") ||
       combined.includes("\"reset_token_expiry\"")
     );
@@ -74,6 +75,7 @@ function isMissingUsersOptionalColumnsError(error: unknown): boolean {
     combined.includes("does not exist") &&
     (
       combined.includes("nome_completo") ||
+      combined.includes("subscription_tier") ||
       combined.includes("reset_token") ||
       combined.includes("reset_token_expiry")
     );
@@ -91,6 +93,7 @@ function toUserWithOptionalDefaults(user: {
     username: user.username,
     password: user.password,
     nomeCompleto: null,
+    subscriptionTier: "free",
     resetToken: null,
     resetTokenExpiry: null,
   };
@@ -289,6 +292,7 @@ export class DatabaseStorage implements IStorage {
 
       const fallbackData: Partial<User> = { ...data };
       delete fallbackData.nomeCompleto;
+      delete fallbackData.subscriptionTier;
       delete fallbackData.resetToken;
       delete fallbackData.resetTokenExpiry;
 

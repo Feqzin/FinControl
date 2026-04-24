@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
+import { getUserSubscriptionTier, hasCloudBackupAccess, useAuth } from "@/hooks/use-auth";
 import {
-  User, Download, Shield, Database, LogOut, CheckCircle, HelpCircle, Upload
+  User, Download, Shield, Database, LogOut, CheckCircle, HelpCircle, Upload, Cloud
 } from "lucide-react";
 import { TourRestartButton } from "@/components/onboarding-tour";
 import type {
@@ -68,10 +69,12 @@ type ImportMode = "merge" | "replace";
 export default function PerfilPage() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
-  const [nomeCompleto, setNomeCompleto] = useState((user as any)?.nomeCompleto || "");
+  const [nomeCompleto, setNomeCompleto] = useState(user?.nomeCompleto || "");
   const [arquivoImportacao, setArquivoImportacao] = useState<File | null>(null);
   const [modoImportacao, setModoImportacao] = useState<ImportMode>("merge");
   const inputImportacaoRef = useRef<HTMLInputElement | null>(null);
+  const planoAtual = getUserSubscriptionTier(user);
+  const backupNuvemLiberado = hasCloudBackupAccess(user);
 
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
@@ -237,10 +240,10 @@ export default function PerfilPage() {
         <CardContent className="space-y-4">
           <div className="flex items-center gap-4">
             <div className="flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary font-bold text-2xl flex-shrink-0">
-              {((user as any)?.nomeCompleto || user?.username || "?")[0].toUpperCase()}
+              {(user?.nomeCompleto || user?.username || "?")[0].toUpperCase()}
             </div>
             <div>
-              <p className="font-semibold text-lg">{(user as any)?.nomeCompleto || user?.username}</p>
+              <p className="font-semibold text-lg">{user?.nomeCompleto || user?.username}</p>
               <p className="text-sm text-muted-foreground">{user?.username}</p>
             </div>
           </div>
@@ -290,6 +293,19 @@ export default function PerfilPage() {
               <CheckCircle className="w-4 h-4 flex-shrink-0" />
               <span>Sessao segura com cookie httpOnly</span>
             </div>
+            <div className="flex items-center justify-between gap-3 p-3 rounded-md border bg-muted/30">
+              <div>
+                <p className="text-sm font-medium">Plano atual</p>
+                <p className="text-xs text-muted-foreground">
+                  {planoAtual === "premium"
+                    ? "Recursos premium liberados para sua conta."
+                    : "Plano free ativo. Recursos premium aparecem bloqueados."}
+                </p>
+              </div>
+              <Badge variant={planoAtual === "premium" ? "default" : "secondary"}>
+                {planoAtual === "premium" ? "Premium" : "Free"}
+              </Badge>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -338,7 +354,7 @@ export default function PerfilPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Exporte todos os seus dados em formato JSON para backup ou migracao.
+            Backup local em JSON continua disponivel para todos os planos.
           </p>
           <Button
             variant="outline"
@@ -348,6 +364,32 @@ export default function PerfilPage() {
           >
             <Download className="w-4 h-4 mr-2" /> Exportar dados (JSON)
           </Button>
+          <div className="rounded-md border p-3 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Cloud className="w-4 h-4 text-primary" />
+                <p className="text-sm font-medium">
+                  Backup na nuvem com proteção avançada dos seus dados (Premium)
+                </p>
+              </div>
+              <Badge variant={backupNuvemLiberado ? "default" : "secondary"}>
+                {backupNuvemLiberado ? "Premium ativo" : "Premium"}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {backupNuvemLiberado
+                ? "Seu plano premium ja possui permissão para backup na nuvem. O fluxo de upload/listagem/restauracao sera liberado em uma próxima etapa."
+                : "Seu plano free nao inclui backup na nuvem. Upgrade para Premium liberara esse recurso."}
+            </p>
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled
+              data-testid="button-cloud-backup-premium"
+            >
+              {backupNuvemLiberado ? "Backup na nuvem (em breve)" : "Disponível no plano Premium"}
+            </Button>
+          </div>
           <Separator />
           <p className="text-sm text-muted-foreground">
             Importe um backup JSON para restaurar seus dados nesta conta.

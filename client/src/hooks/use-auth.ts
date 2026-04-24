@@ -1,10 +1,17 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, getQueryFn } from "@/lib/queryClient";
+import type { SubscriptionTier } from "@shared/subscription";
+
+type AuthFeatures = {
+  cloudBackup: boolean;
+};
 
 type AuthUser = {
   id: string;
   username: string;
   nomeCompleto: string | null;
+  subscriptionTier?: SubscriptionTier | null;
+  features?: AuthFeatures | null;
 };
 
 const AUTH_ME_QUERY_KEY = ["/api/auth/me"] as const;
@@ -18,6 +25,15 @@ async function refreshAuthenticatedUser(): Promise<void> {
     queryKey: AUTH_ME_QUERY_KEY,
     refetchType: "active",
   });
+}
+
+export function getUserSubscriptionTier(user: AuthUser | null | undefined): SubscriptionTier {
+  return user?.subscriptionTier === "premium" ? "premium" : "free";
+}
+
+export function hasCloudBackupAccess(user: AuthUser | null | undefined): boolean {
+  if (user?.features?.cloudBackup === true) return true;
+  return getUserSubscriptionTier(user) === "premium";
 }
 
 export function useAuth() {

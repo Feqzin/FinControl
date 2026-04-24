@@ -8,6 +8,7 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   nomeCompleto: text("nome_completo"),
+  subscriptionTier: text("subscription_tier").notNull().default("free"),
   resetToken: text("reset_token"),
   resetTokenExpiry: timestamp("reset_token_expiry"),
 }, (table) => ({

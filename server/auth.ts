@@ -10,6 +10,7 @@ import { promisify } from "util";
 import rateLimit from "express-rate-limit";
 import { ENV } from "./env";
 import { writeAuditLog } from "./audit-log";
+import { buildSubscriptionAccess } from "@shared/subscription";
 
 const scryptAsync = promisify(scrypt);
 const isProduction = ENV.nodeEnv === "production";
@@ -138,6 +139,22 @@ const sessionCookieSettings = {
   sameSite: sessionCookieSameSite,
   ...(sessionCookieDomain ? { domain: sessionCookieDomain } : {}),
 };
+
+function toAuthUserResponse(user: {
+  id: string;
+  username: string;
+  nomeCompleto?: string | null;
+  subscriptionTier?: unknown;
+}) {
+  const access = buildSubscriptionAccess(user.subscriptionTier);
+  return {
+    id: user.id,
+    username: user.username,
+    nomeCompleto: user.nomeCompleto ?? null,
+    subscriptionTier: access.subscriptionTier,
+    features: access.features,
+  };
+}
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
@@ -314,7 +331,7 @@ export function setupAuth(app: Express) {
             userId: updatedUser!.id,
             details: { username },
           });
-          return res.json({ id: updatedUser!.id, username: updatedUser!.username, nomeCompleto: updatedUser!.nomeCompleto });
+          return res.json(toAuthUserResponse(updatedUser!));
         });
       });
     } catch (error) {
@@ -382,7 +399,7 @@ export function setupAuth(app: Express) {
             userId: user.id,
             details: { username: user.username },
           });
-          return res.json({ id: user.id, username: user.username, nomeCompleto: user.nomeCompleto });
+          return res.json(toAuthUserResponse(user));
         });
       });
     })(req, res, next);
@@ -454,7 +471,7 @@ export function setupAuth(app: Express) {
   app.get("/api/auth/me", (req, res) => {
     if (req.isAuthenticated()) {
       const user = req.user as any;
-      return res.json({ id: user.id, username: user.username, nomeCompleto: user.nomeCompleto });
+      return res.json(toAuthUserResponse(user));
     }
     return res.status(401).json({ message: "Nao autenticado" });
   });
@@ -588,7 +605,7 @@ export function setupAuth(app: Express) {
         domain: "auth.profile",
         userId,
       });
-      return res.json({ id: user!.id, username: user!.username, nomeCompleto: user!.nomeCompleto });
+      return res.json(toAuthUserResponse(user!));
     } catch (err) {
       auditAuth(req, {
         action: "update",
