@@ -26,9 +26,10 @@ export function createBillingController(service: BillingService) {
             provider: result.provider,
             billingStatus: result.billingStatus,
             externalReference: result.externalReference,
+            checkoutMode: result.checkoutMode,
           },
         });
-        return res.status(201).json(result);
+        return res.status(result.checkoutMode === "resume" ? 200 : 201).json(result);
       } catch (error) {
         if (error instanceof BillingServiceError) {
           auditRequest(req, {
@@ -61,6 +62,57 @@ export function createBillingController(service: BillingService) {
         });
 
         return res.status(500).json({ message: "Falha ao iniciar checkout de assinatura." });
+      }
+    },
+
+    cancelMercadoPagoSubscription: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+
+      try {
+        const result = await service.cancelMercadoPagoSubscription(userId);
+        auditRequest(req, {
+          action: "update",
+          status: "success",
+          domain: "billing.cancel.mercado_pago",
+          userId,
+          details: {
+            billingStatus: result.status.billingStatus,
+            subscriptionTier: result.status.subscriptionTier,
+          },
+        });
+        return res.status(200).json(result);
+      } catch (error) {
+        if (error instanceof BillingServiceError) {
+          auditRequest(req, {
+            action: "update",
+            status: "failure",
+            domain: "billing.cancel.mercado_pago",
+            userId,
+            details: { message: error.message },
+          });
+          return res.status(error.status).json({ message: error.message });
+        }
+
+        writeTechnicalLog({
+          event: "billing.cancel.unexpected_error",
+          source: "billing.controller",
+          level: "error",
+          requestId: req.requestId,
+          data: {
+            userId,
+            error: toErrorLog(error),
+          },
+        });
+
+        auditRequest(req, {
+          action: "update",
+          status: "error",
+          domain: "billing.cancel.mercado_pago",
+          userId,
+          error: error instanceof Error ? error.message : "Erro inesperado",
+        });
+
+        return res.status(500).json({ message: "Falha ao cancelar assinatura." });
       }
     },
 

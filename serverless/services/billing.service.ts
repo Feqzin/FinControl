@@ -55,7 +55,8 @@ export type BillingCheckoutResponse = {
   provider: BillingProvider;
   billingStatus: "pending";
   checkoutUrl: string;
-  externalReference: string;
+  externalReference: string | null;
+  checkoutMode: "new" | "resume";
   subscription: {
     id: string;
     status: string;
@@ -68,6 +69,11 @@ export type BillingWebhookProcessResult = {
   outcome: "processed" | "ignored";
   reason: string;
   providerEventId: string;
+};
+
+export type BillingCancelResponse = {
+  message: string;
+  status: BillingStatusResponse;
 };
 
 export type UpsertLocalSubscriptionInput = {
@@ -192,6 +198,21 @@ function parseMercadoPagoAmount(value: string | undefined): number {
 function buildExternalReference(userId: string): string {
   const suffix = randomUUID().slice(0, 8);
   return `fincontrol:${userId}:${Date.now()}:${suffix}`;
+}
+
+function extractCheckoutUrlFromRawPayload(rawPayload: unknown): string | null {
+  if (!rawPayload || typeof rawPayload !== "object") return null;
+  const payload = rawPayload as { checkoutUrl?: unknown };
+  if (typeof payload.checkoutUrl !== "string" || payload.checkoutUrl.trim() === "") return null;
+
+  const candidate = payload.checkoutUrl.trim();
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    return candidate;
+  } catch {
+    return null;
+  }
 }
 
 function extractInitPoint(payload: MercadoPagoPreapprovalResponse): string | null {
@@ -399,6 +420,52 @@ export class BillingService {
 
   private async getMercadoPagoConfig(): Promise<MercadoPagoConfig> {
     return resolveMercadoPagoConfig();
+  }
+
+  private async cancelMercadoPagoPreapprovalById(
+    config: MercadoPagoConfig,
+    providerSubscriptionId: string,
+  ): Promise<void> {
+    let response;
+    try {
+      response = await fetch(
+        `${config.endpoint}/preapproval/${encodeURIComponent(providerSubscriptionId)}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            status: "cancelled",
+          }),
+        },
+      );
+    } catch (error) {
+      throw new BillingServiceError(503, "Nao foi possivel conectar ao Mercado Pago para reiniciar o checkout.");
+    }
+
+    if (response.status === 404) {
+      return;
+    }
+
+    if (!response.ok) {
+      const payloadText = await response.text();
+      writeTechnicalLog({
+        event: "billing.checkout.pending_reset_failed",
+        source: "billing.service",
+        level: "error",
+        data: {
+          providerSubscriptionId,
+          statusCode: response.status,
+          providerResponse: payloadText,
+        },
+      });
+      throw new BillingServiceError(
+        response.status >= 500 ? 503 : 400,
+        "Existe assinatura pendente sem link de pagamento e nao foi possivel reiniciar automaticamente. Cancele a pendencia e tente novamente.",
+      );
+    }
   }
 
   private async fetchMercadoPagoPreapprovalById(
@@ -914,6 +981,122 @@ export class BillingService {
     }
   }
 
+  async cancelMercadoPagoSubscription(userId: string): Promise<BillingCancelResponse> {
+    const currentSubscription = await this.getCurrentSubscription(userId);
+    if (!currentSubscription) {
+      throw new BillingServiceError(404, "Nenhuma assinatura encontrada para cancelar.");
+    }
+
+    if (currentSubscription.provider !== "mercado_pago") {
+      throw new BillingServiceError(400, "Assinatura atual usa provedor nao suportado para cancelamento manual.");
+    }
+
+    if (
+      currentSubscription.status === "canceled"
+      || currentSubscription.status === "expired"
+      || currentSubscription.status === "rejected"
+    ) {
+      throw new BillingServiceError(409, "Assinatura ja esta encerrada.");
+    }
+
+    if (!currentSubscription.providerSubscriptionId) {
+      throw new BillingServiceError(409, "Assinatura sem identificador no provedor. Nao foi possivel cancelar automaticamente.");
+    }
+
+    const config = await this.getMercadoPagoConfig();
+
+    let response;
+    try {
+      response = await fetch(
+        `${config.endpoint}/preapproval/${encodeURIComponent(currentSubscription.providerSubscriptionId)}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            status: "cancelled",
+          }),
+        },
+      );
+    } catch (error) {
+      writeTechnicalLog({
+        event: "billing.cancel.request_failed",
+        source: "billing.service",
+        level: "error",
+        data: {
+          userId,
+          subscriptionId: currentSubscription.id,
+          providerSubscriptionId: currentSubscription.providerSubscriptionId,
+          error: toErrorLog(error),
+        },
+      });
+      throw new BillingServiceError(503, "Nao foi possivel conectar ao Mercado Pago para cancelar a assinatura.");
+    }
+
+    const payloadText = await response.text();
+    if (!response.ok) {
+      writeTechnicalLog({
+        event: "billing.cancel.provider_error",
+        source: "billing.service",
+        level: "error",
+        data: {
+          userId,
+          subscriptionId: currentSubscription.id,
+          providerSubscriptionId: currentSubscription.providerSubscriptionId,
+          statusCode: response.status,
+          providerResponse: payloadText,
+        },
+      });
+      throw new BillingServiceError(
+        response.status >= 500 ? 503 : 400,
+        "Nao foi possivel cancelar a assinatura no Mercado Pago no momento.",
+      );
+    }
+
+    let providerPayload: MercadoPagoPreapprovalResponse | null = null;
+    try {
+      providerPayload = payloadText ? JSON.parse(payloadText) as MercadoPagoPreapprovalResponse : null;
+    } catch {
+      providerPayload = null;
+    }
+
+    const providerStatus = normalizeMercadoPagoStatus(extractString(providerPayload?.status) ?? "cancelled");
+    const mapped = mapMercadoPagoStatus(providerStatus);
+    const now = new Date();
+
+    await db.transaction(async (tx) => {
+      await tx.update(userSubscriptions)
+        .set({
+          status: mapped.localStatus,
+          providerStatus,
+          canceledAt: now,
+          lastSyncAt: now,
+          updatedAt: now,
+          rawPayload: {
+            cancelByUser: true,
+            requestedAt: now.toISOString(),
+            providerResponse: providerPayload ?? payloadText,
+          },
+        })
+        .where(eq(userSubscriptions.id, currentSubscription.id));
+
+      // Regra escolhida: cancelamento manual rebaixa imediatamente para free.
+      await tx.update(users)
+        .set({
+          subscriptionTier: "free",
+        })
+        .where(eq(users.id, userId));
+    });
+
+    const status = await this.getStatus(userId, { subscriptionTier: "free" });
+    return {
+      message: "Assinatura cancelada com sucesso. O plano foi rebaixado para Free.",
+      status,
+    };
+  }
+
   async createMercadoPagoCheckout(userId: string): Promise<BillingCheckoutResponse> {
     const config = await this.getMercadoPagoConfig();
     const currentSubscription = await this.getCurrentSubscription(userId);
@@ -923,7 +1106,42 @@ export class BillingService {
     }
 
     if (currentSubscription?.status === "pending") {
-      throw new BillingServiceError(409, "Pagamento pendente. Aguarde a confirmacao da assinatura para continuar.");
+      const savedCheckoutUrl = extractCheckoutUrlFromRawPayload(currentSubscription.rawPayload);
+      if (savedCheckoutUrl) {
+        return {
+          provider: "mercado_pago",
+          billingStatus: "pending",
+          checkoutUrl: savedCheckoutUrl,
+          externalReference: currentSubscription.externalReference ?? null,
+          checkoutMode: "resume",
+          subscription: {
+            id: currentSubscription.id,
+            status: currentSubscription.status,
+            providerStatus: currentSubscription.providerStatus ?? null,
+            providerSubscriptionId: currentSubscription.providerSubscriptionId ?? null,
+          },
+        };
+      }
+
+      if (currentSubscription.providerSubscriptionId) {
+        await this.cancelMercadoPagoPreapprovalById(config, currentSubscription.providerSubscriptionId);
+      }
+
+      const now = new Date();
+      await db.update(userSubscriptions)
+        .set({
+          status: "canceled",
+          providerStatus: "cancelled",
+          canceledAt: now,
+          updatedAt: now,
+          lastSyncAt: now,
+          rawPayload: {
+            checkoutResetReason: "pending_without_checkout_url",
+            previousRawPayload: currentSubscription.rawPayload ?? null,
+            resetAt: now.toISOString(),
+          },
+        })
+        .where(eq(userSubscriptions.id, currentSubscription.id));
     }
 
     const user = await this.dataStorage.getUser(userId);
@@ -1045,6 +1263,7 @@ export class BillingService {
       billingStatus: "pending",
       checkoutUrl,
       externalReference,
+      checkoutMode: "new",
       subscription: {
         id: localSubscription.id,
         status: localSubscription.status,

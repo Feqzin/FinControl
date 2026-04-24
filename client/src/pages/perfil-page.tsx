@@ -16,7 +16,12 @@ import {
 } from "@/hooks/use-auth";
 import { useSubscriptionUsage } from "@/hooks/useSubscriptionUsage";
 import { createCloudBackup, listCloudBackups, restoreCloudBackup, type CloudBackupItem } from "@/services/api/cloud-backups";
-import { createMercadoPagoCheckout, getBillingStatus } from "@/services/api/billing";
+import {
+  cancelMercadoPagoSubscription,
+  createMercadoPagoCheckout,
+  getBillingStatus,
+  type BillingStatusResponse,
+} from "@/services/api/billing";
 import {
   User, Download, Shield, Database, LogOut, CheckCircle, HelpCircle, Upload, Cloud
 } from "lucide-react";
@@ -68,6 +73,66 @@ function formatPlanLimit(limit: SubscriptionLimitValue): string {
 function formatRemainingLimit(limit: SubscriptionLimitValue): string {
   if (limit === null) return "Ilimitado";
   return String(Math.max(0, limit));
+}
+
+function resolveBillingStatusUi(status: BillingStatusResponse | undefined): {
+  title: string;
+  description: string;
+  tone: "default" | "secondary" | "destructive";
+} {
+  if (!status) {
+    return {
+      title: "Plano Free ativo",
+      description: "Sem assinatura ativa no momento.",
+      tone: "secondary",
+    };
+  }
+
+  switch (status.billingStatus) {
+    case "active":
+      return {
+        title: "Premium ativo",
+        description: "Assinatura ativa e recursos premium liberados.",
+        tone: "default",
+      };
+    case "pending":
+      return {
+        title: "Pagamento pendente",
+        description: "Aguardando confirmacao do Mercado Pago para liberar o Premium.",
+        tone: "secondary",
+      };
+    case "paused":
+      return {
+        title: "Assinatura pausada",
+        description: "A assinatura esta pausada e o plano atual permanece Free.",
+        tone: "destructive",
+      };
+    case "canceled":
+      return {
+        title: "Assinatura cancelada",
+        description: "Assinatura encerrada. Voce esta no plano Free.",
+        tone: "destructive",
+      };
+    case "expired":
+      return {
+        title: "Assinatura expirada",
+        description: "A assinatura expirou e o plano atual e Free.",
+        tone: "destructive",
+      };
+    case "rejected":
+      return {
+        title: "Assinatura rejeitada",
+        description: "Pagamento rejeitado. Continue no plano Free.",
+        tone: "destructive",
+      };
+    case "no_subscription":
+    default:
+      return {
+        title: "Plano Free ativo",
+        description: "Sem assinatura ativa no momento.",
+        tone: "secondary",
+      };
+  }
 }
 
 type ImportBackupResponse = {
@@ -283,6 +348,41 @@ export default function PerfilPage() {
     },
   });
 
+  const cancelBillingSubscriptionMutation = useMutation({
+    mutationFn: cancelMercadoPagoSubscription,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/billing/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
+      toast({
+        title: "Assinatura cancelada",
+        description: result.message,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro ao cancelar assinatura",
+        description: parseImportApiError(error),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const billingStatusUi = resolveBillingStatusUi(billingStatusQuery.data);
+  const canCancelSubscription = billingStatusQuery.data?.billingStatus === "active"
+    || billingStatusQuery.data?.billingStatus === "pending"
+    || billingStatusQuery.data?.billingStatus === "paused";
+
+  const handleCancelSubscription = () => {
+    if (!canCancelSubscription || cancelBillingSubscriptionMutation.isPending) return;
+    const confirmed = window.confirm(
+      "Tem certeza que deseja cancelar sua assinatura Premium?\n\n" +
+      "Regra atual: o cancelamento rebaixa o plano imediatamente para Free.",
+    );
+    if (!confirmed) return;
+    cancelBillingSubscriptionMutation.mutate();
+  };
+
   const exportarDados = () => {
     const data = {
       exportadoEm: new Date().toISOString(),
@@ -496,16 +596,10 @@ export default function PerfilPage() {
         <CardContent className="space-y-4">
           <div className="rounded-md border p-3 bg-muted/20 flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-medium">
-                {usageSnapshot.subscriptionTier === "premium" ? "Premium ativo" : "Plano Free ativo"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {usageSnapshot.subscriptionTier === "premium"
-                  ? "Todos os recursos premium desta etapa estão liberados para sua conta."
-                  : "Seu plano free continua funcional para uso diário. Faça upgrade quando quiser recursos avançados."}
-              </p>
+              <p className="text-sm font-medium">{billingStatusUi.title}</p>
+              <p className="text-xs text-muted-foreground">{billingStatusUi.description}</p>
             </div>
-            <Badge variant={usageSnapshot.subscriptionTier === "premium" ? "default" : "secondary"}>
+            <Badge variant={billingStatusUi.tone}>
               {usageSnapshot.subscriptionTier === "premium" ? "Premium" : "Free"}
             </Badge>
           </div>
@@ -576,25 +670,32 @@ export default function PerfilPage() {
             </div>
           </div>
 
-          {usageSnapshot.subscriptionTier === "free" ? (
-            billingStatusQuery.data?.billingStatus === "pending" ? (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-700">
-                Pagamento pendente: aguardando confirmacao da assinatura no Mercado Pago.
-              </div>
-            ) : (
-              <Button
-                className="w-full"
-                onClick={() => createBillingCheckoutMutation.mutate()}
-                data-testid="button-upgrade-premium"
-                disabled={createBillingCheckoutMutation.isPending}
-              >
-                {createBillingCheckoutMutation.isPending ? "Redirecionando..." : "Assinar Premium"}
-              </Button>
-            )
-          ) : (
-            <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm text-emerald-700">
-              Premium ativo: recursos premium disponíveis para sua conta.
-            </div>
+          {usageSnapshot.subscriptionTier === "free" && (
+            <Button
+              className="w-full"
+              onClick={() => createBillingCheckoutMutation.mutate()}
+              data-testid="button-upgrade-premium"
+              disabled={createBillingCheckoutMutation.isPending}
+            >
+              {createBillingCheckoutMutation.isPending
+                ? "Redirecionando..."
+                : billingStatusQuery.data?.billingStatus === "pending"
+                  ? "Continuar pagamento"
+                  : "Assinar Premium"}
+            </Button>
+          )}
+
+          {(usageSnapshot.subscriptionTier === "premium" || canCancelSubscription) && (
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={handleCancelSubscription}
+              disabled={!canCancelSubscription || cancelBillingSubscriptionMutation.isPending}
+              data-testid="button-cancel-premium"
+            >
+              {cancelBillingSubscriptionMutation.isPending ? "Cancelando assinatura..." : "Cancelar assinatura"}
+            </Button>
           )}
         </CardContent>
       </Card>
