@@ -35,7 +35,7 @@ import { ImportFaturaDialog } from "@/pages/cartoes/components/import-fatura-dia
 import { formatImportCardOptionLabel, suggestImportCardByText } from "@/pages/cartoes/import-card-matching";
 import { useCartoes } from "@/hooks/useCartoes";
 import { CartoesSummaryCards } from "@/pages/cartoes/components/cartoes-summary-cards";
-import { previewImportCompras } from "@/services/api/cartoes";
+import { previewImportCompras, type DeleteCompraScope, type DeleteCompraResponse, type DeleteFaturaResponse } from "@/services/api/cartoes";
 import { isParcelaComprometendoLimite } from "@/lib/card-limit-usage";
 import {
   buildPlanLimitFriendlyMessage,
@@ -108,6 +108,18 @@ export default function CartoesPage() {
   const [importEditForm, setImportEditForm] = useState({
     descricao: "", valor: "", dataCompra: "", parcelas: "", parcelaAtual: "", vencimentoFatura: "",
   });
+  const [openDeleteFaturaDialog, setOpenDeleteFaturaDialog] = useState(false);
+  const [deleteFaturaScope, setDeleteFaturaScope] = useState<"cartao" | "todos">("cartao");
+  const [deleteFaturaMes, setDeleteFaturaMes] = useState(format(new Date(), "yyyy-MM"));
+  const [deleteFaturaCartaoId, setDeleteFaturaCartaoId] = useState("");
+  const [deleteFaturaImpact, setDeleteFaturaImpact] = useState<DeleteFaturaResponse | null>(null);
+  const [deleteFaturaImpactLoading, setDeleteFaturaImpactLoading] = useState(false);
+
+  const [openDeleteCompraDialog, setOpenDeleteCompraDialog] = useState(false);
+  const [deleteCompraTarget, setDeleteCompraTarget] = useState<CompraCartao | null>(null);
+  const [deleteCompraScope, setDeleteCompraScope] = useState<DeleteCompraScope>("all_parcelas");
+  const [deleteCompraImpact, setDeleteCompraImpact] = useState<DeleteCompraResponse | null>(null);
+  const [deleteCompraImpactLoading, setDeleteCompraImpactLoading] = useState(false);
 
   const {
     cartoes,
@@ -115,6 +127,7 @@ export default function CartoesPage() {
     servicos,
     pessoas,
     pessoaSaldoMovimentacoes,
+    parcelasCompraByUser,
     parcelasCompraData,
     refetchParcelas,
     isLoading,
@@ -130,6 +143,8 @@ export default function CartoesPage() {
     createCompraMutation,
     updateCompraMutation,
     deleteCompraMutation,
+    deleteFaturaCartaoMutation,
+    deleteFaturasMesMutation,
     marcarReembolsoMutation,
     payParcelaMutation,
     payParcelaPessoaMutation,
@@ -163,6 +178,112 @@ export default function CartoesPage() {
       setLocation(nextPath);
     }
   }, [compras, location, setLocation]);
+
+  useEffect(() => {
+    if (!openDeleteFaturaDialog) return;
+    if (deleteFaturaScope === "cartao") {
+      const fallbackCartaoId = selectedCartao || cartoes[0]?.id || "";
+      if (!deleteFaturaCartaoId && fallbackCartaoId) {
+        setDeleteFaturaCartaoId(fallbackCartaoId);
+      }
+    }
+  }, [openDeleteFaturaDialog, deleteFaturaScope, deleteFaturaCartaoId, selectedCartao, cartoes]);
+
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      if (!openDeleteFaturaDialog) return;
+      if (!deleteFaturaMes) return;
+      if (deleteFaturaScope === "cartao" && !deleteFaturaCartaoId) return;
+
+      setDeleteFaturaImpactLoading(true);
+      try {
+        const response = deleteFaturaScope === "cartao"
+          ? await deleteFaturaCartaoMutation.mutateAsync({
+            cartaoId: deleteFaturaCartaoId,
+            mes: deleteFaturaMes,
+            dryRun: true,
+          })
+          : await deleteFaturasMesMutation.mutateAsync({
+            mes: deleteFaturaMes,
+            dryRun: true,
+          });
+        if (active) {
+          setDeleteFaturaImpact(response);
+        }
+      } catch (error) {
+        if (active) {
+          setDeleteFaturaImpact(null);
+          toast({
+            title: "Erro ao calcular impacto",
+            description: getErrorMessage(error),
+            variant: "destructive",
+          });
+        }
+      } finally {
+        if (active) {
+          setDeleteFaturaImpactLoading(false);
+        }
+      }
+    };
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [
+    openDeleteFaturaDialog,
+    deleteFaturaScope,
+    deleteFaturaMes,
+    deleteFaturaCartaoId,
+    deleteFaturaCartaoMutation,
+    deleteFaturasMesMutation,
+  ]);
+
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      if (!openDeleteCompraDialog || !deleteCompraTarget) return;
+      const parcelaId = deleteCompraScope === "single_parcela"
+        ? getCurrentParcelaIdForCompra(deleteCompraTarget) ?? undefined
+        : undefined;
+
+      if (deleteCompraScope === "single_parcela" && !parcelaId) {
+        setDeleteCompraImpact(null);
+        return;
+      }
+
+      setDeleteCompraImpactLoading(true);
+      try {
+        const response = await deleteCompraMutation.mutateAsync({
+          compraId: deleteCompraTarget.id,
+          scope: deleteCompraScope,
+          parcelaId,
+          dryRun: true,
+        });
+        if (active) {
+          setDeleteCompraImpact(response);
+        }
+      } catch (error) {
+        if (active) {
+          setDeleteCompraImpact(null);
+          toast({
+            title: "Erro ao calcular impacto",
+            description: getErrorMessage(error),
+            variant: "destructive",
+          });
+        }
+      } finally {
+        if (active) {
+          setDeleteCompraImpactLoading(false);
+        }
+      }
+    };
+
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [openDeleteCompraDialog, deleteCompraTarget, deleteCompraScope, deleteCompraMutation]);
   const getErrorMessage = (error: unknown) => {
     const planLimitError = parsePlanLimitError(error);
     if (planLimitError) {
@@ -249,6 +370,40 @@ export default function CartoesPage() {
         .toLowerCase();
       return texto.includes(compraSearchNormalized);
     });
+  };
+
+  const formatMesExibicao = (mes: string) => {
+    const [ano, mesNumero] = mes.split("-");
+    const parsedMonth = Number(mesNumero);
+    if (!ano || !Number.isFinite(parsedMonth) || parsedMonth < 1 || parsedMonth > 12) return mes;
+    const data = new Date(Number(ano), parsedMonth - 1, 1);
+    return format(data, "MMMM 'de' yyyy", { locale: ptBR }).replace(/^\w/, (char) => char.toUpperCase());
+  };
+
+  const getCurrentParcelaIdForCompra = (compra: CompraCartao): string | null => {
+    const rows = parcelasCompraByUser
+      .filter((parcela) => parcela.compraCartaoId === compra.id)
+      .sort((a, b) => a.numero - b.numero);
+    if (rows.length === 0) return null;
+    const byNumero = rows.find((parcela) => parcela.numero === compra.parcelaAtual);
+    if (byNumero) return byNumero.id;
+    const firstPendente = rows.find((parcela) => isParcelaComprometendoLimite(parcela.statusCartao));
+    return firstPendente?.id ?? rows[0].id;
+  };
+
+  const resetDeleteCompraDialog = () => {
+    setOpenDeleteCompraDialog(false);
+    setDeleteCompraTarget(null);
+    setDeleteCompraScope("all_parcelas");
+    setDeleteCompraImpact(null);
+    setDeleteCompraImpactLoading(false);
+  };
+
+  const openDeleteCompraConfirm = (compra: CompraCartao) => {
+    setDeleteCompraTarget(compra);
+    setDeleteCompraScope(Number(compra.parcelas) > 1 ? "single_parcela" : "all_parcelas");
+    setDeleteCompraImpact(null);
+    setOpenDeleteCompraDialog(true);
   };
 
   const openAbaterSaldoParcelaDialog = (parcelaId: string, pessoaId: string) => {
@@ -440,10 +595,72 @@ export default function CartoesPage() {
     });
   };
 
-  const handleDeleteCompra = (id: string) => {
-    deleteCompraMutation.mutate(id, {
+  const handleConfirmDeleteFatura = () => {
+    if (!deleteFaturaMes) {
+      toast({ title: "Selecione o mês da fatura", variant: "destructive" });
+      return;
+    }
+    if (deleteFaturaScope === "cartao" && !deleteFaturaCartaoId) {
+      toast({ title: "Selecione o cartão", variant: "destructive" });
+      return;
+    }
+
+    const mutation = deleteFaturaScope === "cartao"
+      ? deleteFaturaCartaoMutation.mutateAsync({
+        cartaoId: deleteFaturaCartaoId,
+        mes: deleteFaturaMes,
+      })
+      : deleteFaturasMesMutation.mutateAsync({ mes: deleteFaturaMes });
+
+    void mutation.then((response) => {
+      setOpenDeleteFaturaDialog(false);
+      setDeleteFaturaImpact(null);
+      toast({
+        title: "Fatura excluída com sucesso",
+        description: `${response.impact.comprasRemovidas} compra(s) e ${response.impact.parcelasRemovidas} parcela(s) removidas.`,
+      });
+    }).catch((error) => {
+      toast({
+        title: "Erro ao excluir fatura",
+        description: getErrorMessage(error),
+        variant: "destructive",
+      });
+    });
+  };
+
+  const handleConfirmDeleteCompra = () => {
+    if (!deleteCompraTarget) return;
+    const parcelaId = deleteCompraScope === "single_parcela"
+      ? getCurrentParcelaIdForCompra(deleteCompraTarget) ?? undefined
+      : undefined;
+
+    if (deleteCompraScope === "single_parcela" && !parcelaId) {
+      toast({
+        title: "Não foi possível localizar a parcela",
+        description: "Abra as parcelas da compra para sincronizar e tente novamente.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    deleteCompraMutation.mutate({
+      compraId: deleteCompraTarget.id,
+      scope: deleteCompraScope,
+      parcelaId,
+    }, {
       onSuccess: () => {
-        toast({ title: "Compra removida" });
+        const scopeLabel = deleteCompraScope === "single_parcela"
+          ? "Parcela removida"
+          : "Compra removida";
+        toast({ title: scopeLabel });
+        resetDeleteCompraDialog();
+      },
+      onError: (error) => {
+        toast({
+          title: "Erro ao excluir",
+          description: getErrorMessage(error),
+          variant: "destructive",
+        });
       },
     });
   };
@@ -759,6 +976,21 @@ export default function CartoesPage() {
               Premium
             </Badge>
           )}
+          <Button
+            variant="outline"
+            onClick={() => {
+              setDeleteFaturaScope("cartao");
+              setDeleteFaturaMes(format(new Date(), "yyyy-MM"));
+              setDeleteFaturaImpact(null);
+              setOpenDeleteFaturaDialog(true);
+            }}
+            disabled={cartoes.length === 0}
+            className="max-w-full min-w-0 flex-1 lg:flex-none"
+            data-testid="button-excluir-fatura"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Excluir fatura
+          </Button>
           {smartImportLiberado && lastImportLogId && (
             <Button
               variant="outline"
@@ -1002,6 +1234,243 @@ export default function CartoesPage() {
               {updateCompraMutation.isPending ? "Salvando..." : "Salvar alteracoes"}
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={openDeleteFaturaDialog}
+        onOpenChange={(open) => {
+          setOpenDeleteFaturaDialog(open);
+          if (!open) {
+            setDeleteFaturaImpact(null);
+            setDeleteFaturaImpactLoading(false);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir fatura</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Escopo da exclusão</Label>
+              <Select
+                value={deleteFaturaScope}
+                onValueChange={(value) => {
+                  if (value === "cartao" || value === "todos") {
+                    setDeleteFaturaScope(value);
+                    setDeleteFaturaImpact(null);
+                  }
+                }}
+              >
+                <SelectTrigger data-testid="select-delete-fatura-scope">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cartao">Excluir fatura deste cartão</SelectItem>
+                  <SelectItem value="todos">Excluir faturas de todos os cartões neste mês</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {deleteFaturaScope === "cartao" && (
+              <div className="space-y-2">
+                <Label>Cartão afetado</Label>
+                <Select
+                  value={deleteFaturaCartaoId}
+                  onValueChange={(value) => {
+                    setDeleteFaturaCartaoId(value);
+                    setDeleteFaturaImpact(null);
+                  }}
+                >
+                  <SelectTrigger data-testid="select-delete-fatura-cartao">
+                    <SelectValue placeholder="Selecione um cartão" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cartoes.map((cartao) => (
+                      <SelectItem key={cartao.id} value={cartao.id}>
+                        {cartao.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Mês da fatura</Label>
+              <Input
+                type="month"
+                value={deleteFaturaMes}
+                onChange={(event) => {
+                  setDeleteFaturaMes(event.target.value);
+                  setDeleteFaturaImpact(null);
+                }}
+                data-testid="input-delete-fatura-mes"
+              />
+            </div>
+
+            <Card className="border-dashed">
+              <CardContent className="p-3 space-y-2 text-sm">
+                <p className="font-medium">Impacto da exclusão</p>
+                {deleteFaturaImpactLoading && (
+                  <p className="text-muted-foreground">Calculando impacto...</p>
+                )}
+                {!deleteFaturaImpactLoading && deleteFaturaImpact && (
+                  <>
+                    <p className="text-muted-foreground">
+                      Mês: <span className="font-medium text-foreground">{formatMesExibicao(deleteFaturaImpact.impact.mes)}</span>
+                    </p>
+                    <p className="text-muted-foreground">
+                      Compras: <span className="font-medium text-foreground">{deleteFaturaImpact.impact.comprasRemovidas}</span>
+                    </p>
+                    <p className="text-muted-foreground">
+                      Parcelas: <span className="font-medium text-foreground">{deleteFaturaImpact.impact.parcelasRemovidas}</span>
+                    </p>
+                    <p className="text-muted-foreground">
+                      Total removido:{" "}
+                      <span className="font-medium text-foreground">
+                        {formatCartaoCurrency(deleteFaturaImpact.impact.valorTotalRemovido)}
+                      </span>
+                    </p>
+                    {deleteFaturaImpact.impact.cartoesAfetados.length > 0 && (
+                      <div className="pt-1 space-y-1">
+                        {deleteFaturaImpact.impact.cartoesAfetados.map((item) => (
+                          <p key={item.cartaoId} className="text-xs text-muted-foreground">
+                            {item.cartaoNome}: {item.comprasRemovidas} compra(s), {item.parcelasRemovidas} parcela(s),{" "}
+                            {formatCartaoCurrency(item.valorTotalRemovido)}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+                {!deleteFaturaImpactLoading && !deleteFaturaImpact && (
+                  <p className="text-muted-foreground">Selecione os dados para visualizar o impacto.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Button
+              type="button"
+              className="w-full"
+              variant="destructive"
+              disabled={
+                deleteFaturaImpactLoading
+                || deleteFaturaCartaoMutation.isPending
+                || deleteFaturasMesMutation.isPending
+                || !deleteFaturaImpact
+                || deleteFaturaImpact.impact.comprasRemovidas === 0
+              }
+              onClick={handleConfirmDeleteFatura}
+              data-testid="button-confirm-delete-fatura"
+            >
+              {deleteFaturaCartaoMutation.isPending || deleteFaturasMesMutation.isPending
+                ? "Excluindo..."
+                : "Confirmar exclusão"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={openDeleteCompraDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            resetDeleteCompraDialog();
+          } else {
+            setOpenDeleteCompraDialog(true);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir compra</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Compra: <span className="font-medium text-foreground">{deleteCompraTarget?.descricao ?? "-"}</span>
+            </p>
+
+            {deleteCompraTarget && Number(deleteCompraTarget.parcelas) > 1 && (
+              <div className="space-y-2">
+                <Label>Como deseja excluir?</Label>
+                <Select
+                  value={deleteCompraScope}
+                  onValueChange={(value) => {
+                    if (value === "all_parcelas" || value === "single_parcela") {
+                      setDeleteCompraScope(value);
+                      setDeleteCompraImpact(null);
+                    }
+                  }}
+                >
+                  <SelectTrigger data-testid="select-delete-compra-scope">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="single_parcela">Excluir apenas esta parcela</SelectItem>
+                    <SelectItem value="all_parcelas">Excluir todas as parcelas da compra</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <Card className="border-dashed">
+              <CardContent className="p-3 space-y-2 text-sm">
+                <p className="font-medium">Impacto da exclusão</p>
+                {deleteCompraImpactLoading && <p className="text-muted-foreground">Calculando impacto...</p>}
+                {!deleteCompraImpactLoading && deleteCompraImpact && (
+                  <>
+                    <p className="text-muted-foreground">
+                      Cartão afetado:{" "}
+                      <span className="font-medium text-foreground">
+                        {deleteCompraImpact.impact.cartao?.nome ?? "Não identificado"}
+                      </span>
+                    </p>
+                    <p className="text-muted-foreground">
+                      Compras removidas:{" "}
+                      <span className="font-medium text-foreground">{deleteCompraImpact.impact.comprasRemovidas}</span>
+                    </p>
+                    <p className="text-muted-foreground">
+                      Parcelas removidas:{" "}
+                      <span className="font-medium text-foreground">{deleteCompraImpact.impact.parcelasRemovidas}</span>
+                    </p>
+                    <p className="text-muted-foreground">
+                      Total removido:{" "}
+                      <span className="font-medium text-foreground">
+                        {formatCartaoCurrency(deleteCompraImpact.impact.valorTotalRemovido)}
+                      </span>
+                    </p>
+                    {deleteCompraImpact.impact.parcelaAlvo && (
+                      <p className="text-xs text-muted-foreground">
+                        Parcela alvo: {deleteCompraImpact.impact.parcelaAlvo.numero} -{" "}
+                        {formatCartaoCurrency(deleteCompraImpact.impact.parcelaAlvo.valor)}
+                      </p>
+                    )}
+                  </>
+                )}
+                {!deleteCompraImpactLoading && !deleteCompraImpact && (
+                  <p className="text-muted-foreground">Não foi possível calcular o impacto com os dados atuais.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Button
+              type="button"
+              className="w-full"
+              variant="destructive"
+              onClick={handleConfirmDeleteCompra}
+              disabled={
+                deleteCompraMutation.isPending
+                || deleteCompraImpactLoading
+                || !deleteCompraImpact
+                || deleteCompraImpact.impact.parcelasRemovidas === 0
+              }
+              data-testid="button-confirm-delete-compra"
+            >
+              {deleteCompraMutation.isPending ? "Excluindo..." : "Confirmar exclusão"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -1426,7 +1895,18 @@ export default function CartoesPage() {
                                   {compra.parcelaAtual}/{compra.parcelas}x · {compra.dataCompra}
                                 </p>
                               </div>
-                              <span className="text-sm font-semibold">{formatCartaoCurrency(Number(compra.valorParcela))}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold">{formatCartaoCurrency(Number(compra.valorParcela))}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={() => openDeleteCompraConfirm(compra)}
+                                  data-testid={`button-delete-compra-fatura-${compra.id}`}
+                                >
+                                  <Trash2 className="w-3 h-3 text-muted-foreground" />
+                                </Button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -1461,14 +1941,25 @@ export default function CartoesPage() {
                                   Parcela atual {compra.parcelaAtual}/{compra.parcelas}
                                 </p>
                               </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setViewingCompra(compra)}
-                                data-testid={`button-open-parcelas-tab-${compra.id}`}
-                              >
-                                Ver parcelas
-                              </Button>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setViewingCompra(compra)}
+                                  data-testid={`button-open-parcelas-tab-${compra.id}`}
+                                >
+                                  Ver parcelas
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  onClick={() => openDeleteCompraConfirm(compra)}
+                                  data-testid={`button-delete-compra-parcelas-tab-${compra.id}`}
+                                >
+                                  <Trash2 className="w-3 h-3 text-muted-foreground" />
+                                </Button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -1610,9 +2101,33 @@ export default function CartoesPage() {
                                   </p>
                                 )}
                               </div>
-                              <p className="text-sm font-semibold flex-shrink-0">
-                                {formatCartaoCurrency(Number(compra.valorParcela))}
-                              </p>
+                              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                <p className="text-sm font-semibold">
+                                  {formatCartaoCurrency(Number(compra.valorParcela))}
+                                </p>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    title="Ver parcelas"
+                                    onClick={() => setViewingCompra(compra)}
+                                    data-testid={`button-view-parcelas-mobile-${compra.id}`}
+                                  >
+                                    <List className="w-3 h-3 text-muted-foreground" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    title="Excluir compra"
+                                    onClick={() => openDeleteCompraConfirm(compra)}
+                                    data-testid={`button-delete-compra-mobile-${compra.id}`}
+                                  >
+                                    <Trash2 className="w-3 h-3 text-muted-foreground" />
+                                  </Button>
+                                </div>
+                              </div>
                             </div>
                           );
                         })
@@ -1785,7 +2300,7 @@ export default function CartoesPage() {
                                   <Pencil className="w-3 h-3 text-muted-foreground" />
                                 </Button>
                                 <Button variant="ghost" size="icon" className="h-7 w-7"
-                                  onClick={() => handleDeleteCompra(compra.id)}
+                                  onClick={() => openDeleteCompraConfirm(compra)}
                                   data-testid={`button-delete-compra-${compra.id}`}>
                                   <Trash2 className="w-3 h-3 text-muted-foreground" />
                                 </Button>

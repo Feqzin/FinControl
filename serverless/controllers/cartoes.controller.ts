@@ -13,6 +13,19 @@ import {
   sendPlanLimitConflict,
 } from "./controller-utils.js";
 
+const MES_REGEX = /^\d{4}-\d{2}$/;
+
+function parseDryRun(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true";
+}
+
+function parseMes(mes: string): string | null {
+  const value = mes.trim();
+  return MES_REGEX.test(value) ? value : null;
+}
+
 export function createCartoesController(service: CartoesService) {
   const billingService = new BillingService();
 
@@ -149,6 +162,74 @@ export function createCartoesController(service: CartoesService) {
         targetId: cartaoId,
       });
       return res.json({ success: true });
+    },
+
+    deleteFaturaByCartaoMonth: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const cartaoId = getParam(req, "cartaoId");
+      const mes = parseMes(getParam(req, "mes"));
+      const dryRun = parseDryRun(req.query.dryRun);
+
+      if (!mes) {
+        return sendBadRequest(res, "Mes invalido. Use o formato YYYY-MM.");
+      }
+
+      const result = await service.deleteFaturaDoCartao(userId, { cartaoId, mes, dryRun });
+      if ("error" in result) {
+        auditRequest(req, {
+          action: "delete_fatura_cartao_mes",
+          status: "failure",
+          domain: "cartoes",
+          userId,
+          targetId: cartaoId,
+          details: { reason: "cartao_not_found", mes, dryRun },
+        });
+        return sendNotFound(res, "Cartao not found");
+      }
+
+      auditRequest(req, {
+        action: "delete_fatura_cartao_mes",
+        status: "success",
+        domain: "cartoes",
+        userId,
+        targetId: cartaoId,
+        details: {
+          mes,
+          dryRun: result.dryRun,
+          comprasRemovidas: result.impact.comprasRemovidas,
+          parcelasRemovidas: result.impact.parcelasRemovidas,
+          valorTotalRemovido: result.impact.valorTotalRemovido,
+        },
+      });
+      return res.json(result);
+    },
+
+    deleteFaturasByMonth: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const mes = parseMes(getParam(req, "mes"));
+      const dryRun = parseDryRun(req.query.dryRun);
+
+      if (!mes) {
+        return sendBadRequest(res, "Mes invalido. Use o formato YYYY-MM.");
+      }
+
+      const result = await service.deleteFaturaDoCartao(userId, { mes, dryRun });
+      auditRequest(req, {
+        action: "delete_faturas_mes",
+        status: "success",
+        domain: "cartoes",
+        userId,
+        details: {
+          mes,
+          dryRun: result.dryRun,
+          comprasRemovidas: result.impact.comprasRemovidas,
+          parcelasRemovidas: result.impact.parcelasRemovidas,
+          valorTotalRemovido: result.impact.valorTotalRemovido,
+          cartoesAfetados: result.impact.cartoesAfetados.length,
+        },
+      });
+
+      return res.json(result);
     },
   };
 }

@@ -49,6 +49,42 @@ export type CartaoResumo = {
   quantidadeParcelasPendentes: number;
 };
 
+export type DeleteFaturaImpact = {
+  mes: string;
+  comprasRemovidas: number;
+  parcelasRemovidas: number;
+  valorTotalRemovido: number;
+  cartoesAfetados: Array<{
+    cartaoId: string;
+    cartaoNome: string;
+    comprasRemovidas: number;
+    parcelasRemovidas: number;
+    valorTotalRemovido: number;
+  }>;
+};
+
+export type DeleteFaturaResponse = {
+  dryRun: boolean;
+  impact: DeleteFaturaImpact;
+};
+
+export type DeleteCompraScope = "all_parcelas" | "single_parcela";
+
+export type DeleteCompraResponse = {
+  dryRun: boolean;
+  compraRemovida: boolean;
+  impact: {
+    compraId: string;
+    descricao: string;
+    scope: DeleteCompraScope;
+    comprasRemovidas: number;
+    parcelasRemovidas: number;
+    valorTotalRemovido: number;
+    cartao: { id: string; nome: string } | null;
+    parcelaAlvo: { id: string; numero: number; valor: number } | null;
+  };
+};
+
 export async function fetchCartoesResumo(): Promise<CartaoResumo[]> {
   const response = await apiRequest("GET", "/api/cartoes/resumo");
   return response.json();
@@ -136,6 +172,42 @@ export async function updateCompraCartao(id: string, payload: UpdateCompraPayloa
 
 export async function deleteCompraCartao(id: string): Promise<void> {
   await apiRequest("DELETE", `/api/compras-cartao/${id}`);
+}
+
+export async function deleteFaturaCartaoMes(
+  cartaoId: string,
+  mes: string,
+  options?: { dryRun?: boolean },
+): Promise<DeleteFaturaResponse> {
+  const query = new URLSearchParams();
+  if (options?.dryRun) query.set("dryRun", "1");
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const response = await apiRequest("DELETE", `/api/cartoes/${cartaoId}/faturas/${mes}${suffix}`);
+  return response.json();
+}
+
+export async function deleteFaturasMes(
+  mes: string,
+  options?: { dryRun?: boolean },
+): Promise<DeleteFaturaResponse> {
+  const query = new URLSearchParams();
+  if (options?.dryRun) query.set("dryRun", "1");
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const response = await apiRequest("DELETE", `/api/cartoes/faturas/${mes}${suffix}`);
+  return response.json();
+}
+
+export async function deleteCompraCartaoComEscopo(
+  compraId: string,
+  params?: { scope?: DeleteCompraScope; parcelaId?: string; dryRun?: boolean },
+): Promise<DeleteCompraResponse> {
+  const query = new URLSearchParams();
+  if (params?.scope) query.set("scope", params.scope);
+  if (params?.parcelaId) query.set("parcelaId", params.parcelaId);
+  if (params?.dryRun) query.set("dryRun", "1");
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const response = await apiRequest("DELETE", `/api/cartoes/compras/${compraId}${suffix}`);
+  return response.json();
 }
 
 export async function updateCompraReembolso(id: string, pago: boolean): Promise<void> {

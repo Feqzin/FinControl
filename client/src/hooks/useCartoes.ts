@@ -11,7 +11,9 @@ import {
   createCartao,
   createCompraCartao,
   deleteCartao,
-  deleteCompraCartao,
+  deleteCompraCartaoComEscopo,
+  deleteFaturaCartaoMes,
+  deleteFaturasMes,
   importComprasLote,
   rollbackImportCompras,
   updateCartao,
@@ -23,6 +25,7 @@ import {
   type CartaoResumo,
   type CartaoPayload,
   type CompraPayload,
+  type DeleteCompraScope,
   type UpdateCompraPayload,
 } from "@/services/api/cartoes";
 
@@ -89,11 +92,63 @@ export function useCartoes(viewingCompraId?: string) {
   });
 
   const deleteCompraMutation = useMutation({
-    mutationFn: (id: string) => deleteCompraCartao(id),
-    onSuccess: () => {
+    mutationFn: ({
+      compraId,
+      scope,
+      parcelaId,
+      dryRun,
+    }: {
+      compraId: string;
+      scope?: DeleteCompraScope;
+      parcelaId?: string;
+      dryRun?: boolean;
+    }) => deleteCompraCartaoComEscopo(compraId, { scope, parcelaId, dryRun }),
+    onSuccess: (_data, variables) => {
+      if (variables.dryRun) return;
       queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
       queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/score"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/insights"] });
+    },
+  });
+
+  const deleteFaturaCartaoMutation = useMutation({
+    mutationFn: ({
+      cartaoId,
+      mes,
+      dryRun,
+    }: {
+      cartaoId: string;
+      mes: string;
+      dryRun?: boolean;
+    }) => deleteFaturaCartaoMes(cartaoId, mes, { dryRun }),
+    onSuccess: (_data, variables) => {
+      if (variables.dryRun) return;
+      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/score"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/insights"] });
+    },
+  });
+
+  const deleteFaturasMesMutation = useMutation({
+    mutationFn: ({ mes, dryRun }: { mes: string; dryRun?: boolean }) =>
+      deleteFaturasMes(mes, { dryRun }),
+    onSuccess: (_data, variables) => {
+      if (variables.dryRun) return;
+      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/score"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/insights"] });
     },
   });
 
@@ -225,6 +280,7 @@ export function useCartoes(viewingCompraId?: string) {
     servicos,
     pessoas,
     pessoaSaldoMovimentacoes,
+    parcelasCompraByUser,
     parcelasCompraData,
     refetchParcelas,
     isLoading,
@@ -240,6 +296,8 @@ export function useCartoes(viewingCompraId?: string) {
     createCompraMutation,
     updateCompraMutation,
     deleteCompraMutation,
+    deleteFaturaCartaoMutation,
+    deleteFaturasMesMutation,
     marcarReembolsoMutation,
     payParcelaMutation,
     payParcelaPessoaMutation,

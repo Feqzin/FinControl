@@ -191,6 +191,7 @@ export interface IStorage {
   getParcelaCompraById(id: string, userId: string): Promise<ParcelaCompra | undefined>;
   createParcelasCompraBulk(parcelas: InsertParcelaCompra[]): Promise<ParcelaCompra[]>;
   updateParcelaCompra(id: string, userId: string, data: Partial<InsertParcelaCompra>): Promise<ParcelaCompra | undefined>;
+  deleteParcelaCompra(id: string, userId: string): Promise<boolean>;
   deleteParcelasCompraBulk(compraCartaoId: string, userId: string): Promise<void>;
 
   getRendas(userId: string): Promise<Renda[]>;
@@ -568,6 +569,12 @@ export class DatabaseStorage implements IStorage {
       and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId))
     ).returning();
     return p;
+  }
+  async deleteParcelaCompra(id: string, userId: string) {
+    const result = await this.database.delete(parcelasCompra).where(
+      and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId))
+    ).returning();
+    return result.length > 0;
   }
   async deleteParcelasCompraBulk(compraCartaoId: string, userId: string) {
     await this.database.delete(parcelasCompra).where(

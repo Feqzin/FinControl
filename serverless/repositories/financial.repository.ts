@@ -141,6 +141,10 @@ function createFinancialRepositoryBase(targetStorage: IStorage) {
       return targetStorage.updateParcelaCompra(id, userId, data);
     },
 
+    async deleteParcelaCompra(id: string, userId: string) {
+      return targetStorage.deleteParcelaCompra(id, userId);
+    },
+
     async deleteParcelasCompraBulk(compraCartaoId: string, userId: string) {
       return targetStorage.deleteParcelasCompraBulk(compraCartaoId, userId);
     },

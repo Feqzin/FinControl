@@ -34,8 +34,13 @@ type FinancialController = {
 type FinancialDomainControllers = {
   dividasController: Required<Pick<CrudController, "list" | "listByPessoa" | "create" | "createParcelado" | "update" | "delete" | "recalcular">>;
   parcelasController: ParcelasController;
-  cartoesController: Required<Pick<CrudController, "list" | "create" | "update" | "delete">>;
-  comprasCartaoController: Required<Pick<CrudController, "list" | "listByCartao" | "listByPessoa" | "create" | "update" | "delete">>;
+  cartoesController: Required<Pick<CrudController, "list" | "create" | "update" | "delete">> & {
+    deleteFaturaByCartaoMonth: RequestHandler;
+    deleteFaturasByMonth: RequestHandler;
+  };
+  comprasCartaoController: Required<Pick<CrudController, "list" | "listByCartao" | "listByPessoa" | "create" | "update" | "delete">> & {
+    deleteByCardRoute: RequestHandler;
+  };
   financialController: FinancialController;
 };
 
@@ -71,6 +76,8 @@ export function registerFinancialDomainRoutes(app: Express, controllers: Financi
   app.post("/api/cartoes", requireAuth, cartoesController.create);
   app.patch("/api/cartoes/:id", requireAuth, cartoesController.update);
   app.delete("/api/cartoes/:id", requireAuth, cartoesController.delete);
+  app.delete("/api/cartoes/:cartaoId/faturas/:mes", requireAuth, cartoesController.deleteFaturaByCartaoMonth);
+  app.delete("/api/cartoes/faturas/:mes", requireAuth, cartoesController.deleteFaturasByMonth);
   app.get("/api/cartoes/resumo", requireAuth, financialController.cardSummary);
 
   app.get("/api/compras-cartao", requireAuth, comprasCartaoController.list);
@@ -79,6 +86,7 @@ export function registerFinancialDomainRoutes(app: Express, controllers: Financi
   app.post("/api/compras-cartao", requireAuth, comprasCartaoController.create);
   app.patch("/api/compras-cartao/:id", requireAuth, comprasCartaoController.update);
   app.delete("/api/compras-cartao/:id", requireAuth, comprasCartaoController.delete);
+  app.delete("/api/cartoes/compras/:compraId", requireAuth, comprasCartaoController.deleteByCardRoute);
 
   app.get("/api/financial/summary", requireAuth, financialController.summary);
   app.get("/api/financial/score", requireAuth, financialController.score);

@@ -1,9 +1,22 @@
 import type { Request, Response } from "express";
 import { formatMoneyFixed } from "../../utils/money.js";
 import { normalizeIsoDate } from "../../utils/date.js";
-import { ComprasCartaoService } from "../services/compras-cartao.service.js";
+import { ComprasCartaoService, type DeleteCompraScope } from "../services/compras-cartao.service.js";
 import { compraBody, compraUpdateBody } from "../validators/financial.validators.js";
 import { auditRequest, getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils.js";
+
+function parseDeleteScope(value: unknown): DeleteCompraScope {
+  if (typeof value === "string" && value.trim().toLowerCase() === "single_parcela") {
+    return "single_parcela";
+  }
+  return "all_parcelas";
+}
+
+function parseDryRun(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true";
+}
 
 export function createComprasCartaoController(service: ComprasCartaoService) {
   return {
@@ -162,6 +175,61 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
         targetId: compraId,
       });
       return res.json({ success: true });
+    },
+
+    deleteByCardRoute: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const compraId = getParam(req, "compraId");
+      const scope = parseDeleteScope(req.query.scope);
+      const parcelaId = typeof req.query.parcelaId === "string" ? req.query.parcelaId : undefined;
+      const dryRun = parseDryRun(req.query.dryRun);
+
+      const result = await service.deleteWithScope(compraId, userId, {
+        scope,
+        parcelaId,
+        dryRun,
+      });
+
+      if ("error" in result) {
+        if (result.error === "PARCELA_NOT_FOUND") {
+          auditRequest(req, {
+            action: "delete_compra_scope",
+            status: "failure",
+            domain: "compras_cartao",
+            userId,
+            targetId: compraId,
+            details: { reason: "parcela_not_found", scope, parcelaId, dryRun },
+          });
+          return sendBadRequest(res, "Parcela not found");
+        }
+
+        auditRequest(req, {
+          action: "delete_compra_scope",
+          status: "failure",
+          domain: "compras_cartao",
+          userId,
+          targetId: compraId,
+          details: { reason: "not_found", scope, parcelaId, dryRun },
+        });
+        return sendNotFound(res);
+      }
+
+      auditRequest(req, {
+        action: "delete_compra_scope",
+        status: "success",
+        domain: "compras_cartao",
+        userId,
+        targetId: compraId,
+        details: {
+          scope: result.impact.scope,
+          dryRun: result.dryRun,
+          parcelaId: result.impact.parcelaAlvo?.id ?? null,
+          comprasRemovidas: result.impact.comprasRemovidas,
+          parcelasRemovidas: result.impact.parcelasRemovidas,
+          valorTotalRemovido: result.impact.valorTotalRemovido,
+        },
+      });
+      return res.json(result);
     },
   };
 }

@@ -2,7 +2,26 @@ import type { Request, Response } from "express";
 import { formatMoneyFixed } from "../../utils/money";
 import { CartoesService } from "../services/cartoes.service";
 import { cartaoBody, cartaoUpdateBody } from "../validators/financial.validators";
-import { auditRequest, getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils";
+import {
+  auditRequest,
+  getParam,
+  getUserId,
+  sendBadRequest,
+  sendNotFound,
+} from "./controller-utils";
+
+const MES_REGEX = /^\d{4}-\d{2}$/;
+
+function parseDryRun(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true";
+}
+
+function parseMes(mes: string): string | null {
+  const value = mes.trim();
+  return MES_REGEX.test(value) ? value : null;
+}
 
 export function createCartoesController(service: CartoesService) {
   return {
@@ -111,6 +130,88 @@ export function createCartoesController(service: CartoesService) {
         targetId: cartaoId,
       });
       return res.json({ success: true });
+    },
+
+    deleteFaturaByCartaoMonth: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const cartaoId = getParam(req, "cartaoId");
+      const mes = parseMes(getParam(req, "mes"));
+      const dryRun = parseDryRun(req.query.dryRun);
+
+      if (!mes) {
+        return sendBadRequest(res, "Mes invalido. Use o formato YYYY-MM.");
+      }
+
+      const result = await service.deleteFaturaDoCartao(userId, { cartaoId, mes, dryRun });
+      if ("error" in result) {
+        auditRequest(req, {
+          action: "delete",
+          status: "failure",
+          domain: "cartoes",
+          userId,
+          targetId: cartaoId,
+          details: { reason: "cartao_not_found", mes, dryRun },
+        });
+        return sendNotFound(res, "Cartao not found");
+      }
+      if (!("impact" in result)) {
+        return sendBadRequest(res, "Nao foi possivel calcular o impacto da exclusao.");
+      }
+      const impact = result.impact;
+      if (!impact) {
+        return sendBadRequest(res, "Nao foi possivel calcular o impacto da exclusao.");
+      }
+
+      auditRequest(req, {
+        action: "delete",
+        status: "success",
+        domain: "cartoes",
+        userId,
+        targetId: cartaoId,
+        details: {
+          mes,
+          dryRun: result.dryRun,
+          comprasRemovidas: impact.comprasRemovidas,
+          parcelasRemovidas: impact.parcelasRemovidas,
+          valorTotalRemovido: impact.valorTotalRemovido,
+        },
+      });
+      return res.json(result);
+    },
+
+    deleteFaturasByMonth: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const mes = parseMes(getParam(req, "mes"));
+      const dryRun = parseDryRun(req.query.dryRun);
+
+      if (!mes) {
+        return sendBadRequest(res, "Mes invalido. Use o formato YYYY-MM.");
+      }
+
+      const result = await service.deleteFaturaDoCartao(userId, { mes, dryRun });
+      if (!("impact" in result)) {
+        return sendBadRequest(res, "Nao foi possivel calcular o impacto da exclusao.");
+      }
+      const impact = result.impact;
+      if (!impact) {
+        return sendBadRequest(res, "Nao foi possivel calcular o impacto da exclusao.");
+      }
+      auditRequest(req, {
+        action: "delete",
+        status: "success",
+        domain: "cartoes",
+        userId,
+        details: {
+          mes,
+          dryRun: result.dryRun,
+          comprasRemovidas: impact.comprasRemovidas,
+          parcelasRemovidas: impact.parcelasRemovidas,
+          valorTotalRemovido: impact.valorTotalRemovido,
+          cartoesAfetados: impact.cartoesAfetados.length,
+        },
+      });
+
+      return res.json(result);
     },
   };
 }
