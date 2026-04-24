@@ -437,7 +437,7 @@ export default function PerfilPage() {
     },
   });
 
-  const billingStatusUi = resolveBillingStatusUi(billingStatus);
+  const billingStatusUi = resolveBillingStatusUi(billingStatus, subscriptionAccess)
 
   const handleCancelSubscription = () => {
     if (!canCancelSubscription || cancelBillingSubscriptionMutation.isPending) return;
