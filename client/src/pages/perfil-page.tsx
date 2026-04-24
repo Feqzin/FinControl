@@ -39,7 +39,7 @@ import type {
   ServicoPagamento,
   ServicoPessoa,
 } from "@shared/schema";
-import { calculateRemaining, type SubscriptionLimitValue } from "@shared/subscription";
+import { calculateRemaining, type SubscriptionAccess, type SubscriptionLimitValue } from "@shared/subscription";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);

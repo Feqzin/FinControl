@@ -158,6 +158,8 @@ export class DatabaseStorage implements IStorage {
     id: string;
     username: string;
     password: string;
+    subscriptionTier?: string | null;
+    subscription_tier?: string | null;
   }): User {
     return {
       id: user.id,
