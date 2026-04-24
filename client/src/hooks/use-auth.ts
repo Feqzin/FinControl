@@ -47,6 +47,10 @@ export function hasCloudBackupAccess(user: AuthUser | null | undefined): boolean
   return getUserSubscriptionFeatures(user).cloudBackup === true;
 }
 
+export function hasSmartImportAccess(user: AuthUser | null | undefined): boolean {
+  return getUserSubscriptionFeatures(user).smartImport === true;
+}
+
 export function useAuth() {
   const { data: user, isLoading } = useQuery<AuthUser | null>({
     queryKey: AUTH_ME_QUERY_KEY,

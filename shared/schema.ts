@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, boolean, index, date } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, boolean, index, date, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -351,3 +351,61 @@ export const insertUserCloudBackupSchema = createInsertSchema(userCloudBackups).
 });
 export type InsertUserCloudBackup = z.infer<typeof insertUserCloudBackupSchema>;
 export type UserCloudBackup = typeof userCloudBackups.$inferSelect;
+
+export const userSubscriptions = pgTable("user_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  providerSubscriptionId: text("provider_subscription_id"),
+  providerPlanId: text("provider_plan_id"),
+  externalReference: text("external_reference"),
+  status: text("status").notNull().default("pending"),
+  providerStatus: text("provider_status"),
+  amount: decimal("amount", { precision: 12, scale: 2 }),
+  currency: text("currency").notNull().default("BRL"),
+  startedAt: timestamp("started_at"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  canceledAt: timestamp("canceled_at"),
+  lastWebhookAt: timestamp("last_webhook_at"),
+  lastSyncAt: timestamp("last_sync_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  rawPayload: jsonb("raw_payload"),
+}, (table) => ({
+  userSubscriptionsUserIdIdx: index("idx_user_subscriptions_user_id").on(table.userId),
+  userSubscriptionsProviderIdx: index("idx_user_subscriptions_provider").on(table.provider),
+  userSubscriptionsStatusIdx: index("idx_user_subscriptions_status").on(table.status),
+  userSubscriptionsExternalReferenceIdx: index("idx_user_subscriptions_external_reference").on(table.externalReference),
+  userSubscriptionsUpdatedAtIdx: index("idx_user_subscriptions_updated_at").on(table.updatedAt),
+}));
+
+export const insertUserSubscriptionSchema = createInsertSchema(userSubscriptions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertUserSubscription = z.infer<typeof insertUserSubscriptionSchema>;
+export type UserSubscription = typeof userSubscriptions.$inferSelect;
+
+export const billingWebhookEvents = pgTable("billing_webhook_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  provider: text("provider").notNull(),
+  providerEventId: text("provider_event_id").notNull(),
+  topic: text("topic"),
+  payload: jsonb("payload"),
+  processedAt: timestamp("processed_at"),
+  status: text("status").notNull().default("received"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  billingWebhookEventsProviderIdx: index("idx_billing_webhook_events_provider").on(table.provider),
+  billingWebhookEventsProviderEventIdIdx: index("idx_billing_webhook_events_provider_event_id").on(table.providerEventId),
+  billingWebhookEventsStatusIdx: index("idx_billing_webhook_events_status").on(table.status),
+  billingWebhookEventsCreatedAtIdx: index("idx_billing_webhook_events_created_at").on(table.createdAt),
+}));
+
+export const insertBillingWebhookEventSchema = createInsertSchema(billingWebhookEvents).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertBillingWebhookEvent = z.infer<typeof insertBillingWebhookEventSchema>;
+export type BillingWebhookEvent = typeof billingWebhookEvents.$inferSelect;

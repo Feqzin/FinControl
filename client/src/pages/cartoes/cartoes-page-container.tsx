@@ -14,6 +14,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
+import { hasSmartImportAccess, useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -39,6 +40,10 @@ import {
   parsePlanLimitError,
 } from "@/lib/subscription-plan-limit";
 import {
+  buildPremiumFeatureFriendlyMessage,
+  parsePremiumFeatureError,
+} from "@/lib/subscription-premium-feature";
+import {
   formatCartaoCurrency,
   getDaysUntilInvoice,
   getNextInvoiceDate,
@@ -51,8 +56,10 @@ const IconPicker = lazy(() =>
 
 export default function CartoesPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const { prefs } = useUIPreferences();
   const [location, setLocation] = useLocation();
+  const smartImportLiberado = hasSmartImportAccess(user);
 
   const [openCard, setOpenCard] = useState(false);
   const [openCompra, setOpenCompra] = useState(false);
@@ -156,7 +163,28 @@ export default function CartoesPage() {
     if (planLimitError) {
       return buildPlanLimitFriendlyMessage(planLimitError);
     }
+    const premiumFeatureError = parsePremiumFeatureError(error);
+    if (premiumFeatureError) {
+      return buildPremiumFeatureFriendlyMessage(premiumFeatureError);
+    }
     return error instanceof Error ? error.message : "Erro inesperado";
+  };
+
+  const showSmartImportPremiumToast = () => {
+    toast({
+      title: "Importação inteligente é Premium",
+      description:
+        "Faça upgrade para Premium para usar preview, confirmação e rollback de importação de faturas/extratos.",
+    });
+  };
+
+  const openImportDialog = () => {
+    if (!smartImportLiberado) {
+      showSmartImportPremiumToast();
+      return;
+    }
+    setImportCartaoId(cartoes[0]?.id ?? "");
+    setOpenImport(true);
   };
 
   const getPessoaSaldoDisponivel = (pessoaId: string): number => {
@@ -365,6 +393,11 @@ export default function CartoesPage() {
   };
 
   const handleConfirmImport = () => {
+    if (!smartImportLiberado) {
+      showSmartImportPremiumToast();
+      return;
+    }
+
     const cartaoId = importCartaoId || cartoes[0]?.id;
     if (!cartaoId) {
       toast({ title: "Selecione um cartao para importar", variant: "destructive" });
@@ -400,6 +433,11 @@ export default function CartoesPage() {
   };
 
   const handleRollbackLastImport = () => {
+    if (!smartImportLiberado) {
+      showSmartImportPremiumToast();
+      return;
+    }
+
     if (!lastImportLogId) return;
 
     rollbackImportMutation.mutate(lastImportLogId, {
@@ -421,6 +459,11 @@ export default function CartoesPage() {
   };
 
   const handleParseTexto = async () => {
+    if (!smartImportLiberado) {
+      showSmartImportPremiumToast();
+      return;
+    }
+
     if (!importTexto.trim()) {
       toast({ title: "Cole ou escreva o texto da fatura", variant: "destructive" });
       return;
@@ -515,6 +558,11 @@ export default function CartoesPage() {
   };
 
   const handleFileUpload = async (file: File) => {
+    if (!smartImportLiberado) {
+      showSmartImportPremiumToast();
+      return;
+    }
+
     setImportLoading(true);
     try {
       const content = await file.text();
@@ -606,11 +654,17 @@ export default function CartoesPage() {
           <p className="text-muted-foreground">Gerencie seus cartoes e compras parceladas</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => { setImportCartaoId(cartoes[0]?.id ?? ""); setOpenImport(true); }}
+          <Button variant="outline" onClick={openImportDialog}
             data-testid="button-importar-fatura">
-            <Upload className="w-4 h-4 mr-2" /> Importar Fatura
+            <Upload className="w-4 h-4 mr-2" />
+            {smartImportLiberado ? "Importar Fatura" : "Importação inteligente (Premium)"}
           </Button>
-          {lastImportLogId && (
+          {!smartImportLiberado && (
+            <Badge variant="secondary" data-testid="badge-smart-import-premium">
+              Premium
+            </Badge>
+          )}
+          {smartImportLiberado && lastImportLogId && (
             <Button
               variant="outline"
               onClick={handleRollbackLastImport}
@@ -1140,6 +1194,11 @@ export default function CartoesPage() {
             setImportPreviewLogId(null);
             setImportSourceType("manual");
             setImportSourceName("");
+            return;
+          }
+          if (!smartImportLiberado) {
+            setOpenImport(false);
+            showSmartImportPremiumToast();
             return;
           }
           setOpenImport(true);
