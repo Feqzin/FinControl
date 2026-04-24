@@ -201,6 +201,7 @@ if (supabaseUrl) {
 const supabaseAnonKey = optionalEnv("SUPABASE_ANON_KEY");
 const supabaseServiceRoleKey = optionalEnv("SUPABASE_SERVICE_ROLE_KEY");
 const supabaseStorageBucket = optionalEnv("SUPABASE_STORAGE_BUCKET");
+const cloudBackupBucket = optionalEnv("CLOUD_BACKUP_BUCKET");
 const allowLocalFilesystemStorageFallbackRaw = parseBooleanEnv(
   "ALLOW_LOCAL_FILESYSTEM_STORAGE_FALLBACK",
   process.env.ALLOW_LOCAL_FILESYSTEM_STORAGE_FALLBACK,
@@ -221,6 +222,17 @@ if (supabaseStorageBucket) {
   if (!/^[a-z0-9][a-z0-9._-]{1,62}$/i.test(supabaseStorageBucket)) {
     fail(
       "SUPABASE_STORAGE_BUCKET invalido. Use apenas letras, numeros, ponto, underline ou hifen."
+    );
+  }
+}
+
+if (cloudBackupBucket) {
+  if (hasPlaceholder(cloudBackupBucket)) {
+    fail("CLOUD_BACKUP_BUCKET parece estar com placeholder. Substitua por valor real.");
+  }
+  if (!/^[a-z0-9][a-z0-9._-]{1,62}$/i.test(cloudBackupBucket)) {
+    fail(
+      "CLOUD_BACKUP_BUCKET invalido. Use apenas letras, numeros, ponto, underline ou hifen."
     );
   }
 }
@@ -268,6 +280,7 @@ export const ENV = {
     anonKey: supabaseAnonKey,
     serviceRoleKey: supabaseServiceRoleKey,
     storageBucket: supabaseStorageBucket,
+    cloudBackupBucket: cloudBackupBucket ?? supabaseStorageBucket,
     storageConfigured: missingSupabaseStorageVars.length === 0,
   },
   storage: {

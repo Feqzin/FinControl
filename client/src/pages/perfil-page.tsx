@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { getUserSubscriptionTier, hasCloudBackupAccess, useAuth } from "@/hooks/use-auth";
+import { createCloudBackup, listCloudBackups, type CloudBackupItem } from "@/services/api/cloud-backups";
 import {
   User, Download, Shield, Database, LogOut, CheckCircle, HelpCircle, Upload, Cloud
 } from "lucide-react";
@@ -28,6 +29,28 @@ import type {
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+function formatDateTimeBR(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const decimals = unitIndex === 0 ? 0 : 1;
+  return `${size.toFixed(decimals)} ${units[unitIndex]}`;
 }
 
 type ImportBackupResponse = {
@@ -99,6 +122,31 @@ export default function PerfilPage() {
       toast({ title: "Perfil atualizado" });
     },
     onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
+  });
+
+  const cloudBackupsQuery = useQuery<CloudBackupItem[]>({
+    queryKey: ["/api/backups/cloud"],
+    queryFn: () => listCloudBackups(30),
+    enabled: backupNuvemLiberado,
+    retry: false,
+  });
+
+  const createCloudBackupMutation = useMutation({
+    mutationFn: createCloudBackup,
+    onSuccess: (backup) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/backups/cloud"] });
+      toast({
+        title: "Backup na nuvem salvo",
+        description: `${backup.fileName} · ${formatBytes(backup.sizeBytes)}`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro ao salvar backup na nuvem",
+        description: parseImportApiError(error),
+        variant: "destructive",
+      });
+    },
   });
 
   const importBackup = useMutation({
@@ -384,11 +432,51 @@ export default function PerfilPage() {
             <Button
               variant="outline"
               className="w-full"
-              disabled
+              onClick={() => createCloudBackupMutation.mutate()}
+              disabled={!backupNuvemLiberado || createCloudBackupMutation.isPending}
               data-testid="button-cloud-backup-premium"
             >
-              {backupNuvemLiberado ? "Backup na nuvem (em breve)" : "Disponível no plano Premium"}
+              {backupNuvemLiberado
+                ? (createCloudBackupMutation.isPending ? "Salvando backup..." : "Salvar backup na nuvem")
+                : "Disponível no plano Premium"}
             </Button>
+            {backupNuvemLiberado && (
+              <div className="rounded-md border p-3 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Backups salvos na nuvem
+                </p>
+                {cloudBackupsQuery.isLoading ? (
+                  <p className="text-sm text-muted-foreground">Carregando backups...</p>
+                ) : cloudBackupsQuery.isError ? (
+                  <p className="text-sm text-red-700">
+                    Nao foi possivel carregar backups na nuvem agora.
+                  </p>
+                ) : (cloudBackupsQuery.data?.length ?? 0) === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum backup na nuvem salvo ainda.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {cloudBackupsQuery.data?.map((backup) => (
+                      <div
+                        key={backup.id}
+                        className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{backup.fileName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDateTimeBR(backup.createdAt)} · {formatBytes(backup.sizeBytes)}
+                          </p>
+                        </div>
+                        <Badge variant={backup.status === "completed" ? "default" : "destructive"}>
+                          {backup.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <Separator />
           <p className="text-sm text-muted-foreground">

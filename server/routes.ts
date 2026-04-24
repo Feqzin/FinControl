@@ -27,9 +27,12 @@ import { createMetasController } from "./controllers/metas.controller";
 import { createRendasController } from "./controllers/rendas.controller";
 import { createPatrimoniosController } from "./controllers/patrimonios.controller";
 import { createPagamentosTimelineController } from "./controllers/pagamentos-timeline.controller";
+import { createCloudBackupsController } from "./controllers/cloud-backups.controller";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes";
 import { PagamentosTimelineService } from "./services/pagamentos-timeline.service";
+import { CloudBackupsService } from "./services/cloud-backups.service";
+import { requirePremiumFeature } from "./subscription-access";
 import { divide, parseMoney } from "../utils/money";
 
 function auditRoute(
@@ -62,6 +65,7 @@ export function registerRoutes(app: Express): void {
   const rendasController = createRendasController(new RendasService(storage));
   const patrimoniosController = createPatrimoniosController(new PatrimoniosService(storage));
   const pagamentosTimelineController = createPagamentosTimelineController(new PagamentosTimelineService(financialRepository));
+  const cloudBackupsController = createCloudBackupsController(new CloudBackupsService());
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -88,6 +92,8 @@ export function registerRoutes(app: Express): void {
   app.post("/api/imports/preview", requireAuth, importsController.preview);
   app.post("/api/imports/confirm", requireAuth, importsController.confirm);
   app.post("/api/imports/:id/rollback", requireAuth, importsController.rollback);
+  app.post("/api/backups/cloud", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.createManual);
+  app.get("/api/backups/cloud", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.listByUser);
 
   app.post("/api/importar-texto", requireAuth, async (req, res) => {
     const userId = (req.user as any).id;

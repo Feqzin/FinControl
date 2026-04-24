@@ -56,25 +56,25 @@ export function hasSupabaseStorageConfig(): boolean {
   return Boolean(
     ENV.supabase.url &&
     ENV.supabase.serviceRoleKey &&
-    ENV.supabase.storageBucket,
+    (ENV.supabase.cloudBackupBucket || ENV.supabase.storageBucket),
   );
 }
 
 function assertSupabaseStorageConfig(): {
   url: string;
   serviceRoleKey: string;
-  bucket: string;
+  defaultBucket: string;
 } {
   if (!hasSupabaseStorageConfig()) {
     throw new Error(
-      "SUPABASE_STORAGE_NOT_CONFIGURED: defina SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY e SUPABASE_STORAGE_BUCKET.",
+      "SUPABASE_STORAGE_NOT_CONFIGURED: defina SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY e SUPABASE_STORAGE_BUCKET (ou CLOUD_BACKUP_BUCKET para backup cloud).",
     );
   }
 
   return {
     url: ENV.supabase.url!,
     serviceRoleKey: ENV.supabase.serviceRoleKey!,
-    bucket: ENV.supabase.storageBucket!,
+    defaultBucket: ENV.supabase.cloudBackupBucket ?? ENV.supabase.storageBucket!,
   };
 }
 
@@ -85,11 +85,11 @@ export class SupabaseStorageServerClient {
 
   private readonly bucket: string;
 
-  constructor() {
+  constructor(bucketOverride?: string) {
     const config = assertSupabaseStorageConfig();
     this.baseUrl = normalizeBaseUrl(config.url);
     this.serviceRoleKey = config.serviceRoleKey;
-    this.bucket = config.bucket;
+    this.bucket = bucketOverride?.trim() || config.defaultBucket;
   }
 
   getBucket(): string {

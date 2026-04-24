@@ -328,3 +328,26 @@ export const importLogs = pgTable("import_logs", {
 export const insertImportLogSchema = createInsertSchema(importLogs).omit({ id: true });
 export type InsertImportLog = z.infer<typeof insertImportLogSchema>;
 export type ImportLog = typeof importLogs.$inferSelect;
+
+export const userCloudBackups = pgTable("user_cloud_backups", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  filePath: text("file_path").notNull(),
+  fileName: text("file_name").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  sha256: text("sha256").notNull(),
+  backupType: text("backup_type").notNull().default("manual"),
+  status: text("status").notNull().default("completed"),
+  isEncrypted: boolean("is_encrypted").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userCloudBackupsUserIdIdx: index("idx_user_cloud_backups_user_id").on(table.userId),
+  userCloudBackupsCreatedAtIdx: index("idx_user_cloud_backups_created_at").on(table.createdAt),
+}));
+
+export const insertUserCloudBackupSchema = createInsertSchema(userCloudBackups).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertUserCloudBackup = z.infer<typeof insertUserCloudBackupSchema>;
+export type UserCloudBackup = typeof userCloudBackups.$inferSelect;

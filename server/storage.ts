@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos,
@@ -105,25 +105,139 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   constructor(private readonly database: any = db) {}
+  private usersBaseProjection = {
+    id: users.id,
+    username: users.username,
+    password: users.password,
+  } as const;
+
+  private isMissingUsersOptionalColumnsError(error: unknown): boolean {
+    const messages: string[] = [];
+    const queue: unknown[] = [error];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current) continue;
+
+      if (typeof current === "string") {
+        messages.push(current.toLowerCase());
+        continue;
+      }
+
+      if (typeof current === "object") {
+        const maybeError = current as { message?: unknown; code?: unknown; cause?: unknown };
+        if (typeof maybeError.message === "string") {
+          messages.push(maybeError.message.toLowerCase());
+        }
+        if (typeof maybeError.code === "string") {
+          messages.push(maybeError.code.toLowerCase());
+        }
+        if (maybeError.cause !== undefined) {
+          queue.push(maybeError.cause);
+        }
+      }
+    }
+
+    const combined = messages.join(" | ");
+    if (combined.includes("42703")) return true;
+    return (
+      combined.includes("does not exist") &&
+      (
+        combined.includes("nome_completo") ||
+        combined.includes("subscription_tier") ||
+        combined.includes("reset_token") ||
+        combined.includes("reset_token_expiry")
+      )
+    );
+  }
+
+  private toUserWithOptionalDefaults(user: {
+    id: string;
+    username: string;
+    password: string;
+  }): User {
+    return {
+      id: user.id,
+      username: user.username,
+      password: user.password,
+      nomeCompleto: null,
+      subscriptionTier: "free",
+      resetToken: null,
+      resetTokenExpiry: null,
+    };
+  }
+
   async getUser(id: string) {
-    const [user] = await this.database.select().from(users).where(eq(users.id, id));
-    return user;
+    try {
+      const [user] = await this.database.select().from(users).where(eq(users.id, id));
+      return user;
+    } catch (error) {
+      if (!this.isMissingUsersOptionalColumnsError(error)) throw error;
+      const [user] = await this.database.select(this.usersBaseProjection).from(users).where(eq(users.id, id));
+      return user ? this.toUserWithOptionalDefaults(user) : undefined;
+    }
   }
   async getUserByUsername(username: string) {
-    const [user] = await this.database.select().from(users).where(eq(users.username, username));
-    return user;
+    try {
+      const [user] = await this.database
+        .select()
+        .from(users)
+        .where(sql`lower(${users.username}) = lower(${username.trim()})`)
+        .limit(1);
+      return user;
+    } catch (error) {
+      if (!this.isMissingUsersOptionalColumnsError(error)) throw error;
+      const [user] = await this.database
+        .select(this.usersBaseProjection)
+        .from(users)
+        .where(sql`lower(${users.username}) = lower(${username.trim()})`)
+        .limit(1);
+      return user ? this.toUserWithOptionalDefaults(user) : undefined;
+    }
   }
   async createUser(insertUser: InsertUser) {
-    const [user] = await this.database.insert(users).values(insertUser).returning();
-    return user;
+    try {
+      const [user] = await this.database.insert(users).values(insertUser).returning();
+      return user;
+    } catch (error) {
+      if (!this.isMissingUsersOptionalColumnsError(error)) throw error;
+      const [user] = await this.database.insert(users).values(insertUser).returning(this.usersBaseProjection);
+      return this.toUserWithOptionalDefaults(user);
+    }
   }
   async updateUser(id: string, data: Partial<User>) {
-    const [user] = await this.database.update(users).set(data).where(eq(users.id, id)).returning();
-    return user;
+    try {
+      const [user] = await this.database.update(users).set(data).where(eq(users.id, id)).returning();
+      return user;
+    } catch (error) {
+      if (!this.isMissingUsersOptionalColumnsError(error)) throw error;
+
+      const fallbackData: Partial<User> = { ...data };
+      delete fallbackData.nomeCompleto;
+      delete fallbackData.subscriptionTier;
+      delete fallbackData.resetToken;
+      delete fallbackData.resetTokenExpiry;
+
+      if (Object.keys(fallbackData).length === 0) {
+        return this.getUser(id);
+      }
+
+      const [user] = await this.database
+        .update(users)
+        .set(fallbackData)
+        .where(eq(users.id, id))
+        .returning(this.usersBaseProjection);
+      return user ? this.toUserWithOptionalDefaults(user) : undefined;
+    }
   }
   async getUserByResetToken(token: string) {
-    const [user] = await this.database.select().from(users).where(eq(users.resetToken, token));
-    return user;
+    try {
+      const [user] = await this.database.select().from(users).where(eq(users.resetToken, token));
+      return user;
+    } catch (error) {
+      if (!this.isMissingUsersOptionalColumnsError(error)) throw error;
+      return undefined;
+    }
   }
 
   async getPessoas(userId: string) { return this.database.select().from(pessoas).where(eq(pessoas.userId, userId)); }
