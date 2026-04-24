@@ -76,6 +76,35 @@ function toListItem(row: typeof userCloudBackups.$inferSelect): CloudBackupListI
   };
 }
 
+function isAuthStorageError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return normalized.includes("jwt") ||
+    normalized.includes("unauthorized") ||
+    normalized.includes("permission") ||
+    normalized.includes("invalid token");
+}
+
+function isMissingBucketError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return normalized.includes("bucket") && normalized.includes("not found");
+}
+
+function mapUploadErrorToUserMessage(bucket: string, error: { message: string; statusCode?: number }): string {
+  if (error.statusCode === 401 || error.statusCode === 403 || isAuthStorageError(error.message)) {
+    return "Nao foi possivel autenticar no storage. Revise SUPABASE_SERVICE_ROLE_KEY no ambiente da Vercel.";
+  }
+
+  if (error.statusCode === 404 || isMissingBucketError(error.message)) {
+    return `Bucket de backup nao encontrado (${bucket}). Configure CLOUD_BACKUP_BUCKET ou SUPABASE_STORAGE_BUCKET no Supabase Storage.`;
+  }
+
+  if (error.statusCode === 400) {
+    return "Configuracao invalida do storage para backup cloud. Revise URL, bucket e credenciais do Supabase.";
+  }
+
+  return "Nao foi possivel salvar backup na nuvem. Verifique a configuracao do storage.";
+}
+
 export class CloudBackupsService {
   private readonly storageClient?: SupabaseStorageServerClient;
 
@@ -86,7 +115,9 @@ export class CloudBackupsService {
   private resolveStorageClient(): SupabaseStorageServerClient {
     if (this.storageClient) return this.storageClient;
     try {
-      return new SupabaseStorageServerClient(ENV.supabase.cloudBackupBucket);
+      return new SupabaseStorageServerClient(ENV.supabase.cloudBackupBucket, {
+        autoCreateBucketIfMissing: true,
+      });
     } catch {
       throw new CloudBackupsServiceError(
         503,
@@ -190,7 +221,7 @@ export class CloudBackupsService {
       });
       throw new CloudBackupsServiceError(
         503,
-        "Nao foi possivel salvar backup na nuvem. Verifique a configuracao do storage.",
+        mapUploadErrorToUserMessage(storageClient.getBucket(), uploadResult.error),
       );
     }
 

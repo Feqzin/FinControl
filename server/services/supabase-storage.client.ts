@@ -85,15 +85,78 @@ export class SupabaseStorageServerClient {
 
   private readonly bucket: string;
 
-  constructor(bucketOverride?: string) {
+  private readonly autoCreateBucketIfMissing: boolean;
+
+  constructor(
+    bucketOverride?: string,
+    options?: {
+      autoCreateBucketIfMissing?: boolean;
+    },
+  ) {
     const config = assertSupabaseStorageConfig();
     this.baseUrl = normalizeBaseUrl(config.url);
     this.serviceRoleKey = config.serviceRoleKey;
     this.bucket = bucketOverride?.trim() || config.defaultBucket;
+    this.autoCreateBucketIfMissing = options?.autoCreateBucketIfMissing === true;
   }
 
   getBucket(): string {
     return this.bucket;
+  }
+
+  private createAuthHeaders(extra?: Record<string, string>): HeadersInit {
+    return {
+      Authorization: `Bearer ${this.serviceRoleKey}`,
+      apikey: this.serviceRoleKey,
+      ...extra,
+    };
+  }
+
+  private isBucketMissingError(error: SupabaseStorageError): boolean {
+    if (error.statusCode === 404) {
+      return true;
+    }
+    const normalized = error.message.toLowerCase();
+    return normalized.includes("bucket") && normalized.includes("not found");
+  }
+
+  private async ensureBucketExists(): Promise<SupabaseStorageResult<null>> {
+    const encodedBucket = encodeURIComponent(this.bucket);
+    const checkUrl = `${this.baseUrl}/storage/v1/bucket/${encodedBucket}`;
+    const checkResponse = await fetch(checkUrl, {
+      method: "GET",
+      headers: this.createAuthHeaders(),
+    });
+
+    if (checkResponse.ok) {
+      return { data: null, error: null };
+    }
+
+    if (checkResponse.status !== 404) {
+      return {
+        data: null,
+        error: await parseErrorResponse(checkResponse),
+      };
+    }
+
+    const createResponse = await fetch(`${this.baseUrl}/storage/v1/bucket`, {
+      method: "POST",
+      headers: this.createAuthHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        id: this.bucket,
+        name: this.bucket,
+        public: false,
+      }),
+    });
+
+    if (!createResponse.ok && createResponse.status !== 409) {
+      return {
+        data: null,
+        error: await parseErrorResponse(createResponse),
+      };
+    }
+
+    return { data: null, error: null };
   }
 
   async uploadObject(relativePath: string, content: Buffer, mimeType: string): Promise<SupabaseStorageResult<{ path: string }>> {
@@ -103,19 +166,44 @@ export class SupabaseStorageServerClient {
 
     const response = await fetch(url, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.serviceRoleKey}`,
-        apikey: this.serviceRoleKey,
+      headers: this.createAuthHeaders({
         "Content-Type": mimeType,
         "x-upsert": "false",
-      },
+      }),
       body: content,
     });
 
     if (!response.ok) {
+      const parsedError = await parseErrorResponse(response);
+      if (this.autoCreateBucketIfMissing && this.isBucketMissingError(parsedError)) {
+        const ensureResult = await this.ensureBucketExists();
+        if (!ensureResult.error) {
+          const retryResponse = await fetch(url, {
+            method: "POST",
+            headers: this.createAuthHeaders({
+              "Content-Type": mimeType,
+              "x-upsert": "false",
+            }),
+            body: content,
+          });
+
+          if (retryResponse.ok) {
+            return {
+              data: { path: relativePath },
+              error: null,
+            };
+          }
+
+          return {
+            data: null,
+            error: await parseErrorResponse(retryResponse),
+          };
+        }
+      }
+
       return {
         data: null,
-        error: await parseErrorResponse(response),
+        error: parsedError,
       };
     }
 
@@ -132,10 +220,7 @@ export class SupabaseStorageServerClient {
 
     const response = await fetch(url, {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${this.serviceRoleKey}`,
-        apikey: this.serviceRoleKey,
-      },
+      headers: this.createAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -159,10 +244,7 @@ export class SupabaseStorageServerClient {
 
     const response = await fetch(url, {
       method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${this.serviceRoleKey}`,
-        apikey: this.serviceRoleKey,
-      },
+      headers: this.createAuthHeaders(),
     });
 
     if (!response.ok && response.status !== 404) {
