@@ -235,28 +235,17 @@ function resolveEffectiveTierByPriority(params: {
 }): SubscriptionTier {
   const { subscriptionTierStored, subscriptionStatus, trialIsActive } = params;
 
-  if (
-    (subscriptionStatus === "canceled"
-      || subscriptionStatus === "expired"
-      || subscriptionStatus === "rejected")
-    && !trialIsActive
-  ) {
-    return "free";
-  }
-
-  if (subscriptionStatus === "pending" && !trialIsActive) {
-    return "free";
-  }
-
-  if (subscriptionTierStored === "premium") {
-    return "premium";
-  }
-
+  // Prioridade única de tier efetivo:
+  // 1) assinatura paga ativa, 2) trial ativo, 3) tier premium armazenado no usuário, 4) free.
   if (isPaidSubscriptionStatus(subscriptionStatus)) {
     return "premium";
   }
 
   if (trialIsActive) {
+    return "premium";
+  }
+
+  if (subscriptionTierStored === "premium") {
     return "premium";
   }
 
