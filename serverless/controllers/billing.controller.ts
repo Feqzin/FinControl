@@ -13,6 +13,15 @@ export function createBillingController(service: BillingService) {
 
     startTrial: async (req: Request, res: Response) => {
       const userId = getUserId(req);
+      writeTechnicalLog({
+        event: "billing.trial.start.request",
+        source: "billing.controller",
+        level: "info",
+        requestId: req.requestId,
+        data: {
+          userId,
+        },
+      });
 
       try {
         const status = await service.startTrial(userId);
@@ -30,6 +39,17 @@ export function createBillingController(service: BillingService) {
         return res.status(201).json(status);
       } catch (error) {
         if (error instanceof BillingServiceError) {
+          writeTechnicalLog({
+            event: "billing.trial.start.service_error",
+            source: "billing.controller",
+            level: "warn",
+            requestId: req.requestId,
+            data: {
+              userId,
+              status: error.status,
+              message: error.message,
+            },
+          });
           auditRequest(req, {
             action: "create",
             status: "failure",

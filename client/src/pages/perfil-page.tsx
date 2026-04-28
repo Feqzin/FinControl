@@ -179,16 +179,16 @@ type ImportBackupResponse = {
   metasImportadas: number;
 };
 
-function parseImportApiError(error: unknown): string {
+function parseApiErrorMessage(error: unknown, fallbackMessage: string): string {
   if (!(error instanceof Error)) {
-    return "Falha ao importar backup. Tente novamente.";
+    return fallbackMessage;
   }
 
-  const message = error.message ?? "";
-  const jsonStart = message.indexOf("{");
+  const rawMessage = error.message ?? "";
+  const jsonStart = rawMessage.indexOf("{");
   if (jsonStart >= 0) {
     try {
-      const parsed = JSON.parse(message.slice(jsonStart)) as { message?: unknown };
+      const parsed = JSON.parse(rawMessage.slice(jsonStart)) as { message?: unknown };
       if (typeof parsed.message === "string" && parsed.message.trim() !== "") {
         return parsed.message;
       }
@@ -197,7 +197,12 @@ function parseImportApiError(error: unknown): string {
     }
   }
 
-  return message || "Falha ao importar backup. Tente novamente.";
+  const withoutStatusPrefix = rawMessage.replace(/^\d{3}:\s*/, "").trim();
+  if (withoutStatusPrefix.length > 0 && !/^internal server error$/i.test(withoutStatusPrefix)) {
+    return withoutStatusPrefix;
+  }
+
+  return fallbackMessage;
 }
 
 type ImportMode = "merge" | "replace";
@@ -299,7 +304,7 @@ export default function PerfilPage() {
     onError: (error) => {
       toast({
         title: "Erro ao salvar backup na nuvem",
-        description: parseImportApiError(error),
+        description: parseApiErrorMessage(error, "Falha ao salvar backup na nuvem."),
         variant: "destructive",
       });
     },
@@ -327,7 +332,7 @@ export default function PerfilPage() {
     onError: (error) => {
       toast({
         title: "Erro ao restaurar backup da nuvem",
-        description: parseImportApiError(error),
+        description: parseApiErrorMessage(error, "Falha ao restaurar backup da nuvem."),
         variant: "destructive",
       });
     },
@@ -372,7 +377,7 @@ export default function PerfilPage() {
     onError: (error) => {
       toast({
         title: "Erro ao importar backup",
-        description: parseImportApiError(error),
+        description: parseApiErrorMessage(error, "Falha ao importar backup. Tente novamente."),
         variant: "destructive",
       });
     },
@@ -394,7 +399,7 @@ export default function PerfilPage() {
     onError: (error) => {
       toast({
         title: "Não foi possível iniciar o teste grátis",
-        description: parseImportApiError(error),
+        description: parseApiErrorMessage(error, "Falha ao iniciar teste grátis."),
         variant: "destructive",
       });
     },
@@ -412,7 +417,7 @@ export default function PerfilPage() {
     onError: (error) => {
       toast({
         title: "Erro ao iniciar assinatura",
-        description: parseImportApiError(error),
+        description: parseApiErrorMessage(error, "Falha ao iniciar assinatura premium."),
         variant: "destructive",
       });
     },
@@ -432,7 +437,7 @@ export default function PerfilPage() {
     onError: (error) => {
       toast({
         title: "Erro ao cancelar assinatura",
-        description: parseImportApiError(error),
+        description: parseApiErrorMessage(error, "Falha ao cancelar assinatura."),
         variant: "destructive",
       });
     },

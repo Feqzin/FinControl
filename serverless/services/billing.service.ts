@@ -399,6 +399,52 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
+function isBillingSchemaOutdatedError(error: unknown): boolean {
+  const messages: string[] = [];
+  const queue: unknown[] = [error];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+
+    if (typeof current === "string") {
+      messages.push(current.toLowerCase());
+      continue;
+    }
+
+    if (typeof current === "object") {
+      const maybeError = current as { message?: unknown; code?: unknown; cause?: unknown };
+      if (typeof maybeError.message === "string") {
+        messages.push(maybeError.message.toLowerCase());
+      }
+      if (typeof maybeError.code === "string") {
+        messages.push(maybeError.code.toLowerCase());
+      }
+      if (maybeError.cause !== undefined) {
+        queue.push(maybeError.cause);
+      }
+    }
+  }
+
+  const combined = messages.join(" | ");
+  if (!combined) return false;
+
+  const hasKnownDbCode = combined.includes("42703") || combined.includes("42p01");
+  if (!hasKnownDbCode) return false;
+
+  return (
+    combined.includes("user_subscriptions")
+    || combined.includes("billing_webhook_events")
+    || combined.includes("subscription_tier")
+    || combined.includes("trial_started_at")
+    || combined.includes("trial_ends_at")
+    || combined.includes("trial_used_at")
+    || combined.includes("does not exist")
+    || combined.includes("undefined column")
+    || combined.includes("relation")
+  );
+}
+
 function parseIsoDate(value: unknown): Date | null {
   if (typeof value !== "string" || value.trim().length === 0) return null;
   const parsed = new Date(value);
@@ -1007,33 +1053,67 @@ export class BillingService {
   }
 
   async startTrial(userId: string): Promise<BillingStatusResponse> {
-    const user = await this.dataStorage.getUser(userId);
-    if (!user) {
-      throw new BillingServiceError(404, "Usuario nao encontrado.");
+    try {
+      const user = await this.dataStorage.getUser(userId);
+      if (!user) {
+        throw new BillingServiceError(404, "Usuario nao encontrado.");
+      }
+
+      if (user.trialUsedAt || user.trialStartedAt || user.trialEndsAt) {
+        throw new BillingServiceError(409, "Seu teste gratis de 7 dias ja foi utilizado.");
+      }
+
+      const currentSubscription = await this.getCurrentSubscription(userId);
+      if (currentSubscription && toBillingStatus(currentSubscription.status) === "active") {
+        throw new BillingServiceError(409, "Sua assinatura premium ja esta ativa.");
+      }
+
+      const now = new Date();
+      const trialEndsAt = new Date(now.getTime() + (TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000));
+
+      await db.update(users)
+        .set({
+          trialStartedAt: now,
+          trialEndsAt,
+          trialUsedAt: now,
+        })
+        .where(eq(users.id, userId));
+
+      await this.syncUserSubscriptionTier(userId, "trial_started");
+      return this.getStatus(userId);
+    } catch (error) {
+      if (error instanceof BillingServiceError) {
+        throw error;
+      }
+
+      if (isBillingSchemaOutdatedError(error)) {
+        writeTechnicalLog({
+          event: "billing.trial.start.schema_outdated",
+          source: "billing.service",
+          level: "error",
+          data: {
+            userId,
+            error: toErrorLog(error),
+          },
+        });
+
+        throw new BillingServiceError(
+          500,
+          "Estrutura do banco desatualizada para iniciar o teste gratis. Aplique as migrations de billing/trial e tente novamente.",
+        );
+      }
+
+      writeTechnicalLog({
+        event: "billing.trial.start.unexpected_error",
+        source: "billing.service",
+        level: "error",
+        data: {
+          userId,
+          error: toErrorLog(error),
+        },
+      });
+      throw error;
     }
-
-    if (user.trialUsedAt || user.trialStartedAt || user.trialEndsAt) {
-      throw new BillingServiceError(409, "Seu teste gratis de 7 dias ja foi utilizado.");
-    }
-
-    const currentSubscription = await this.getCurrentSubscription(userId);
-    if (currentSubscription && toBillingStatus(currentSubscription.status) === "active") {
-      throw new BillingServiceError(409, "Sua assinatura premium ja esta ativa.");
-    }
-
-    const now = new Date();
-    const trialEndsAt = new Date(now.getTime() + (TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000));
-
-    await db.update(users)
-      .set({
-        trialStartedAt: now,
-        trialEndsAt,
-        trialUsedAt: now,
-      })
-      .where(eq(users.id, userId));
-
-    await this.syncUserSubscriptionTier(userId, "trial_started");
-    return this.getStatus(userId);
   }
 
   async processMercadoPagoWebhook(input: {
