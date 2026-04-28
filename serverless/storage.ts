@@ -24,7 +24,6 @@ const usersBaseProjection = {
   id: users.id,
   username: users.username,
   password: users.password,
-  subscriptionTier: users.subscriptionTier,
 };
 
 const USERNAME_LOOKUP_QUERY =
@@ -212,7 +211,28 @@ export class DatabaseStorage implements IStorage {
       const [user] = await this.database.select().from(users).where(eq(users.id, id));
       return user;
     } catch (error) {
-      if (!isMissingUsersOptionalColumnsError(error)) throw error;
+      if (!isMissingUsersOptionalColumnsError(error)) {
+        writeTechnicalLog({
+          event: "storage.users.get_user.error",
+          source: "storage",
+          level: "error",
+          data: {
+            userId: id,
+            reason: "unexpected_query_error",
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+        throw error;
+      }
+      writeTechnicalLog({
+        event: "storage.users.get_user.fallback",
+        source: "storage",
+        level: "warn",
+        data: {
+          userId: id,
+          reason: "missing_optional_users_columns",
+        },
+      });
       const [user] = await this.database.select(usersBaseProjection).from(users).where(eq(users.id, id));
       return user ? toUserWithOptionalDefaults(user) : undefined;
     }
@@ -266,7 +286,29 @@ export class DatabaseStorage implements IStorage {
 
       return user;
     } catch (error) {
-      if (!isMissingUsersOptionalColumnsError(error)) throw error;
+      if (!isMissingUsersOptionalColumnsError(error)) {
+        writeTechnicalLog({
+          event: "storage.users.get_user_by_username.error",
+          source: "storage",
+          level: "error",
+          data: {
+            usernameReceived: normalizedUsername,
+            reason: "unexpected_query_error",
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+        throw error;
+      }
+
+      writeTechnicalLog({
+        event: "storage.users.get_user_by_username.fallback",
+        source: "storage",
+        level: "warn",
+        data: {
+          usernameReceived: normalizedUsername,
+          reason: "missing_optional_users_columns",
+        },
+      });
 
       const [user] = await this.database
         .select(usersBaseProjection)
@@ -294,7 +336,28 @@ export class DatabaseStorage implements IStorage {
       const [user] = await this.database.insert(users).values(insertUser).returning();
       return user;
     } catch (error) {
-      if (!isMissingUsersOptionalColumnsError(error)) throw error;
+      if (!isMissingUsersOptionalColumnsError(error)) {
+        writeTechnicalLog({
+          event: "storage.users.create_user.error",
+          source: "storage",
+          level: "error",
+          data: {
+            usernameReceived: typeof insertUser.username === "string" ? insertUser.username : "",
+            reason: "unexpected_query_error",
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+        throw error;
+      }
+      writeTechnicalLog({
+        event: "storage.users.create_user.fallback",
+        source: "storage",
+        level: "warn",
+        data: {
+          usernameReceived: typeof insertUser.username === "string" ? insertUser.username : "",
+          reason: "missing_optional_users_columns",
+        },
+      });
       const [user] = await this.database.insert(users).values(insertUser).returning(usersBaseProjection);
       return toUserWithOptionalDefaults(user);
     }

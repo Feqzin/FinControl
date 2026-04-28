@@ -348,6 +348,16 @@ export function setupAuth(app: Express) {
         if (!match) return done(null, false, { message: "Senha incorreta" });
         return done(null, user);
       } catch (err) {
+        writeTechnicalLog({
+          event: "auth.login.strategy.error",
+          source: "auth",
+          level: "error",
+          data: {
+            username: normalizeUsername(username),
+            reason: "strategy_exception",
+            error: err instanceof Error ? err.message : String(err),
+          },
+        });
         return done(err);
       }
     })
@@ -362,6 +372,16 @@ export function setupAuth(app: Express) {
       const user = await storage.getUser(id);
       done(null, user || null);
     } catch (err) {
+      writeTechnicalLog({
+        event: "auth.session.deserialize.error",
+        source: "auth",
+        level: "error",
+        data: {
+          userId: id,
+          reason: "deserialize_exception",
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
       done(err);
     }
   });
