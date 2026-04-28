@@ -3,6 +3,7 @@ import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Renda, Servi
 import type { FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
 import type { FinancialRepository } from "../repositories/financial.repository";
 import { formatMoneyFixed, parseMoney, toCentsBigInt } from "../../utils/money";
+import { toErrorLog, writeTechnicalLog } from "../logger";
 import {
   getDebtObligations,
   getDebtPortfolioSummary,
@@ -32,6 +33,7 @@ export type FinancialSimulationInput = {
 };
 
 type MoneyValue = string | number | null | undefined;
+const RECOVERABLE_CONTEXT_LOAD_ERROR_CODES = new Set(["42P01", "42703"]);
 
 function toMoneyNumber(value: MoneyValue): number {
   return parseMoney(value) ?? 0;
@@ -70,6 +72,35 @@ function resolveMonthReference(input?: string): string {
 function isOpenDebtStatus(status: string): boolean {
   const normalized = String(status || "").trim().toLowerCase();
   return normalized !== "pago" && normalized !== "cancelado";
+}
+
+function isRecoverableContextLoadError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeError = error as {
+    code?: unknown;
+    message?: unknown;
+    cause?: { code?: unknown; message?: unknown } | unknown;
+  };
+  const code =
+    (typeof maybeError.code === "string" && maybeError.code) ||
+    (typeof maybeError.cause === "object"
+      && maybeError.cause
+      && typeof (maybeError.cause as { code?: unknown }).code === "string"
+      ? ((maybeError.cause as { code?: unknown }).code as string)
+      : "");
+
+  if (!RECOVERABLE_CONTEXT_LOAD_ERROR_CODES.has(code)) return false;
+
+  const message = String(maybeError.message ?? "").toLowerCase();
+  const causeMessage =
+    typeof maybeError.cause === "object" && maybeError.cause
+      ? String((maybeError.cause as { message?: unknown }).message ?? "").toLowerCase()
+      : "";
+  const combined = `${message}\n${causeMessage}`;
+  return combined.includes("does not exist")
+    || combined.includes("relation")
+    || combined.includes("column")
+    || combined.includes("undefined");
 }
 
 function getMonthlyDebtTotals(
@@ -464,15 +495,54 @@ function applyFinancialSimulation(
 export class FinancialService {
   constructor(private readonly repository: FinancialRepository) {}
 
+  private async loadContextSlice<T>(
+    userId: string,
+    contextKey: string,
+    loader: () => Promise<T>,
+    fallback: T,
+  ): Promise<T> {
+    try {
+      return await loader();
+    } catch (error) {
+      if (!isRecoverableContextLoadError(error)) {
+        throw error;
+      }
+
+      writeTechnicalLog({
+        event: "financial.context.partial_fallback",
+        source: "financial.service",
+        level: "warn",
+        data: {
+          userId,
+          contextKey,
+          reason: "recoverable_schema_error",
+          error: toErrorLog(error),
+        },
+      });
+
+      return fallback;
+    }
+  }
+
   private async loadContext(userId: string): Promise<FinancialContext> {
     const [dividas, parcelas, parcelasCompra, servicos, cartoes, compras, rendas] = await Promise.all([
-      this.repository.getDividas(userId),
-      this.repository.getParcelas(userId),
-      this.repository.getParcelasCompraByUser(userId),
-      this.repository.getServicos(userId),
-      this.repository.getCartoes(userId),
-      this.repository.getComprasCartao(userId),
-      this.repository.getRendas(userId),
+      this.loadContextSlice(userId, "dividas", () => this.repository.getDividas(userId), [] as Divida[]),
+      this.loadContextSlice(userId, "parcelas", () => this.repository.getParcelas(userId), [] as Parcela[]),
+      this.loadContextSlice(
+        userId,
+        "parcelas_compra",
+        () => this.repository.getParcelasCompraByUser(userId),
+        [] as ParcelaCompra[],
+      ),
+      this.loadContextSlice(userId, "servicos", () => this.repository.getServicos(userId), [] as Servico[]),
+      this.loadContextSlice(userId, "cartoes", () => this.repository.getCartoes(userId), [] as Cartao[]),
+      this.loadContextSlice(
+        userId,
+        "compras_cartao",
+        () => this.repository.getComprasCartao(userId),
+        [] as CompraCartao[],
+      ),
+      this.loadContextSlice(userId, "rendas", () => this.repository.getRendas(userId), [] as Renda[]),
     ]);
 
     return { dividas, parcelas, parcelasCompra, servicos, cartoes, compras, rendas };
