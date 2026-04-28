@@ -223,6 +223,7 @@ export default function PerfilPage() {
   });
   const billingStatus = billingStatusQuery.data;
   const planoEfetivo = billingStatus?.effectiveTier ?? planoAtualAutenticado;
+  const premiumAtivoNaUi = planoAtualAutenticado === "premium";
   const backupNuvemLiberado = billingStatus?.features.cloudBackup ?? (planoAtualAutenticado === "premium");
   const billingLimits = billingStatus?.limits ?? limitsFromAuth;
   const canStartTrial = billingStatus?.canStartTrial ?? false;
@@ -437,9 +438,15 @@ export default function PerfilPage() {
     },
   });
 
-  const billingStatusUi = resolveBillingStatusUi(billingStatus, {
-  subscriptionTier: user?.subscriptionTier,
-  } as SubscriptionAccess);
+  const billingStatusUi = premiumAtivoNaUi
+    ? {
+        title: "Plano Premium ativo",
+        description: "Recursos premium liberados para sua conta.",
+        tone: "default" as const,
+      }
+    : resolveBillingStatusUi(billingStatus, {
+        subscriptionTier: "free",
+      } as SubscriptionAccess);
 
   const handleCancelSubscription = () => {
     if (!canCancelSubscription || cancelBillingSubscriptionMutation.isPending) return;
@@ -662,13 +669,13 @@ export default function PerfilPage() {
               <div>
                 <p className="text-sm font-medium">Plano atual</p>
                 <p className="text-xs text-muted-foreground">
-                  {planoEfetivo === "premium"
+                  {premiumAtivoNaUi
                     ? "Recursos premium liberados para sua conta."
                     : "Plano free ativo. Recursos premium aparecem bloqueados."}
                 </p>
               </div>
-              <Badge variant={planoEfetivo === "premium" ? "default" : "secondary"}>
-                {planoEfetivo === "premium" ? "Premium" : "Free"}
+              <Badge variant={premiumAtivoNaUi ? "default" : "secondary"}>
+                {premiumAtivoNaUi ? "Premium" : "Free"}
               </Badge>
             </div>
           </div>
@@ -688,7 +695,7 @@ export default function PerfilPage() {
               <p className="text-xs text-muted-foreground">{billingStatusUi.description}</p>
             </div>
             <Badge variant={billingStatusUi.tone}>
-              {usageComLimitesAtuais.subscriptionTier === "premium" ? "Premium" : "Free"}
+              {premiumAtivoNaUi ? "Premium" : "Free"}
             </Badge>
           </div>
 
@@ -758,7 +765,7 @@ export default function PerfilPage() {
             </div>
           </div>
 
-          {canStartTrial && (
+          {!premiumAtivoNaUi && canStartTrial && (
             <Button
               className="w-full"
               variant="secondary"
@@ -772,7 +779,7 @@ export default function PerfilPage() {
             </Button>
           )}
 
-          {canSubscribe && (
+          {!premiumAtivoNaUi && canSubscribe && (
             <Button
               className="w-full"
               onClick={() => createBillingCheckoutMutation.mutate()}
@@ -787,13 +794,13 @@ export default function PerfilPage() {
             </Button>
           )}
 
-          {(usageComLimitesAtuais.subscriptionTier === "premium" || canCancelSubscription) && (
+          {canCancelSubscription && (
             <Button
               type="button"
               variant="outline"
               className="w-full"
               onClick={handleCancelSubscription}
-              disabled={!canCancelSubscription || cancelBillingSubscriptionMutation.isPending}
+              disabled={cancelBillingSubscriptionMutation.isPending}
               data-testid="button-cancel-premium"
             >
               {cancelBillingSubscriptionMutation.isPending ? "Cancelando assinatura..." : "Cancelar assinatura"}
