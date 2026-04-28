@@ -26,6 +26,11 @@ const usersBaseProjection = {
   password: users.password,
 };
 
+const usersBaseProjectionWithSubscriptionTier = {
+  ...usersBaseProjection,
+  subscriptionTier: users.subscriptionTier,
+};
+
 const USERNAME_LOOKUP_QUERY =
   `select * from "users" where lower("users"."username") = lower($1) limit 1`;
 
@@ -111,6 +116,44 @@ function toUserWithOptionalDefaults(user: {
     resetToken: null,
     resetTokenExpiry: null,
   };
+}
+
+async function selectFallbackUserById(database: any, id: string): Promise<User | undefined> {
+  try {
+    const [user] = await database
+      .select(usersBaseProjectionWithSubscriptionTier)
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1);
+    return user ? toUserWithOptionalDefaults(user) : undefined;
+  } catch (error) {
+    if (!isMissingUsersOptionalColumnsError(error)) throw error;
+    const [user] = await database
+      .select(usersBaseProjection)
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1);
+    return user ? toUserWithOptionalDefaults(user) : undefined;
+  }
+}
+
+async function selectFallbackUserByUsername(database: any, normalizedUsername: string): Promise<User | undefined> {
+  try {
+    const [user] = await database
+      .select(usersBaseProjectionWithSubscriptionTier)
+      .from(users)
+      .where(sql`lower(${users.username}) = lower(${normalizedUsername})`)
+      .limit(1);
+    return user ? toUserWithOptionalDefaults(user) : undefined;
+  } catch (error) {
+    if (!isMissingUsersOptionalColumnsError(error)) throw error;
+    const [user] = await database
+      .select(usersBaseProjection)
+      .from(users)
+      .where(sql`lower(${users.username}) = lower(${normalizedUsername})`)
+      .limit(1);
+    return user ? toUserWithOptionalDefaults(user) : undefined;
+  }
 }
 
 export interface IStorage {
@@ -233,8 +276,7 @@ export class DatabaseStorage implements IStorage {
           reason: "missing_optional_users_columns",
         },
       });
-      const [user] = await this.database.select(usersBaseProjection).from(users).where(eq(users.id, id));
-      return user ? toUserWithOptionalDefaults(user) : undefined;
+      return selectFallbackUserById(this.database, id);
     }
   }
   async getUserByUsername(username: string) {
@@ -309,12 +351,7 @@ export class DatabaseStorage implements IStorage {
           reason: "missing_optional_users_columns",
         },
       });
-
-      const [user] = await this.database
-        .select(usersBaseProjection)
-        .from(users)
-        .where(sql`lower(${users.username}) = lower(${normalizedUsername})`)
-        .limit(1);
+      const user = await selectFallbackUserByUsername(this.database, normalizedUsername);
 
       writeTechnicalLog({
         event: "storage.users.get_user_by_username.result",
@@ -328,7 +365,7 @@ export class DatabaseStorage implements IStorage {
         },
       });
 
-      return user ? toUserWithOptionalDefaults(user) : undefined;
+      return user;
     }
   }
   async createUser(insertUser: InsertUser) {

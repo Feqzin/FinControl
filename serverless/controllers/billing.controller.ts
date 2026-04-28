@@ -7,7 +7,33 @@ export function createBillingController(service: BillingService) {
   return {
     getStatus: async (req: Request, res: Response) => {
       const userId = getUserId(req);
+      const sessionUser = req.user as { username?: unknown; email?: unknown; subscriptionTier?: unknown } | undefined;
+      const sessionUsername =
+        typeof sessionUser?.username === "string"
+          ? sessionUser.username
+          : typeof sessionUser?.email === "string"
+            ? sessionUser.email
+            : null;
+
       const status = await service.getStatus(userId);
+
+      if (process.env.BILLING_STATUS_DIAGNOSTIC === "1") {
+        writeTechnicalLog({
+          event: "billing.status.diagnostic",
+          source: "billing.controller",
+          level: "info",
+          requestId: req.requestId,
+          data: {
+            userId,
+            sessionUsername,
+            storedSubscriptionTier: status.subscriptionTierStored,
+            effectiveTier: status.effectiveTier,
+            billingStatus: status.billingStatus,
+            features: status.features,
+          },
+        });
+      }
+
       return res.json(status);
     },
 
