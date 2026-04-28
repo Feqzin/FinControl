@@ -385,10 +385,45 @@ export default function PerfilPage() {
 
   const startTrialMutation = useMutation({
     mutationFn: startPremiumTrial,
-    onSuccess: (status) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/billing/status"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
+    onSuccess: async (status) => {
+      queryClient.setQueryData(["/api/billing/status"], status);
+
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["/api/billing/status"],
+          exact: true,
+          refetchType: "all",
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["/api/auth/me"],
+          exact: true,
+          refetchType: "all",
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["/api/subscription/usage"],
+          exact: true,
+          refetchType: "all",
+        }),
+      ]);
+
+      await Promise.all([
+        queryClient.refetchQueries({
+          queryKey: ["/api/billing/status"],
+          exact: true,
+          type: "all",
+        }),
+        queryClient.refetchQueries({
+          queryKey: ["/api/auth/me"],
+          exact: true,
+          type: "all",
+        }),
+        queryClient.refetchQueries({
+          queryKey: ["/api/subscription/usage"],
+          exact: true,
+          type: "all",
+        }),
+      ]);
+
       toast({
         title: "Teste grátis iniciado",
         description: status.trial.endsAt
