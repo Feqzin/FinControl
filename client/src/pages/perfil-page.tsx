@@ -588,14 +588,14 @@ export default function PerfilPage() {
   };
 
   return (
-    <div className="w-full max-w-2xl overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="perfil-page">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Meu Perfil</h1>
-        <p className="text-muted-foreground">Gerencie sua conta e exporte seus dados</p>
+    <div className="app-page-shell app-section-stack mx-auto max-w-2xl" data-testid="perfil-page">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Meu Perfil</h1>
+        <p className="text-sm text-muted-foreground sm:text-base">Gerencie sua conta e exporte seus dados</p>
       </div>
 
       <Tabs value={perfilTab} onValueChange={(value) => setPerfilTab(value as typeof perfilTab)}>
-        <TabsList className="mobile-tabs-scroll w-full justify-start">
+        <TabsList className="mobile-tabs-scroll w-full justify-start bg-muted/30">
           <TabsTrigger value="planos" data-testid="tab-perfil-planos">Planos</TabsTrigger>
           <TabsTrigger value="backup" data-testid="tab-perfil-backup">Backup</TabsTrigger>
           <TabsTrigger value="conta" data-testid="tab-perfil-conta">Conta</TabsTrigger>
@@ -603,7 +603,7 @@ export default function PerfilPage() {
         </TabsList>
       </Tabs>
 
-      <Card className={perfilTab === "conta" ? "" : "hidden"}>
+      <Card className={perfilTab === "conta" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <User className="w-4 h-4" /> Informacoes pessoais
@@ -645,7 +645,7 @@ export default function PerfilPage() {
         </CardContent>
       </Card>
 
-      <Card className={perfilTab === "conta" ? "" : "hidden"}>
+      <Card className={perfilTab === "conta" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <Shield className="w-4 h-4" /> Status da conta
@@ -665,7 +665,7 @@ export default function PerfilPage() {
               <CheckCircle className="w-4 h-4 flex-shrink-0" />
               <span>Sessao segura com cookie httpOnly</span>
             </div>
-            <div className="flex items-center justify-between gap-3 p-3 rounded-md border bg-muted/30">
+            <div className="fintech-surface-subtle flex items-center justify-between gap-3 p-3">
               <div>
                 <p className="text-sm font-medium">Plano atual</p>
                 <p className="text-xs text-muted-foreground">
@@ -682,14 +682,14 @@ export default function PerfilPage() {
         </CardContent>
       </Card>
 
-      <Card className={perfilTab === "planos" ? "" : "hidden"}>
+      <Card className={perfilTab === "planos" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <Shield className="w-4 h-4" /> Planos e benefícios
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-md border p-3 bg-muted/20 flex items-center justify-between gap-3">
+          <div className="fintech-surface-subtle flex items-center justify-between gap-3 p-3">
             <div>
               <p className="text-sm font-medium">{billingStatusUi.title}</p>
               <p className="text-xs text-muted-foreground">{billingStatusUi.description}</p>
@@ -702,7 +702,7 @@ export default function PerfilPage() {
           <div className="space-y-2">
             <p className="text-sm font-medium">Uso atual do plano</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="rounded-md border p-3 bg-muted/20">
+              <div className="fintech-stat-card">
                 <p className="text-xs text-muted-foreground">Cartões</p>
                 <p className="text-lg font-semibold">
                   {usageComLimitesAtuais.usage.cartoes} / {formatPlanLimit(usageComLimitesAtuais.limits.maxCartoes)}
@@ -711,7 +711,7 @@ export default function PerfilPage() {
                   Restante: {formatRemainingLimit(usageComLimitesAtuais.remaining.cartoes)}
                 </p>
               </div>
-              <div className="rounded-md border p-3 bg-muted/20">
+              <div className="fintech-stat-card">
                 <p className="text-xs text-muted-foreground">Pessoas</p>
                 <p className="text-lg font-semibold">
                   {usageComLimitesAtuais.usage.pessoas} / {formatPlanLimit(usageComLimitesAtuais.limits.maxPessoas)}
@@ -720,7 +720,7 @@ export default function PerfilPage() {
                   Restante: {formatRemainingLimit(usageComLimitesAtuais.remaining.pessoas)}
                 </p>
               </div>
-              <div className="rounded-md border p-3 bg-muted/20">
+              <div className="fintech-stat-card">
                 <p className="text-xs text-muted-foreground">Serviços</p>
                 <p className="text-lg font-semibold">
                   {usageComLimitesAtuais.usage.servicos} / {formatPlanLimit(usageComLimitesAtuais.limits.maxServicos)}
@@ -738,7 +738,7 @@ export default function PerfilPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="rounded-md border p-3">
+            <div className="fintech-surface-subtle p-3">
               <p className="text-sm font-semibold mb-2">Plano Free</p>
               <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
                 <li>Dashboard financeiro básico</li>
@@ -749,7 +749,7 @@ export default function PerfilPage() {
                 <li>Saldo por pessoa e abatimentos</li>
               </ul>
             </div>
-            <div className="rounded-md border p-3">
+            <div className="fintech-surface-subtle border-primary/25 bg-primary/5 p-3">
               <p className="text-sm font-semibold mb-2">Plano Premium</p>
               <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
                 <li>Backup na nuvem</li>
@@ -767,7 +767,7 @@ export default function PerfilPage() {
 
           {!premiumAtivoNaUi && canStartTrial && (
             <Button
-              className="w-full"
+              className="w-full touch-feedback"
               variant="secondary"
               onClick={() => startTrialMutation.mutate()}
               data-testid="button-start-trial"
@@ -781,7 +781,7 @@ export default function PerfilPage() {
 
           {!premiumAtivoNaUi && canSubscribe && (
             <Button
-              className="w-full"
+              className="w-full touch-feedback"
               onClick={() => createBillingCheckoutMutation.mutate()}
               data-testid="button-upgrade-premium"
               disabled={createBillingCheckoutMutation.isPending}
@@ -798,7 +798,7 @@ export default function PerfilPage() {
             <Button
               type="button"
               variant="outline"
-              className="w-full"
+              className="w-full touch-feedback"
               onClick={handleCancelSubscription}
               disabled={cancelBillingSubscriptionMutation.isPending}
               data-testid="button-cancel-premium"
@@ -809,7 +809,7 @@ export default function PerfilPage() {
         </CardContent>
       </Card>
 
-      <Card className={perfilTab === "conta" ? "" : "hidden"}>
+      <Card className={perfilTab === "conta" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <Database className="w-4 h-4" /> Resumo dos dados
@@ -826,18 +826,18 @@ export default function PerfilPage() {
               { label: "Compras", value: compras.length },
               { label: "Mov. saldo", value: pessoaSaldoMovimentacoes.length },
             ].map(({ label, value }) => (
-              <div key={label} className="p-3 rounded-md bg-muted/40 text-center">
+              <div key={label} className="fintech-stat-card text-center">
                 <p className="text-2xl font-bold">{value}</p>
                 <p className="text-xs text-muted-foreground">{label}</p>
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-3 mt-3">
-            <div className="p-3 rounded-md bg-emerald-500/5 border border-emerald-500/20">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="fintech-surface-subtle border-emerald-500/20 bg-emerald-500/5 p-3">
               <p className="text-xs text-muted-foreground">A receber</p>
               <p className="font-bold text-emerald-600">{formatCurrency(totalReceber)}</p>
             </div>
-            <div className="p-3 rounded-md bg-red-500/5 border border-red-500/20">
+            <div className="fintech-surface-subtle border-red-500/20 bg-red-500/5 p-3">
               <p className="text-xs text-muted-foreground">A pagar</p>
               <p className="font-bold text-red-600">{formatCurrency(totalPagar)}</p>
             </div>
@@ -845,7 +845,7 @@ export default function PerfilPage() {
         </CardContent>
       </Card>
 
-      <Card className={perfilTab === "backup" ? "" : "hidden"}>
+      <Card className={perfilTab === "backup" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <Download className="w-4 h-4" /> Backup de dados
@@ -859,11 +859,11 @@ export default function PerfilPage() {
             variant="outline"
             onClick={exportarDados}
             data-testid="button-export"
-            className="w-full"
+            className="w-full touch-feedback"
           >
             <Download className="w-4 h-4 mr-2" /> Exportar dados (JSON)
           </Button>
-          <div className="rounded-md border p-3 space-y-3">
+          <div className="fintech-surface-subtle space-y-3 p-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Cloud className="w-4 h-4 text-primary" />
@@ -882,7 +882,7 @@ export default function PerfilPage() {
             </p>
             <Button
               variant="outline"
-              className="w-full"
+              className="w-full touch-feedback"
               onClick={() => createCloudBackupMutation.mutate()}
               disabled={!backupNuvemLiberado || createCloudBackupMutation.isPending}
               data-testid="button-cloud-backup-premium"
@@ -892,7 +892,7 @@ export default function PerfilPage() {
                 : "Disponível no plano Premium"}
             </Button>
             {backupNuvemLiberado && (
-              <div className="rounded-md border p-3 space-y-2">
+              <div className="fintech-surface-subtle space-y-2 p-3">
                 <div className="space-y-2">
                   <Label htmlFor="modo-restauracao-cloud">Modo de restauracao da nuvem</Label>
                   <select
@@ -1006,7 +1006,7 @@ export default function PerfilPage() {
             onClick={importarDados}
             disabled={!arquivoImportacao || importBackup.isPending}
             data-testid="button-import-backup"
-            className="w-full"
+            className="w-full touch-feedback"
           >
             {importBackup.isPending ? (
               "Importando..."
@@ -1019,7 +1019,7 @@ export default function PerfilPage() {
         </CardContent>
       </Card>
 
-      <Card className={perfilTab === "ajuda" ? "" : "hidden"}>
+      <Card className={perfilTab === "ajuda" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
             <HelpCircle className="w-4 h-4" /> Ajuda e Tutorial
@@ -1033,7 +1033,7 @@ export default function PerfilPage() {
         </CardContent>
       </Card>
 
-      <Card className={perfilTab === "conta" ? "" : "hidden"}>
+      <Card className={perfilTab === "conta" ? "fintech-surface" : "hidden"}>
         <CardContent className="p-4">
           <Button
             variant="destructive"

@@ -1015,97 +1015,99 @@ export default function CartoesPage() {
   }
 
   return (
-    <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="cartoes-page">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Cartoes de Credito</h1>
-          <p className="text-muted-foreground">Gerencie seus cartoes e compras parceladas</p>
-        </div>
-        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
-          <Button variant="outline" onClick={openImportDialog}
-            className="max-w-full min-w-0 flex-1 lg:flex-none"
-            data-testid="button-importar-fatura">
-            <Upload className="w-4 h-4 mr-2" />
-            <span className="truncate">
-              <span className="sm:hidden">{smartImportLiberado ? "Importar" : "Importação Premium"}</span>
-              <span className="hidden sm:inline">{smartImportLiberado ? "Importar Fatura" : "Importação inteligente (Premium)"}</span>
-            </span>
-          </Button>
-          {!smartImportLiberado && (
-            <Badge variant="secondary" className="shrink-0" data-testid="badge-smart-import-premium">
-              Premium
-            </Badge>
-          )}
-          <Button
-            variant="outline"
-            onClick={() => {
-              setDeleteFaturaScope("cartao");
-              setDeleteFaturaMes(format(new Date(), "yyyy-MM"));
-              setDeleteFaturaImpact(null);
-              setOpenDeleteFaturaDialog(true);
-            }}
-            disabled={cartoes.length === 0}
-            className="max-w-full min-w-0 flex-1 lg:flex-none"
-            data-testid="button-excluir-fatura"
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            Excluir fatura
-          </Button>
-          {smartImportLiberado && lastImportLogId && (
+    <div className="app-page-shell app-section-stack" data-testid="cartoes-page">
+      <div className="fintech-surface border-border/60 p-4 sm:p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Cartoes de Credito</h1>
+            <p className="text-sm text-muted-foreground sm:text-base">Gerencie seus cartoes e compras parceladas</p>
+          </div>
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
+            <Button variant="outline" onClick={openImportDialog}
+              className="max-w-full min-w-0 flex-1 touch-feedback lg:flex-none"
+              data-testid="button-importar-fatura">
+              <Upload className="w-4 h-4 mr-2" />
+              <span className="truncate">
+                <span className="sm:hidden">{smartImportLiberado ? "Importar" : "Importação Premium"}</span>
+                <span className="hidden sm:inline">{smartImportLiberado ? "Importar Fatura" : "Importação inteligente (Premium)"}</span>
+              </span>
+            </Button>
+            {!smartImportLiberado && (
+              <Badge variant="secondary" className="shrink-0" data-testid="badge-smart-import-premium">
+                Premium
+              </Badge>
+            )}
             <Button
               variant="outline"
-              className="max-w-full min-w-0 flex-1 lg:flex-none"
-              onClick={handleRollbackLastImport}
-              disabled={rollbackImportMutation.isPending}
-              data-testid="button-rollback-import"
+              onClick={() => {
+                setDeleteFaturaScope("cartao");
+                setDeleteFaturaMes(format(new Date(), "yyyy-MM"));
+                setDeleteFaturaImpact(null);
+                setOpenDeleteFaturaDialog(true);
+              }}
+              disabled={cartoes.length === 0}
+              className="max-w-full min-w-0 flex-1 touch-feedback lg:flex-none"
+              data-testid="button-excluir-fatura"
             >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              {rollbackImportMutation.isPending ? "Revertendo..." : "Desfazer Ultima Importacao"}
+              <Trash2 className="w-4 h-4 mr-2" />
+              Excluir fatura
             </Button>
-          )}
-          <Dialog open={openCard} onOpenChange={setOpenCard}>
-            <DialogTrigger asChild>
-              <Button className="flex-1 lg:flex-none" data-testid="button-add-cartao">
-                <Plus className="w-4 h-4 mr-2" /> Novo cartao
+            {smartImportLiberado && lastImportLogId && (
+              <Button
+                variant="outline"
+                className="max-w-full min-w-0 flex-1 touch-feedback lg:flex-none"
+                onClick={handleRollbackLastImport}
+                disabled={rollbackImportMutation.isPending}
+                data-testid="button-rollback-import"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                {rollbackImportMutation.isPending ? "Revertendo..." : "Desfazer Ultima Importacao"}
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Novo Cartao</DialogTitle></DialogHeader>
-              <form onSubmit={(e) => { e.preventDefault(); handleCreateCard(); }} className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Icone</Label>
-                  <Suspense fallback={<Skeleton className="h-14 w-full" />}>
-                    <IconPicker value={newCardIcone} name={cardForm.nome} onChange={setNewCardIcone} size="md" />
-                  </Suspense>
-                </div>
-                <div className="space-y-2">
-                  <Label>Nome do cartao</Label>
-                  <Input data-testid="input-cartao-nome" value={cardForm.nome}
-                    onChange={(e) => setCardForm({ ...cardForm, nome: e.target.value })} placeholder="Ex: Nubank, Itau..." required />
-                </div>
-                <div className="space-y-2">
-                  <Label>Limite total</Label>
-                  <Input data-testid="input-cartao-limite" type="number" step="0.01" value={cardForm.limite}
-                    onChange={(e) => setCardForm({ ...cardForm, limite: e.target.value })} placeholder="0,00" required />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Melhor dia de compra</Label>
-                    <Input data-testid="input-cartao-melhordia" type="number" min="1" max="31" value={cardForm.melhorDiaCompra}
-                      onChange={(e) => setCardForm({ ...cardForm, melhorDiaCompra: e.target.value })} required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Dia de vencimento</Label>
-                    <Input data-testid="input-cartao-vencimento" type="number" min="1" max="31" value={cardForm.diaVencimento}
-                      onChange={(e) => setCardForm({ ...cardForm, diaVencimento: e.target.value })} required />
-                  </div>
-                </div>
-                <Button type="submit" className="w-full" data-testid="button-save-cartao" disabled={createCardMutation.isPending}>
-                  {createCardMutation.isPending ? "Salvando..." : "Salvar"}
+            )}
+            <Dialog open={openCard} onOpenChange={setOpenCard}>
+              <DialogTrigger asChild>
+                <Button className="flex-1 touch-feedback lg:flex-none" data-testid="button-add-cartao">
+                  <Plus className="w-4 h-4 mr-2" /> Novo cartao
                 </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Novo Cartao</DialogTitle></DialogHeader>
+                <form onSubmit={(e) => { e.preventDefault(); handleCreateCard(); }} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Icone</Label>
+                    <Suspense fallback={<Skeleton className="h-14 w-full" />}>
+                      <IconPicker value={newCardIcone} name={cardForm.nome} onChange={setNewCardIcone} size="md" />
+                    </Suspense>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Nome do cartao</Label>
+                    <Input data-testid="input-cartao-nome" value={cardForm.nome}
+                      onChange={(e) => setCardForm({ ...cardForm, nome: e.target.value })} placeholder="Ex: Nubank, Itau..." required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Limite total</Label>
+                    <Input data-testid="input-cartao-limite" type="number" step="0.01" value={cardForm.limite}
+                      onChange={(e) => setCardForm({ ...cardForm, limite: e.target.value })} placeholder="0,00" required />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Melhor dia de compra</Label>
+                      <Input data-testid="input-cartao-melhordia" type="number" min="1" max="31" value={cardForm.melhorDiaCompra}
+                        onChange={(e) => setCardForm({ ...cardForm, melhorDiaCompra: e.target.value })} required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Dia de vencimento</Label>
+                      <Input data-testid="input-cartao-vencimento" type="number" min="1" max="31" value={cardForm.diaVencimento}
+                        onChange={(e) => setCardForm({ ...cardForm, diaVencimento: e.target.value })} required />
+                    </div>
+                  </div>
+                  <Button type="submit" className="w-full touch-feedback" data-testid="button-save-cartao" disabled={createCardMutation.isPending}>
+                    {createCardMutation.isPending ? "Salvando..." : "Salvar"}
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
       </div>
 
@@ -1120,7 +1122,7 @@ export default function CartoesPage() {
       {cartoes.length > 0 && (
         <div className="space-y-3">
           <Tabs value={cartoesTab} onValueChange={(value) => setCartoesTab(value as typeof cartoesTab)}>
-            <TabsList className="mobile-tabs-scroll w-full justify-start">
+            <TabsList className="mobile-tabs-scroll w-full justify-start bg-muted/30">
               <TabsTrigger value="resumo" data-testid="tab-cartoes-resumo">Resumo</TabsTrigger>
               <TabsTrigger value="fatura" data-testid="tab-cartoes-fatura">Fatura atual</TabsTrigger>
               <TabsTrigger value="compras" data-testid="tab-cartoes-compras">Compras</TabsTrigger>
@@ -1913,7 +1915,7 @@ export default function CartoesPage() {
                 const limiteDisponivel = getCardAvailableLimit(cartao.id);
                 const totalCompras = getCardCompras(cartao.id).length;
                 return (
-                  <Card key={cartao.id}>
+                  <Card key={cartao.id} className="fintech-surface desktop-hover-lift">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
@@ -1926,6 +1928,7 @@ export default function CartoesPage() {
                         <Button
                           variant="outline"
                           size="sm"
+                          className="touch-feedback"
                           onClick={() => {
                             setCartoesTab("compras");
                             setSelectedCartao(cartao.id);
@@ -1935,12 +1938,12 @@ export default function CartoesPage() {
                           Ver compras
                         </Button>
                       </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        <div className="rounded-md bg-muted/40 p-2.5">
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div className="fintech-stat-card p-2.5">
                           <p className="text-[11px] text-muted-foreground">Fatura atual</p>
                           <p className="font-semibold">{formatCartaoCurrency(faturaAtual)}</p>
                         </div>
-                        <div className="rounded-md bg-emerald-500/5 p-2.5">
+                        <div className="fintech-stat-card bg-emerald-500/5 p-2.5">
                           <p className="text-[11px] text-muted-foreground">Disponível</p>
                           <p className="font-semibold text-emerald-600">{formatCartaoCurrency(limiteDisponivel)}</p>
                         </div>
@@ -1957,7 +1960,7 @@ export default function CartoesPage() {
               {cartoes.map((cartao) => {
                 const comprasFiltradas = getFilteredCardCompras(cartao.id);
                 return (
-                  <Card key={cartao.id}>
+                  <Card key={cartao.id} className="fintech-surface desktop-hover-lift">
                     <CardContent className="p-4 space-y-3">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-semibold">{cartao.nome}</p>
@@ -1968,7 +1971,7 @@ export default function CartoesPage() {
                       ) : (
                         <div className="space-y-2">
                           {comprasFiltradas.slice(0, 12).map((compra) => (
-                            <div key={compra.id} className="rounded-md border p-2.5 flex items-center justify-between gap-2">
+                            <div key={compra.id} className="fintech-surface-subtle p-2.5 flex items-center justify-between gap-2 touch-feedback">
                               <div className="min-w-0">
                                 <p className="text-sm font-medium truncate">{compra.descricao}</p>
                                 <p className="text-xs text-muted-foreground">
@@ -2003,7 +2006,7 @@ export default function CartoesPage() {
               {cartoes.map((cartao) => {
                 const comprasFiltradas = getFilteredCardCompras(cartao.id);
                 return (
-                  <Card key={cartao.id}>
+                  <Card key={cartao.id} className="fintech-surface desktop-hover-lift">
                     <CardContent className="p-4 space-y-3">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-semibold">{cartao.nome}</p>
@@ -2014,7 +2017,7 @@ export default function CartoesPage() {
                       ) : (
                         <div className="space-y-2">
                           {comprasFiltradas.slice(0, 12).map((compra) => (
-                            <div key={compra.id} className="rounded-md border p-2.5 flex items-center justify-between gap-2">
+                            <div key={compra.id} className="fintech-surface-subtle p-2.5 flex items-center justify-between gap-2 touch-feedback">
                               <div className="min-w-0">
                                 <p className="text-sm font-medium truncate">{compra.descricao}</p>
                                 <p className="text-xs text-muted-foreground">
@@ -2059,7 +2062,7 @@ export default function CartoesPage() {
                 const disponivel = getCardAvailableLimit(cartao.id);
                 const percentual = limite > 0 ? Math.min((comprometido / limite) * 100, 100) : 0;
                 return (
-                  <Card key={cartao.id}>
+                  <Card key={cartao.id} className="fintech-surface desktop-hover-lift">
                     <CardContent className="p-4 space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-semibold">{cartao.nome}</p>
@@ -2068,16 +2071,16 @@ export default function CartoesPage() {
                         </Badge>
                       </div>
                       <Progress value={percentual} className="h-2" />
-                      <div className="grid grid-cols-3 gap-2 text-xs">
-                        <div className="rounded-md bg-muted/40 p-2">
+                      <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+                        <div className="fintech-stat-card p-2">
                           <p className="text-muted-foreground">Limite</p>
                           <p className="font-semibold">{formatCartaoCurrency(limite)}</p>
                         </div>
-                        <div className="rounded-md bg-muted/40 p-2">
+                        <div className="fintech-stat-card p-2">
                           <p className="text-muted-foreground">Comprom.</p>
                           <p className="font-semibold">{formatCartaoCurrency(comprometido)}</p>
                         </div>
-                        <div className="rounded-md bg-emerald-500/5 p-2">
+                        <div className="fintech-stat-card bg-emerald-500/5 p-2">
                           <p className="text-muted-foreground">Disponível</p>
                           <p className="font-semibold text-emerald-600">{formatCartaoCurrency(disponivel)}</p>
                         </div>
@@ -2100,7 +2103,7 @@ export default function CartoesPage() {
         </div>
       ) : prefs.mobileMode ? (
         <div className="space-y-4" data-testid="cartoes-mobile-list">
-          <div className="bg-card border rounded-2xl p-4 space-y-1">
+          <div className="fintech-surface desktop-hover-lift touch-feedback p-4 space-y-1">
             <div className="flex items-center gap-1.5">
               <p className="text-sm text-muted-foreground font-medium">
                 Faturas de {format(new Date(), "MMMM", { locale: ptBR }).replace(/^\w/, (c) => c.toUpperCase())}
@@ -2123,7 +2126,7 @@ export default function CartoesPage() {
               return (
                 <div
                   key={c.id}
-                  className="bg-card border rounded-2xl overflow-hidden"
+                  className="fintech-surface desktop-hover-lift touch-feedback overflow-hidden"
                   data-testid={`mobile-card-cartao-${c.id}`}
                 >
                   <div className="flex items-center gap-3 p-4">
@@ -2146,7 +2149,7 @@ export default function CartoesPage() {
                     </Button>
                   </div>
 
-                  <div className="grid grid-cols-2 divide-x divide-border bg-muted/30 px-4 py-3">
+                  <div className="grid grid-cols-2 divide-x divide-border/70 bg-muted/25 px-4 py-3">
                     <div className="pr-4">
                       <p className="text-xs text-muted-foreground mb-0.5">Limite Disponível</p>
                       <p className="text-sm font-semibold text-emerald-600">{formatCartaoCurrency(limiteDisponivel)}</p>
@@ -2168,7 +2171,7 @@ export default function CartoesPage() {
                         getFilteredCardCompras(c.id).map((compra) => {
                           const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
                           return (
-                            <div key={compra.id} className="flex items-center gap-3 px-4 py-3">
+                            <div key={compra.id} className="flex items-center gap-3 px-4 py-3 touch-feedback">
                               <BrandIconDisplay name={compra.descricao} size="sm" />
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium truncate">{compra.descricao}</p>
@@ -2244,7 +2247,7 @@ export default function CartoesPage() {
             const isUrgent = daysUntil <= 5;
 
             return (
-              <Card key={c.id} data-testid={`card-cartao-${c.id}`}>
+                <Card key={c.id} className="fintech-surface desktop-hover-lift" data-testid={`card-cartao-${c.id}`}>
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
@@ -2271,15 +2274,15 @@ export default function CartoesPage() {
                 </CardHeader>
 
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Fatura atual</p>
-                      <p className="text-lg font-bold">{formatCartaoCurrency(faturaAtual)}</p>
-                    </div>
-                    <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground mb-1">Disponível</p>
-                      <p className="text-lg font-bold text-emerald-600">{formatCartaoCurrency(limiteDisponivel)}</p>
-                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="fintech-stat-card">
+                        <p className="text-xs text-muted-foreground mb-1">Fatura atual</p>
+                        <p className="text-lg font-bold">{formatCartaoCurrency(faturaAtual)}</p>
+                      </div>
+                      <div className="fintech-stat-card bg-emerald-500/5">
+                        <p className="text-xs text-muted-foreground mb-1">Disponível</p>
+                        <p className="text-lg font-bold text-emerald-600">{formatCartaoCurrency(limiteDisponivel)}</p>
+                      </div>
                   </div>
 
                   <div>
@@ -2324,7 +2327,7 @@ export default function CartoesPage() {
                         const reembolsado = compra.pessoaId && compra.statusPessoa === "pago";
                         const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
                         return (
-                          <div key={compra.id} className="p-2.5 rounded-md bg-muted/30 text-sm" data-testid={`compra-${compra.id}`}>
+                          <div key={compra.id} className="fintech-surface-subtle p-2.5 text-sm touch-feedback" data-testid={`compra-${compra.id}`}>
                             <div className="flex items-center gap-3 mb-2">
                               <BrandIconDisplay name={compra.descricao} size="sm" />
                               <div className="min-w-0 flex-1">
