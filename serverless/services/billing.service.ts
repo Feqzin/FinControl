@@ -886,6 +886,18 @@ export class BillingService {
     return row ?? null;
   }
 
+  private async hasAnyHistoricalTrialUsage(userId: string, now: Date): Promise<boolean> {
+    const subscriptions = await db.select().from(userSubscriptions)
+      .where(eq(userSubscriptions.userId, userId));
+
+    return subscriptions.some((subscription) => {
+      const snapshot = extractTrialFromSubscription(subscription, now);
+      if (snapshot.wasUsed) return true;
+
+      return normalizeMercadoPagoStatus(subscription.providerStatus) === "trialing";
+    });
+  }
+
   private async findSubscriptionForUpsert(input: UpsertLocalSubscriptionInput): Promise<UserSubscription | null> {
     const providerSubscriptionId = normalizeOptionalText(input.providerSubscriptionId);
     if (providerSubscriptionId) {
@@ -1139,6 +1151,7 @@ export class BillingService {
         throw new BillingServiceError(404, "Usuario nao encontrado.");
       }
 
+      const now = new Date();
       const currentSubscription = await this.getCurrentSubscription(userId);
       if (currentSubscription && toBillingStatus(currentSubscription.status) === "active") {
         throw new BillingServiceError(409, "Sua assinatura premium ja esta ativa.");
@@ -1147,13 +1160,17 @@ export class BillingService {
       const trialState = this.buildEffectiveAccessFromState({
         user,
         currentSubscription,
-        now: new Date(),
+        now,
       }).trial;
       if (trialState.usedAt || trialState.startedAt || trialState.endsAt) {
         throw new BillingServiceError(409, "Seu teste gratis de 7 dias ja foi utilizado.");
       }
 
-      const now = new Date();
+      const hasHistoricalTrialUsage = await this.hasAnyHistoricalTrialUsage(userId, now);
+      if (hasHistoricalTrialUsage) {
+        throw new BillingServiceError(409, "Seu teste gratis de 7 dias ja foi utilizado.");
+      }
+
       const trialEndsAt = new Date(now.getTime() + (TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000));
       const currentRawPayload = (currentSubscription?.rawPayload && typeof currentSubscription.rawPayload === "object")
         ? currentSubscription.rawPayload as Record<string, unknown>

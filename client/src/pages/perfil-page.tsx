@@ -228,8 +228,8 @@ export default function PerfilPage() {
   });
   const billingStatus = billingStatusQuery.data;
   const planoEfetivo = billingStatus?.effectiveTier ?? planoAtualAutenticado;
-  const premiumAtivoNaUi = planoAtualAutenticado === "premium";
-  const backupNuvemLiberado = billingStatus?.features.cloudBackup ?? (planoAtualAutenticado === "premium");
+  const premiumAtivoNaUi = planoEfetivo === "premium";
+  const backupNuvemLiberado = billingStatus?.features.cloudBackup ?? premiumAtivoNaUi;
   const billingLimits = billingStatus?.limits ?? limitsFromAuth;
   const canStartTrial = billingStatus?.canStartTrial ?? false;
   const canSubscribe = billingStatus ? billingStatus.canSubscribe : planoEfetivo === "free";
@@ -443,15 +443,9 @@ export default function PerfilPage() {
     },
   });
 
-  const billingStatusUi = premiumAtivoNaUi
-    ? {
-        title: "Plano Premium ativo",
-        description: "Recursos premium liberados para sua conta.",
-        tone: "default" as const,
-      }
-    : resolveBillingStatusUi(billingStatus, {
-        subscriptionTier: "free",
-      } as SubscriptionAccess);
+  const billingStatusUi = resolveBillingStatusUi(billingStatus, {
+    subscriptionTier: planoEfetivo,
+  } as SubscriptionAccess);
 
   const handleCancelSubscription = () => {
     if (!canCancelSubscription || cancelBillingSubscriptionMutation.isPending) return;
