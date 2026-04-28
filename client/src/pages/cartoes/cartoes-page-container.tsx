@@ -35,7 +35,13 @@ import { ImportFaturaDialog } from "@/pages/cartoes/components/import-fatura-dia
 import { formatImportCardOptionLabel, suggestImportCardByText } from "@/pages/cartoes/import-card-matching";
 import { useCartoes } from "@/hooks/useCartoes";
 import { CartoesSummaryCards } from "@/pages/cartoes/components/cartoes-summary-cards";
-import { previewImportCompras, type DeleteCompraScope, type DeleteCompraResponse, type DeleteFaturaResponse } from "@/services/api/cartoes";
+import {
+  deleteCompraCartaoComEscopo,
+  previewImportCompras,
+  type DeleteCompraScope,
+  type DeleteCompraResponse,
+  type DeleteFaturaResponse,
+} from "@/services/api/cartoes";
 import { isParcelaComprometendoLimite } from "@/lib/card-limit-usage";
 import {
   buildPlanLimitFriendlyMessage,
@@ -55,6 +61,25 @@ import {
 const IconPicker = lazy(() =>
   import("@/components/icon-picker").then((mod) => ({ default: mod.IconPicker })),
 );
+
+const DELETE_MODAL_TIMEOUT_MS = 20_000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  return new Promise<T>((resolve, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+    promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => {
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+      });
+  });
+}
 
 export default function CartoesPage() {
   const { toast } = useToast();
@@ -120,6 +145,8 @@ export default function CartoesPage() {
   const [deleteCompraScope, setDeleteCompraScope] = useState<DeleteCompraScope>("all_parcelas");
   const [deleteCompraImpact, setDeleteCompraImpact] = useState<DeleteCompraResponse | null>(null);
   const [deleteCompraImpactLoading, setDeleteCompraImpactLoading] = useState(false);
+  const [deleteCompraImpactError, setDeleteCompraImpactError] = useState<string | null>(null);
+  const [deleteCompraSubmitting, setDeleteCompraSubmitting] = useState(false);
 
   const {
     cartoes,
@@ -243,39 +270,13 @@ export default function CartoesPage() {
     let active = true;
     const run = async () => {
       if (!openDeleteCompraDialog || !deleteCompraTarget) return;
-      const parcelaId = deleteCompraScope === "single_parcela"
-        ? getCurrentParcelaIdForCompra(deleteCompraTarget) ?? undefined
-        : undefined;
-
-      if (deleteCompraScope === "single_parcela" && !parcelaId) {
-        setDeleteCompraImpact(null);
-        return;
-      }
-
-      setDeleteCompraImpactLoading(true);
       try {
-        const response = await deleteCompraMutation.mutateAsync({
-          compraId: deleteCompraTarget.id,
-          scope: deleteCompraScope,
-          parcelaId,
-          dryRun: true,
-        });
-        if (active) {
-          setDeleteCompraImpact(response);
-        }
-      } catch (error) {
-        if (active) {
-          setDeleteCompraImpact(null);
-          toast({
-            title: "Erro ao calcular impacto",
-            description: getErrorMessage(error),
-            variant: "destructive",
-          });
-        }
-      } finally {
-        if (active) {
-          setDeleteCompraImpactLoading(false);
-        }
+        await loadDeleteCompraImpact(deleteCompraTarget, deleteCompraScope, { isActive: () => active });
+      } catch {
+        // Erro ja tratado dentro do calculo de impacto.
+      }
+      if (!active) {
+        return;
       }
     };
 
@@ -283,7 +284,11 @@ export default function CartoesPage() {
     return () => {
       active = false;
     };
-  }, [openDeleteCompraDialog, deleteCompraTarget, deleteCompraScope, deleteCompraMutation]);
+  }, [
+    openDeleteCompraDialog,
+    deleteCompraTarget,
+    deleteCompraScope,
+  ]);
   const getErrorMessage = (error: unknown) => {
     const planLimitError = parsePlanLimitError(error);
     if (planLimitError) {
@@ -391,18 +396,69 @@ export default function CartoesPage() {
     return firstPendente?.id ?? rows[0].id;
   };
 
+  const loadDeleteCompraImpact = async (
+    compra: CompraCartao,
+    scope: DeleteCompraScope,
+    options?: { isActive?: () => boolean },
+  ) => {
+    const canUpdate = () => (options?.isActive ? options.isActive() : true);
+    const parcelaId = scope === "single_parcela"
+      ? getCurrentParcelaIdForCompra(compra) ?? undefined
+      : undefined;
+
+    if (scope === "single_parcela" && !parcelaId) {
+      if (!canUpdate()) return;
+      setDeleteCompraImpact(null);
+      setDeleteCompraImpactError("Nao foi possivel identificar a parcela alvo para esta compra.");
+      return;
+    }
+
+    if (!canUpdate()) return;
+    setDeleteCompraImpactLoading(true);
+    setDeleteCompraImpactError(null);
+    try {
+      const response = await withTimeout(
+        deleteCompraCartaoComEscopo(compra.id, {
+          scope,
+          parcelaId,
+          dryRun: true,
+        }),
+        DELETE_MODAL_TIMEOUT_MS,
+        "Tempo limite ao calcular impacto. Tente novamente.",
+      );
+      if (!canUpdate()) return;
+      setDeleteCompraImpact(response);
+    } catch (error) {
+      if (!canUpdate()) return;
+      setDeleteCompraImpact(null);
+      const message = getErrorMessage(error);
+      setDeleteCompraImpactError(message);
+      toast({
+        title: "Erro ao calcular impacto",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      if (!canUpdate()) return;
+      setDeleteCompraImpactLoading(false);
+    }
+  };
+
   const resetDeleteCompraDialog = () => {
     setOpenDeleteCompraDialog(false);
     setDeleteCompraTarget(null);
     setDeleteCompraScope("all_parcelas");
     setDeleteCompraImpact(null);
     setDeleteCompraImpactLoading(false);
+    setDeleteCompraImpactError(null);
+    setDeleteCompraSubmitting(false);
   };
 
   const openDeleteCompraConfirm = (compra: CompraCartao) => {
     setDeleteCompraTarget(compra);
     setDeleteCompraScope(Number(compra.parcelas) > 1 ? "single_parcela" : "all_parcelas");
     setDeleteCompraImpact(null);
+    setDeleteCompraImpactError(null);
     setOpenDeleteCompraDialog(true);
   };
 
@@ -643,25 +699,29 @@ export default function CartoesPage() {
       return;
     }
 
-    deleteCompraMutation.mutate({
-      compraId: deleteCompraTarget.id,
-      scope: deleteCompraScope,
-      parcelaId,
-    }, {
-      onSuccess: () => {
-        const scopeLabel = deleteCompraScope === "single_parcela"
-          ? "Parcela removida"
-          : "Compra removida";
-        toast({ title: scopeLabel });
-        resetDeleteCompraDialog();
-      },
-      onError: (error) => {
-        toast({
-          title: "Erro ao excluir",
-          description: getErrorMessage(error),
-          variant: "destructive",
-        });
-      },
+    setDeleteCompraSubmitting(true);
+    void withTimeout(
+      deleteCompraMutation.mutateAsync({
+        compraId: deleteCompraTarget.id,
+        scope: deleteCompraScope,
+        parcelaId,
+      }),
+      DELETE_MODAL_TIMEOUT_MS,
+      "Tempo limite ao excluir compra/parcela. Tente novamente.",
+    ).then(() => {
+      const scopeLabel = deleteCompraScope === "single_parcela"
+        ? "Parcela removida"
+        : "Compra removida";
+      toast({ title: scopeLabel });
+      resetDeleteCompraDialog();
+    }).catch((error) => {
+      toast({
+        title: "Erro ao excluir",
+        description: getErrorMessage(error),
+        variant: "destructive",
+      });
+    }).finally(() => {
+      setDeleteCompraSubmitting(false);
     });
   };
 
@@ -1419,6 +1479,26 @@ export default function CartoesPage() {
               <CardContent className="p-3 space-y-2 text-sm">
                 <p className="font-medium">Impacto da exclusão</p>
                 {deleteCompraImpactLoading && <p className="text-muted-foreground">Calculando impacto...</p>}
+                {!deleteCompraImpactLoading && deleteCompraImpactError && (
+                  <div className="space-y-2">
+                    <p className="text-red-700 text-sm">{deleteCompraImpactError}</p>
+                    {deleteCompraTarget && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          void loadDeleteCompraImpact(deleteCompraTarget, deleteCompraScope);
+                        }}
+                        disabled={deleteCompraImpactLoading || deleteCompraSubmitting}
+                        data-testid="button-retry-delete-compra-impact"
+                      >
+                        Tentar novamente
+                      </Button>
+                    )}
+                  </div>
+                )}
                 {!deleteCompraImpactLoading && deleteCompraImpact && (
                   <>
                     <p className="text-muted-foreground">
@@ -1461,14 +1541,14 @@ export default function CartoesPage() {
               variant="destructive"
               onClick={handleConfirmDeleteCompra}
               disabled={
-                deleteCompraMutation.isPending
+                deleteCompraSubmitting
                 || deleteCompraImpactLoading
                 || !deleteCompraImpact
                 || deleteCompraImpact.impact.parcelasRemovidas === 0
               }
               data-testid="button-confirm-delete-compra"
             >
-              {deleteCompraMutation.isPending ? "Excluindo..." : "Confirmar exclusão"}
+              {deleteCompraSubmitting ? "Excluindo..." : "Confirmar exclusão"}
             </Button>
           </div>
         </DialogContent>
