@@ -15,7 +15,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
-import { hasSmartImportAccess, useAuth } from "@/hooks/use-auth";
+import { usePremiumAccess } from "@/hooks/use-premium-access";
 import { useLocation } from "wouter";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -83,10 +83,10 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: 
 
 export default function CartoesPage() {
   const { toast } = useToast();
-  const { user } = useAuth();
+  const premiumAccess = usePremiumAccess();
   const { prefs } = useUIPreferences();
   const [location, setLocation] = useLocation();
-  const smartImportLiberado = hasSmartImportAccess(user);
+  const smartImportLiberado = premiumAccess.hasFeature("smartImport");
 
   const [openCard, setOpenCard] = useState(false);
   const [openCompra, setOpenCompra] = useState(false);
