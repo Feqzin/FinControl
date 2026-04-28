@@ -1,11 +1,9 @@
 import { sql } from "drizzle-orm";
-import { pgTable, pgSchema, text, varchar, integer, decimal, timestamp, boolean, index, date, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, boolean, index, date, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-const publicSchema = pgSchema("public");
-
-export const users = publicSchema.table("users", {
+export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
