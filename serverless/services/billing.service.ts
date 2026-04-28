@@ -176,6 +176,14 @@ type ResolvedMercadoPagoSubscription = {
   rawPayload: MercadoPagoPreapprovalResponse;
 };
 
+type TrialSnapshot = {
+  startedAt: Date | null;
+  endsAt: Date | null;
+  usedAt: Date | null;
+  isActive: boolean;
+  wasUsed: boolean;
+};
+
 type MercadoPagoConfig = {
   accessToken: string;
   amount: number;
@@ -450,6 +458,69 @@ function parseIsoDate(value: unknown): Date | null {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed;
+}
+
+function extractTrialFromSubscription(
+  subscription: UserSubscription | null,
+  now: Date,
+): TrialSnapshot {
+  if (!subscription) {
+    return {
+      startedAt: null,
+      endsAt: null,
+      usedAt: null,
+      isActive: false,
+      wasUsed: false,
+    };
+  }
+
+  const rawPayload = (subscription.rawPayload && typeof subscription.rawPayload === "object")
+    ? subscription.rawPayload as {
+      trial?: {
+        startedAt?: unknown;
+        endsAt?: unknown;
+        usedAt?: unknown;
+      };
+    }
+    : null;
+
+  const trialBlock = rawPayload?.trial;
+  const providerStatus = normalizeMercadoPagoStatus(subscription.providerStatus);
+  const hasTrialFlag = providerStatus === "trialing" || Boolean(trialBlock);
+
+  if (!hasTrialFlag) {
+    return {
+      startedAt: null,
+      endsAt: null,
+      usedAt: null,
+      isActive: false,
+      wasUsed: false,
+    };
+  }
+
+  const startedAt =
+    parseIsoDate(trialBlock?.startedAt)
+    ?? subscription.startedAt
+    ?? null;
+  const endsAt =
+    parseIsoDate(trialBlock?.endsAt)
+    ?? subscription.currentPeriodEnd
+    ?? null;
+  const usedAt =
+    parseIsoDate(trialBlock?.usedAt)
+    ?? startedAt
+    ?? null;
+
+  const isActive = Boolean(endsAt && endsAt.getTime() > now.getTime());
+  const wasUsed = Boolean(usedAt || startedAt || endsAt);
+
+  return {
+    startedAt,
+    endsAt,
+    usedAt,
+    isActive,
+    wasUsed,
+  };
 }
 
 function normalizeMercadoPagoStatus(status: string | null | undefined): string {
@@ -938,14 +1009,23 @@ export class BillingService {
       ? toBillingStatus(currentSubscription.status)
       : "no_subscription";
 
-    const trialStartedAt = user.trialStartedAt ?? null;
-    const trialEndsAt = user.trialEndsAt ?? null;
-    const trialUsedAt = user.trialUsedAt ?? null;
+    const userTrialStartedAt = user.trialStartedAt ?? null;
+    const userTrialEndsAt = user.trialEndsAt ?? null;
+    const userTrialUsedAt = user.trialUsedAt ?? null;
+    const subscriptionTrial = extractTrialFromSubscription(currentSubscription, now);
+    const trialStartedAt = userTrialStartedAt ?? subscriptionTrial.startedAt;
+    const trialEndsAt = userTrialEndsAt ?? subscriptionTrial.endsAt;
+    const trialUsedAt = userTrialUsedAt ?? subscriptionTrial.usedAt;
     const trialIsActive = Boolean(
       trialEndsAt
       && trialEndsAt.getTime() > now.getTime(),
     );
-    const trialWasUsed = Boolean(trialUsedAt || trialStartedAt || trialEndsAt);
+    const trialWasUsed = Boolean(
+      trialUsedAt
+      || trialStartedAt
+      || trialEndsAt
+      || subscriptionTrial.wasUsed,
+    );
 
     const effectiveTier = resolveEffectiveTierByPriority({
       subscriptionTierStored,
@@ -1059,25 +1139,65 @@ export class BillingService {
         throw new BillingServiceError(404, "Usuario nao encontrado.");
       }
 
-      if (user.trialUsedAt || user.trialStartedAt || user.trialEndsAt) {
-        throw new BillingServiceError(409, "Seu teste gratis de 7 dias ja foi utilizado.");
-      }
-
       const currentSubscription = await this.getCurrentSubscription(userId);
       if (currentSubscription && toBillingStatus(currentSubscription.status) === "active") {
         throw new BillingServiceError(409, "Sua assinatura premium ja esta ativa.");
       }
 
+      const trialState = this.buildEffectiveAccessFromState({
+        user,
+        currentSubscription,
+        now: new Date(),
+      }).trial;
+      if (trialState.usedAt || trialState.startedAt || trialState.endsAt) {
+        throw new BillingServiceError(409, "Seu teste gratis de 7 dias ja foi utilizado.");
+      }
+
       const now = new Date();
       const trialEndsAt = new Date(now.getTime() + (TRIAL_DURATION_DAYS * 24 * 60 * 60 * 1000));
+      const currentRawPayload = (currentSubscription?.rawPayload && typeof currentSubscription.rawPayload === "object")
+        ? currentSubscription.rawPayload as Record<string, unknown>
+        : {};
 
-      await db.update(users)
-        .set({
-          trialStartedAt: now,
-          trialEndsAt,
-          trialUsedAt: now,
-        })
-        .where(eq(users.id, userId));
+      const trialPayload = {
+        ...currentRawPayload,
+        trial: {
+          startedAt: now.toISOString(),
+          endsAt: trialEndsAt.toISOString(),
+          usedAt: now.toISOString(),
+        },
+      };
+
+      if (currentSubscription) {
+        await db.update(userSubscriptions)
+          .set({
+            // "pending" é compatível com o check constraint atual; trial fica explícito em providerStatus/rawPayload.
+            status: "pending",
+            providerStatus: "trialing",
+            startedAt: now,
+            currentPeriodEnd: trialEndsAt,
+            canceledAt: null,
+            lastSyncAt: now,
+            rawPayload: trialPayload,
+            updatedAt: now,
+          })
+          .where(eq(userSubscriptions.id, currentSubscription.id));
+      } else {
+        await db.insert(userSubscriptions)
+          .values({
+            userId,
+            provider: "mercado_pago",
+            status: "pending",
+            providerStatus: "trialing",
+            startedAt: now,
+            currentPeriodEnd: trialEndsAt,
+            currency: "BRL",
+            rawPayload: trialPayload,
+            createdAt: now,
+            updatedAt: now,
+            lastSyncAt: now,
+          });
+      }
 
       await this.syncUserSubscriptionTier(userId, "trial_started");
       return this.getStatus(userId);
