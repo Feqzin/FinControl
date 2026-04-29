@@ -33,6 +33,7 @@ import { StatCard } from "@/pages/dashboard/components/stat-card";
 import { DateBadge, urgencyLabel } from "@/pages/dashboard/components/date-badge";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { useLocation } from "wouter";
+import type { UsageMode } from "@/context/ui-preferences";
 
 const insightIconMap: Record<string, any> = {
   trophy: Trophy,
@@ -86,16 +87,53 @@ function SectionErrorState({ message, compact = false }: { message?: string | nu
   );
 }
 
+function getSituacaoMes(saldoPrevisto: number, totalEntradas: number) {
+  if (saldoPrevisto < 0) {
+    return {
+      titulo: "🚨 Você gastou mais do que entrou",
+      descricao: "Revise os próximos pagamentos para recuperar o equilíbrio.",
+      cardClassName: "border-red-500/25 bg-red-500/5",
+      textoClassName: "text-red-700 dark:text-red-300",
+    };
+  }
+
+  const margem = totalEntradas > 0 ? saldoPrevisto / totalEntradas : 1;
+  if (margem <= 0.12) {
+    return {
+      titulo: "⚠️ Atenção aos gastos",
+      descricao: "Seu saldo está apertado. Evite novas despesas neste mês.",
+      cardClassName: "border-amber-500/25 bg-amber-500/5",
+      textoClassName: "text-amber-700 dark:text-amber-300",
+    };
+  }
+
+  return {
+    titulo: "😊 Tudo sob controle",
+    descricao: "Seu mês está saudável e com folga de caixa.",
+    cardClassName: "border-emerald-500/25 bg-emerald-500/5",
+    textoClassName: "text-emerald-700 dark:text-emerald-300",
+  };
+}
+
+function resolveVencimentoPath(item: { tipo: "cartao" | "divida" | "servico" } | null) {
+  if (!item) return "/dividas";
+  if (item.tipo === "cartao") return "/cartoes";
+  if (item.tipo === "servico") return "/servicos";
+  return "/dividas";
+}
+
 export default function Dashboard() {
   const { visible } = useValuesVisibility();
   const [, setLocation] = useLocation();
   const {
     prefs,
+    isEssentialMode,
     showAdvancedResources,
     showContextualTips,
     isMobileModeAuto,
     toggleDashCard,
     toggleCompact,
+    setUsageMode,
     setMobileModeAuto,
     setMobileModeManual,
   } = useUIPreferences();
@@ -115,6 +153,8 @@ export default function Dashboard() {
     totalPagar,
     totalCartoesMes,
     totalPagarMes,
+    totalEntradas,
+    totalSaidas,
     saldoPrevisto,
     today,
     in7Days,
@@ -150,6 +190,230 @@ export default function Dashboard() {
 
   const shouldRenderAlertasSection =
     sectionStatus.alertas.isLoading || sectionStatus.alertas.isError || alertasUrgentes.length > 0;
+
+  const proximoVencimento = proximosVencimentos[0] ?? null;
+  const diasProximoVencimento = proximoVencimento
+    ? Math.ceil((new Date(`${proximoVencimento.dataVenc}T00:00:00`).getTime() - Date.now()) / 86_400_000)
+    : null;
+  const situacaoMes = getSituacaoMes(saldoPrevisto, totalEntradas);
+  const receberPorPessoa = dividas.reduce<Map<string, number>>((acc, divida) => {
+    if (divida.tipo !== "receber" || divida.status !== "pendente") return acc;
+    const current = acc.get(divida.pessoaId) ?? 0;
+    acc.set(divida.pessoaId, current + Number(divida.valor));
+    return acc;
+  }, new Map<string, number>());
+  const principalReceberEntry = Array.from(receberPorPessoa.entries()).sort((a, b) => b[1] - a[1])[0] ?? null;
+  const principalReceberNome = principalReceberEntry
+    ? (pessoas.find((p) => p.id === principalReceberEntry[0])?.nome ?? null)
+    : null;
+
+  if (isEssentialMode) {
+    return (
+      <div className="app-page-shell app-section-stack" data-testid="dashboard-essencial">
+        <div className="fintech-page-header">
+          <div className="fintech-page-header-row gap-3">
+            <div className="min-w-0">
+              <h1 className="fintech-page-title">Painel Essencial</h1>
+              <p className="fintech-page-subtitle capitalize">{selectedMonthLabel}</p>
+            </div>
+            <div className="fintech-actions-wrap w-full lg:w-auto">
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="h-10 w-full min-w-0 rounded-xl text-sm lg:w-[220px]" data-testid="select-month-essencial">
+                  <SelectValue placeholder="Selecionar mês" />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="h-10 w-full justify-center gap-2 rounded-xl lg:w-auto">
+                    <Settings2 className="h-4 w-4" />
+                    Ajustes
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Ajustes do painel</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="usage-mode-essencial">Modo de interface</Label>
+                      <Select value={prefs.usageMode} onValueChange={(value) => setUsageMode(value as UsageMode)}>
+                        <SelectTrigger id="usage-mode-essencial">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="essencial">Essencial</SelectItem>
+                          <SelectItem value="guiado">Guiado</SelectItem>
+                          <SelectItem value="completo">Completo</SelectItem>
+                          <SelectItem value="pro">Pro</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center justify-between rounded-xl border bg-muted/30 p-3">
+                      <div className="flex items-center gap-2">
+                        <Smartphone className="h-4 w-4 text-primary" />
+                        <div>
+                          <Label htmlFor="mobile-mode-essencial" className="cursor-pointer font-medium">Modo Celular</Label>
+                          <p className="text-xs text-muted-foreground">Interface otimizada para toque</p>
+                        </div>
+                      </div>
+                      <Switch
+                        id="mobile-mode-essencial"
+                        checked={prefs.mobileMode}
+                        onCheckedChange={(checked) => setMobileModeManual(checked)}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between px-1">
+                      <p className="text-xs text-muted-foreground">
+                        {isMobileModeAuto ? "Modo automático ativo (segue tamanho da tela)." : "Modo manual ativo."}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={setMobileModeAuto}
+                        disabled={isMobileModeAuto}
+                      >
+                        Usar automático
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+        </div>
+
+        {sectionStatus.saldo.isLoading ? (
+          <Skeleton className="h-44 rounded-2xl" />
+        ) : sectionStatus.saldo.isError ? (
+          <SectionErrorState message={sectionStatus.saldo.message} />
+        ) : (
+          <Card className={`border-0 shadow-sm ${saldoPrevisto >= 0 ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`} data-testid="essencial-hero">
+            <CardContent className="p-4 sm:p-5">
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide opacity-90">Seu dinheiro este mês</p>
+              <p className="fin-value-hero">{maskValue(formatCurrencyBRL(saldoPrevisto), visible)}</p>
+              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="rounded-xl bg-white/10 px-3 py-2">
+                  <p className="text-[12px] opacity-80">Entrou</p>
+                  <p className="text-base font-semibold">{maskValue(formatCurrencyBRL(totalEntradas), visible)}</p>
+                </div>
+                <div className="rounded-xl bg-white/10 px-3 py-2">
+                  <p className="text-[12px] opacity-80">Saiu</p>
+                  <p className="text-base font-semibold">{maskValue(formatCurrencyBRL(totalSaidas), visible)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <Card className="shadow-sm" data-testid="essencial-proxima-conta">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Próxima conta</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {sectionStatus.proximosVencimentos.isLoading ? (
+                <Skeleton className="h-20 rounded-xl" />
+              ) : sectionStatus.proximosVencimentos.isError ? (
+                <SectionErrorState compact message={sectionStatus.proximosVencimentos.message} />
+              ) : !proximoVencimento ? (
+                <p className="text-sm text-muted-foreground">Nenhuma conta pendente no período.</p>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    {diasProximoVencimento !== null
+                      ? diasProximoVencimento < 0
+                        ? `Conta vencida há ${Math.abs(diasProximoVencimento)} dia(s)`
+                        : diasProximoVencimento === 0
+                          ? "Conta vence hoje"
+                          : `Próxima conta em ${diasProximoVencimento} dia(s)`
+                      : "Próxima conta"}
+                  </p>
+                  <p className="text-sm font-semibold">{proximoVencimento.nome}</p>
+                  <p className="text-2xl font-bold leading-tight tracking-tight">
+                    {maskValue(formatCurrencyBRL(proximoVencimento.valor), visible)}
+                  </p>
+                  <Button
+                    type="button"
+                    className="h-11 w-full justify-center rounded-xl text-sm"
+                    variant="outline"
+                    onClick={() => setLocation(resolveVencimentoPath(proximoVencimento))}
+                  >
+                    Ver contas
+                  </Button>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className={`shadow-sm ${situacaoMes.cardClassName}`} data-testid="essencial-situacao">
+            <CardHeader className="pb-2">
+              <CardTitle className={`text-base ${situacaoMes.textoClassName}`}>Situação do mês</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={`text-lg font-semibold leading-snug ${situacaoMes.textoClassName}`}>{situacaoMes.titulo}</p>
+              <p className="mt-2 text-sm text-muted-foreground">{situacaoMes.descricao}</p>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Dinheiro disponível: {maskValue(formatCurrencyBRL(saldoPrevisto), visible)}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {totalReceber > 0 && (
+          <Card className="shadow-sm" data-testid="essencial-receber">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Dinheiro para receber</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <p className="text-sm text-muted-foreground">Você tem {maskValue(formatCurrencyBRL(totalReceber), visible)} para receber.</p>
+              {principalReceberNome && (
+                <p className="text-sm text-muted-foreground">
+                  Principal pendência: <span className="font-medium text-foreground">{principalReceberNome}</span>
+                </p>
+              )}
+              <Button
+                type="button"
+                className="h-11 w-full justify-center rounded-xl text-sm"
+                variant="outline"
+                onClick={() => setLocation("/pessoas")}
+              >
+                Ver pessoas
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="shadow-sm" data-testid="essencial-acoes-rapidas">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Ações rápidas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Button className="h-12 justify-start rounded-xl text-sm" onClick={() => setLocation("/dividas?tipo=pagar")}>
+                <ArrowDownRight className="mr-2 h-4 w-4" /> Adicionar gasto
+              </Button>
+              <Button className="h-12 justify-start rounded-xl text-sm" onClick={() => setLocation("/dividas?tipo=receber")} variant="secondary">
+                <ArrowUpRight className="mr-2 h-4 w-4" /> Recebi dinheiro
+              </Button>
+              <Button className="h-12 justify-start rounded-xl text-sm" onClick={() => setLocation("/historico")} variant="outline">
+                <RotateCcw className="mr-2 h-4 w-4" /> Ver histórico
+              </Button>
+              <Button className="h-12 justify-start rounded-xl text-sm" onClick={() => setLocation("/relatorios")} variant="outline">
+                <Target className="mr-2 h-4 w-4" /> Ver detalhes
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (prefs.mobileMode) {
     const visibleCards = allDashCards.filter(c => !prefs.hiddenDashCards.includes(c.id));

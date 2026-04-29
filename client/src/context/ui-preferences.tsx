@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 
 type MobileModePreference = "auto" | "manual";
-export type UsageMode = "essencial" | "guiado" | "completo";
+export type UsageMode = "essencial" | "guiado" | "completo" | "pro";
 
 interface UIPreferences {
   hiddenPages: string[];
@@ -18,6 +18,7 @@ interface UIPreferencesContextType {
   isEssentialMode: boolean;
   isGuidedMode: boolean;
   isCompleteMode: boolean;
+  isProMode: boolean;
   showAdvancedResources: boolean;
   showContextualTips: boolean;
   togglePage: (url: string) => void;
@@ -68,7 +69,13 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
           ...merged,
           mobileModePreference,
           mobileMode,
-          usageMode: merged.usageMode ?? "guiado",
+          usageMode:
+            merged.usageMode === "essencial"
+            || merged.usageMode === "guiado"
+            || merged.usageMode === "completo"
+            || merged.usageMode === "pro"
+              ? merged.usageMode
+              : "guiado",
         };
       }
       return {
@@ -179,7 +186,8 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
       isEssentialMode: prefs.usageMode === "essencial",
       isGuidedMode: prefs.usageMode === "guiado",
       isCompleteMode: prefs.usageMode === "completo",
-      showAdvancedResources: prefs.usageMode !== "essencial",
+      isProMode: prefs.usageMode === "pro",
+      showAdvancedResources: prefs.usageMode === "completo" || prefs.usageMode === "pro",
       showContextualTips: prefs.usageMode === "guiado",
       togglePage,
       toggleDashCard,

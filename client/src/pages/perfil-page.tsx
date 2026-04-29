@@ -217,6 +217,7 @@ export default function PerfilPage() {
     setUsageMode,
     isEssentialMode,
     isGuidedMode,
+    isProMode,
   } = useUIPreferences();
   const [nomeCompleto, setNomeCompleto] = useState(user?.nomeCompleto || "");
   const [arquivoImportacao, setArquivoImportacao] = useState<File | null>(null);
@@ -247,7 +248,9 @@ export default function PerfilPage() {
     ? "Modo Essencial ativo: foco em pagar, receber e saldo, com leitura facilitada."
     : isGuidedMode
       ? "Modo Guiado ativo: interface equilibrada com dicas e contexto."
-      : "Modo Completo ativo: todos os recursos e análises visíveis.";
+      : isProMode
+        ? "Modo Pro ativo: máxima visibilidade para análise avançada."
+        : "Modo Completo ativo: todos os recursos e análises visíveis.";
 
   useEffect(() => {
     if (!user || !billingStatus) return;
@@ -753,12 +756,13 @@ export default function PerfilPage() {
               <SelectItem value="essencial">Essencial</SelectItem>
               <SelectItem value="guiado">Guiado</SelectItem>
               <SelectItem value="completo">Completo</SelectItem>
+              <SelectItem value="pro">Pro</SelectItem>
             </SelectContent>
           </Select>
           <div className="fintech-surface-subtle p-3 text-xs text-muted-foreground">
             {modoUsoTexto}
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <div className={`rounded-md border p-2 text-xs ${prefs.usageMode === "essencial" ? "border-primary/40 bg-primary/5" : "border-border/50 bg-muted/20"}`}>
               <p className="font-semibold">Essencial</p>
               <p className="text-muted-foreground">Simples, fonte maior e foco no básico.</p>
@@ -770,6 +774,10 @@ export default function PerfilPage() {
             <div className={`rounded-md border p-2 text-xs ${prefs.usageMode === "completo" ? "border-primary/40 bg-primary/5" : "border-border/50 bg-muted/20"}`}>
               <p className="font-semibold">Completo</p>
               <p className="text-muted-foreground">Todos os filtros e análises visíveis.</p>
+            </div>
+            <div className={`rounded-md border p-2 text-xs ${prefs.usageMode === "pro" ? "border-primary/40 bg-primary/5" : "border-border/50 bg-muted/20"}`}>
+              <p className="font-semibold">Pro</p>
+              <p className="text-muted-foreground">Experiência avançada, foco total em produtividade.</p>
             </div>
           </div>
         </CardContent>
