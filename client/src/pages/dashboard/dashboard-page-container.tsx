@@ -32,6 +32,7 @@ import { useDashboard } from "@/hooks/useDashboard";
 import { StatCard } from "@/pages/dashboard/components/stat-card";
 import { DateBadge, urgencyLabel } from "@/pages/dashboard/components/date-badge";
 import { formatCurrencyBRL } from "@/utils/formatters";
+import { useLocation } from "wouter";
 
 const insightIconMap: Record<string, any> = {
   trophy: Trophy,
@@ -41,6 +42,15 @@ const insightIconMap: Record<string, any> = {
   card: CreditCard,
   trend: TrendingDown,
   star: Star,
+};
+
+const fallbackInsightActionByIcon: Record<string, { label: string; path: string }> = {
+  alert: { label: "Ver pendência", path: "/dividas?status=vencido" },
+  card: { label: "Ver detalhes", path: "/cartoes" },
+  repeat: { label: "Ver detalhes", path: "/servicos" },
+  trend: { label: "Ver detalhes", path: "/previsao" },
+  star: { label: "Ver metas", path: "/metas" },
+  money: { label: "Ver detalhes", path: "/dividas?status=pendente&tipo=receber" },
 };
 
 function SectionErrorState({ message, compact = false }: { message?: string | null; compact?: boolean }) {
@@ -54,6 +64,7 @@ function SectionErrorState({ message, compact = false }: { message?: string | nu
 
 export default function Dashboard() {
   const { visible } = useValuesVisibility();
+  const [, setLocation] = useLocation();
   const {
     prefs,
     isMobileModeAuto,
@@ -695,6 +706,10 @@ export default function Dashboard() {
               <div className="space-y-2" data-testid="insights-section">
                 {insights.map((insight, i) => {
                   const IconComp = insightIconMap[insight.icone] || Lightbulb;
+                  const insightAction = insight.acao
+                    ? { label: insight.acao.label, path: insight.acao.path }
+                    : fallbackInsightActionByIcon[insight.icone];
+                  const isActionable = Boolean(insightAction?.path);
                   const styles = {
                     positivo: "bg-emerald-500/5 border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
                     negativo: "bg-red-500/5 border-red-500/20 text-red-700 dark:text-red-400",
@@ -703,11 +718,39 @@ export default function Dashboard() {
                   return (
                     <div
                       key={i}
-                      className={`flex items-start gap-3 p-3 rounded-md border ${styles[insight.tipo]}`}
+                      className={`flex items-start gap-3 p-3 rounded-md border ${styles[insight.tipo]} ${isActionable ? "cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
                       data-testid={`insight-${i}`}
+                      role={isActionable ? "button" : undefined}
+                      tabIndex={isActionable ? 0 : -1}
+                      onClick={isActionable ? () => setLocation(insightAction.path) : undefined}
+                      onKeyDown={isActionable ? (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setLocation(insightAction.path);
+                        }
+                      } : undefined}
                     >
                       <IconComp className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                      <p className="text-sm font-medium">{insight.texto}</p>
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <p className="text-sm font-medium">{insight.texto}</p>
+                        {isActionable && insightAction && (
+                          <div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2.5 text-xs"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setLocation(insightAction.path);
+                              }}
+                              data-testid={`insight-action-${i}`}
+                            >
+                              {insightAction.label}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

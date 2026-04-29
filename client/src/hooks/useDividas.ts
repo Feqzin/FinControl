@@ -66,7 +66,15 @@ export function useDividas({ search, filterStatus, filterTipo }: UseDividasArgs)
         return nomePessoa.includes(termo) || (divida.descricao || "").toLowerCase().includes(termo);
       })
       .filter((divida) => {
+        const todayIso = new Date().toISOString().slice(0, 10);
+        const isOverdue = (dateValue: string | null | undefined) => Boolean(dateValue && dateValue < todayIso);
         if (filterStatus === "todos") return true;
+        if (filterStatus === "vencido") {
+          if (divida.parcelas.length > 0) {
+            return divida.parcelas.some((parcela) => parcela.status === "pendente" && isOverdue(parcela.dataVencimento));
+          }
+          return divida.status === "pendente" && isOverdue(divida.dataVencimento);
+        }
         if (divida.parcelas.length > 0) {
           if (filterStatus === "pendente") return divida.parcelas.some((parcela) => parcela.status === "pendente");
           if (filterStatus === "pago") return divida.parcelas.every((parcela) => parcela.status === "pago");

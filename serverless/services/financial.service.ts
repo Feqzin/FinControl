@@ -300,10 +300,23 @@ function generateInsightsFromContext({
   const vencidas = outstandingDebtInstallments.filter((row) => row.dataVencimento && row.dataVencimento < today);
   if (vencidas.length > 0) {
     const total = sumMoneyBy(vencidas, (row) => row.valor);
+    const dividasVencidasIds = Array.from(new Set(vencidas.map((row) => row.dividaId).filter(Boolean)));
+    const highlightDividaId = dividasVencidasIds.length === 1 ? dividasVencidasIds[0] : null;
+    const pathDividasVencidas = highlightDividaId
+      ? `/dividas?status=vencido&highlight=${highlightDividaId}`
+      : "/dividas?status=vencido";
     insights.push({
       tipo: "negativo",
       texto: `Voce tem ${vencidas.length} obrigacao(oes) vencida(s) totalizando R$ ${formatMoneyText(total)}`,
       icone: "alert",
+      acao: {
+        tipo: "abrir_dividas",
+        label: "Ver pendencia",
+        path: pathDividasVencidas,
+        entidadeTipo: "divida",
+        entidadeId: highlightDividaId ?? undefined,
+        filtros: { status: "vencido" },
+      },
     });
   }
 
@@ -337,6 +350,13 @@ function generateInsightsFromContext({
       tipo: "positivo",
       texto: `Voce tem R$ ${formatMoneyText(receber30)} a receber nos proximos 30 dias`,
       icone: "money",
+      acao: {
+        tipo: "abrir_dividas",
+        label: "Ver detalhes",
+        path: "/dividas?status=pendente&tipo=receber",
+        entidadeTipo: "divida",
+        filtros: { status: "pendente", tipo: "receber" },
+      },
     });
   }
 
@@ -345,12 +365,24 @@ function generateInsightsFromContext({
       tipo: "negativo",
       texto: `Seus gastos com servicos/assinaturas sao R$ ${formatMoneyText(totalServicos)} por mes`,
       icone: "repeat",
+      acao: {
+        tipo: "abrir_servicos",
+        label: "Ver detalhes",
+        path: "/servicos",
+        entidadeTipo: "servico",
+      },
     });
   } else if (servicosAtivos.length > 0) {
     insights.push({
       tipo: "neutro",
       texto: `Voce tem ${servicosAtivos.length} servico(s) ativo(s) custando R$ ${formatMoneyText(totalServicos)} mensais`,
       icone: "repeat",
+      acao: {
+        tipo: "abrir_servicos",
+        label: "Ver detalhes",
+        path: "/servicos",
+        entidadeTipo: "servico",
+      },
     });
   }
 
@@ -366,6 +398,14 @@ function generateInsightsFromContext({
         tipo: "negativo",
         texto: `Cartao ${cartao.nome} com ${Math.round(pct)}% do limite comprometido`,
         icone: "card",
+        acao: {
+          tipo: "abrir_cartao",
+          label: "Ver detalhes",
+          path: `/cartoes?cartaoId=${cartao.id}`,
+          entidadeTipo: "cartao",
+          entidadeId: cartao.id,
+          filtros: { cartaoId: cartao.id },
+        },
       });
     }
   }
@@ -375,12 +415,24 @@ function generateInsightsFromContext({
       tipo: "negativo",
       texto: "Mantendo o ritmo atual, seu saldo permanece negativo. Reduza despesas ou aumente receitas.",
       icone: "trend",
+      acao: {
+        tipo: "abrir_previsao",
+        label: "Ver detalhes",
+        path: "/previsao",
+        entidadeTipo: "previsao",
+      },
     });
   } else if (saldo > 1000) {
     insights.push({
       tipo: "positivo",
       texto: `Excelente! Saldo previsto de R$ ${formatMoneyText(saldo)} - considere criar uma meta de economia`,
       icone: "star",
+      acao: {
+        tipo: "abrir_metas",
+        label: "Ver metas",
+        path: "/metas",
+        entidadeTipo: "meta",
+      },
     });
   }
 

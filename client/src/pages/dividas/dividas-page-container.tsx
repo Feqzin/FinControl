@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,7 @@ export default function DividasPage() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("todos");
   const [filterTipo, setFilterTipo] = useState<string>("todos");
+  const [highlightDividaId, setHighlightDividaId] = useState<string | null>(null);
 
   const [createTab, setCreateTab] = useState<"simples" | "parcelado">("simples");
   const [simpleForm, setSimpleForm] = useState({
@@ -88,6 +89,36 @@ export default function DividasPage() {
   const getErrorMessage = (error: unknown) => (
     error instanceof Error ? error.message : "Erro inesperado"
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const statusParam = params.get("status");
+    const tipoParam = params.get("tipo");
+    const highlightParam = params.get("highlight");
+
+    if (statusParam === "vencido" || statusParam === "pendente" || statusParam === "pago") {
+      setFilterStatus(statusParam);
+    }
+
+    if (tipoParam === "receber" || tipoParam === "pagar") {
+      setFilterTipo(tipoParam);
+    }
+
+    if (highlightParam) {
+      setHighlightDividaId(highlightParam);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!highlightDividaId) return;
+    const cardElement = document.querySelector(`[data-testid="card-divida-${highlightDividaId}"]`) as HTMLElement | null;
+    if (!cardElement) return;
+
+    cardElement.scrollIntoView({ behavior: "smooth", block: "center" });
+    const timeoutHandle = setTimeout(() => setHighlightDividaId(null), 4000);
+    return () => clearTimeout(timeoutHandle);
+  }, [highlightDividaId, filtered]);
 
   const handleCreateSimple = () => {
     createSimpleMutation.mutate(simpleForm, {
@@ -443,6 +474,7 @@ export default function DividasPage() {
         <div className="space-y-3" data-testid="dividas-mobile-list">
           {filtered.map((d) => {
             const status = getDividaStatus(d);
+            const isHighlighted = highlightDividaId === d.id;
             const valorPendente = getDividaValorPendente(d);
             const valorPago = getDividaValorPago(d);
             const valorTotal = d.parcelas.length > 0
@@ -599,6 +631,7 @@ export default function DividasPage() {
         <div className="space-y-3">
           {filtered.map((d) => {
             const status = getDividaStatus(d);
+            const isHighlighted = highlightDividaId === d.id;
             const valorPendente = getDividaValorPendente(d);
             const valorPago = getDividaValorPago(d);
             const valorTotal = d.parcelas.length > 0
@@ -614,7 +647,7 @@ export default function DividasPage() {
             const simpleOverdue = !hasParce && status === "pendente" && isOverdueDate(d.dataVencimento);
 
             return (
-              <Card key={d.id} className={`hover-elevate transition-all ${parcelasVencidas > 0 || simpleOverdue ? "border-red-500/30" : ""}`}
+              <Card key={d.id} className={`hover-elevate transition-all ${parcelasVencidas > 0 || simpleOverdue ? "border-red-500/30" : ""} ${isHighlighted ? "ring-2 ring-primary/40 shadow-md" : ""}`}
                 data-testid={`card-divida-${d.id}`}>
                 <CardContent className="p-4 space-y-3">
                   <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">

@@ -186,7 +186,23 @@ export default function CartoesPage() {
     const params = new URLSearchParams(window.location.search);
     const compraId = params.get("compraId");
     const cartaoId = params.get("cartaoId");
-    if (!compraId) return;
+    if (!compraId && !cartaoId) return;
+
+    if (cartaoId) {
+      setSelectedCartao(cartaoId);
+      const cardElement = document.querySelector(`[data-testid="card-cartao-${cartaoId}"]`) as HTMLElement | null;
+      cardElement?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+
+    if (!compraId) {
+      params.delete("cartaoId");
+      params.delete("origem");
+      const nextPath = params.toString().length > 0 ? `/cartoes?${params.toString()}` : "/cartoes";
+      if (location !== nextPath) {
+        setLocation(nextPath);
+      }
+      return;
+    }
 
     const compra = compras.find((item) => item.id === compraId);
     if (!compra) return;
