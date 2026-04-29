@@ -353,9 +353,9 @@ export default function Dashboard() {
   return (
     <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="dashboard-page">
       <div className="rounded-2xl border border-border/60 bg-card/90 p-4 sm:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <div>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-w-0 items-center justify-between gap-3 md:justify-start">
+            <div className="min-w-0">
               <h1 className="text-2xl font-bold tracking-tight">Painel</h1>
               <p className="text-sm text-muted-foreground capitalize">{selectedMonthLabel}</p>
             </div>
@@ -424,9 +424,9 @@ export default function Dashboard() {
               </DialogContent>
             </Dialog>
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center md:w-auto">
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="h-9 w-full sm:w-[210px] text-sm rounded-xl" data-testid="select-month">
+              <SelectTrigger className="h-9 w-full min-w-0 text-sm rounded-xl sm:w-[210px]" data-testid="select-month">
                 <SelectValue placeholder="Selecionar mês" />
               </SelectTrigger>
               <SelectContent>
@@ -436,7 +436,7 @@ export default function Dashboard() {
               </SelectContent>
             </Select>
             <div
-              className="flex items-center gap-3 px-4 py-2 rounded-xl border border-border/50 bg-background min-w-[220px]"
+              className="flex min-w-0 w-full items-center gap-3 rounded-xl border border-border/50 bg-background px-3 py-2 sm:px-4 md:w-auto md:min-w-[220px]"
               data-testid="score-financeiro"
             >
               <div className="flex-1">

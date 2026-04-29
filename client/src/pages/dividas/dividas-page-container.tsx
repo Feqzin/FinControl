@@ -254,14 +254,14 @@ export default function DividasPage() {
 
   return (
     <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="dividas-page">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">Dividas</h1>
           <p className="text-muted-foreground">Controle parcelado de valores a receber e a pagar</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-add-divida">
+            <Button className="w-full sm:w-auto" data-testid="button-add-divida">
               <Plus className="w-4 h-4 mr-2" /> Nova dívida
             </Button>
           </DialogTrigger>
@@ -396,8 +396,8 @@ export default function DividasPage() {
         </Dialog>
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative min-w-[200px] max-w-xs flex-1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
+        <div className="relative w-full min-w-0 sm:max-w-md sm:flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input data-testid="input-search-divida" className="pl-9" placeholder="Buscar pessoa ou descrição..."
             value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -421,7 +421,7 @@ export default function DividasPage() {
       </div>
 
       {filtered.length > 0 && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="rounded-md bg-emerald-500/5 border border-emerald-500/10 p-3">
             <p className="text-xs text-muted-foreground mb-1">Total a receber (pendente)</p>
             <p className="text-lg font-bold text-emerald-600">{formatDividaCurrency(totalReceber)}</p>
@@ -657,7 +657,7 @@ export default function DividasPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className="flex items-center gap-1 flex-shrink-0 flex-wrap justify-end">
                       <div className="text-right mr-1">
                         <div className="text-lg font-bold">{formatDividaCurrency(hasParce ? valorTotal : Number(d.valor))}</div>
                         {hasParce && valorPendente > 0 && (

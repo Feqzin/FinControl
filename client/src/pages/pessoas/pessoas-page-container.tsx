@@ -374,7 +374,7 @@ export default function PessoasPage() {
 
       <div className="rounded-2xl border border-border/60 bg-card p-3 sm:p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1 min-w-[200px] sm:max-w-md">
+          <div className="relative w-full min-w-0 sm:max-w-md sm:flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               data-testid="input-search-pessoa"
@@ -582,11 +582,11 @@ export default function PessoasPage() {
 
                   <Separator />
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:items-center">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1 h-8"
+                      className="h-8 w-full sm:flex-1 sm:min-w-[130px]"
                       onClick={() => {
                         setSelectedPessoa(p);
                         setDividaForm({
@@ -602,7 +602,7 @@ export default function PessoasPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="flex-1 h-8"
+                      className="h-8 w-full sm:flex-1 sm:min-w-[120px]"
                       onClick={() => setHistoryPessoa(p)}
                       data-testid={`button-history-pessoa-${p.id}`}
                     >
@@ -611,7 +611,7 @@ export default function PessoasPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8"
+                      className="h-8 w-full sm:w-8"
                       onClick={() => {
                         setEditingPessoa(p);
                         setEditForm({ nome: p.nome, tipo: p.tipo, telefone: p.telefone || "", observacao: p.observacao || "" });
@@ -623,7 +623,7 @@ export default function PessoasPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8"
+                      className="h-8 w-full sm:w-8"
                       onClick={() =>
                         deleteMutation.mutate(p.id, {
                           onSuccess: () => {

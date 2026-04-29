@@ -1023,7 +1023,7 @@ export default function CartoesPage() {
             <p className="text-sm text-muted-foreground sm:text-base">Gerencie seus cartoes e compras parceladas</p>
           </div>
           <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:w-auto lg:flex-wrap lg:items-center lg:justify-end">
-            <div className="flex min-w-0 items-center gap-2 sm:col-span-2 lg:col-span-1">
+            <div className="flex min-w-0 flex-col items-stretch gap-2 sm:col-span-2 sm:flex-row sm:items-center lg:col-span-1">
               <Button
                 variant="outline"
                 onClick={openImportDialog}
@@ -1038,7 +1038,7 @@ export default function CartoesPage() {
               {!smartImportLiberado && (
                 <Badge
                   variant="secondary"
-                  className="shrink-0 whitespace-nowrap"
+                  className="w-fit shrink-0 whitespace-nowrap self-start sm:self-auto"
                   data-testid="badge-smart-import-premium"
                 >
                   Premium
