@@ -2,18 +2,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   TrendingUp, TrendingDown, CalendarClock,
-  ArrowUpRight, ArrowDownRight, Receipt, Bell,
-  AlertTriangle, CreditCard, CheckCircle, Lightbulb,
+  ArrowUpRight, ArrowDownRight, Receipt,
+  AlertTriangle, CreditCard, Lightbulb,
   Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank,
   Settings2, Smartphone,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { useUIPreferences } from "@/context/ui-preferences";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -35,8 +33,6 @@ import { StatCard } from "@/pages/dashboard/components/stat-card";
 import { DateBadge, urgencyLabel } from "@/pages/dashboard/components/date-badge";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { useLocation } from "wouter";
-import { usePremiumAccess } from "@/hooks/use-premium-access";
-import type { Meta } from "@shared/schema";
 
 const insightIconMap: Record<string, any> = {
   trophy: Trophy,
@@ -66,16 +62,9 @@ function SectionErrorState({ message, compact = false }: { message?: string | nu
   );
 }
 
-function calcMetaProgress(meta: Meta): number {
-  const alvo = Number(meta.valorAlvo);
-  if (alvo <= 0) return 0;
-  return Math.max(0, Math.min(100, (Number(meta.valorAtual) / alvo) * 100));
-}
-
 export default function Dashboard() {
   const { visible } = useValuesVisibility();
   const [, setLocation] = useLocation();
-  const premiumAccess = usePremiumAccess();
   const {
     prefs,
     isMobileModeAuto,
@@ -110,7 +99,6 @@ export default function Dashboard() {
     gastosFixosTooltip,
     rendaMensalTooltip,
     patrimonioTooltip,
-    alertas,
     score,
     insights,
     scoreBarColor,
@@ -118,11 +106,6 @@ export default function Dashboard() {
     allDashCards,
     sectionStatus,
   } = useDashboard({ selectedMonth, visible });
-  const metasQuery = useQuery<Meta[]>({
-    queryKey: ["/api/metas"],
-  });
-  const metasAtivas = (metasQuery.data ?? []).filter((meta) => meta.status === "ativa").slice(0, 3);
-  const metasTotal = metasQuery.data?.length ?? 0;
   const selectedMonthLabel = monthOptions.find((o) => o.value === selectedMonth)?.label || selectedMonth;
 
   if (prefs.mobileMode) {
@@ -240,28 +223,6 @@ export default function Dashboard() {
             </div>
           )}
 
-          {sectionStatus.score.isLoading ? (
-            <Skeleton className="h-[74px] rounded-2xl" />
-          ) : sectionStatus.score.isError ? (
-            <SectionErrorState compact message={sectionStatus.score.message} />
-          ) : (
-            <div
-              className="flex items-center gap-3 bg-card rounded-2xl px-4 py-3 shadow-sm border border-border/50"
-              data-testid="mobile-score"
-            >
-              <div className="flex-1">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Score Financeiro</p>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                    <div className={`h-full rounded-full transition-all duration-500 ${scoreBarColor}`} style={{ width: `${score.valor}%` }} />
-                  </div>
-                  <span className={`text-sm font-bold ${scoreLabelColor}`}>{score.valor}</span>
-                </div>
-              </div>
-              <div className={`text-xs font-semibold px-2 py-1 rounded-lg ${scoreLabelColor} bg-muted/50`}>{score.classificacao}</div>
-            </div>
-          )}
-
           {visibleCards.filter(c => c.id !== "saldo").length > 0 ? (
             sectionStatus.cardsResumo.isLoading ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -294,69 +255,6 @@ export default function Dashboard() {
               </div>
             )
           ) : null}
-
-          <div className="grid grid-cols-1 gap-3">
-            {metasQuery.isLoading ? (
-              <Skeleton className="h-36 rounded-2xl" />
-            ) : metasAtivas.length > 0 ? (
-              <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
-                <div className="px-4 pt-4 pb-3 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Target className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-sm">Metas financeiras</span>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => setLocation("/metas")}
-                  >
-                    Ver metas
-                  </Button>
-                </div>
-                <div className="space-y-3 px-4 pb-4">
-                  {metasAtivas.map((meta) => {
-                    const progresso = calcMetaProgress(meta);
-                    return (
-                      <div key={meta.id} className="space-y-1.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="truncate text-xs font-medium">{meta.nome}</p>
-                          <span className="text-[11px] font-semibold text-muted-foreground">{progresso.toFixed(0)}%</span>
-                        </div>
-                        <Progress value={progresso} className="h-1.5" />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-border/60 bg-card/80 px-4 py-4 text-center">
-                <p className="text-xs text-muted-foreground">Crie metas para acompanhar seu progresso mensal.</p>
-              </div>
-            )}
-
-            {premiumAccess.effectiveTier !== "premium" && (
-              <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="text-sm font-semibold text-primary">Desbloqueie o Premium</p>
-                    <p className="text-xs text-muted-foreground">
-                      Backup na nuvem, importação inteligente e histórico avançado.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="h-8 px-3 text-xs"
-                    onClick={() => setLocation("/perfil")}
-                  >
-                    Ver plano
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
 
           {sectionStatus.pagarSemana.isLoading ? (
             <Skeleton className="h-40 rounded-2xl" />
@@ -396,25 +294,6 @@ export default function Dashboard() {
                   {maskValue(formatCurrencyBRL(pagarSemana.reduce((s, i) => s + i.amount, 0)), visible)}
                 </span>
               </div>
-            </div>
-          ) : null}
-
-          {sectionStatus.alertas.isLoading ? (
-            <Skeleton className="h-40 rounded-2xl" />
-          ) : sectionStatus.alertas.isError ? (
-            <SectionErrorState message={sectionStatus.alertas.message} />
-          ) : alertas.length > 0 ? (
-            <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
-              <div className="px-4 pt-4 pb-2 flex items-center gap-2">
-                <Bell className="w-4 h-4" />
-                <span className="font-semibold text-sm">Alertas</span>
-              </div>
-              {alertas.map((alerta, i) => (
-                <div key={i} className={`flex items-start gap-3 px-4 py-3.5 border-b border-border/40 last:border-b-0 ${alerta.bgColor}`}>
-                  <alerta.icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${alerta.color}`} />
-                  <p className={`text-sm ${alerta.color}`}>{alerta.texto}</p>
-                </div>
-              ))}
             </div>
           ) : null}
 
@@ -586,6 +465,110 @@ export default function Dashboard() {
               </div>
             )}
           </div>
+
+          <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+            <div className="px-4 pt-4 pb-2 flex items-center gap-2">
+              <Lightbulb className="w-4 h-4 text-amber-500" />
+              <span className="font-semibold text-sm">Insights automáticos</span>
+            </div>
+            {sectionStatus.insights.isLoading ? (
+              <div className="space-y-2 px-4 pb-4">
+                {[1, 2].map((idx) => <Skeleton key={idx} className="h-14 rounded-md" />)}
+              </div>
+            ) : sectionStatus.insights.isError ? (
+              <div className="px-4 pb-4">
+                <SectionErrorState compact message={sectionStatus.insights.message} />
+              </div>
+            ) : insights.length === 0 ? (
+              <div className="px-4 pb-4 text-xs text-muted-foreground">Adicione dados para ver insights personalizados.</div>
+            ) : (
+              <div className="space-y-2 px-4 pb-4">
+                {insights.slice(0, 3).map((insight, i) => {
+                  const IconComp = insightIconMap[insight.icone] || Lightbulb;
+                  const insightAction = insight.acao
+                    ? { label: insight.acao.label, path: insight.acao.path }
+                    : fallbackInsightActionByIcon[insight.icone];
+                  const isActionable = Boolean(insightAction?.path);
+                  const styles = {
+                    positivo: "bg-emerald-500/5 border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
+                    negativo: "bg-red-500/5 border-red-500/20 text-red-700 dark:text-red-400",
+                    neutro: "bg-muted/40 border-border text-muted-foreground",
+                  };
+                  return (
+                    <div
+                      key={i}
+                      className={`rounded-md border p-3 ${styles[insight.tipo]} ${isActionable ? "cursor-pointer" : ""}`}
+                      onClick={isActionable ? () => setLocation(insightAction.path) : undefined}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <IconComp className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                        <div className="min-w-0 space-y-2">
+                          <p className="text-sm font-medium">{insight.texto}</p>
+                          {isActionable && insightAction && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-2 text-xs"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setLocation(insightAction.path);
+                              }}
+                            >
+                              {insightAction.label}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden" data-testid="mobile-score">
+            <div className="px-4 pt-4 pb-2 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-primary" />
+              <span className="font-semibold text-sm">Score detalhado</span>
+            </div>
+            {sectionStatus.scoreDetalhado.isLoading ? (
+              <div className="space-y-2 px-4 pb-4">
+                {[1, 2].map((idx) => <Skeleton key={idx} className="h-10 rounded-md" />)}
+              </div>
+            ) : sectionStatus.scoreDetalhado.isError ? (
+              <div className="px-4 pb-4">
+                <SectionErrorState compact message={sectionStatus.scoreDetalhado.message} />
+              </div>
+            ) : (
+              <div className="space-y-3 px-4 pb-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Pontuação geral</span>
+                      <span className={`text-xs font-bold ${scoreLabelColor}`}>{score.classificacao}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                        <div className={`h-full rounded-full transition-all duration-500 ${scoreBarColor}`} style={{ width: `${score.valor}%` }} />
+                      </div>
+                      <span className={`text-sm font-bold ${scoreLabelColor}`}>{score.valor}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  {score.fatores.slice(0, 3).map((f, i) => (
+                    <div key={i} className="flex items-center justify-between rounded-md bg-muted/30 px-2.5 py-2 text-xs">
+                      <span className="min-w-0 truncate text-muted-foreground">{f.label}</span>
+                      <span className={`ml-2 flex-shrink-0 font-semibold ${f.tipo === "positivo" ? "text-emerald-600" : f.tipo === "negativo" ? "text-red-600" : "text-muted-foreground"}`}>
+                        {f.impacto > 0 ? "+" : ""}{f.impacto}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -689,87 +672,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        {metasQuery.isLoading ? (
-          <Skeleton className="h-[172px] rounded-2xl" />
-        ) : metasAtivas.length > 0 ? (
-          <Card className="fintech-surface desktop-hover-lift">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Target className="w-4 h-4 text-primary" />
-                Metas financeiras visuais
-                <span className="ml-auto text-xs font-normal text-muted-foreground">{metasTotal} meta(s)</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {metasAtivas.map((meta) => {
-                const progresso = calcMetaProgress(meta);
-                return (
-                  <div key={meta.id} className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-medium">{meta.nome}</p>
-                      <span className="text-xs font-semibold text-muted-foreground">{progresso.toFixed(0)}%</span>
-                    </div>
-                    <Progress value={progresso} className="h-2" />
-                  </div>
-                );
-              })}
-              <div className="pt-1">
-                <Button type="button" variant="outline" size="sm" onClick={() => setLocation("/metas")}>
-                  Ver metas
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card className="fintech-surface desktop-hover-lift">
-            <CardContent className="p-5 space-y-2">
-              <p className="text-sm font-semibold">Metas financeiras visuais</p>
-              <p className="text-sm text-muted-foreground">Adicione metas para acompanhar progresso e previsibilidade mensal.</p>
-              <Button type="button" variant="outline" size="sm" onClick={() => setLocation("/metas")}>
-                Criar primeira meta
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card className={`fintech-surface desktop-hover-lift ${premiumAccess.effectiveTier === "premium" ? "border-emerald-500/30 bg-emerald-500/5" : "border-primary/25 bg-primary/5"}`}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Star className={`w-4 h-4 ${premiumAccess.effectiveTier === "premium" ? "text-emerald-600" : "text-primary"}`} />
-              {premiumAccess.effectiveTier === "premium" ? "Premium ativo" : "Upgrade Premium"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              {premiumAccess.effectiveTier === "premium"
-                ? "Seu plano já libera backup em nuvem, restore e importação inteligente."
-                : "Desbloqueie backup na nuvem, restore avançado e importação inteligente com um clique."}
-            </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <div className="fintech-inline-kpi">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Backup cloud</p>
-                <p className="text-sm font-semibold">{premiumAccess.features.cloudBackup ? "Liberado" : "Premium"}</p>
-              </div>
-              <div className="fintech-inline-kpi">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Smart import</p>
-                <p className="text-sm font-semibold">{premiumAccess.features.smartImport ? "Liberado" : "Premium"}</p>
-              </div>
-            </div>
-            <div>
-              <Button
-                type="button"
-                size="sm"
-                variant={premiumAccess.effectiveTier === "premium" ? "outline" : "default"}
-                onClick={() => setLocation("/perfil")}
-              >
-                {premiumAccess.effectiveTier === "premium" ? "Gerenciar plano" : "Conhecer Premium"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {sectionStatus.pagarSemana.isLoading ? (
         <Skeleton className="h-[220px] rounded-2xl" />
       ) : sectionStatus.pagarSemana.isError ? (
@@ -813,115 +715,7 @@ export default function Dashboard() {
         </Card>
       ) : null}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Bell className="w-4 h-4" /> Alertas importantes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {sectionStatus.alertas.isLoading ? (
-              <div className="space-y-2">
-                {[1, 2, 3].map((idx) => <Skeleton key={idx} className="h-14 rounded-md" />)}
-              </div>
-            ) : sectionStatus.alertas.isError ? (
-              <SectionErrorState message={sectionStatus.alertas.message} />
-            ) : (
-              <div className="space-y-2" data-testid="alertas-section">
-                {alertas.map((alerta, i) => (
-                  <div
-                    key={i}
-                    className={`flex items-start gap-3 p-3 rounded-md border ${alerta.bgColor}`}
-                    data-testid={`alerta-${i}`}
-                  >
-                    <alerta.icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${alerta.color}`} />
-                    <p className={`text-sm font-medium ${alerta.color}`}>{alerta.texto}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Lightbulb className="w-4 h-4 text-amber-500" /> Insights automaticos
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {sectionStatus.insights.isLoading ? (
-              <div className="space-y-2">
-                {[1, 2].map((idx) => <Skeleton key={idx} className="h-16 rounded-md" />)}
-              </div>
-            ) : sectionStatus.insights.isError ? (
-              <SectionErrorState message={sectionStatus.insights.message} />
-            ) : insights.length === 0 ? (
-              <div className="text-center py-6 text-muted-foreground">
-                <Target className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">Adicione dados para ver insights personalizados</p>
-              </div>
-            ) : (
-              <div className="space-y-2" data-testid="insights-section">
-                {insights.map((insight, i) => {
-                  const IconComp = insightIconMap[insight.icone] || Lightbulb;
-                  const insightAction = insight.acao
-                    ? { label: insight.acao.label, path: insight.acao.path }
-                    : fallbackInsightActionByIcon[insight.icone];
-                  const isActionable = Boolean(insightAction?.path);
-                  const styles = {
-                    positivo: "bg-emerald-500/5 border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
-                    negativo: "bg-red-500/5 border-red-500/20 text-red-700 dark:text-red-400",
-                    neutro: "bg-muted/40 border-border text-muted-foreground",
-                  };
-                  return (
-                    <div
-                      key={i}
-                      className={`flex items-start gap-3 p-3 rounded-md border ${styles[insight.tipo]} ${isActionable ? "cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
-                      data-testid={`insight-${i}`}
-                      role={isActionable ? "button" : undefined}
-                      tabIndex={isActionable ? 0 : -1}
-                      onClick={isActionable ? () => setLocation(insightAction.path) : undefined}
-                      onKeyDown={isActionable ? (event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          setLocation(insightAction.path);
-                        }
-                      } : undefined}
-                    >
-                      <IconComp className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <p className="text-sm font-medium">{insight.texto}</p>
-                        {isActionable && insightAction && (
-                          <div>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-7 px-2.5 text-xs"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setLocation(insightAction.path);
-                              }}
-                              data-testid={`insight-action-${i}`}
-                            >
-                              {insightAction.label}
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
+      <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <CalendarClock className="w-4 h-4" /> Próximos vencimentos
@@ -977,53 +771,127 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" /> Score detalhado
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {sectionStatus.scoreDetalhado.isLoading ? (
-              <div className="space-y-2">
-                {[1, 2, 3].map((idx) => <Skeleton key={idx} className="h-14 rounded-md" />)}
-              </div>
-            ) : sectionStatus.scoreDetalhado.isError ? (
-              <SectionErrorState message={sectionStatus.scoreDetalhado.message} />
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-md bg-muted/40">
-                  <span className="text-sm text-muted-foreground">Pontuacao geral</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
-                      <div className={`h-full rounded-full ${scoreBarColor}`} style={{ width: `${score.valor}%` }} />
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Lightbulb className="w-4 h-4 text-amber-500" /> Insights automaticos
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {sectionStatus.insights.isLoading ? (
+            <div className="space-y-2">
+              {[1, 2].map((idx) => <Skeleton key={idx} className="h-16 rounded-md" />)}
+            </div>
+          ) : sectionStatus.insights.isError ? (
+            <SectionErrorState message={sectionStatus.insights.message} />
+          ) : insights.length === 0 ? (
+            <div className="text-center py-6 text-muted-foreground">
+              <Target className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">Adicione dados para ver insights personalizados</p>
+            </div>
+          ) : (
+            <div className="space-y-2" data-testid="insights-section">
+              {insights.map((insight, i) => {
+                const IconComp = insightIconMap[insight.icone] || Lightbulb;
+                const insightAction = insight.acao
+                  ? { label: insight.acao.label, path: insight.acao.path }
+                  : fallbackInsightActionByIcon[insight.icone];
+                const isActionable = Boolean(insightAction?.path);
+                const styles = {
+                  positivo: "bg-emerald-500/5 border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
+                  negativo: "bg-red-500/5 border-red-500/20 text-red-700 dark:text-red-400",
+                  neutro: "bg-muted/40 border-border text-muted-foreground",
+                };
+                return (
+                  <div
+                    key={i}
+                    className={`flex items-start gap-3 p-3 rounded-md border ${styles[insight.tipo]} ${isActionable ? "cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
+                    data-testid={`insight-${i}`}
+                    role={isActionable ? "button" : undefined}
+                    tabIndex={isActionable ? 0 : -1}
+                    onClick={isActionable ? () => setLocation(insightAction.path) : undefined}
+                    onKeyDown={isActionable ? (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setLocation(insightAction.path);
+                      }
+                    } : undefined}
+                  >
+                    <IconComp className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <p className="text-sm font-medium">{insight.texto}</p>
+                      {isActionable && insightAction && (
+                        <div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2.5 text-xs"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setLocation(insightAction.path);
+                            }}
+                            data-testid={`insight-action-${i}`}
+                          >
+                            {insightAction.label}
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                    <span className={`font-bold text-sm ${scoreLabelColor}`}>{score.valor}/100</span>
                   </div>
-                </div>
-                {score.fatores.map((f, i) => (
-                  <div key={i} className="flex items-center justify-between p-2.5 rounded-md bg-muted/30 text-sm">
-                    <span className="text-muted-foreground truncate mr-2">{f.label}</span>
-                    <span className={`font-semibold flex-shrink-0 ${f.tipo === "positivo" ? "text-emerald-600" : f.tipo === "negativo" ? "text-red-600" : "text-muted-foreground"}`}>
-                      {f.impacto > 0 ? "+" : ""}{f.impacto}
-                    </span>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <TrendingUp className="w-4 h-4" /> Score detalhado
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {sectionStatus.scoreDetalhado.isLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((idx) => <Skeleton key={idx} className="h-14 rounded-md" />)}
+            </div>
+          ) : sectionStatus.scoreDetalhado.isError ? (
+            <SectionErrorState message={sectionStatus.scoreDetalhado.message} />
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 rounded-md bg-muted/40">
+                <span className="text-sm text-muted-foreground">Pontuacao geral</span>
+                <div className="flex items-center gap-2">
+                  <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
+                    <div className={`h-full rounded-full ${scoreBarColor}`} style={{ width: `${score.valor}%` }} />
                   </div>
-                ))}
-                <div className="flex justify-between items-center p-3 rounded-md bg-muted/40">
-                  <span className="text-sm text-muted-foreground">Pessoas cadastradas</span>
-                  <span className="font-semibold">{pessoas.length}</span>
+                  <span className={`font-bold text-sm ${scoreLabelColor}`}>{score.valor}/100</span>
                 </div>
-                <div className="flex justify-between items-center p-3 rounded-md bg-muted/40">
-                  <span className="text-sm text-muted-foreground">Dívidas quitadas</span>
-                  <span className="font-semibold text-emerald-600">
-                    {dividas.filter((d) => d.status === "pago").length}
+              </div>
+              {score.fatores.map((f, i) => (
+                <div key={i} className="flex items-center justify-between p-2.5 rounded-md bg-muted/30 text-sm">
+                  <span className="text-muted-foreground truncate mr-2">{f.label}</span>
+                  <span className={`font-semibold flex-shrink-0 ${f.tipo === "positivo" ? "text-emerald-600" : f.tipo === "negativo" ? "text-red-600" : "text-muted-foreground"}`}>
+                    {f.impacto > 0 ? "+" : ""}{f.impacto}
                   </span>
                 </div>
+              ))}
+              <div className="flex justify-between items-center p-3 rounded-md bg-muted/40">
+                <span className="text-sm text-muted-foreground">Pessoas cadastradas</span>
+                <span className="font-semibold">{pessoas.length}</span>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              <div className="flex justify-between items-center p-3 rounded-md bg-muted/40">
+                <span className="text-sm text-muted-foreground">Dívidas quitadas</span>
+                <span className="font-semibold text-emerald-600">
+                  {dividas.filter((d) => d.status === "pago").length}
+                </span>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
