@@ -432,8 +432,8 @@ export default function PessoasPage() {
                 <div className="space-y-2.5 px-3.5 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2.5">
-                      <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${isMeDeve ? "bg-emerald-500/15" : "bg-red-500/15"}`}>
-                        <span className={`text-sm font-bold ${isMeDeve ? "text-emerald-600" : "text-red-600"}`}>
+                      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
+                        <span className="text-sm font-bold text-primary">
                           {p.nome.charAt(0).toUpperCase()}
                         </span>
                       </div>
@@ -461,11 +461,11 @@ export default function PessoasPage() {
                   </p>
 
                   <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-400">
+                      Saldo + {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}
+                    </span>
                     <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
                       {stats.total} dívida(s)
-                    </span>
-                    <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-400">
-                      Saldo {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}
                     </span>
                   </div>
 
@@ -558,8 +558,8 @@ export default function PessoasPage() {
                 <CardContent className="flex h-full min-h-[200px] flex-col gap-3 p-5">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
-                      <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${isMeDeve ? "bg-emerald-500/15" : "bg-red-500/15"}`}>
-                        <span className={`text-sm font-bold ${isMeDeve ? "text-emerald-600" : "text-red-600"}`}>
+                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
+                        <span className="text-sm font-bold text-primary">
                           {p.nome.charAt(0).toUpperCase()}
                         </span>
                       </div>
@@ -573,8 +573,8 @@ export default function PessoasPage() {
                       </div>
                     </div>
                     <div className="min-w-[132px] text-right flex flex-col items-end justify-center gap-2">
-                      <Badge variant={p.tipo === "me_deve" ? "default" : "destructive"} className="h-6 px-2.5 text-[11px]">
-                        {p.tipo === "me_deve" ? "Me deve" : "Eu devo"}
+                      <Badge variant={isMeDeve ? "default" : "destructive"} className="h-6 px-2.5 text-[11px]">
+                        {isMeDeve ? "Me deve" : "Eu devo"}
                       </Badge>
                       <p className="text-2xl leading-none font-bold">
                         {formatCurrencyBRL(resumo.consolidadoPendente)}
