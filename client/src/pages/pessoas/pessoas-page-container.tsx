@@ -446,7 +446,7 @@ export default function PessoasPage() {
                       </Badge>
                       {hasAtraso && <AlertTriangle className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />}
                     </div>
-                    <p className="fin-value-person mt-1">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
+                    <p className="mt-1 text-[clamp(18px,5vw,22px)] font-semibold leading-[1.1] tracking-normal">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
                     <p className="text-[11px] text-muted-foreground mt-1 line-clamp-1">
                       Dívidas {formatCurrencyBRL(totalDividasPendente)} • Compras {formatCurrencyBRL(resumo.comprasVinculadas.pendentePessoa)} • Serviços {formatCurrencyBRL(resumo.servicosMesAtual.pendente)}
                     </p>
@@ -528,7 +528,7 @@ export default function PessoasPage() {
             return (
               <Card key={p.id} className="hover-elevate rounded-2xl overflow-hidden border-border/60 bg-card/95" data-testid={`card-pessoa-${p.id}`}>
                 <CardContent className="flex h-full min-h-[206px] flex-col gap-3 p-4">
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 flex-shrink-0">
                         <span className="text-sm font-bold text-primary">
@@ -544,11 +544,11 @@ export default function PessoasPage() {
                         )}
                       </div>
                     </div>
-                    <div className="min-w-[132px] text-right flex flex-col items-end justify-center gap-2">
+                    <div className="min-w-[128px] shrink-0 self-start text-right flex flex-col items-end justify-start gap-1 pt-0.5">
                       <Badge variant={p.tipo === "me_deve" ? "default" : "destructive"} className="h-6 px-2.5 text-[11px]">
                         {p.tipo === "me_deve" ? "Me deve" : "Eu devo"}
                       </Badge>
-                      <p className="fin-value-person">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
+                      <p className="text-[clamp(20px,1.5vw,24px)] font-semibold leading-[1.1] tracking-normal">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
                     </div>
                   </div>
 
