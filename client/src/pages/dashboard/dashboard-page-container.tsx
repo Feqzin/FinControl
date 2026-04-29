@@ -288,7 +288,7 @@ export default function Dashboard() {
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Próxima conta</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="flex h-full flex-col gap-2">
               {sectionStatus.proximosVencimentos.isLoading ? (
                 <Skeleton className="h-20 rounded-xl" />
               ) : sectionStatus.proximosVencimentos.isError ? (
@@ -312,7 +312,7 @@ export default function Dashboard() {
                   </p>
                   <Button
                     type="button"
-                    className="h-11 w-full justify-center rounded-xl text-sm"
+                    className="mt-auto h-11 w-full justify-center rounded-xl text-sm"
                     variant="outline"
                     onClick={() => setLocation(resolveVencimentoPath(proximoVencimento))}
                   >
@@ -327,7 +327,7 @@ export default function Dashboard() {
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Dinheiro para receber</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="flex h-full flex-col gap-2">
               {totalReceber > 0 ? (
                 <>
                   <p className="text-sm text-muted-foreground">Você tem {maskValue(formatCurrencyBRL(totalReceber), visible)} para receber.</p>
@@ -342,7 +342,7 @@ export default function Dashboard() {
               )}
               <Button
                 type="button"
-                className="h-11 w-full justify-center rounded-xl text-sm"
+                className="mt-auto h-11 w-full justify-center rounded-xl text-sm"
                 variant="outline"
                 onClick={() => setLocation("/pessoas")}
               >
