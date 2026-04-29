@@ -87,34 +87,6 @@ function SectionErrorState({ message, compact = false }: { message?: string | nu
   );
 }
 
-function getSituacaoMes(saldoPrevisto: number, totalEntradas: number) {
-  if (saldoPrevisto < 0) {
-    return {
-      titulo: "🚨 Você gastou mais do que entrou",
-      descricao: "Revise os próximos pagamentos para recuperar o equilíbrio.",
-      cardClassName: "border-red-500/25 bg-red-500/5",
-      textoClassName: "text-red-700 dark:text-red-300",
-    };
-  }
-
-  const margem = totalEntradas > 0 ? saldoPrevisto / totalEntradas : 1;
-  if (margem <= 0.12) {
-    return {
-      titulo: "⚠️ Atenção aos gastos",
-      descricao: "Seu saldo está apertado. Evite novas despesas neste mês.",
-      cardClassName: "border-amber-500/25 bg-amber-500/5",
-      textoClassName: "text-amber-700 dark:text-amber-300",
-    };
-  }
-
-  return {
-    titulo: "😊 Tudo sob controle",
-    descricao: "Seu mês está saudável e com folga de caixa.",
-    cardClassName: "border-emerald-500/25 bg-emerald-500/5",
-    textoClassName: "text-emerald-700 dark:text-emerald-300",
-  };
-}
-
 function resolveVencimentoPath(item: { tipo: "cartao" | "divida" | "servico" } | null) {
   if (!item) return "/dividas";
   if (item.tipo === "cartao") return "/cartoes";
@@ -195,7 +167,6 @@ export default function Dashboard() {
   const diasProximoVencimento = proximoVencimento
     ? Math.ceil((new Date(`${proximoVencimento.dataVenc}T00:00:00`).getTime() - Date.now()) / 86_400_000)
     : null;
-  const situacaoMes = getSituacaoMes(saldoPrevisto, totalEntradas);
   const receberPorPessoa = dividas.reduce<Map<string, number>>((acc, divida) => {
     if (divida.tipo !== "receber" || divida.status !== "pendente") return acc;
     const current = acc.get(divida.pessoaId) ?? 0;
@@ -352,31 +323,22 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className={`shadow-sm ${situacaoMes.cardClassName}`} data-testid="essencial-situacao">
-            <CardHeader className="pb-2">
-              <CardTitle className={`text-base ${situacaoMes.textoClassName}`}>Situação do mês</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className={`text-lg font-semibold leading-snug ${situacaoMes.textoClassName}`}>{situacaoMes.titulo}</p>
-              <p className="mt-2 text-sm text-muted-foreground">{situacaoMes.descricao}</p>
-              <p className="mt-3 text-xs text-muted-foreground">
-                Dinheiro disponível: {maskValue(formatCurrencyBRL(saldoPrevisto), visible)}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {totalReceber > 0 && (
           <Card className="shadow-sm" data-testid="essencial-receber">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Dinheiro para receber</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <p className="text-sm text-muted-foreground">Você tem {maskValue(formatCurrencyBRL(totalReceber), visible)} para receber.</p>
-              {principalReceberNome && (
-                <p className="text-sm text-muted-foreground">
-                  Principal pendência: <span className="font-medium text-foreground">{principalReceberNome}</span>
-                </p>
+              {totalReceber > 0 ? (
+                <>
+                  <p className="text-sm text-muted-foreground">Você tem {maskValue(formatCurrencyBRL(totalReceber), visible)} para receber.</p>
+                  {principalReceberNome && (
+                    <p className="text-sm text-muted-foreground">
+                      Principal pendência: <span className="font-medium text-foreground">{principalReceberNome}</span>
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">Sem valores pendentes para receber neste período.</p>
               )}
               <Button
                 type="button"
@@ -388,7 +350,7 @@ export default function Dashboard() {
               </Button>
             </CardContent>
           </Card>
-        )}
+        </div>
 
         <Card className="shadow-sm" data-testid="essencial-acoes-rapidas">
           <CardHeader className="pb-2">
