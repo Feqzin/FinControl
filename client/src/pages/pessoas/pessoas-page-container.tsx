@@ -150,7 +150,7 @@ export default function PessoasPage() {
     return (
       <div className="app-page-shell app-section-stack">
         <Skeleton className="h-8 w-32" />
-        <div className="fintech-grid-fluid-280">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-52" />)}
         </div>
       </div>
@@ -204,6 +204,10 @@ export default function PessoasPage() {
       return resumoPessoa.alertas.comprasAtrasadas > 0 || resumoPessoa.dividas.comigo.vencidas > 0;
     })
     : filtered;
+  const totalPendenteCards = filteredByStatus.reduce(
+    (sum, pessoa) => sum + getPessoaResumoConsolidado(pessoa.id).consolidadoPendente,
+    0,
+  );
   const visiblePessoas = filteredByStatus.slice(0, visiblePessoasCount);
   const hasMorePessoas = filteredByStatus.length > visiblePessoas.length;
   const visibleHistoryDividas = historyDividas.slice(0, historyVisible.dividas);
@@ -283,8 +287,18 @@ export default function PessoasPage() {
       <div className="fintech-page-header">
         <div className="fintech-page-header-row">
           <div className="min-w-0">
-            <h1 className="fintech-page-title">Pessoas</h1>
-            <p className="fintech-page-subtitle">Controle dívidas, compras vinculadas e serviços por pessoa.</p>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Pessoas</h1>
+            <p className="text-sm text-muted-foreground">Controle dívidas, compras vinculadas e serviços por pessoa.</p>
+            {filteredByStatus.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full border border-border/60 bg-muted/30 px-2 py-1 text-muted-foreground">
+                  {filteredByStatus.length} pessoa(s)
+                </span>
+                <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-amber-700 dark:text-amber-300">
+                  Pendente total {formatCurrencyBRL(totalPendenteCards)}
+                </span>
+              </div>
+            )}
           </div>
           <Dialog open={openPessoa} onOpenChange={setOpenPessoa}>
           <DialogTrigger asChild>
@@ -374,24 +388,24 @@ export default function PessoasPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border/60 bg-card p-3 sm:p-4">
+      <div className="rounded-2xl border border-border/60 bg-card p-2.5 sm:p-3.5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="relative w-full min-w-0 lg:max-w-md lg:flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               data-testid="input-search-pessoa"
-              className="pl-9 rounded-xl"
+              className="h-9 rounded-xl pl-9"
               placeholder="Buscar por nome..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
           <Tabs value={filterTipo} onValueChange={setFilterTipo} className="w-full lg:w-auto">
-            <TabsList className="mobile-tabs-scroll h-9 w-full lg:w-auto justify-start rounded-xl">
-              <TabsTrigger value="todos" data-testid="filter-pessoas-todos">Todos</TabsTrigger>
-              <TabsTrigger value="me_deve" data-testid="filter-pessoas-me-devem">Me devem</TabsTrigger>
-              <TabsTrigger value="eu_devo" data-testid="filter-pessoas-eu-devo">Eu devo</TabsTrigger>
-              <TabsTrigger value="atrasados" data-testid="filter-pessoas-atrasados">Atrasados</TabsTrigger>
+            <TabsList className="mobile-tabs-scroll h-8 w-full justify-start rounded-lg lg:w-auto">
+              <TabsTrigger value="todos" className="h-7 px-2.5 text-xs" data-testid="filter-pessoas-todos">Todos</TabsTrigger>
+              <TabsTrigger value="me_deve" className="h-7 px-2.5 text-xs" data-testid="filter-pessoas-me-devem">Me devem</TabsTrigger>
+              <TabsTrigger value="eu_devo" className="h-7 px-2.5 text-xs" data-testid="filter-pessoas-eu-devo">Eu devo</TabsTrigger>
+              <TabsTrigger value="atrasados" className="h-7 px-2.5 text-xs" data-testid="filter-pessoas-atrasados">Atrasados</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -418,18 +432,16 @@ export default function PessoasPage() {
           {visiblePessoas.map((p) => {
             const stats = getPessoaStats(p.id);
             const resumo = getPessoaResumoConsolidado(p.id);
-            const parcelasVencidasPessoa = resumo.alertas.parcelasVencidasPessoa ?? resumo.alertas.comprasAtrasadas;
             const isMeDeve = p.tipo === "me_deve";
             const hasAtraso = resumo.alertas.comprasAtrasadas > 0 || resumo.dividas.comigo.vencidas > 0;
-            const totalDividasPendente = resumo.dividas.comigo.pendente + resumo.dividas.euDevo.pendente;
             return (
               <div
                 key={p.id}
-                className="rounded-2xl border border-border/60 bg-card shadow-sm overflow-hidden"
+                className="rounded-2xl border border-border/60 bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md overflow-hidden"
                 data-testid={`card-pessoa-${p.id}`}
               >
                 <div
-                  className="flex items-start gap-3 px-3.5 py-3 cursor-pointer"
+                  className="flex items-start gap-3 px-4 py-3.5 cursor-pointer"
                   onClick={() => setHistoryPessoa(p)}
                   role="button"
                 >
@@ -440,33 +452,39 @@ export default function PessoasPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="font-semibold text-sm truncate">{p.nome}</p>
-                      <Badge variant={isMeDeve ? "default" : "destructive"} className="h-5 text-[10px] px-1.5">
+                      <p className="truncate text-base font-semibold">{p.nome}</p>
+                      <Badge variant={isMeDeve ? "default" : "destructive"} className="h-5 rounded-full px-2 py-0 text-[10px] font-medium">
                         {isMeDeve ? "Me deve" : "Eu devo"}
                       </Badge>
                       {hasAtraso && <AlertTriangle className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />}
                     </div>
-                    <p className="mt-1 text-[clamp(18px,5vw,22px)] font-semibold leading-[1.1] tracking-normal">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
-                    <p className="text-[11px] text-muted-foreground mt-1 line-clamp-1">
-                      Dívidas {formatCurrencyBRL(totalDividasPendente)} • Compras {formatCurrencyBRL(resumo.comprasVinculadas.pendentePessoa)} • Serviços {formatCurrencyBRL(resumo.servicosMesAtual.pendente)}
+                    <p className="mt-1 text-[clamp(18px,5vw,22px)] font-semibold leading-[1.1] tracking-tight">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
+                    <p className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">
+                      {stats.total} dívidas • saldo {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}
                     </p>
-                    <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <span>Saldo {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}</span>
-                      <span>•</span>
-                      <span>{stats.total} dívida(s)</span>
-                      {hasAtraso && (
-                        <>
-                          <span>•</span>
-                          <span className="text-red-600">{parcelasVencidasPessoa} parcela(s) vencida(s)</span>
-                        </>
-                      )}
-                    </div>
+                    {hasAtraso && (
+                      <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-600 dark:border-red-900/40 dark:bg-red-950/30">
+                        <span className="truncate">Pendência encontrada</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[10px] font-medium text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setHistoryPessoa(p);
+                          }}
+                        >
+                          Ver detalhes
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
                 </div>
-                <div className="grid grid-cols-2 border-t border-border/40 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-1 border-t border-border/40 p-2 sm:grid-cols-4">
                   <button
-                    className="flex items-center justify-center gap-1 py-2.5 text-[11px] font-medium text-primary active:bg-muted/60 transition-colors"
+                    className="h-9 rounded-xl border border-border/60 bg-background px-2 text-[11px] font-medium text-primary transition-colors hover:bg-muted/50 active:bg-muted/60"
                     onClick={() => {
                       setSelectedPessoa(p);
                       setDividaForm({
@@ -477,17 +495,17 @@ export default function PessoasPage() {
                     }}
                     data-testid={`button-add-divida-pessoa-${p.id}`}
                   >
-                    <Plus className="w-3.5 h-3.5" /> Dívida
+                    <span className="inline-flex items-center gap-1"><Plus className="h-3.5 w-3.5" /> Dívida</span>
                   </button>
                   <button
-                    className="flex items-center justify-center gap-1 py-2.5 text-[11px] font-medium text-muted-foreground active:bg-muted/60 transition-colors"
+                    className="h-9 rounded-xl border border-border/60 bg-background px-2 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted/50 active:bg-muted/60"
                     onClick={() => setHistoryPessoa(p)}
                     data-testid={`button-history-pessoa-${p.id}`}
                   >
-                    <Clock className="w-3.5 h-3.5" /> Histórico
+                    <span className="inline-flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Histórico</span>
                   </button>
                   <button
-                    className="flex items-center justify-center py-2.5 text-muted-foreground active:bg-muted/60 transition-colors"
+                    className="h-9 rounded-xl border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-muted/50 active:bg-muted/60"
                     onClick={() => {
                       setEditingPessoa(p);
                       setEditForm({ nome: p.nome, tipo: p.tipo, telefone: p.telefone || "", observacao: p.observacao || "" });
@@ -497,7 +515,7 @@ export default function PessoasPage() {
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
-                    className="flex items-center justify-center py-2.5 text-red-500 active:bg-red-50 dark:active:bg-red-950/30 transition-colors"
+                    className="h-9 rounded-xl border border-border/60 bg-background text-red-500 transition-colors hover:bg-red-50 active:bg-red-50 dark:hover:bg-red-950/30 dark:active:bg-red-950/30"
                     onClick={() =>
                       deleteMutation.mutate(p.id, {
                         onSuccess: () => {
@@ -517,128 +535,146 @@ export default function PessoasPage() {
           })}
         </div>
       ) : (
-        <div className="fintech-grid-fluid-280">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
           {visiblePessoas.map((p) => {
             const stats = getPessoaStats(p.id);
             const resumo = getPessoaResumoConsolidado(p.id);
             const parcelasVencidasPessoa = resumo.alertas.parcelasVencidasPessoa ?? resumo.alertas.comprasAtrasadas;
             const comprasVinculadas = resumo.comprasVinculadas.comprasComParcelasReais + resumo.comprasVinculadas.comprasEmFallbackLegado;
             const hasAtraso = resumo.alertas.comprasAtrasadas > 0 || resumo.dividas.comigo.vencidas > 0;
-            const totalDividasPendente = resumo.dividas.comigo.pendente + resumo.dividas.euDevo.pendente;
             return (
-              <Card key={p.id} className="hover-elevate rounded-2xl overflow-hidden border-border/60 bg-card/95" data-testid={`card-pessoa-${p.id}`}>
-                <CardContent className="flex h-full min-h-[206px] flex-col gap-3 p-4">
+              <Card
+                key={p.id}
+                className="rounded-2xl border border-border/60 bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                data-testid={`card-pessoa-${p.id}`}
+              >
+                <CardContent className="flex h-full min-h-[200px] flex-col gap-3 p-5">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 flex-shrink-0">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
                         <span className="text-sm font-bold text-primary">
                           {p.nome.charAt(0).toUpperCase()}
                         </span>
                       </div>
                       <div className="min-w-0">
-                        <p className="font-semibold truncate">{p.nome}</p>
+                        <p className="truncate text-lg font-semibold">{p.nome}</p>
                         {p.telefone && (
-                          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                            <Phone className="w-3 h-3" /> {p.telefone}
+                          <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                            <Phone className="h-3 w-3" /> {p.telefone}
                           </p>
                         )}
                       </div>
                     </div>
-                    <div className="min-w-[128px] shrink-0 self-start text-right flex flex-col items-end justify-start gap-1 pt-0.5">
-                      <Badge variant={p.tipo === "me_deve" ? "default" : "destructive"} className="h-6 px-2.5 text-[11px]">
+                    <div className="flex min-w-[132px] shrink-0 flex-col items-end gap-1 text-right">
+                      <Badge variant={p.tipo === "me_deve" ? "default" : "destructive"} className="h-5 rounded-full px-2 py-0 text-xs font-medium">
                         {p.tipo === "me_deve" ? "Me deve" : "Eu devo"}
                       </Badge>
-                      <p className="text-[clamp(20px,1.5vw,24px)] font-semibold leading-[1.1] tracking-normal">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
+                      <p className="text-[clamp(22px,2vw,28px)] font-semibold leading-none tracking-tight">
+                        {formatCurrencyBRL(resumo.consolidadoPendente)}
+                      </p>
                     </div>
                   </div>
 
-                  <p className="text-xs text-muted-foreground line-clamp-1">
-                    Dívidas {formatCurrencyBRL(totalDividasPendente)} • Compras {formatCurrencyBRL(resumo.comprasVinculadas.pendentePessoa)} • Serviços {formatCurrencyBRL(resumo.servicosMesAtual.pendente)}
+                  <p className="line-clamp-1 text-xs text-muted-foreground">
+                    {stats.total} dívidas • saldo {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}
                   </p>
 
                   <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                    <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-400">
-                      Saldo + {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}
-                    </span>
                     <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
                       {stats.total} dívida(s)
                     </span>
                     {comprasVinculadas > 0 && (
                       <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                        Compras vinculadas {comprasVinculadas}
+                        {comprasVinculadas} compra(s)
                       </span>
                     )}
-                    {resumo.source === "fallback" && (
-                      <span className="rounded-full bg-amber-500/15 px-2 py-1 text-amber-700 dark:text-amber-300">
-                        Transição
-                      </span>
-                    )}
+                    <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-400">
+                      Saldo {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}
+                    </span>
                   </div>
 
                   {hasAtraso && (
-                    <div className="rounded-xl border border-red-300/40 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
-                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span>{resumo.alertas.comprasAtrasadas} compra(s) atrasada(s) • {parcelasVencidasPessoa} parcela(s) vencida(s)</span>
+                    <div className="flex items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-900/40 dark:bg-red-950/30">
+                      <span className="truncate">Pendência encontrada</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-[11px] font-medium text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30"
+                        onClick={() => setHistoryPessoa(p)}
+                      >
+                        Ver detalhes
+                      </Button>
                     </div>
                   )}
 
-                  <Separator />
-
-                  <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:items-center">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 w-full sm:min-w-[130px] sm:flex-1"
-                      onClick={() => {
-                        setSelectedPessoa(p);
-                        setDividaForm({
-                          tipo: p.tipo === "me_deve" ? "receber" : "pagar",
-                          valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
-                        });
-                        setOpenDivida(true);
-                      }}
-                      data-testid={`button-add-divida-pessoa-${p.id}`}
-                    >
-                      <Plus className="w-3 h-3 mr-1" /> Nova dívida
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-full sm:min-w-[120px] sm:flex-1"
-                      onClick={() => setHistoryPessoa(p)}
-                      data-testid={`button-history-pessoa-${p.id}`}
-                    >
-                      <Clock className="w-3 h-3 mr-1" /> Histórico
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-full sm:w-8"
-                      onClick={() => {
-                        setEditingPessoa(p);
-                        setEditForm({ nome: p.nome, tipo: p.tipo, telefone: p.telefone || "", observacao: p.observacao || "" });
-                      }}
-                      data-testid={`button-edit-pessoa-${p.id}`}
-                    >
-                      <Pencil className="w-4 h-4 text-muted-foreground" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-full sm:w-8"
-                      onClick={() =>
-                        deleteMutation.mutate(p.id, {
-                          onSuccess: () => {
-                            if (historyPessoa?.id === p.id) setHistoryPessoa(null);
-                            toast({ title: "Pessoa removida" });
-                          },
-                          onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
-                        })
-                      }
-                      data-testid={`button-delete-pessoa-${p.id}`}
-                    >
-                      <Trash2 className="w-4 h-4 text-muted-foreground" />
-                    </Button>
+                  <div className="mt-auto space-y-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 rounded-xl px-4 transition-colors"
+                        onClick={() => setHistoryPessoa(p)}
+                        data-testid={`button-history-pessoa-${p.id}`}
+                      >
+                        <Clock className="mr-1 h-3.5 w-3.5" /> Histórico
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="h-9 rounded-xl px-4 transition-colors"
+                        onClick={() => {
+                          setSelectedPessoa(p);
+                          setDividaForm({
+                            tipo: p.tipo === "me_deve" ? "receber" : "pagar",
+                            valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
+                          });
+                          setOpenDivida(true);
+                        }}
+                        data-testid={`button-add-divida-pessoa-${p.id}`}
+                      >
+                        <Plus className="mr-1 h-3.5 w-3.5" /> Nova dívida
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-xl text-muted-foreground transition-colors hover:bg-muted/60"
+                        onClick={() => {
+                          setEditingPessoa(p);
+                          setEditForm({ nome: p.nome, tipo: p.tipo, telefone: p.telefone || "", observacao: p.observacao || "" });
+                        }}
+                        data-testid={`button-edit-pessoa-${p.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-xl text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+                        onClick={() =>
+                          deleteMutation.mutate(p.id, {
+                            onSuccess: () => {
+                              if (historyPessoa?.id === p.id) setHistoryPessoa(null);
+                              toast({ title: "Pessoa removida" });
+                            },
+                            onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+                          })
+                        }
+                        data-testid={`button-delete-pessoa-${p.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {resumo.source === "fallback" && (
+                      <p className="text-right text-[11px] text-amber-700 dark:text-amber-300">Modo transição</p>
+                    )}
+                    {hasAtraso && (
+                      <p className="text-right text-[11px] text-red-600">
+                        {resumo.alertas.comprasAtrasadas} compra(s) atrasada(s) • {parcelasVencidasPessoa} parcela(s) vencida(s)
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
