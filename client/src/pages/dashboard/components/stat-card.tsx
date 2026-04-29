@@ -21,18 +21,18 @@ export function StatCard({
   compact?: boolean;
 }) {
   const card = (
-    <Card className={`hover-elevate ${compact ? "min-h-[84px]" : "min-h-[104px]"}`}>
-      <CardContent className={`${compact ? "p-3.5" : "p-5"} h-full`}>
+    <Card className={`hover-elevate rounded-2xl border-border/60 bg-card/95 ${compact ? "min-h-[96px]" : "min-h-[112px]"}`}>
+      <CardContent className={`${compact ? "p-4" : "p-5"} h-full`}>
         <div className="flex h-full items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
-            <p className="text-xs text-muted-foreground truncate">{title}</p>
-            <p className={`${compact ? "text-lg" : "text-xl"} font-bold tracking-tight truncate ${valueColor || ""}`} title={value}>
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
+            <p className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{title}</p>
+            <p className={`${compact ? "text-2xl" : "text-2xl"} font-bold tracking-tight truncate ${valueColor || ""}`} title={value}>
               {value}
             </p>
-            {trend && !compact && <p className="text-xs text-muted-foreground truncate">{trend}</p>}
+            {trend && <p className="truncate text-xs text-muted-foreground">{trend}</p>}
           </div>
           <div
-            className={`flex items-center justify-center ${compact ? "w-8 h-8" : "w-10 h-10"} rounded-md flex-shrink-0 ${color}`}
+            className={`flex items-center justify-center ${compact ? "h-9 w-9" : "h-10 w-10"} rounded-xl flex-shrink-0 ${color}`}
           >
             <Icon className={`${compact ? "w-4 h-4" : "w-5 h-5"}`} />
           </div>

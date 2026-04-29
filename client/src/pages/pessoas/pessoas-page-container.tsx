@@ -280,14 +280,15 @@ export default function PessoasPage() {
 
   return (
     <div className="app-page-shell app-section-stack" data-testid="pessoas-page">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight">Pessoas</h1>
-          <p className="text-sm text-muted-foreground">Controle dívidas, compras vinculadas e serviços por pessoa.</p>
-        </div>
-        <Dialog open={openPessoa} onOpenChange={setOpenPessoa}>
+      <div className="fintech-page-header">
+        <div className="fintech-page-header-row">
+          <div className="min-w-0">
+            <h1 className="fintech-page-title">Pessoas</h1>
+            <p className="fintech-page-subtitle">Controle dívidas, compras vinculadas e serviços por pessoa.</p>
+          </div>
+          <Dialog open={openPessoa} onOpenChange={setOpenPessoa}>
           <DialogTrigger asChild>
-            <Button className="w-full lg:w-auto" data-testid="button-add-pessoa">
+            <Button className="w-full xl:w-auto" data-testid="button-add-pessoa">
               <Plus className="w-4 h-4 mr-2" /> Adicionar pessoa
             </Button>
           </DialogTrigger>
@@ -369,7 +370,8 @@ export default function PessoasPage() {
               </Button>
             </form>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       <div className="rounded-2xl border border-border/60 bg-card p-3 sm:p-4">
@@ -524,8 +526,8 @@ export default function PessoasPage() {
             const hasAtraso = resumo.alertas.comprasAtrasadas > 0 || resumo.dividas.comigo.vencidas > 0;
             const totalDividasPendente = resumo.dividas.comigo.pendente + resumo.dividas.euDevo.pendente;
             return (
-              <Card key={p.id} className="hover-elevate rounded-2xl overflow-hidden" data-testid={`card-pessoa-${p.id}`}>
-                <CardContent className="p-4 flex h-full flex-col gap-3">
+              <Card key={p.id} className="hover-elevate rounded-2xl overflow-hidden border-border/60 bg-card/95" data-testid={`card-pessoa-${p.id}`}>
+                <CardContent className="flex h-full min-h-[206px] flex-col gap-3 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 flex-shrink-0">
@@ -542,11 +544,11 @@ export default function PessoasPage() {
                         )}
                       </div>
                     </div>
-                    <div className="min-w-[120px] text-right flex flex-col items-end justify-center gap-2">
+                    <div className="min-w-[132px] text-right flex flex-col items-end justify-center gap-2">
                       <Badge variant={p.tipo === "me_deve" ? "default" : "destructive"} className="h-6 px-2.5 text-[11px]">
                         {p.tipo === "me_deve" ? "Me deve" : "Eu devo"}
                       </Badge>
-                      <p className="text-2xl leading-none font-bold">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
+                      <p className="text-3xl leading-none font-bold tracking-tight">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
                     </div>
                   </div>
 
@@ -586,7 +588,7 @@ export default function PessoasPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 w-full sm:flex-1 sm:min-w-[130px]"
+                      className="h-8 w-full sm:min-w-[130px] sm:flex-1"
                       onClick={() => {
                         setSelectedPessoa(p);
                         setDividaForm({
@@ -602,7 +604,7 @@ export default function PessoasPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-8 w-full sm:flex-1 sm:min-w-[120px]"
+                      className="h-8 w-full sm:min-w-[120px] sm:flex-1"
                       onClick={() => setHistoryPessoa(p)}
                       data-testid={`button-history-pessoa-${p.id}`}
                     >

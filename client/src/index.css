@@ -213,7 +213,8 @@
  */
 @layer utilities {
   .app-page-shell {
-    @apply w-full max-w-full overflow-x-hidden px-4 pt-4 sm:px-6 sm:pt-6;
+    @apply mx-auto w-full max-w-full overflow-x-hidden px-4 pt-4 sm:px-6 sm:pt-6;
+    max-width: min(100%, 1520px);
     padding-bottom: calc(var(--app-bottom-nav-height) + env(safe-area-inset-bottom) + 0.75rem);
   }
 
@@ -247,6 +248,30 @@
 
   .fintech-actions-wrap {
     @apply flex min-w-0 flex-wrap items-center gap-2;
+  }
+
+  .fintech-page-header {
+    @apply rounded-2xl border border-border/60 bg-card/90 p-4 sm:p-5;
+  }
+
+  .fintech-page-header-row {
+    @apply flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between;
+  }
+
+  .fintech-page-title {
+    @apply text-2xl font-bold tracking-tight sm:text-3xl;
+  }
+
+  .fintech-page-subtitle {
+    @apply text-sm text-muted-foreground sm:text-base;
+  }
+
+  .fintech-page-actions {
+    @apply grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end;
+  }
+
+  .fintech-inline-kpi {
+    @apply rounded-xl border border-border/50 bg-muted/20 px-3 py-2;
   }
 
   .desktop-hover-lift {

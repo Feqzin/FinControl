@@ -208,14 +208,15 @@ export default function ServicosPage() {
 
   return (
     <div className="app-page-shell app-section-stack" data-testid="servicos-page">
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight">Serviços e Assinaturas</h1>
-          <p className="text-muted-foreground">Gerencie seus gastos recorrentes e divisões</p>
-        </div>
+      <div className="fintech-page-header">
+        <div className="fintech-page-header-row">
+          <div className="min-w-0">
+            <h1 className="fintech-page-title">Serviços e Assinaturas</h1>
+            <p className="fintech-page-subtitle">Gerencie seus gastos recorrentes e divisões</p>
+          </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button className="w-full sm:w-auto" data-testid="button-add-servico">
+            <Button className="w-full xl:w-auto" data-testid="button-add-servico">
               <Plus className="w-4 h-4 mr-2" /> Novo serviço
             </Button>
           </DialogTrigger>
@@ -359,6 +360,7 @@ export default function ServicosPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -448,10 +450,10 @@ export default function ServicosPage() {
                   const cartaoVinculado = compraVinculada ? cartaoById.get(compraVinculada.cartaoId) : null;
                   const origemMesAtual = getOrigemPagamentoMesAtual(s);
                   return (
-                    <Card key={s.id} className="hover-elevate overflow-hidden" data-testid={`card-servico-${s.id}`}>
-                      <CardContent className="p-4 sm:p-5 space-y-3">
-                        <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start">
-                          <div className="pt-0.5 sm:pt-0">
+                    <Card key={s.id} className="hover-elevate overflow-hidden border-border/60 bg-card/95" data-testid={`card-servico-${s.id}`}>
+                      <CardContent className="space-y-3 p-4 sm:p-5">
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
+                          <div className="pt-0.5 sm:pt-0 sm:self-start">
                             <BrandIconDisplay name={s.nome} iconeId={s.iconeId} size="sm" />
                           </div>
                           <div className="min-w-0">
@@ -487,7 +489,7 @@ export default function ServicosPage() {
                             </div>
                           </div>
                           <div className="col-span-2 sm:col-span-1 sm:col-start-3 flex items-center justify-between sm:justify-end gap-2 sm:self-start">
-                            <span className="text-xl leading-none font-semibold whitespace-nowrap">{formatCurrencyBRL(Number(s.valorMensal))}</span>
+                            <span className="text-2xl leading-none font-bold tracking-tight whitespace-nowrap">{formatCurrencyBRL(Number(s.valorMensal))}</span>
                             <Badge variant={s.status === "ativo" ? "default" : "secondary"} className="h-7 px-2.5 text-xs font-semibold whitespace-nowrap">
                               {s.status === "ativo" ? "Ativo" : "Cancelado"}
                             </Badge>

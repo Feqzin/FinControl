@@ -1032,13 +1032,13 @@ export default function CartoesPage() {
 
   return (
     <div className="app-page-shell app-section-stack" data-testid="cartoes-page">
-      <div className="fintech-surface border-border/60 p-4 sm:p-5">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+      <div className="fintech-page-header">
+        <div className="fintech-page-header-row">
           <div className="min-w-0 space-y-1">
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Cartoes de Credito</h1>
-            <p className="text-sm text-muted-foreground sm:text-base">Gerencie seus cartoes e compras parceladas</p>
+            <h1 className="fintech-page-title">Cartoes de Credito</h1>
+            <p className="fintech-page-subtitle">Gerencie seus cartoes e compras parceladas</p>
           </div>
-          <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
+          <div className="fintech-page-actions">
             <div className="flex min-w-0 flex-col items-stretch gap-2 sm:col-span-2 md:flex-row md:items-center xl:col-span-1">
               <Button
                 variant="outline"
@@ -1943,19 +1943,19 @@ export default function CartoesPage() {
                 const totalCompras = getCardCompras(cartao.id).length;
                 return (
                   <Card key={cartao.id} className="fintech-surface desktop-hover-lift">
-                    <CardContent className="p-4 sm:p-5 space-y-3">
+                    <CardContent className="p-4 sm:p-5 space-y-3.5">
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                         <div className="flex items-center gap-3 min-w-0">
                           <BrandIconDisplay name={cartao.nome} iconeId={cartao.iconeId} size="sm" />
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold leading-tight truncate">{cartao.nome}</p>
+                            <p className="truncate text-base font-semibold leading-tight">{cartao.nome}</p>
                             <p className="text-xs text-muted-foreground">{totalCompras} compra(s) parcelada(s)</p>
                           </div>
                         </div>
                         <Button
                           variant="outline"
                           size="sm"
-                          className="touch-feedback h-9 min-w-[124px] px-4 w-full sm:w-auto"
+                          className="touch-feedback h-9 w-full px-4 sm:w-auto sm:justify-self-end"
                           onClick={() => {
                             setCartoesTab("compras");
                             setSelectedCartao(cartao.id);
@@ -1966,13 +1966,13 @@ export default function CartoesPage() {
                         </Button>
                       </div>
                       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                        <div className="fintech-stat-card p-3 min-h-[82px] flex flex-col justify-center">
-                          <p className="text-[11px] text-muted-foreground">Fatura atual</p>
-                          <p className="font-semibold">{formatCartaoCurrency(faturaAtual)}</p>
+                        <div className="fintech-stat-card min-h-[90px] p-3.5 flex flex-col justify-center">
+                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Fatura atual</p>
+                          <p className="text-xl font-bold">{formatCartaoCurrency(faturaAtual)}</p>
                         </div>
-                        <div className="fintech-stat-card bg-emerald-500/5 p-3 min-h-[82px] flex flex-col justify-center">
-                          <p className="text-[11px] text-muted-foreground">Disponível</p>
-                          <p className="font-semibold text-emerald-600">{formatCartaoCurrency(limiteDisponivel)}</p>
+                        <div className="fintech-stat-card bg-emerald-500/5 min-h-[90px] p-3.5 flex flex-col justify-center">
+                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Disponível</p>
+                          <p className="text-xl font-bold text-emerald-600">{formatCartaoCurrency(limiteDisponivel)}</p>
                         </div>
                       </div>
                     </CardContent>

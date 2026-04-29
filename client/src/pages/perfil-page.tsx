@@ -623,9 +623,11 @@ export default function PerfilPage() {
 
   return (
     <div className="app-page-shell app-section-stack mx-auto max-w-2xl" data-testid="perfil-page">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Meu Perfil</h1>
-        <p className="text-sm text-muted-foreground sm:text-base">Gerencie sua conta e exporte seus dados</p>
+      <div className="fintech-page-header">
+        <div className="space-y-1">
+          <h1 className="fintech-page-title">Meu Perfil</h1>
+          <p className="fintech-page-subtitle">Gerencie sua conta, planos e backups</p>
+        </div>
       </div>
 
       <Tabs value={perfilTab} onValueChange={(value) => setPerfilTab(value as typeof perfilTab)}>

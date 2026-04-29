@@ -9,9 +9,11 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { useUIPreferences } from "@/context/ui-preferences";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +35,8 @@ import { StatCard } from "@/pages/dashboard/components/stat-card";
 import { DateBadge, urgencyLabel } from "@/pages/dashboard/components/date-badge";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { useLocation } from "wouter";
+import { usePremiumAccess } from "@/hooks/use-premium-access";
+import type { Meta } from "@shared/schema";
 
 const insightIconMap: Record<string, any> = {
   trophy: Trophy,
@@ -62,9 +66,16 @@ function SectionErrorState({ message, compact = false }: { message?: string | nu
   );
 }
 
+function calcMetaProgress(meta: Meta): number {
+  const alvo = Number(meta.valorAlvo);
+  if (alvo <= 0) return 0;
+  return Math.max(0, Math.min(100, (Number(meta.valorAtual) / alvo) * 100));
+}
+
 export default function Dashboard() {
   const { visible } = useValuesVisibility();
   const [, setLocation] = useLocation();
+  const premiumAccess = usePremiumAccess();
   const {
     prefs,
     isMobileModeAuto,
@@ -107,6 +118,11 @@ export default function Dashboard() {
     allDashCards,
     sectionStatus,
   } = useDashboard({ selectedMonth, visible });
+  const metasQuery = useQuery<Meta[]>({
+    queryKey: ["/api/metas"],
+  });
+  const metasAtivas = (metasQuery.data ?? []).filter((meta) => meta.status === "ativa").slice(0, 3);
+  const metasTotal = metasQuery.data?.length ?? 0;
   const selectedMonthLabel = monthOptions.find((o) => o.value === selectedMonth)?.label || selectedMonth;
 
   if (prefs.mobileMode) {
@@ -279,6 +295,69 @@ export default function Dashboard() {
             )
           ) : null}
 
+          <div className="grid grid-cols-1 gap-3">
+            {metasQuery.isLoading ? (
+              <Skeleton className="h-36 rounded-2xl" />
+            ) : metasAtivas.length > 0 ? (
+              <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+                <div className="px-4 pt-4 pb-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Target className="w-4 h-4 text-primary" />
+                    <span className="font-semibold text-sm">Metas financeiras</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setLocation("/metas")}
+                  >
+                    Ver metas
+                  </Button>
+                </div>
+                <div className="space-y-3 px-4 pb-4">
+                  {metasAtivas.map((meta) => {
+                    const progresso = calcMetaProgress(meta);
+                    return (
+                      <div key={meta.id} className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate text-xs font-medium">{meta.nome}</p>
+                          <span className="text-[11px] font-semibold text-muted-foreground">{progresso.toFixed(0)}%</span>
+                        </div>
+                        <Progress value={progresso} className="h-1.5" />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-border/60 bg-card/80 px-4 py-4 text-center">
+                <p className="text-xs text-muted-foreground">Crie metas para acompanhar seu progresso mensal.</p>
+              </div>
+            )}
+
+            {premiumAccess.effectiveTier !== "premium" && (
+              <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-primary">Desbloqueie o Premium</p>
+                    <p className="text-xs text-muted-foreground">
+                      Backup na nuvem, importação inteligente e histórico avançado.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 px-3 text-xs"
+                    onClick={() => setLocation("/perfil")}
+                  >
+                    Ver plano
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {sectionStatus.pagarSemana.isLoading ? (
             <Skeleton className="h-40 rounded-2xl" />
           ) : sectionStatus.pagarSemana.isError ? (
@@ -395,12 +474,12 @@ export default function Dashboard() {
 
   return (
     <div className="app-page-shell app-section-stack" data-testid="dashboard-page">
-      <div className="rounded-2xl border border-border/60 bg-card/90 p-4 sm:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="fintech-page-header">
+        <div className="fintech-page-header-row gap-4">
           <div className="flex min-w-0 items-center justify-between gap-3 lg:justify-start">
             <div className="min-w-0">
-              <h1 className="text-2xl font-bold tracking-tight">Painel</h1>
-              <p className="text-sm text-muted-foreground capitalize">{selectedMonthLabel}</p>
+              <h1 className="fintech-page-title">Painel</h1>
+              <p className="fintech-page-subtitle capitalize">{selectedMonthLabel}</p>
             </div>
             <Dialog>
               <DialogTrigger asChild>
@@ -467,7 +546,7 @@ export default function Dashboard() {
               </DialogContent>
             </Dialog>
           </div>
-          <div className="flex w-full min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:w-auto">
+          <div className="fintech-actions-wrap w-full lg:w-auto">
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
               <SelectTrigger className="h-9 w-full min-w-0 rounded-xl text-sm lg:w-[210px]" data-testid="select-month">
                 <SelectValue placeholder="Selecionar mês" />
@@ -609,6 +688,87 @@ export default function Dashboard() {
           )}
         </div>
       )}
+
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        {metasQuery.isLoading ? (
+          <Skeleton className="h-[172px] rounded-2xl" />
+        ) : metasAtivas.length > 0 ? (
+          <Card className="fintech-surface desktop-hover-lift">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Target className="w-4 h-4 text-primary" />
+                Metas financeiras visuais
+                <span className="ml-auto text-xs font-normal text-muted-foreground">{metasTotal} meta(s)</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {metasAtivas.map((meta) => {
+                const progresso = calcMetaProgress(meta);
+                return (
+                  <div key={meta.id} className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-medium">{meta.nome}</p>
+                      <span className="text-xs font-semibold text-muted-foreground">{progresso.toFixed(0)}%</span>
+                    </div>
+                    <Progress value={progresso} className="h-2" />
+                  </div>
+                );
+              })}
+              <div className="pt-1">
+                <Button type="button" variant="outline" size="sm" onClick={() => setLocation("/metas")}>
+                  Ver metas
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="fintech-surface desktop-hover-lift">
+            <CardContent className="p-5 space-y-2">
+              <p className="text-sm font-semibold">Metas financeiras visuais</p>
+              <p className="text-sm text-muted-foreground">Adicione metas para acompanhar progresso e previsibilidade mensal.</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => setLocation("/metas")}>
+                Criar primeira meta
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className={`fintech-surface desktop-hover-lift ${premiumAccess.effectiveTier === "premium" ? "border-emerald-500/30 bg-emerald-500/5" : "border-primary/25 bg-primary/5"}`}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Star className={`w-4 h-4 ${premiumAccess.effectiveTier === "premium" ? "text-emerald-600" : "text-primary"}`} />
+              {premiumAccess.effectiveTier === "premium" ? "Premium ativo" : "Upgrade Premium"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {premiumAccess.effectiveTier === "premium"
+                ? "Seu plano já libera backup em nuvem, restore e importação inteligente."
+                : "Desbloqueie backup na nuvem, restore avançado e importação inteligente com um clique."}
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="fintech-inline-kpi">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Backup cloud</p>
+                <p className="text-sm font-semibold">{premiumAccess.features.cloudBackup ? "Liberado" : "Premium"}</p>
+              </div>
+              <div className="fintech-inline-kpi">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Smart import</p>
+                <p className="text-sm font-semibold">{premiumAccess.features.smartImport ? "Liberado" : "Premium"}</p>
+              </div>
+            </div>
+            <div>
+              <Button
+                type="button"
+                size="sm"
+                variant={premiumAccess.effectiveTier === "premium" ? "outline" : "default"}
+                onClick={() => setLocation("/perfil")}
+              >
+                {premiumAccess.effectiveTier === "premium" ? "Gerenciar plano" : "Conhecer Premium"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {sectionStatus.pagarSemana.isLoading ? (
         <Skeleton className="h-[220px] rounded-2xl" />
