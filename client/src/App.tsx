@@ -8,7 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeProvider } from "@/components/theme-provider";
-import { LayoutDashboard, Receipt, CreditCard, DollarSign, PiggyBank, Eye, EyeOff } from "lucide-react";
+import { LayoutDashboard, Receipt, CreditCard, Wallet, PiggyBank, Eye, EyeOff } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { ValuesVisibilityProvider, useValuesVisibility } from "@/context/values-visibility";
 import { UIPreferencesProvider } from "@/context/ui-preferences";
@@ -139,7 +139,7 @@ function AuthenticatedLayout() {
     { label: "Painel", icon: LayoutDashboard, path: "/" },
     { label: "Dívidas", icon: Receipt, path: "/dividas" },
     { label: "Cartões", icon: CreditCard, path: "/cartoes" },
-    { label: "Renda", icon: DollarSign, path: "/renda" },
+    { label: "Renda", icon: Wallet, path: "/renda" },
     { label: "Patrimônio", icon: PiggyBank, path: "/patrimonio" },
   ];
 

@@ -4,7 +4,7 @@ import {
   TrendingUp, TrendingDown, CalendarClock,
   ArrowUpRight, ArrowDownRight, Receipt,
   AlertTriangle, CreditCard, Lightbulb,
-  Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank, Users, UserCircle,
+  Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank, Users, UserCircle, Repeat,
   Settings2, Smartphone,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -377,7 +377,7 @@ export default function Dashboard() {
                 variant="outline"
                 onClick={() => setLocation("/servicos")}
               >
-                <Receipt className="mr-2 h-4 w-4" /> Serviços
+                <Repeat className="mr-2 h-4 w-4" /> Serviços
               </Button>
               <Button
                 className="h-11 justify-start rounded-xl text-sm"

@@ -5,7 +5,7 @@ import { useUIPreferences } from "@/context/ui-preferences";
 import {
   LayoutDashboard, Users, Receipt, CreditCard, Calendar,
   BarChart3, Repeat, LogOut, FileUp, Target, History, Calculator,
-  Sun, Moon, UserCircle, DollarSign, PiggyBank, Settings2, AlertCircle
+  Sun, Moon, UserCircle, Wallet, PiggyBank, Settings2, AlertCircle
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -29,7 +29,7 @@ const mainItems = [
   { title: "Pessoas", url: "/pessoas", icon: Users },
   { title: "Dívidas", url: "/dividas", icon: Receipt },
   { title: "Cartões", url: "/cartoes", icon: CreditCard },
-  { title: "Renda", url: "/renda", icon: DollarSign },
+  { title: "Renda", url: "/renda", icon: Wallet },
   { title: "Patrimônio", url: "/patrimonio", icon: PiggyBank },
   { title: "Serviços", url: "/servicos", icon: Repeat },
 ];
