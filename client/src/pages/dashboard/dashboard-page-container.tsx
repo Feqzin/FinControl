@@ -244,11 +244,13 @@ export default function Dashboard() {
             <SectionErrorState message={sectionStatus.saldo.message} />
           ) : (
             <div
-              className={`rounded-2xl p-5 shadow-sm ${saldoPrevisto >= 0 ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}
+              className={`rounded-2xl p-[14px] shadow-sm ${saldoPrevisto >= 0 ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}
               data-testid="mobile-saldo-hero"
             >
-              <p className="text-sm font-medium opacity-80 uppercase tracking-wider mb-1">Saldo do Mês</p>
-              <p className="text-4xl font-bold tracking-tight mb-3">{maskValue(formatCurrencyBRL(saldoPrevisto), visible)}</p>
+              <p className="mb-1 text-[12px] font-medium uppercase tracking-wide opacity-80">Saldo do mês</p>
+              <p className="mb-3 min-w-0 overflow-hidden text-[clamp(30px,8vw,34px)] font-bold leading-[1.1] tracking-[-0.5px] [overflow-wrap:anywhere]">
+                {maskValue(formatCurrencyBRL(saldoPrevisto), visible)}
+              </p>
               <div className="flex gap-4 text-sm opacity-85">
                 <div className="flex items-center gap-1.5">
                   <ArrowUpRight className="w-3.5 h-3.5" />
@@ -279,16 +281,18 @@ export default function Dashboard() {
                   return (
                     <div
                       key={card.id}
-                      className="bg-card rounded-2xl p-4 shadow-sm border border-border/50 min-h-[90px] flex flex-col justify-between"
+                      className="bg-card rounded-2xl border border-border/50 p-[14px] shadow-sm min-h-[90px] flex flex-col justify-between"
                       data-testid={`mobile-card-${card.id}`}
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <p className="text-xs text-muted-foreground font-medium">{card.title}</p>
+                        <p className="text-[12px] text-muted-foreground font-medium">{card.title}</p>
                         <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${d.bg}`}>
                           <IconC className={`w-3.5 h-3.5 ${d.iconColor}`} />
                         </div>
                       </div>
-                      <p className={`text-xl font-bold tracking-tight ${d.valueColor}`}>{d.value}</p>
+                      <p className={`min-w-0 overflow-hidden text-[clamp(22px,6vw,24px)] font-bold leading-[1.1] tracking-[-0.5px] [overflow-wrap:anywhere] ${d.valueColor}`}>
+                        {d.value}
+                      </p>
                     </div>
                   );
                 })}
@@ -672,16 +676,18 @@ export default function Dashboard() {
             className={`border-0 shadow-sm ${saldoPrevisto >= 0 ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}
             data-testid="desktop-saldo-hero"
           >
-            <CardContent className="p-5 sm:p-6">
-              <p className="text-xs uppercase tracking-wider opacity-85 mb-1">Saldo do mês</p>
-              <p className="text-3xl sm:text-4xl font-bold tracking-tight">{maskValue(formatCurrencyBRL(saldoPrevisto), visible)}</p>
+            <CardContent className="p-[14px] md:p-[18px]">
+              <p className="mb-1 text-[12px] uppercase tracking-wide opacity-85">Saldo do mês</p>
+              <p className="min-w-0 overflow-hidden text-[clamp(36px,4vw,48px)] font-bold leading-[1.1] tracking-[-0.5px] [overflow-wrap:anywhere]">
+                {maskValue(formatCurrencyBRL(saldoPrevisto), visible)}
+              </p>
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="rounded-xl bg-white/10 px-3 py-2">
-                  <p className="text-[11px] uppercase tracking-wide opacity-80">Entradas</p>
+                  <p className="text-[12px] uppercase tracking-wide opacity-80">Entradas</p>
                   <p className="text-sm font-semibold">{maskValue(formatCurrencyBRL(totalRenda), visible)}</p>
                 </div>
                 <div className="rounded-xl bg-white/10 px-3 py-2">
-                  <p className="text-[11px] uppercase tracking-wide opacity-80">Saídas</p>
+                  <p className="text-[12px] uppercase tracking-wide opacity-80">Saídas</p>
                   <p className="text-sm font-semibold">
                     {maskValue(formatCurrencyBRL(totalCartoesMes + totalPagarMes + totalServicos), visible)}
                   </p>

@@ -22,14 +22,17 @@ export function StatCard({
 }) {
   const card = (
     <Card className={`hover-elevate rounded-2xl border-border/60 bg-card/95 ${compact ? "min-h-[96px]" : "min-h-[112px]"}`}>
-      <CardContent className={`${compact ? "p-4" : "p-5"} h-full`}>
+      <CardContent className={`${compact ? "p-[14px] md:p-[18px]" : "p-[14px] md:p-[18px]"} h-full`}>
         <div className="flex h-full items-center justify-between gap-3">
           <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
-            <p className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{title}</p>
-            <p className={`${compact ? "text-2xl" : "text-2xl"} font-bold tracking-tight truncate ${valueColor || ""}`} title={value}>
+            <p className="truncate text-[12px] font-medium uppercase tracking-wide text-muted-foreground">{title}</p>
+            <p
+              className={`${compact ? "text-[clamp(24px,2vw,32px)]" : "text-[36px]"} min-w-0 overflow-hidden font-bold leading-[1.1] tracking-[-0.5px] [overflow-wrap:anywhere] ${valueColor || ""}`}
+              title={value}
+            >
               {value}
             </p>
-            {trend && <p className="truncate text-xs text-muted-foreground">{trend}</p>}
+            {trend && <p className="truncate text-[12px] text-muted-foreground">{trend}</p>}
           </div>
           <div
             className={`flex items-center justify-center ${compact ? "h-9 w-9" : "h-10 w-10"} rounded-xl flex-shrink-0 ${color}`}
