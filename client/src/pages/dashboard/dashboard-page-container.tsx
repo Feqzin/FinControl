@@ -1,5 +1,4 @@
-﻿import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   TrendingUp, TrendingDown, CalendarClock,
@@ -9,7 +8,6 @@ import {
   Settings2, Smartphone,
 } from "lucide-react";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { useState } from "react";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { useUIPreferences } from "@/context/ui-preferences";
@@ -45,6 +43,15 @@ const insightIconMap: Record<string, any> = {
   star: Star,
 };
 
+function SectionErrorState({ message, compact = false }: { message?: string | null; compact?: boolean }) {
+  return (
+    <div className={`rounded-xl border border-red-500/20 bg-red-500/5 ${compact ? "p-3" : "p-4"} text-sm text-red-700 dark:text-red-300`}>
+      <p className="font-medium">Não foi possível carregar esta seção agora.</p>
+      {message && <p className="mt-1 text-xs opacity-90">{message}</p>}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { visible } = useValuesVisibility();
   const {
@@ -58,7 +65,6 @@ export default function Dashboard() {
   const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), "yyyy-MM"));
 
   const {
-    isLoading,
     monthOptions,
     dividas,
     servicos,
@@ -88,19 +94,9 @@ export default function Dashboard() {
     scoreBarColor,
     scoreLabelColor,
     allDashCards,
+    sectionStatus,
   } = useDashboard({ selectedMonth, visible });
   const selectedMonthLabel = monthOptions.find((o) => o.value === selectedMonth)?.label || selectedMonth;
-  if (isLoading) {
-    return (
-      <div className="p-6 space-y-6" data-testid="dashboard-loading">
-        <div><Skeleton className="h-8 w-48 mb-2" /><Skeleton className="h-4 w-64" /></div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-28" />)}
-        </div>
-        <Skeleton className="h-64" />
-      </div>
-    );
-  }
 
   if (prefs.mobileMode) {
     const visibleCards = allDashCards.filter(c => !prefs.hiddenDashCards.includes(c.id));
@@ -192,67 +188,91 @@ export default function Dashboard() {
         </div>
 
         <div className="px-4 pt-4 space-y-3">
-          <div
-            className={`rounded-2xl p-5 shadow-sm ${saldoPrevisto >= 0 ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}
-            data-testid="mobile-saldo-hero"
-          >
-            <p className="text-sm font-medium opacity-80 uppercase tracking-wider mb-1">Saldo do Mês</p>
-            <p className="text-4xl font-bold tracking-tight mb-3">{maskValue(formatCurrencyBRL(saldoPrevisto), visible)}</p>
-            <div className="flex gap-4 text-sm opacity-85">
-              <div className="flex items-center gap-1.5">
-                <ArrowUpRight className="w-3.5 h-3.5" />
-                <span>{maskValue(formatCurrencyBRL(totalRenda), visible)}</span>
-              </div>
-              <div className="w-px bg-white/30" />
-              <div className="flex items-center gap-1.5">
-                <ArrowDownRight className="w-3.5 h-3.5" />
-                <span>{maskValue(formatCurrencyBRL(totalCartoesMes + totalPagarMes + totalServicos), visible)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className="flex items-center gap-3 bg-card rounded-2xl px-4 py-3 shadow-sm border border-border/50"
-            data-testid="mobile-score"
-          >
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Score Financeiro</p>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                  <div className={`h-full rounded-full transition-all duration-500 ${scoreBarColor}`} style={{ width: `${score.valor}%` }} />
+          {sectionStatus.saldo.isLoading ? (
+            <Skeleton className="h-44 rounded-2xl" />
+          ) : sectionStatus.saldo.isError ? (
+            <SectionErrorState message={sectionStatus.saldo.message} />
+          ) : (
+            <div
+              className={`rounded-2xl p-5 shadow-sm ${saldoPrevisto >= 0 ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}
+              data-testid="mobile-saldo-hero"
+            >
+              <p className="text-sm font-medium opacity-80 uppercase tracking-wider mb-1">Saldo do Mês</p>
+              <p className="text-4xl font-bold tracking-tight mb-3">{maskValue(formatCurrencyBRL(saldoPrevisto), visible)}</p>
+              <div className="flex gap-4 text-sm opacity-85">
+                <div className="flex items-center gap-1.5">
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                  <span>{maskValue(formatCurrencyBRL(totalRenda), visible)}</span>
                 </div>
-                <span className={`text-sm font-bold ${scoreLabelColor}`}>{score.valor}</span>
+                <div className="w-px bg-white/30" />
+                <div className="flex items-center gap-1.5">
+                  <ArrowDownRight className="w-3.5 h-3.5" />
+                  <span>{maskValue(formatCurrencyBRL(totalCartoesMes + totalPagarMes + totalServicos), visible)}</span>
+                </div>
               </div>
-            </div>
-            <div className={`text-xs font-semibold px-2 py-1 rounded-lg ${scoreLabelColor} bg-muted/50`}>{score.classificacao}</div>
-          </div>
-
-          {visibleCards.filter(c => c.id !== "saldo").length > 0 && (
-            <div className="grid grid-cols-2 gap-3">
-              {visibleCards.filter(c => c.id !== "saldo").map(card => {
-                const d = cardDataMap[card.id];
-                if (!d) return null;
-                const IconC = d.icon;
-                return (
-                  <div
-                    key={card.id}
-                    className="bg-card rounded-2xl p-4 shadow-sm border border-border/50 min-h-[90px] flex flex-col justify-between"
-                    data-testid={`mobile-card-${card.id}`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs text-muted-foreground font-medium">{card.title}</p>
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${d.bg}`}>
-                        <IconC className={`w-3.5 h-3.5 ${d.iconColor}`} />
-                      </div>
-                    </div>
-                    <p className={`text-xl font-bold tracking-tight ${d.valueColor}`}>{d.value}</p>
-                  </div>
-                );
-              })}
             </div>
           )}
 
-          {pagarSemana.length > 0 && (
+          {sectionStatus.score.isLoading ? (
+            <Skeleton className="h-[74px] rounded-2xl" />
+          ) : sectionStatus.score.isError ? (
+            <SectionErrorState compact message={sectionStatus.score.message} />
+          ) : (
+            <div
+              className="flex items-center gap-3 bg-card rounded-2xl px-4 py-3 shadow-sm border border-border/50"
+              data-testid="mobile-score"
+            >
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Score Financeiro</p>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-500 ${scoreBarColor}`} style={{ width: `${score.valor}%` }} />
+                  </div>
+                  <span className={`text-sm font-bold ${scoreLabelColor}`}>{score.valor}</span>
+                </div>
+              </div>
+              <div className={`text-xs font-semibold px-2 py-1 rounded-lg ${scoreLabelColor} bg-muted/50`}>{score.classificacao}</div>
+            </div>
+          )}
+
+          {visibleCards.filter(c => c.id !== "saldo").length > 0 ? (
+            sectionStatus.cardsResumo.isLoading ? (
+              <div className="grid grid-cols-2 gap-3">
+                {[1, 2, 3, 4].map((idx) => <Skeleton key={idx} className="h-[98px] rounded-2xl" />)}
+              </div>
+            ) : sectionStatus.cardsResumo.isError ? (
+              <SectionErrorState compact message={sectionStatus.cardsResumo.message} />
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {visibleCards.filter(c => c.id !== "saldo").map(card => {
+                  const d = cardDataMap[card.id];
+                  if (!d) return null;
+                  const IconC = d.icon;
+                  return (
+                    <div
+                      key={card.id}
+                      className="bg-card rounded-2xl p-4 shadow-sm border border-border/50 min-h-[90px] flex flex-col justify-between"
+                      data-testid={`mobile-card-${card.id}`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs text-muted-foreground font-medium">{card.title}</p>
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${d.bg}`}>
+                          <IconC className={`w-3.5 h-3.5 ${d.iconColor}`} />
+                        </div>
+                      </div>
+                      <p className={`text-xl font-bold tracking-tight ${d.valueColor}`}>{d.value}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          ) : null}
+
+          {sectionStatus.pagarSemana.isLoading ? (
+            <Skeleton className="h-40 rounded-2xl" />
+          ) : sectionStatus.pagarSemana.isError ? (
+            <SectionErrorState message={sectionStatus.pagarSemana.message} />
+          ) : pagarSemana.length > 0 ? (
             <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden" data-testid="mobile-pagar-semana">
               <div className="px-4 pt-4 pb-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -287,9 +307,13 @@ export default function Dashboard() {
                 </span>
               </div>
             </div>
-          )}
+          ) : null}
 
-          {alertas.length > 0 && (
+          {sectionStatus.alertas.isLoading ? (
+            <Skeleton className="h-40 rounded-2xl" />
+          ) : sectionStatus.alertas.isError ? (
+            <SectionErrorState message={sectionStatus.alertas.message} />
+          ) : alertas.length > 0 ? (
             <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
               <div className="px-4 pt-4 pb-2 flex items-center gap-2">
                 <Bell className="w-4 h-4" />
@@ -302,14 +326,22 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
-          )}
+          ) : null}
 
           <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
             <div className="px-4 pt-4 pb-2 flex items-center gap-2">
               <CalendarClock className="w-4 h-4 text-primary" />
               <span className="font-semibold text-sm">Próximos Vencimentos</span>
             </div>
-            {proximosVencimentos.length === 0 ? (
+            {sectionStatus.proximosVencimentos.isLoading ? (
+              <div className="space-y-2 px-4 pb-4">
+                {[1, 2, 3].map((idx) => <Skeleton key={idx} className="h-12 rounded-lg" />)}
+              </div>
+            ) : sectionStatus.proximosVencimentos.isError ? (
+              <div className="px-4 pb-4">
+                <SectionErrorState compact message={sectionStatus.proximosVencimentos.message} />
+              </div>
+            ) : proximosVencimentos.length === 0 ? (
               <div className="px-4 pb-4 text-center">
                 <p className="text-sm text-muted-foreground py-2">Nenhum vencimento pendente</p>
               </div>
@@ -435,117 +467,143 @@ export default function Dashboard() {
                 ))}
               </SelectContent>
             </Select>
-            <div
-              className="flex min-w-0 w-full items-center gap-3 rounded-xl border border-border/50 bg-background px-3 py-2 sm:px-4 md:w-auto md:min-w-[220px]"
-              data-testid="score-financeiro"
-            >
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-muted-foreground">Score financeiro</span>
-                  <span className={`text-xs font-bold ${scoreLabelColor}`}>{score.classificacao}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${scoreBarColor}`}
-                      style={{ width: `${score.valor}%` }}
-                    />
+            {sectionStatus.score.isLoading ? (
+              <Skeleton className="h-12 w-full rounded-xl md:w-[220px]" />
+            ) : sectionStatus.score.isError ? (
+              <div className="w-full md:w-[280px]">
+                <SectionErrorState compact message={sectionStatus.score.message} />
+              </div>
+            ) : (
+              <div
+                className="flex min-w-0 w-full items-center gap-3 rounded-xl border border-border/50 bg-background px-3 py-2 sm:px-4 md:w-auto md:min-w-[220px]"
+                data-testid="score-financeiro"
+              >
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-muted-foreground">Score financeiro</span>
+                    <span className={`text-xs font-bold ${scoreLabelColor}`}>{score.classificacao}</span>
                   </div>
-                  <span className={`text-sm font-bold ${scoreLabelColor}`}>{score.valor}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${scoreBarColor}`}
+                        style={{ width: `${score.valor}%` }}
+                      />
+                    </div>
+                    <span className={`text-sm font-bold ${scoreLabelColor}`}>{score.valor}</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
 
       {!prefs.hiddenDashCards.includes("saldo") && (
-        <Card
-          className={`border-0 shadow-sm ${saldoPrevisto >= 0 ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}
-          data-testid="desktop-saldo-hero"
-        >
-          <CardContent className="p-5 sm:p-6">
-            <p className="text-xs uppercase tracking-wider opacity-85 mb-1">Saldo do mês</p>
-            <p className="text-3xl sm:text-4xl font-bold tracking-tight">{maskValue(formatCurrencyBRL(saldoPrevisto), visible)}</p>
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div className="rounded-xl bg-white/10 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide opacity-80">Entradas</p>
-                <p className="text-sm font-semibold">{maskValue(formatCurrencyBRL(totalRenda), visible)}</p>
+        sectionStatus.saldo.isLoading ? (
+          <Skeleton className="h-[170px] rounded-2xl" />
+        ) : sectionStatus.saldo.isError ? (
+          <SectionErrorState message={sectionStatus.saldo.message} />
+        ) : (
+          <Card
+            className={`border-0 shadow-sm ${saldoPrevisto >= 0 ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}
+            data-testid="desktop-saldo-hero"
+          >
+            <CardContent className="p-5 sm:p-6">
+              <p className="text-xs uppercase tracking-wider opacity-85 mb-1">Saldo do mês</p>
+              <p className="text-3xl sm:text-4xl font-bold tracking-tight">{maskValue(formatCurrencyBRL(saldoPrevisto), visible)}</p>
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="rounded-xl bg-white/10 px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-wide opacity-80">Entradas</p>
+                  <p className="text-sm font-semibold">{maskValue(formatCurrencyBRL(totalRenda), visible)}</p>
+                </div>
+                <div className="rounded-xl bg-white/10 px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-wide opacity-80">Saídas</p>
+                  <p className="text-sm font-semibold">
+                    {maskValue(formatCurrencyBRL(totalCartoesMes + totalPagarMes + totalServicos), visible)}
+                  </p>
+                </div>
               </div>
-              <div className="rounded-xl bg-white/10 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-wide opacity-80">Saídas</p>
-                <p className="text-sm font-semibold">
-                  {maskValue(formatCurrencyBRL(totalCartoesMes + totalPagarMes + totalServicos), visible)}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )
       )}
 
-      <div className={`grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 ${prefs.dashboardCompact ? "gap-2" : "gap-3"}`}>
-        {!prefs.hiddenDashCards.includes("receber") && (
-          <StatCard
-            title="A receber"
-            value={maskValue(formatCurrencyBRL(totalReceber), visible)}
-            icon={ArrowUpRight}
-            trend={`${dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").length} pendentes`}
-            color="bg-emerald-500/10 text-emerald-600"
-            valueColor="text-emerald-600"
-            tooltipLines={aReceberTooltip}
-            compact
-          />
-        )}
-        {!prefs.hiddenDashCards.includes("pagar") && (
-          <StatCard
-            title="A pagar"
-            value={maskValue(formatCurrencyBRL(totalPagar), visible)}
-            icon={ArrowDownRight}
-            trend={`${dividas.filter((d) => d.tipo === "pagar" && d.status === "pendente").length} pendentes`}
-            color="bg-red-500/10 text-red-600"
-            valueColor="text-red-600"
-            tooltipLines={aPagarTooltip}
-            compact
-          />
-        )}
-        {!prefs.hiddenDashCards.includes("servicos") && (
-          <StatCard
-            title="Gastos fixos"
-            value={maskValue(formatCurrencyBRL(totalServicos), visible)}
-            icon={Receipt}
-            trend={`${servicos.filter((s) => s.status === "ativo").length} ativos`}
-            color="bg-amber-500/10 text-amber-600"
-            tooltipLines={gastosFixosTooltip}
-            compact
-          />
-        )}
-        {!prefs.hiddenDashCards.includes("renda") && (
-          <StatCard
-            title="Renda mensal"
-            value={maskValue(formatCurrencyBRL(totalRenda), visible)}
-            icon={DollarSign}
-            trend={`${rendas.filter((r) => r.ativo).length} fontes ativas`}
-            color="bg-emerald-500/10 text-emerald-600"
-            valueColor="text-emerald-600"
-            tooltipLines={rendaMensalTooltip}
-            compact
-          />
-        )}
-        {!prefs.hiddenDashCards.includes("patrimonio") && (
-          <StatCard
-            title="Patrimônio"
-            value={maskValue(formatCurrencyBRL(totalPatrimonio), visible)}
-            icon={PiggyBank}
-            trend={`${patrimonios.length} itens`}
-            color="bg-blue-500/10 text-blue-600"
-            valueColor="text-blue-600"
-            tooltipLines={patrimonioTooltip}
-            compact
-          />
-        )}
-      </div>
+      {sectionStatus.cardsResumo.isLoading ? (
+        <div className={`grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 ${prefs.dashboardCompact ? "gap-2" : "gap-3"}`}>
+          {[1, 2, 3, 4, 5].map((idx) => <Skeleton key={idx} className="h-[84px] rounded-xl" />)}
+        </div>
+      ) : sectionStatus.cardsResumo.isError ? (
+        <SectionErrorState message={sectionStatus.cardsResumo.message} />
+      ) : (
+        <div className={`grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 ${prefs.dashboardCompact ? "gap-2" : "gap-3"}`}>
+          {!prefs.hiddenDashCards.includes("receber") && (
+            <StatCard
+              title="A receber"
+              value={maskValue(formatCurrencyBRL(totalReceber), visible)}
+              icon={ArrowUpRight}
+              trend={`${dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").length} pendentes`}
+              color="bg-emerald-500/10 text-emerald-600"
+              valueColor="text-emerald-600"
+              tooltipLines={aReceberTooltip}
+              compact
+            />
+          )}
+          {!prefs.hiddenDashCards.includes("pagar") && (
+            <StatCard
+              title="A pagar"
+              value={maskValue(formatCurrencyBRL(totalPagar), visible)}
+              icon={ArrowDownRight}
+              trend={`${dividas.filter((d) => d.tipo === "pagar" && d.status === "pendente").length} pendentes`}
+              color="bg-red-500/10 text-red-600"
+              valueColor="text-red-600"
+              tooltipLines={aPagarTooltip}
+              compact
+            />
+          )}
+          {!prefs.hiddenDashCards.includes("servicos") && (
+            <StatCard
+              title="Gastos fixos"
+              value={maskValue(formatCurrencyBRL(totalServicos), visible)}
+              icon={Receipt}
+              trend={`${servicos.filter((s) => s.status === "ativo").length} ativos`}
+              color="bg-amber-500/10 text-amber-600"
+              tooltipLines={gastosFixosTooltip}
+              compact
+            />
+          )}
+          {!prefs.hiddenDashCards.includes("renda") && (
+            <StatCard
+              title="Renda mensal"
+              value={maskValue(formatCurrencyBRL(totalRenda), visible)}
+              icon={DollarSign}
+              trend={`${rendas.filter((r) => r.ativo).length} fontes ativas`}
+              color="bg-emerald-500/10 text-emerald-600"
+              valueColor="text-emerald-600"
+              tooltipLines={rendaMensalTooltip}
+              compact
+            />
+          )}
+          {!prefs.hiddenDashCards.includes("patrimonio") && (
+            <StatCard
+              title="Patrimônio"
+              value={maskValue(formatCurrencyBRL(totalPatrimonio), visible)}
+              icon={PiggyBank}
+              trend={`${patrimonios.length} itens`}
+              color="bg-blue-500/10 text-blue-600"
+              valueColor="text-blue-600"
+              tooltipLines={patrimonioTooltip}
+              compact
+            />
+          )}
+        </div>
+      )}
 
-      {pagarSemana.length > 0 && (
+      {sectionStatus.pagarSemana.isLoading ? (
+        <Skeleton className="h-[220px] rounded-2xl" />
+      ) : sectionStatus.pagarSemana.isError ? (
+        <SectionErrorState message={sectionStatus.pagarSemana.message} />
+      ) : pagarSemana.length > 0 ? (
         <Card data-testid="pagar-semana-widget">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -582,7 +640,7 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
@@ -592,18 +650,26 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2" data-testid="alertas-section">
-              {alertas.map((alerta, i) => (
-                <div
-                  key={i}
-                  className={`flex items-start gap-3 p-3 rounded-md border ${alerta.bgColor}`}
-                  data-testid={`alerta-${i}`}
-                >
-                  <alerta.icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${alerta.color}`} />
-                  <p className={`text-sm font-medium ${alerta.color}`}>{alerta.texto}</p>
-                </div>
-              ))}
-            </div>
+            {sectionStatus.alertas.isLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((idx) => <Skeleton key={idx} className="h-14 rounded-md" />)}
+              </div>
+            ) : sectionStatus.alertas.isError ? (
+              <SectionErrorState message={sectionStatus.alertas.message} />
+            ) : (
+              <div className="space-y-2" data-testid="alertas-section">
+                {alertas.map((alerta, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-start gap-3 p-3 rounded-md border ${alerta.bgColor}`}
+                    data-testid={`alerta-${i}`}
+                  >
+                    <alerta.icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${alerta.color}`} />
+                    <p className={`text-sm font-medium ${alerta.color}`}>{alerta.texto}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -614,7 +680,13 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {insights.length === 0 ? (
+            {sectionStatus.insights.isLoading ? (
+              <div className="space-y-2">
+                {[1, 2].map((idx) => <Skeleton key={idx} className="h-16 rounded-md" />)}
+              </div>
+            ) : sectionStatus.insights.isError ? (
+              <SectionErrorState message={sectionStatus.insights.message} />
+            ) : insights.length === 0 ? (
               <div className="text-center py-6 text-muted-foreground">
                 <Target className="w-8 h-8 mx-auto mb-2 opacity-30" />
                 <p className="text-sm">Adicione dados para ver insights personalizados</p>
@@ -653,7 +725,13 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {proximosVencimentos.length === 0 ? (
+            {sectionStatus.proximosVencimentos.isLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((idx) => <Skeleton key={idx} className="h-14 rounded-lg" />)}
+              </div>
+            ) : sectionStatus.proximosVencimentos.isError ? (
+              <SectionErrorState message={sectionStatus.proximosVencimentos.message} />
+            ) : proximosVencimentos.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <CalendarClock className="w-8 h-8 mx-auto mb-2 opacity-40" />
                 <p className="text-sm">Nenhum vencimento pendente</p>
@@ -703,41 +781,50 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-md bg-muted/40">
-                <span className="text-sm text-muted-foreground">Pontuacao geral</span>
-                <div className="flex items-center gap-2">
-                  <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
-                    <div className={`h-full rounded-full ${scoreBarColor}`} style={{ width: `${score.valor}%` }} />
-                  </div>
-                  <span className={`font-bold text-sm ${scoreLabelColor}`}>{score.valor}/100</span>
-                </div>
+            {sectionStatus.scoreDetalhado.isLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((idx) => <Skeleton key={idx} className="h-14 rounded-md" />)}
               </div>
-              {score.fatores.map((f, i) => (
-                <div key={i} className="flex items-center justify-between p-2.5 rounded-md bg-muted/30 text-sm">
-                  <span className="text-muted-foreground truncate mr-2">{f.label}</span>
-                  <span className={`font-semibold flex-shrink-0 ${f.tipo === "positivo" ? "text-emerald-600" : f.tipo === "negativo" ? "text-red-600" : "text-muted-foreground"}`}>
-                    {f.impacto > 0 ? "+" : ""}{f.impacto}
+            ) : sectionStatus.scoreDetalhado.isError ? (
+              <SectionErrorState message={sectionStatus.scoreDetalhado.message} />
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 rounded-md bg-muted/40">
+                  <span className="text-sm text-muted-foreground">Pontuacao geral</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-24 h-2 rounded-full bg-muted overflow-hidden">
+                      <div className={`h-full rounded-full ${scoreBarColor}`} style={{ width: `${score.valor}%` }} />
+                    </div>
+                    <span className={`font-bold text-sm ${scoreLabelColor}`}>{score.valor}/100</span>
+                  </div>
+                </div>
+                {score.fatores.map((f, i) => (
+                  <div key={i} className="flex items-center justify-between p-2.5 rounded-md bg-muted/30 text-sm">
+                    <span className="text-muted-foreground truncate mr-2">{f.label}</span>
+                    <span className={`font-semibold flex-shrink-0 ${f.tipo === "positivo" ? "text-emerald-600" : f.tipo === "negativo" ? "text-red-600" : "text-muted-foreground"}`}>
+                      {f.impacto > 0 ? "+" : ""}{f.impacto}
+                    </span>
+                  </div>
+                ))}
+                <div className="flex justify-between items-center p-3 rounded-md bg-muted/40">
+                  <span className="text-sm text-muted-foreground">Pessoas cadastradas</span>
+                  <span className="font-semibold">{pessoas.length}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 rounded-md bg-muted/40">
+                  <span className="text-sm text-muted-foreground">Dívidas quitadas</span>
+                  <span className="font-semibold text-emerald-600">
+                    {dividas.filter((d) => d.status === "pago").length}
                   </span>
                 </div>
-              ))}
-              <div className="flex justify-between items-center p-3 rounded-md bg-muted/40">
-                <span className="text-sm text-muted-foreground">Pessoas cadastradas</span>
-                <span className="font-semibold">{pessoas.length}</span>
               </div>
-              <div className="flex justify-between items-center p-3 rounded-md bg-muted/40">
-                <span className="text-sm text-muted-foreground">Dívidas quitadas</span>
-                <span className="font-semibold text-emerald-600">
-                  {dividas.filter((d) => d.status === "pago").length}
-                </span>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>
     </div>
   );
 }
+
 
 
 

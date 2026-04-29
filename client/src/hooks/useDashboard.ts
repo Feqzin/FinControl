@@ -35,6 +35,72 @@ export interface PagarSemanaItem {
   type: "divida" | "cartao" | "servico";
 }
 
+type QueryState = {
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+};
+
+type SectionStatus = {
+  isLoading: boolean;
+  isError: boolean;
+  message: string | null;
+};
+
+const DASHBOARD_QUERY_TIMEOUT_MS = 12_000;
+
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message;
+  return "Erro inesperado ao carregar dados.";
+};
+
+const toSectionStatus = (query: QueryState): SectionStatus => ({
+  isLoading: query.isLoading,
+  isError: query.isError,
+  message: query.isError ? getErrorMessage(query.error) : null,
+});
+
+const combineSectionStatus = (queries: QueryState[]): SectionStatus => {
+  const firstError = queries.find((query) => query.isError);
+  return {
+    isLoading: queries.some((query) => query.isLoading),
+    isError: Boolean(firstError),
+    message: firstError ? getErrorMessage(firstError.error) : null,
+  };
+};
+
+async function fetchDashboardJson<T>(url: string, label: string): Promise<T> {
+  const controller = new AbortController();
+  const startedAt = Date.now();
+  const timeout = setTimeout(() => controller.abort(), DASHBOARD_QUERY_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      credentials: "include",
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const text = (await response.text()) || response.statusText;
+      throw new Error(`${response.status}: ${text}`);
+    }
+
+    const durationMs = Date.now() - startedAt;
+    if (durationMs >= 3_000) {
+      console.warn(`[dashboard] query lenta: ${label} (${durationMs}ms)`);
+    }
+
+    return (await response.json()) as T;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`Tempo limite ao carregar ${label}. Tente novamente.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const ALL_DASH_CARDS = [
   { id: "receber", title: "A receber" },
   { id: "pagar", title: "A pagar" },
@@ -56,22 +122,127 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     return opts;
   }, []);
 
-  const { data: dividas = [], isLoading: l1 } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
-  const { data: servicos = [], isLoading: l2 } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
-  const { data: pessoas = [], isLoading: l3 } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
-  const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
-  const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
-  const { data: parcelasCompra = [] } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"] });
-  const { data: rendas = [] } = useQuery<Renda[]>({ queryKey: ["/api/rendas"] });
-  const { data: patrimonios = [] } = useQuery<Patrimonio[]>({ queryKey: ["/api/patrimonios"] });
-  const { data: financialScore, isLoading: l4 } = useQuery<FinancialScore>({ queryKey: ["/api/financial/score"] });
-  const { data: financialInsights = [], isLoading: l5 } = useQuery<FinancialInsight[]>({ queryKey: ["/api/financial/insights"] });
-  const { data: financialSummary, isLoading: l6 } = useQuery<FinancialSummary>({
+  const dividasQuery = useQuery<Divida[]>({
+    queryKey: ["/api/dividas"],
+    queryFn: () => fetchDashboardJson<Divida[]>("/api/dividas", "dívidas"),
+  });
+  const servicosQuery = useQuery<Servico[]>({
+    queryKey: ["/api/servicos"],
+    queryFn: () => fetchDashboardJson<Servico[]>("/api/servicos", "serviços"),
+  });
+  const pessoasQuery = useQuery<Pessoa[]>({
+    queryKey: ["/api/pessoas"],
+    queryFn: () => fetchDashboardJson<Pessoa[]>("/api/pessoas", "pessoas"),
+  });
+  const cartoesQuery = useQuery<Cartao[]>({
+    queryKey: ["/api/cartoes"],
+    queryFn: () => fetchDashboardJson<Cartao[]>("/api/cartoes", "cartões"),
+  });
+  const comprasQuery = useQuery<CompraCartao[]>({
+    queryKey: ["/api/compras-cartao"],
+    queryFn: () => fetchDashboardJson<CompraCartao[]>("/api/compras-cartao", "compras de cartão"),
+  });
+  const parcelasCompraQuery = useQuery<ParcelaCompra[]>({
+    queryKey: ["/api/parcelas-compra"],
+    queryFn: () => fetchDashboardJson<ParcelaCompra[]>("/api/parcelas-compra", "parcelas de compra"),
+  });
+  const rendasQuery = useQuery<Renda[]>({
+    queryKey: ["/api/rendas"],
+    queryFn: () => fetchDashboardJson<Renda[]>("/api/rendas", "rendas"),
+  });
+  const patrimoniosQuery = useQuery<Patrimonio[]>({
+    queryKey: ["/api/patrimonios"],
+    queryFn: () => fetchDashboardJson<Patrimonio[]>("/api/patrimonios", "patrimônio"),
+  });
+  const financialScoreQuery = useQuery<FinancialScore>({
+    queryKey: ["/api/financial/score"],
+    queryFn: () => fetchDashboardJson<FinancialScore>("/api/financial/score", "score financeiro"),
+  });
+  const financialInsightsQuery = useQuery<FinancialInsight[]>({
+    queryKey: ["/api/financial/insights"],
+    queryFn: () => fetchDashboardJson<FinancialInsight[]>("/api/financial/insights", "insights financeiros"),
+  });
+  const financialSummaryQuery = useQuery<FinancialSummary>({
     queryKey: ["/api/financial/summary", selectedMonth],
     queryFn: () => fetchFinancialSummary(selectedMonth),
   });
 
-  const isLoading = l1 || l2 || l3 || l4 || l5 || l6;
+  const dividas = dividasQuery.data ?? [];
+  const servicos = servicosQuery.data ?? [];
+  const pessoas = pessoasQuery.data ?? [];
+  const cartoes = cartoesQuery.data ?? [];
+  const compras = comprasQuery.data ?? [];
+  const parcelasCompra = parcelasCompraQuery.data ?? [];
+  const rendas = rendasQuery.data ?? [];
+  const patrimonios = patrimoniosQuery.data ?? [];
+  const financialScore = financialScoreQuery.data;
+  const financialInsights = financialInsightsQuery.data ?? [];
+  const financialSummary = financialSummaryQuery.data;
+
+  const isLoading =
+    dividasQuery.isLoading
+    || servicosQuery.isLoading
+    || pessoasQuery.isLoading
+    || financialScoreQuery.isLoading
+    || financialInsightsQuery.isLoading
+    || financialSummaryQuery.isLoading;
+
+  const sectionStatus = {
+    saldo: toSectionStatus({
+      isLoading: financialSummaryQuery.isLoading,
+      isError: financialSummaryQuery.isError,
+      error: financialSummaryQuery.error,
+    }),
+    entradasSaidas: toSectionStatus({
+      isLoading: financialSummaryQuery.isLoading,
+      isError: financialSummaryQuery.isError,
+      error: financialSummaryQuery.error,
+    }),
+    cardsResumo: combineSectionStatus([
+      { isLoading: financialSummaryQuery.isLoading, isError: financialSummaryQuery.isError, error: financialSummaryQuery.error },
+      { isLoading: dividasQuery.isLoading, isError: dividasQuery.isError, error: dividasQuery.error },
+      { isLoading: servicosQuery.isLoading, isError: servicosQuery.isError, error: servicosQuery.error },
+      { isLoading: rendasQuery.isLoading, isError: rendasQuery.isError, error: rendasQuery.error },
+      { isLoading: patrimoniosQuery.isLoading, isError: patrimoniosQuery.isError, error: patrimoniosQuery.error },
+    ]),
+    score: toSectionStatus({
+      isLoading: financialScoreQuery.isLoading,
+      isError: financialScoreQuery.isError,
+      error: financialScoreQuery.error,
+    }),
+    scoreDetalhado: combineSectionStatus([
+      { isLoading: financialScoreQuery.isLoading, isError: financialScoreQuery.isError, error: financialScoreQuery.error },
+      { isLoading: pessoasQuery.isLoading, isError: pessoasQuery.isError, error: pessoasQuery.error },
+      { isLoading: dividasQuery.isLoading, isError: dividasQuery.isError, error: dividasQuery.error },
+    ]),
+    insights: toSectionStatus({
+      isLoading: financialInsightsQuery.isLoading,
+      isError: financialInsightsQuery.isError,
+      error: financialInsightsQuery.error,
+    }),
+    alertas: combineSectionStatus([
+      { isLoading: dividasQuery.isLoading, isError: dividasQuery.isError, error: dividasQuery.error },
+      { isLoading: servicosQuery.isLoading, isError: servicosQuery.isError, error: servicosQuery.error },
+      { isLoading: cartoesQuery.isLoading, isError: cartoesQuery.isError, error: cartoesQuery.error },
+      { isLoading: comprasQuery.isLoading, isError: comprasQuery.isError, error: comprasQuery.error },
+      { isLoading: parcelasCompraQuery.isLoading, isError: parcelasCompraQuery.isError, error: parcelasCompraQuery.error },
+      { isLoading: financialSummaryQuery.isLoading, isError: financialSummaryQuery.isError, error: financialSummaryQuery.error },
+    ]),
+    proximosVencimentos: combineSectionStatus([
+      { isLoading: dividasQuery.isLoading, isError: dividasQuery.isError, error: dividasQuery.error },
+      { isLoading: servicosQuery.isLoading, isError: servicosQuery.isError, error: servicosQuery.error },
+      { isLoading: pessoasQuery.isLoading, isError: pessoasQuery.isError, error: pessoasQuery.error },
+      { isLoading: cartoesQuery.isLoading, isError: cartoesQuery.isError, error: cartoesQuery.error },
+      { isLoading: comprasQuery.isLoading, isError: comprasQuery.isError, error: comprasQuery.error },
+    ]),
+    pagarSemana: combineSectionStatus([
+      { isLoading: dividasQuery.isLoading, isError: dividasQuery.isError, error: dividasQuery.error },
+      { isLoading: servicosQuery.isLoading, isError: servicosQuery.isError, error: servicosQuery.error },
+      { isLoading: cartoesQuery.isLoading, isError: cartoesQuery.isError, error: cartoesQuery.error },
+      { isLoading: comprasQuery.isLoading, isError: comprasQuery.isError, error: comprasQuery.error },
+      { isLoading: pessoasQuery.isLoading, isError: pessoasQuery.isError, error: pessoasQuery.error },
+    ]),
+  } as const;
 
   const totalRenda = financialSummary?.totalRenda ?? 0;
   const totalPatrimonio = patrimonios.reduce((s, p) => s + toMoneyNumber(p.valorAtual), 0);
@@ -418,6 +589,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     scoreBarColor,
     scoreLabelColor,
     allDashCards: ALL_DASH_CARDS,
+    sectionStatus,
   };
 }
 
