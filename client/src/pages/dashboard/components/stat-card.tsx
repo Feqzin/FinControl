@@ -21,10 +21,10 @@ export function StatCard({
   compact?: boolean;
 }) {
   const card = (
-    <Card className={`hover-elevate ${compact ? "min-h-[80px]" : "min-h-[100px]"}`}>
-      <CardContent className={`${compact ? "p-3" : "p-5"} h-full`}>
-        <div className="flex items-start justify-between gap-2 h-full">
-          <div className="space-y-1 flex-1 min-w-0">
+    <Card className={`hover-elevate ${compact ? "min-h-[84px]" : "min-h-[104px]"}`}>
+      <CardContent className={`${compact ? "p-3.5" : "p-5"} h-full`}>
+        <div className="flex h-full items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
             <p className="text-xs text-muted-foreground truncate">{title}</p>
             <p className={`${compact ? "text-lg" : "text-xl"} font-bold tracking-tight truncate ${valueColor || ""}`} title={value}>
               {value}
