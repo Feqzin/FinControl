@@ -73,9 +73,9 @@ export default function HistoricoPage() {
         <p className="text-muted-foreground">Evolução dos últimos 6 meses</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="hover-elevate">
-          <CardContent className="p-5">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <Card className="hover-elevate min-h-[136px]">
+          <CardContent className="p-5 h-full flex flex-col justify-center">
             <p className="text-sm text-muted-foreground mb-1">Score atual</p>
             <div className="flex items-end gap-2">
               <p className={`text-3xl font-bold ${
@@ -85,10 +85,10 @@ export default function HistoricoPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="hover-elevate">
-          <CardContent className="p-5">
+        <Card className="hover-elevate min-h-[136px]">
+          <CardContent className="p-5 h-full flex flex-col justify-center">
             <p className="text-sm text-muted-foreground mb-1">Receitas (variação)</p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-end gap-2">
               <p className="text-2xl font-bold">{formatCurrency(ultimoMes?.receitas || 0)}</p>
               {variacaoReceitas !== 0 && (
                 <span className={`text-sm font-medium flex items-center ${variacaoReceitas > 0 ? "text-emerald-600" : "text-red-600"}`}>
@@ -99,10 +99,10 @@ export default function HistoricoPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="hover-elevate">
-          <CardContent className="p-5">
+        <Card className="hover-elevate min-h-[136px]">
+          <CardContent className="p-5 h-full flex flex-col justify-center">
             <p className="text-sm text-muted-foreground mb-1">Despesas (variação)</p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-end gap-2">
               <p className="text-2xl font-bold">{formatCurrency(ultimoMes?.despesas || 0)}</p>
               {variacaoDespesas !== 0 && (
                 <span className={`text-sm font-medium flex items-center ${variacaoDespesas < 0 ? "text-emerald-600" : "text-red-600"}`}>

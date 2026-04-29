@@ -1926,9 +1926,9 @@ export default function CartoesPage() {
                 const limiteDisponivel = getCardAvailableLimit(cartao.id);
                 const totalCompras = getCardCompras(cartao.id).length;
                 return (
-                  <Card key={cartao.id} className="fintech-surface desktop-hover-lift">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-3">
+                  <Card key={cartao.id} className="fintech-surface desktop-hover-lift min-h-[188px]">
+                    <CardContent className="p-4 h-full flex flex-col justify-between gap-3">
+                      <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                           <BrandIconDisplay name={cartao.nome} iconeId={cartao.iconeId} size="sm" />
                           <div className="min-w-0">
@@ -1939,7 +1939,7 @@ export default function CartoesPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="touch-feedback"
+                          className="touch-feedback h-9 px-4 shrink-0"
                           onClick={() => {
                             setCartoesTab("compras");
                             setSelectedCartao(cartao.id);
@@ -1950,11 +1950,11 @@ export default function CartoesPage() {
                         </Button>
                       </div>
                       <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <div className="fintech-stat-card p-2.5">
+                        <div className="fintech-stat-card p-3 min-h-[82px] flex flex-col justify-center">
                           <p className="text-[11px] text-muted-foreground">Fatura atual</p>
                           <p className="font-semibold">{formatCartaoCurrency(faturaAtual)}</p>
                         </div>
-                        <div className="fintech-stat-card bg-emerald-500/5 p-2.5">
+                        <div className="fintech-stat-card bg-emerald-500/5 p-3 min-h-[82px] flex flex-col justify-center">
                           <p className="text-[11px] text-muted-foreground">Disponível</p>
                           <p className="font-semibold text-emerald-600">{formatCartaoCurrency(limiteDisponivel)}</p>
                         </div>

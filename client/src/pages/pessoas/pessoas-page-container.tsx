@@ -524,9 +524,9 @@ export default function PessoasPage() {
             const hasAtraso = resumo.alertas.comprasAtrasadas > 0 || resumo.dividas.comigo.vencidas > 0;
             const totalDividasPendente = resumo.dividas.comigo.pendente + resumo.dividas.euDevo.pendente;
             return (
-              <Card key={p.id} className="hover-elevate rounded-2xl" data-testid={`card-pessoa-${p.id}`}>
-                <CardContent className="p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
+              <Card key={p.id} className="hover-elevate rounded-2xl overflow-hidden" data-testid={`card-pessoa-${p.id}`}>
+                <CardContent className="p-4 flex h-full flex-col gap-3">
+                  <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 flex-shrink-0">
                         <span className="text-sm font-bold text-primary">
@@ -542,15 +542,15 @@ export default function PessoasPage() {
                         )}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <Badge variant={p.tipo === "me_deve" ? "default" : "destructive"} className="text-[11px]">
+                    <div className="min-w-[120px] text-right flex flex-col items-end justify-center gap-2">
+                      <Badge variant={p.tipo === "me_deve" ? "default" : "destructive"} className="h-6 px-2.5 text-[11px]">
                         {p.tipo === "me_deve" ? "Me deve" : "Eu devo"}
                       </Badge>
-                      <p className="text-lg font-bold mt-2">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
+                      <p className="text-2xl leading-none font-bold">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
                     </div>
                   </div>
 
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground line-clamp-1">
                     Dívidas {formatCurrencyBRL(totalDividasPendente)} • Compras {formatCurrencyBRL(resumo.comprasVinculadas.pendentePessoa)} • Serviços {formatCurrencyBRL(resumo.servicosMesAtual.pendente)}
                   </p>
 
