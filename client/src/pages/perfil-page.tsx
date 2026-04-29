@@ -699,7 +699,7 @@ export default function PerfilPage() {
               <CheckCircle className="w-4 h-4 flex-shrink-0" />
               <span>Sessao segura com cookie httpOnly</span>
             </div>
-            <div className="fintech-surface-subtle flex items-center justify-between gap-3 p-3">
+            <div className="fintech-surface-subtle flex min-w-0 flex-wrap items-center justify-between gap-3 p-3">
               <div>
                 <p className="text-sm font-medium">Plano atual</p>
                 <p className="text-xs text-muted-foreground">
@@ -723,7 +723,7 @@ export default function PerfilPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="fintech-surface-subtle flex items-center justify-between gap-3 p-3">
+          <div className="fintech-surface-subtle flex min-w-0 flex-wrap items-center justify-between gap-3 p-3">
             <div>
               <p className="text-sm font-medium">{billingStatusUi.title}</p>
               <p className="text-xs text-muted-foreground">{billingStatusUi.description}</p>
@@ -735,7 +735,7 @@ export default function PerfilPage() {
 
           <div className="space-y-2">
             <p className="text-sm font-medium">Uso atual do plano</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="fintech-grid-fluid-260">
               <div className="fintech-stat-card">
                 <p className="text-xs text-muted-foreground">Cartões</p>
                 <p className="text-lg font-semibold">
@@ -850,7 +850,7 @@ export default function PerfilPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {[
               { label: "Pessoas", value: pessoas.length },
               { label: "Dividas", value: dividas.length },
@@ -898,7 +898,7 @@ export default function PerfilPage() {
             <Download className="w-4 h-4 mr-2" /> Exportar dados (JSON)
           </Button>
           <div className="fintech-surface-subtle space-y-3 p-3">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Cloud className="w-4 h-4 text-primary" />
                 <p className="text-sm font-medium">
@@ -1082,3 +1082,4 @@ export default function PerfilPage() {
     </div>
   );
 }
+

@@ -237,13 +237,13 @@ export default function Dashboard() {
 
           {visibleCards.filter(c => c.id !== "saldo").length > 0 ? (
             sectionStatus.cardsResumo.isLoading ? (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {[1, 2, 3, 4].map((idx) => <Skeleton key={idx} className="h-[98px] rounded-2xl" />)}
               </div>
             ) : sectionStatus.cardsResumo.isError ? (
               <SectionErrorState compact message={sectionStatus.cardsResumo.message} />
             ) : (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {visibleCards.filter(c => c.id !== "saldo").map(card => {
                   const d = cardDataMap[card.id];
                   if (!d) return null;
@@ -383,7 +383,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="dashboard-page">
+    <div className="app-page-shell app-section-stack" data-testid="dashboard-page">
       <div className="rounded-2xl border border-border/60 bg-card/90 p-4 sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-center justify-between gap-3 lg:justify-start">
@@ -456,9 +456,9 @@ export default function Dashboard() {
               </DialogContent>
             </Dialog>
           </div>
-          <div className="flex w-full min-w-0 flex-col gap-2 md:flex-row md:items-center lg:w-auto">
+          <div className="flex w-full min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:w-auto">
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="h-9 w-full min-w-0 rounded-xl text-sm md:w-[210px]" data-testid="select-month">
+              <SelectTrigger className="h-9 w-full min-w-0 rounded-xl text-sm lg:w-[210px]" data-testid="select-month">
                 <SelectValue placeholder="Selecionar mês" />
               </SelectTrigger>
               <SelectContent>
@@ -530,13 +530,13 @@ export default function Dashboard() {
       )}
 
       {sectionStatus.cardsResumo.isLoading ? (
-        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 ${prefs.dashboardCompact ? "gap-2" : "gap-3"}`}>
+        <div className={`fintech-grid-fluid-260 ${prefs.dashboardCompact ? "gap-2" : "gap-3"}`}>
           {[1, 2, 3, 4, 5].map((idx) => <Skeleton key={idx} className="h-[84px] rounded-xl" />)}
         </div>
       ) : sectionStatus.cardsResumo.isError ? (
         <SectionErrorState message={sectionStatus.cardsResumo.message} />
       ) : (
-        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 ${prefs.dashboardCompact ? "gap-2" : "gap-3"}`}>
+        <div className={`fintech-grid-fluid-260 ${prefs.dashboardCompact ? "gap-2" : "gap-3"}`}>
           {!prefs.hiddenDashCards.includes("receber") && (
             <StatCard
               title="A receber"

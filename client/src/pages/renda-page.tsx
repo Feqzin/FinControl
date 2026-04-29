@@ -151,9 +151,9 @@ export default function RendaPage() {
     .reduce((acc, r) => acc + parseFloat(r.valor.toString()), 0);
 
   return (
-    <div className="p-4 md:p-8 space-y-8 pb-20 md:pb-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
+    <div className="app-page-shell app-section-stack pb-20 md:pb-8">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
           <h1 className="text-3xl font-bold tracking-tight">Renda</h1>
           <p className="text-muted-foreground">Gerencie suas fontes de renda mensais.</p>
         </div>
@@ -165,7 +165,7 @@ export default function RendaPage() {
           }
         }}>
           <DialogTrigger asChild>
-            <Button data-testid="button-add-renda">
+            <Button className="w-full sm:w-auto" data-testid="button-add-renda">
               <Plus className="w-4 h-4 mr-2" />
               Adicionar Renda
             </Button>
@@ -189,7 +189,7 @@ export default function RendaPage() {
                     </FormItem>
                   )}
                 />
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="valor"
@@ -275,7 +275,7 @@ export default function RendaPage() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="fintech-grid-fluid-260">
         <Card className="hover-elevate">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-1">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Ativo</CardTitle>
@@ -311,7 +311,7 @@ export default function RendaPage() {
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="fintech-grid-fluid-260">
         {isLoading ? (
           Array.from({ length: 3 }).map((_, i) => (
             <Card key={i} className="flex flex-col">
@@ -390,3 +390,4 @@ export default function RendaPage() {
     </div>
   );
 }
+

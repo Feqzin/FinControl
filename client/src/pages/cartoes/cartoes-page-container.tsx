@@ -1005,7 +1005,7 @@ export default function CartoesPage() {
 
   if (isLoading) {
     return (
-      <div className="w-full max-w-full overflow-x-hidden p-6 space-y-6">
+      <div className="app-page-shell app-section-stack">
         <Skeleton className="h-8 w-32" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[1, 2].map((i) => <Skeleton key={i} className="h-64" />)}
@@ -1023,7 +1023,7 @@ export default function CartoesPage() {
             <p className="text-sm text-muted-foreground sm:text-base">Gerencie seus cartoes e compras parceladas</p>
           </div>
           <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
-            <div className="flex min-w-0 flex-col items-stretch gap-2 sm:col-span-2 sm:flex-row sm:items-center xl:col-span-1">
+            <div className="flex min-w-0 flex-col items-stretch gap-2 sm:col-span-2 md:flex-row md:items-center xl:col-span-1">
               <Button
                 variant="outline"
                 onClick={openImportDialog}
@@ -1100,7 +1100,7 @@ export default function CartoesPage() {
                     <Input data-testid="input-cartao-limite" type="number" step="0.01" value={cardForm.limite}
                       onChange={(e) => setCardForm({ ...cardForm, limite: e.target.value })} placeholder="0,00" required />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Melhor dia de compra</Label>
                       <Input data-testid="input-cartao-melhordia" type="number" min="1" max="31" value={cardForm.melhorDiaCompra}
@@ -1166,7 +1166,7 @@ export default function CartoesPage() {
               <Input data-testid="input-compra-descricao" value={compraForm.descricao}
                 onChange={(e) => setCompraForm({ ...compraForm, descricao: e.target.value })} placeholder="O que comprou?" required />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Valor total</Label>
                 <Input data-testid="input-compra-valor" type="number" step="0.01" value={compraForm.valorTotal}
@@ -1232,7 +1232,7 @@ export default function CartoesPage() {
               <Input data-testid="input-edit-cartao-limite" type="number" step="0.01" value={editCardForm.limite}
                 onChange={(e) => setEditCardForm({ ...editCardForm, limite: e.target.value })} required />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Melhor dia de compra</Label>
                 <Input data-testid="input-edit-cartao-melhordia" type="number" min="1" max="31" value={editCardForm.melhorDiaCompra}
@@ -1260,7 +1260,7 @@ export default function CartoesPage() {
               <Input data-testid="input-edit-compra-descricao" value={editCompraForm.descricao}
                 onChange={(e) => setEditCompraForm({ ...editCompraForm, descricao: e.target.value })} required />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Valor total</Label>
                 <Input data-testid="input-edit-compra-valor" type="number" step="0.01" value={editCompraForm.valorTotal}
@@ -1584,7 +1584,7 @@ export default function CartoesPage() {
                 </div>
               </SheetHeader>
 
-              <div className="mb-4 grid grid-cols-3 gap-2 text-sm">
+              <div className="mb-4 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
                 {(() => {
                   const pagas = parcelasCompraData.filter((p) => p.statusCartao === "pago").length;
                   const pendentes = parcelasCompraData.filter((p) => isParcelaComprometendoLimite(p.statusCartao)).length;
@@ -2419,6 +2419,7 @@ export default function CartoesPage() {
     </div>
   );
 }
+
 
 
 

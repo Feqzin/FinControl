@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -243,7 +243,7 @@ export default function DividasPage() {
   };
   if (isLoading) {
     return (
-      <div className="w-full max-w-full overflow-x-hidden p-6 space-y-6">
+      <div className="app-page-shell app-section-stack">
         <Skeleton className="h-8 w-32" />
         <div className="space-y-3">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20" />)}
@@ -253,7 +253,7 @@ export default function DividasPage() {
   }
 
   return (
-    <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="dividas-page">
+    <div className="app-page-shell app-section-stack" data-testid="dividas-page">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">Dividas</h1>
@@ -284,7 +284,7 @@ export default function DividasPage() {
                       <SelectContent>{pessoas.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Tipo</Label>
                       <Select value={simpleForm.tipo} onValueChange={(v) => setSimpleForm({ ...simpleForm, tipo: v })}>
@@ -301,7 +301,7 @@ export default function DividasPage() {
                         onChange={(e) => setSimpleForm({ ...simpleForm, valor: e.target.value })} placeholder="0,00" required />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Vencimento</Label>
                       <Input data-testid="input-divida-vencimento" type="date" value={simpleForm.dataVencimento}
@@ -338,7 +338,7 @@ export default function DividasPage() {
                       <SelectContent>{pessoas.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Tipo</Label>
                       <Select value={parceladoForm.tipo} onValueChange={(v) => setParceladoForm({ ...parceladoForm, tipo: v })}>
@@ -355,7 +355,7 @@ export default function DividasPage() {
                         onChange={(e) => setParceladoForm({ ...parceladoForm, valorTotal: e.target.value })} placeholder="0,00" required />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Numero de parcelas</Label>
                       <Input data-testid="input-parcelado-parcelas" type="number" min="2" max="360" value={parceladoForm.totalParcelas}
@@ -373,7 +373,7 @@ export default function DividasPage() {
                       <span className="font-semibold">{formatDividaCurrency(Number(parceladoForm.valorTotal) / Number(parceladoForm.totalParcelas))}</span>
                     </div>
                   )}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label>Forma</Label>
                       <Select value={parceladoForm.formaPagamento} onValueChange={(v) => setParceladoForm({ ...parceladoForm, formaPagamento: v })}>
@@ -746,7 +746,7 @@ export default function DividasPage() {
                 <p className="font-medium">Parcela {payingParcela.numero} · {formatDividaCurrency(Number(payingParcela.valor))}</p>
                 <p className="text-muted-foreground">Vencimento: {formatDividaDate(payingParcela.dataVencimento)}</p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Data do pagamento</Label>
                   <Input type="date" value={payParcelaForm.dataPagamento}
@@ -776,7 +776,7 @@ export default function DividasPage() {
           <DialogHeader><DialogTitle>Editar parcela</DialogTitle></DialogHeader>
           {editingParcela && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Valor</Label>
                   <Input type="number" step="0.01" value={editParcelaForm.valor}
@@ -864,7 +864,7 @@ export default function DividasPage() {
                   <SelectContent>{pessoas.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Tipo</Label>
                   <Select value={editDividaForm.tipo} onValueChange={(v) => setEditDividaForm({ ...editDividaForm, tipo: v })}>
@@ -885,7 +885,7 @@ export default function DividasPage() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Vencimento</Label>
                   <Input
@@ -933,7 +933,7 @@ export default function DividasPage() {
                         As parcelas ja pagas ({editingDivida.parcelas.filter((p) => p.status === "pago").length}) serao mantidas.
                         As pendentes serao recriadas.
                       </p>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div className="space-y-2">
                           <Label>Novo total de parcelas</Label>
                           <Input type="number" min="1" max="360" value={recalcularForm.novoTotal}
@@ -969,6 +969,7 @@ export default function DividasPage() {
     </div>
   );
 }
+
 
 
 

@@ -195,7 +195,7 @@ export default function ServicosPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="app-page-shell app-section-stack">
         <Skeleton className="h-8 w-32" />
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
@@ -207,15 +207,15 @@ export default function ServicosPage() {
   }
 
   return (
-    <div className="p-6 space-y-6" data-testid="servicos-page">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
+    <div className="app-page-shell app-section-stack" data-testid="servicos-page">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">Serviços e Assinaturas</h1>
           <p className="text-muted-foreground">Gerencie seus gastos recorrentes e divisões</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button data-testid="button-add-servico">
+            <Button className="w-full sm:w-auto" data-testid="button-add-servico">
               <Plus className="w-4 h-4 mr-2" /> Novo serviço
             </Button>
           </DialogTrigger>
@@ -280,7 +280,7 @@ export default function ServicosPage() {
                   required
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Categoria</Label>
                   <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
@@ -309,7 +309,7 @@ export default function ServicosPage() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Dia de cobrança</Label>
                   <Input
@@ -361,9 +361,9 @@ export default function ServicosPage() {
         </Dialog>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <Tabs value={servicosTab} onValueChange={(value) => setServicosTab(value as typeof servicosTab)}>
-          <TabsList className="w-full sm:w-auto justify-start overflow-x-auto">
+          <TabsList className="mobile-tabs-scroll w-full justify-start lg:w-auto">
             <TabsTrigger value="ativos" data-testid="tab-servicos-ativos">Ativos</TabsTrigger>
             <TabsTrigger value="pendentes" data-testid="tab-servicos-pendentes">Pendentes</TabsTrigger>
             <TabsTrigger value="pagos" data-testid="tab-servicos-pagos">Pagos</TabsTrigger>
@@ -371,8 +371,8 @@ export default function ServicosPage() {
             <TabsTrigger value="vinculos" data-testid="tab-servicos-vinculos">Vínculos cartão</TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className="flex items-center gap-2">
-          <Label htmlFor="servicos-mes-referencia" className="text-xs text-muted-foreground whitespace-nowrap">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:w-auto">
+          <Label htmlFor="servicos-mes-referencia" className="text-xs text-muted-foreground">
             Mês referência
           </Label>
           <Input
@@ -380,13 +380,13 @@ export default function ServicosPage() {
             type="month"
             value={mesReferencia}
             onChange={(event) => setMesReferencia(event.target.value)}
-            className="h-9 w-[160px]"
+            className="h-9 w-full sm:w-[180px]"
             data-testid="input-servicos-mes-referencia"
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="fintech-grid-fluid-260">
         <Card className="hover-elevate">
           <CardContent className="p-5">
             <div className="flex items-center justify-between gap-2">
@@ -647,7 +647,7 @@ export default function ServicosPage() {
                 required
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Categoria</Label>
                 <Select value={editForm.categoria} onValueChange={(v) => setEditForm({ ...editForm, categoria: v })}>
@@ -675,7 +675,7 @@ export default function ServicosPage() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Dia de cobrança</Label>
                 <Input
@@ -728,3 +728,4 @@ export default function ServicosPage() {
     </div>
   );
 }
+

@@ -155,9 +155,9 @@ export default function PatrimonioPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="app-page-shell app-section-stack">
         <Skeleton className="h-32 w-full" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="fintech-grid-fluid-260">
           <Skeleton className="h-40" />
           <Skeleton className="h-40" />
           <Skeleton className="h-40" />
@@ -167,9 +167,9 @@ export default function PatrimonioPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
+    <div className="app-page-shell app-section-stack">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
           <h1 className="text-3xl font-bold tracking-tight">Patrimônio</h1>
           <p className="text-muted-foreground">
             Gerencie seus bens, contas e investimentos.
@@ -177,7 +177,7 @@ export default function PatrimonioPage() {
         </div>
         <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
           <DialogTrigger asChild>
-            <Button data-testid="button-add-patrimonio">
+            <Button className="w-full sm:w-auto" data-testid="button-add-patrimonio">
               <Plus className="w-4 h-4 mr-2" />
               Adicionar Item
             </Button>
@@ -255,7 +255,7 @@ export default function PatrimonioPage() {
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -290,7 +290,7 @@ export default function PatrimonioPage() {
           </CardContent>
         </Card>
 
-        <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 content-start">
+        <div className="lg:col-span-2 fintech-grid-fluid-280 content-start">
           {patrimonios.length === 0 ? (
             <Card className="col-span-full py-12">
               <CardContent className="flex flex-col items-center justify-center text-center space-y-2">
@@ -372,3 +372,4 @@ export default function PatrimonioPage() {
     </div>
   );
 }
+

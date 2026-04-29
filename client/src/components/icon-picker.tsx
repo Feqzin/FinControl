@@ -98,7 +98,7 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                       {CATEGORY_LABELS[cat]}
                     </p>
-                    <div className="grid grid-cols-5 gap-2">
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
                       {items.map((item) => {
                         const isSelected = value === item.key;
                         return (

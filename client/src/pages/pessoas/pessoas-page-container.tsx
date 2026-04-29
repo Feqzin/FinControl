@@ -148,9 +148,9 @@ export default function PessoasPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="app-page-shell app-section-stack">
         <Skeleton className="h-8 w-32" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="fintech-grid-fluid-280">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-52" />)}
         </div>
       </div>
@@ -279,7 +279,7 @@ export default function PessoasPage() {
   }, [prefs.mobileMode, search, filterTipo]);
 
   return (
-    <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="pessoas-page">
+    <div className="app-page-shell app-section-stack" data-testid="pessoas-page">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">Pessoas</h1>
@@ -462,7 +462,7 @@ export default function PessoasPage() {
                   </div>
                   <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
                 </div>
-                <div className="grid grid-cols-4 border-t border-border/40">
+                <div className="grid grid-cols-2 border-t border-border/40 sm:grid-cols-4">
                   <button
                     className="flex items-center justify-center gap-1 py-2.5 text-[11px] font-medium text-primary active:bg-muted/60 transition-colors"
                     onClick={() => {
@@ -515,7 +515,7 @@ export default function PessoasPage() {
           })}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        <div className="fintech-grid-fluid-280">
           {visiblePessoas.map((p) => {
             const stats = getPessoaStats(p.id);
             const resumo = getPessoaResumoConsolidado(p.id);
@@ -753,7 +753,7 @@ export default function PessoasPage() {
             }}
             className="space-y-4"
           >
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Tipo</Label>
                 <Select value={dividaForm.tipo} onValueChange={(v) => setDividaForm({ ...dividaForm, tipo: v })}>
@@ -777,7 +777,7 @@ export default function PessoasPage() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Vencimento</Label>
                 <Input
@@ -1038,7 +1038,7 @@ export default function PessoasPage() {
                   <Wallet className="w-4 h-4 text-emerald-600" />
                   <h3 className="text-sm font-semibold">Saldo positivo da pessoa</h3>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
                   <div className="rounded-md bg-emerald-500/5 p-3">
                     <p className="text-muted-foreground">Saldo atual</p>
                     <p className="text-sm font-bold text-emerald-600">{formatCurrencyBRL(historySaldoResumo?.saldoAtual ?? 0)}</p>
@@ -1915,3 +1915,4 @@ export default function PessoasPage() {
     </div>
   );
 }
+
