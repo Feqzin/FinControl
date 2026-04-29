@@ -4,7 +4,7 @@ import {
   TrendingUp, TrendingDown, CalendarClock,
   ArrowUpRight, ArrowDownRight, Receipt,
   AlertTriangle, CreditCard, Lightbulb,
-  Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank,
+  Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank, CheckCircle,
   Settings2, Smartphone,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -53,6 +53,30 @@ const fallbackInsightActionByIcon: Record<string, { label: string; path: string 
   money: { label: "Ver detalhes", path: "/dividas?status=pendente&tipo=receber" },
 };
 
+const normalizeComparisonText = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const isUrgencyInsight = (insight: { tipo: string; icone: string; texto: string }) => {
+  const normalized = normalizeComparisonText(insight.texto);
+  if (insight.icone === "alert" || insight.icone === "card") return true;
+  return [
+    "vencid",
+    "atras",
+    "limite",
+    "estour",
+    "saldo negativo",
+    "atencao",
+    "cobranca",
+    "vence",
+  ].some((token) => normalized.includes(token));
+};
+
 function SectionErrorState({ message, compact = false }: { message?: string | null; compact?: boolean }) {
   return (
     <div className={`rounded-xl border border-red-500/20 bg-red-500/5 ${compact ? "p-3" : "p-4"} text-sm text-red-700 dark:text-red-300`}>
@@ -96,6 +120,7 @@ export default function Dashboard() {
     in7Days,
     proximosVencimentos,
     pagarSemana,
+    alertas,
     aReceberTooltip,
     aPagarTooltip,
     gastosFixosTooltip,
@@ -109,6 +134,19 @@ export default function Dashboard() {
     sectionStatus,
   } = useDashboard({ selectedMonth, visible });
   const selectedMonthLabel = monthOptions.find((o) => o.value === selectedMonth)?.label || selectedMonth;
+
+  const alertasUrgentes = alertas
+    .filter((item) => !normalizeComparisonText(item.texto).includes("tudo em ordem"))
+    .slice(0, 3);
+
+  const alertasUrgentesTextoSet = new Set(
+    alertasUrgentes.map((item) => normalizeComparisonText(item.texto)),
+  );
+
+  const insightsOportunidades = insights
+    .filter((insight) => !isUrgencyInsight(insight))
+    .filter((insight) => !alertasUrgentesTextoSet.has(normalizeComparisonText(insight.texto)))
+    .slice(0, 3);
 
   if (prefs.mobileMode) {
     const visibleCards = allDashCards.filter(c => !prefs.hiddenDashCards.includes(c.id));
@@ -358,6 +396,40 @@ export default function Dashboard() {
             )}
           </div>
 
+          <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+            <div className="px-4 pt-4 pb-2 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+              <span className="font-semibold text-sm">Alertas importantes</span>
+            </div>
+            {sectionStatus.alertas.isLoading ? (
+              <div className="space-y-2 px-4 pb-4">
+                {[1, 2, 3].map((idx) => <Skeleton key={idx} className="h-12 rounded-md" />)}
+              </div>
+            ) : sectionStatus.alertas.isError ? (
+              <div className="px-4 pb-4">
+                <SectionErrorState compact message={sectionStatus.alertas.message} />
+              </div>
+            ) : alertasUrgentes.length === 0 ? (
+              <div className="px-4 pb-4 text-xs text-muted-foreground">
+                Nenhuma urgência real no momento.
+              </div>
+            ) : (
+              <div className="space-y-2 px-4 pb-4">
+                {alertasUrgentes.map((alerta, index) => {
+                  const IconComp = alerta.icon || AlertTriangle;
+                  return (
+                    <div key={`${alerta.texto}-${index}`} className={`rounded-md border p-3 ${alerta.bgColor}`}>
+                      <div className={`flex items-start gap-2.5 ${alerta.color}`}>
+                        <IconComp className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                        <p className="text-sm font-medium">{alerta.texto}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {showAdvancedResources && (
             <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
               <div className="px-4 pt-4 pb-2 flex items-center gap-2">
@@ -372,11 +444,11 @@ export default function Dashboard() {
                 <div className="px-4 pb-4">
                   <SectionErrorState compact message={sectionStatus.insights.message} />
                 </div>
-              ) : insights.length === 0 ? (
-                <div className="px-4 pb-4 text-xs text-muted-foreground">Adicione dados para ver insights personalizados.</div>
+              ) : insightsOportunidades.length === 0 ? (
+                <div className="px-4 pb-4 text-xs text-muted-foreground">Sem oportunidades relevantes no momento.</div>
               ) : (
                 <div className="space-y-2 px-4 pb-4">
-                  {insights.slice(0, 3).map((insight, i) => {
+                  {insightsOportunidades.map((insight, i) => {
                     const IconComp = insightIconMap[insight.icone] || Lightbulb;
                     const insightAction = insight.acao
                       ? { label: insight.acao.label, path: insight.acao.path }
@@ -798,82 +870,118 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-      {showAdvancedResources && (
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Lightbulb className="w-4 h-4 text-amber-500" /> Insights automaticos
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {sectionStatus.insights.isLoading ? (
-            <div className="space-y-2">
-              {[1, 2].map((idx) => <Skeleton key={idx} className="h-16 rounded-md" />)}
-            </div>
-          ) : sectionStatus.insights.isError ? (
-            <SectionErrorState message={sectionStatus.insights.message} />
-          ) : insights.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground">
-              <Target className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Adicione dados para ver insights personalizados</p>
-            </div>
-          ) : (
-            <div className="space-y-2" data-testid="insights-section">
-              {insights.map((insight, i) => {
-                const IconComp = insightIconMap[insight.icone] || Lightbulb;
-                const insightAction = insight.acao
-                  ? { label: insight.acao.label, path: insight.acao.path }
-                  : fallbackInsightActionByIcon[insight.icone];
-                const isActionable = Boolean(insightAction?.path);
-                const styles = {
-                  positivo: "bg-emerald-500/5 border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
-                  negativo: "bg-red-500/5 border-red-500/20 text-red-700 dark:text-red-400",
-                  neutro: "bg-muted/40 border-border text-muted-foreground",
-                };
-                return (
-                  <div
-                    key={i}
-                    className={`flex items-start gap-3 p-3 rounded-md border ${styles[insight.tipo]} ${isActionable ? "cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
-                    data-testid={`insight-${i}`}
-                    role={isActionable ? "button" : undefined}
-                    tabIndex={isActionable ? 0 : -1}
-                    onClick={isActionable ? () => setLocation(insightAction.path) : undefined}
-                    onKeyDown={isActionable ? (event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        setLocation(insightAction.path);
-                      }
-                    } : undefined}
-                  >
-                    <IconComp className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                    <div className="min-w-0 flex-1 space-y-2">
-                      <p className="text-sm font-medium">{insight.texto}</p>
-                      {isActionable && insightAction && (
-                        <div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2.5 text-xs"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setLocation(insightAction.path);
-                            }}
-                            data-testid={`insight-action-${i}`}
-                          >
-                            {insightAction.label}
-                          </Button>
-                        </div>
-                      )}
+      <div className={`grid grid-cols-1 gap-3 ${showAdvancedResources ? "lg:grid-cols-2" : ""}`}>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500" /> Alertas importantes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {sectionStatus.alertas.isLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((idx) => <Skeleton key={idx} className="h-14 rounded-md" />)}
+              </div>
+            ) : sectionStatus.alertas.isError ? (
+              <SectionErrorState message={sectionStatus.alertas.message} />
+            ) : alertasUrgentes.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">
+                <CheckCircle className="w-8 h-8 mx-auto mb-2 opacity-35" />
+                <p className="text-sm">Nenhuma urgência real no momento.</p>
+              </div>
+            ) : (
+              <div className="space-y-2" data-testid="alerts-section">
+                {alertasUrgentes.map((alerta, i) => {
+                  const IconComp = alerta.icon || AlertTriangle;
+                  return (
+                    <div key={`${alerta.texto}-${i}`} className={`flex items-start gap-3 rounded-md border p-3 ${alerta.bgColor}`}>
+                      <IconComp className={`mt-0.5 h-4 w-4 flex-shrink-0 ${alerta.color}`} />
+                      <p className={`text-sm font-medium ${alerta.color}`}>{alerta.texto}</p>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      )}
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {showAdvancedResources && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Lightbulb className="w-4 h-4 text-amber-500" /> Insights automáticos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {sectionStatus.insights.isLoading ? (
+                <div className="space-y-2">
+                  {[1, 2].map((idx) => <Skeleton key={idx} className="h-16 rounded-md" />)}
+                </div>
+              ) : sectionStatus.insights.isError ? (
+                <SectionErrorState message={sectionStatus.insights.message} />
+              ) : insightsOportunidades.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  <Target className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Sem oportunidades relevantes no momento.</p>
+                </div>
+              ) : (
+                <div className="space-y-2" data-testid="insights-section">
+                  {insightsOportunidades.map((insight, i) => {
+                    const IconComp = insightIconMap[insight.icone] || Lightbulb;
+                    const insightAction = insight.acao
+                      ? { label: insight.acao.label, path: insight.acao.path }
+                      : fallbackInsightActionByIcon[insight.icone];
+                    const isActionable = Boolean(insightAction?.path);
+                    const styles = {
+                      positivo: "bg-emerald-500/5 border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
+                      negativo: "bg-red-500/5 border-red-500/20 text-red-700 dark:text-red-400",
+                      neutro: "bg-muted/40 border-border text-muted-foreground",
+                    };
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-start gap-3 p-3 rounded-md border ${styles[insight.tipo]} ${isActionable ? "cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
+                        data-testid={`insight-${i}`}
+                        role={isActionable ? "button" : undefined}
+                        tabIndex={isActionable ? 0 : -1}
+                        onClick={isActionable ? () => setLocation(insightAction.path) : undefined}
+                        onKeyDown={isActionable ? (event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setLocation(insightAction.path);
+                          }
+                        } : undefined}
+                      >
+                        <IconComp className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <p className="text-sm font-medium">{insight.texto}</p>
+                          {isActionable && insightAction && (
+                            <div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2.5 text-xs"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setLocation(insightAction.path);
+                                }}
+                                data-testid={`insight-action-${i}`}
+                              >
+                                {insightAction.label}
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {showAdvancedResources && (
       <Card>
