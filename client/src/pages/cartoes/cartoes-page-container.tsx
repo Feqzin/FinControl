@@ -1022,21 +1022,29 @@ export default function CartoesPage() {
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Cartoes de Credito</h1>
             <p className="text-sm text-muted-foreground sm:text-base">Gerencie seus cartoes e compras parceladas</p>
           </div>
-          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
-            <Button variant="outline" onClick={openImportDialog}
-              className="max-w-full min-w-0 flex-1 touch-feedback lg:flex-none"
-              data-testid="button-importar-fatura">
-              <Upload className="w-4 h-4 mr-2" />
-              <span className="truncate">
-                <span className="sm:hidden">{smartImportLiberado ? "Importar" : "Importação Premium"}</span>
-                <span className="hidden sm:inline">{smartImportLiberado ? "Importar Fatura" : "Importação inteligente (Premium)"}</span>
-              </span>
-            </Button>
-            {!smartImportLiberado && (
-              <Badge variant="secondary" className="shrink-0" data-testid="badge-smart-import-premium">
-                Premium
-              </Badge>
-            )}
+          <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:w-auto lg:flex-wrap lg:items-center lg:justify-end">
+            <div className="flex min-w-0 items-center gap-2 sm:col-span-2 lg:col-span-1">
+              <Button
+                variant="outline"
+                onClick={openImportDialog}
+                className="min-w-0 flex-1 justify-start text-left whitespace-normal break-words touch-feedback sm:justify-center lg:w-auto lg:flex-none lg:whitespace-nowrap"
+                data-testid="button-importar-fatura"
+              >
+                <Upload className="w-4 h-4 mr-2 flex-shrink-0" />
+                <span className="leading-tight">
+                  {smartImportLiberado ? "Importar Fatura" : "Importação inteligente (Premium)"}
+                </span>
+              </Button>
+              {!smartImportLiberado && (
+                <Badge
+                  variant="secondary"
+                  className="shrink-0 whitespace-nowrap"
+                  data-testid="badge-smart-import-premium"
+                >
+                  Premium
+                </Badge>
+              )}
+            </div>
             <Button
               variant="outline"
               onClick={() => {
@@ -1046,27 +1054,30 @@ export default function CartoesPage() {
                 setOpenDeleteFaturaDialog(true);
               }}
               disabled={cartoes.length === 0}
-              className="max-w-full min-w-0 flex-1 touch-feedback lg:flex-none"
+              className="min-w-0 w-full justify-start text-left whitespace-normal break-words touch-feedback sm:justify-center lg:w-auto lg:flex-none lg:whitespace-nowrap"
               data-testid="button-excluir-fatura"
             >
-              <Trash2 className="w-4 h-4 mr-2" />
+              <Trash2 className="w-4 h-4 mr-2 flex-shrink-0" />
               Excluir fatura
             </Button>
             {smartImportLiberado && lastImportLogId && (
               <Button
                 variant="outline"
-                className="max-w-full min-w-0 flex-1 touch-feedback lg:flex-none"
+                className="min-w-0 w-full justify-start text-left whitespace-normal break-words touch-feedback sm:col-span-2 sm:justify-center lg:w-auto lg:flex-none lg:whitespace-nowrap"
                 onClick={handleRollbackLastImport}
                 disabled={rollbackImportMutation.isPending}
                 data-testid="button-rollback-import"
               >
-                <RefreshCw className="w-4 h-4 mr-2" />
+                <RefreshCw className="w-4 h-4 mr-2 flex-shrink-0" />
                 {rollbackImportMutation.isPending ? "Revertendo..." : "Desfazer Ultima Importacao"}
               </Button>
             )}
             <Dialog open={openCard} onOpenChange={setOpenCard}>
               <DialogTrigger asChild>
-                <Button className="flex-1 touch-feedback lg:flex-none" data-testid="button-add-cartao">
+                <Button
+                  className="w-full touch-feedback sm:col-span-2 lg:w-auto lg:flex-none"
+                  data-testid="button-add-cartao"
+                >
                   <Plus className="w-4 h-4 mr-2" /> Novo cartao
                 </Button>
               </DialogTrigger>
