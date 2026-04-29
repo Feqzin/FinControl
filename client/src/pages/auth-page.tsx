@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useUIPreferences, type UsageMode } from "@/context/ui-preferences";
 import {
-  DollarSign, TrendingUp, Shield, BarChart3, Eye, EyeOff, Target, Copy, Check,
+  DollarSign, TrendingUp, Shield, BarChart3, Eye, EyeOff, Target, Copy, Check, Sparkles,
 } from "lucide-react";
 
 function PasswordInput({ id, placeholder, value, onChange, testId }: {
@@ -70,8 +72,12 @@ function PasswordStrength({ password }: { password: string }) {
 export default function AuthPage() {
   const { login, register } = useAuth();
   const { toast } = useToast();
+  const { setUsageMode } = useUIPreferences();
   const [loginData, setLoginData] = useState({ username: "", password: "" });
   const [registerData, setRegisterData] = useState({ nomeCompleto: "", username: "", password: "" });
+  const [registerUsageMode, setRegisterUsageMode] = useState<UsageMode>("guiado");
+  const [registerAge, setRegisterAge] = useState("");
+  const [registerModeTouched, setRegisterModeTouched] = useState(false);
   const [tab, setTab] = useState("login");
 
   const [forgotMode, setForgotMode] = useState(false);
@@ -96,9 +102,18 @@ export default function AuthPage() {
       return;
     }
     try {
+      setUsageMode(registerUsageMode);
       await register.mutateAsync(registerData);
     } catch (error: any) {
       toast({ title: "Erro ao criar conta", description: error.message, variant: "destructive" });
+    }
+  };
+
+  const handleRegisterAgeChange = (value: string) => {
+    setRegisterAge(value);
+    const age = Number(value);
+    if (!registerModeTouched && Number.isFinite(age) && age >= 60) {
+      setRegisterUsageMode("essencial");
     }
   };
 
@@ -288,6 +303,54 @@ export default function AuthPage() {
                             onChange={(v) => setRegisterData({ ...registerData, password: v })}
                           />
                           <PasswordStrength password={registerData.password} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-age">Idade (opcional)</Label>
+                          <Input
+                            id="reg-age"
+                            data-testid="input-register-age"
+                            type="number"
+                            min="0"
+                            max="120"
+                            placeholder="Ex: 62"
+                            value={registerAge}
+                            onChange={(e) => handleRegisterAgeChange(e.target.value)}
+                          />
+                          {!registerModeTouched && Number(registerAge) >= 60 && (
+                            <p className="text-xs text-muted-foreground">
+                              Sugestão: ativamos o modo <strong>Essencial</strong> para facilitar leitura e navegação. Você pode trocar abaixo.
+                            </p>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Como você prefere usar o app?</Label>
+                          <Select
+                            value={registerUsageMode}
+                            onValueChange={(value) => {
+                              setRegisterModeTouched(true);
+                              setRegisterUsageMode(value as UsageMode);
+                            }}
+                          >
+                            <SelectTrigger data-testid="select-register-usage-mode">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="essencial">Essencial · foco em pagar/receber/saldo</SelectItem>
+                              <SelectItem value="guiado">Guiado · equilíbrio com dicas contextuais</SelectItem>
+                              <SelectItem value="completo">Completo · todos os recursos e análises</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+                            <div className="mb-1 flex items-center gap-1.5 font-medium text-primary">
+                              <Sparkles className="h-3.5 w-3.5" />
+                              Modo selecionado: {registerUsageMode === "essencial" ? "Essencial" : registerUsageMode === "guiado" ? "Guiado" : "Completo"}
+                            </div>
+                            {registerUsageMode === "essencial"
+                              ? "Interface simplificada, fonte maior e foco no essencial."
+                              : registerUsageMode === "guiado"
+                                ? "Interface equilibrada com sugestões úteis no contexto."
+                                : "Visão completa com filtros e análises avançadas."}
+                          </div>
                         </div>
                         <Button
                           type="submit"

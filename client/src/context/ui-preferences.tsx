@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 
 type MobileModePreference = "auto" | "manual";
+export type UsageMode = "essencial" | "guiado" | "completo";
 
 interface UIPreferences {
   hiddenPages: string[];
@@ -8,17 +9,24 @@ interface UIPreferences {
   dashboardCompact: boolean;
   mobileMode: boolean;
   mobileModePreference: MobileModePreference;
+  usageMode: UsageMode;
 }
 
 interface UIPreferencesContextType {
   prefs: UIPreferences;
   isMobileModeAuto: boolean;
+  isEssentialMode: boolean;
+  isGuidedMode: boolean;
+  isCompleteMode: boolean;
+  showAdvancedResources: boolean;
+  showContextualTips: boolean;
   togglePage: (url: string) => void;
   toggleDashCard: (cardId: string) => void;
   toggleCompact: () => void;
   toggleMobileMode: () => void;
   setMobileModeManual: (enabled: boolean) => void;
   setMobileModeAuto: () => void;
+  setUsageMode: (mode: UsageMode) => void;
 }
 
 const STORAGE_KEY = "fincontrol_ui_prefs";
@@ -30,6 +38,7 @@ const defaultPrefs: UIPreferences = {
   dashboardCompact: false,
   mobileMode: false,
   mobileModePreference: "auto",
+  usageMode: "guiado",
 };
 
 const UIPreferencesContext = createContext<UIPreferencesContextType | undefined>(undefined);
@@ -59,6 +68,7 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
           ...merged,
           mobileModePreference,
           mobileMode,
+          usageMode: merged.usageMode ?? "guiado",
         };
       }
       return {
@@ -120,6 +130,13 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
     setMobileModeManual(!prefs.mobileMode);
   };
 
+  const setUsageMode = (mode: UsageMode) => {
+    updatePrefs({
+      ...prefs,
+      usageMode: mode,
+    });
+  };
+
   useEffect(() => {
     if (prefs.mobileModePreference !== "auto") return;
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
@@ -150,16 +167,27 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
     return () => mediaQuery.removeListener(syncWithViewport);
   }, [prefs.mobileModePreference]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.setAttribute("data-usage-mode", prefs.usageMode);
+  }, [prefs.usageMode]);
+
   const contextValue = useMemo(
     () => ({
       prefs,
       isMobileModeAuto: prefs.mobileModePreference === "auto",
+      isEssentialMode: prefs.usageMode === "essencial",
+      isGuidedMode: prefs.usageMode === "guiado",
+      isCompleteMode: prefs.usageMode === "completo",
+      showAdvancedResources: prefs.usageMode !== "essencial",
+      showContextualTips: prefs.usageMode === "guiado",
       togglePage,
       toggleDashCard,
       toggleCompact,
       toggleMobileMode,
       setMobileModeManual,
       setMobileModeAuto,
+      setUsageMode,
     }),
     [prefs],
   );

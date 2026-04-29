@@ -186,6 +186,14 @@
     overscroll-behavior-y: none;
   }
 
+  html[data-usage-mode="essencial"] body {
+    font-size: 1.04rem;
+  }
+
+  html[data-usage-mode="essencial"] button {
+    min-height: 2.5rem;
+  }
+
   #root {
     min-height: 100dvh;
   }

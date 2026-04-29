@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
   getUserSubscriptionLimits,
@@ -26,6 +27,7 @@ import {
 import {
   User, Download, Shield, Database, LogOut, CheckCircle, HelpCircle, Upload, Cloud
 } from "lucide-react";
+import { useUIPreferences, type UsageMode } from "@/context/ui-preferences";
 import { TourRestartButton } from "@/components/onboarding-tour";
 import type {
   Cartao,
@@ -210,6 +212,12 @@ type ImportMode = "merge" | "replace";
 export default function PerfilPage() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
+  const {
+    prefs,
+    setUsageMode,
+    isEssentialMode,
+    isGuidedMode,
+  } = useUIPreferences();
   const [nomeCompleto, setNomeCompleto] = useState(user?.nomeCompleto || "");
   const [arquivoImportacao, setArquivoImportacao] = useState<File | null>(null);
   const [modoImportacao, setModoImportacao] = useState<ImportMode>("merge");
@@ -234,6 +242,12 @@ export default function PerfilPage() {
   const canStartTrial = billingStatus?.canStartTrial ?? false;
   const canSubscribe = billingStatus ? billingStatus.canSubscribe : planoEfetivo === "free";
   const canCancelSubscription = billingStatus?.canCancel ?? false;
+
+  const modoUsoTexto = isEssentialMode
+    ? "Modo Essencial ativo: foco em pagar, receber e saldo, com leitura facilitada."
+    : isGuidedMode
+      ? "Modo Guiado ativo: interface equilibrada com dicas e contexto."
+      : "Modo Completo ativo: todos os recursos e análises visíveis.";
 
   useEffect(() => {
     if (!user || !billingStatus) return;
@@ -713,6 +727,49 @@ export default function PerfilPage() {
               <Badge variant={premiumAtivoNaUi ? "default" : "secondary"}>
                 {premiumAtivoNaUi ? "Premium" : "Free"}
               </Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className={perfilTab === "conta" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base flex items-center gap-2">
+            <HelpCircle className="w-4 h-4" /> Modo de uso
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Escolha como prefere navegar no FinControl. Você pode trocar a qualquer momento.
+          </p>
+          <Select
+            value={prefs.usageMode}
+            onValueChange={(value) => setUsageMode(value as UsageMode)}
+          >
+            <SelectTrigger data-testid="select-usage-mode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="essencial">Essencial</SelectItem>
+              <SelectItem value="guiado">Guiado</SelectItem>
+              <SelectItem value="completo">Completo</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="fintech-surface-subtle p-3 text-xs text-muted-foreground">
+            {modoUsoTexto}
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className={`rounded-md border p-2 text-xs ${prefs.usageMode === "essencial" ? "border-primary/40 bg-primary/5" : "border-border/50 bg-muted/20"}`}>
+              <p className="font-semibold">Essencial</p>
+              <p className="text-muted-foreground">Simples, fonte maior e foco no básico.</p>
+            </div>
+            <div className={`rounded-md border p-2 text-xs ${prefs.usageMode === "guiado" ? "border-primary/40 bg-primary/5" : "border-border/50 bg-muted/20"}`}>
+              <p className="font-semibold">Guiado</p>
+              <p className="text-muted-foreground">Equilíbrio com dicas contextuais.</p>
+            </div>
+            <div className={`rounded-md border p-2 text-xs ${prefs.usageMode === "completo" ? "border-primary/40 bg-primary/5" : "border-border/50 bg-muted/20"}`}>
+              <p className="font-semibold">Completo</p>
+              <p className="text-muted-foreground">Todos os filtros e análises visíveis.</p>
             </div>
           </div>
         </CardContent>

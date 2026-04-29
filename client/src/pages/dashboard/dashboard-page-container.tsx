@@ -67,6 +67,8 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const {
     prefs,
+    showAdvancedResources,
+    showContextualTips,
     isMobileModeAuto,
     toggleDashCard,
     toggleCompact,
@@ -256,6 +258,15 @@ export default function Dashboard() {
             )
           ) : null}
 
+          {showContextualTips && (
+            <div className="rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary">Dica rápida</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Priorize quitar os itens vencidos da semana para proteger seu fluxo de caixa do mês.
+              </p>
+            </div>
+          )}
+
           {sectionStatus.pagarSemana.isLoading ? (
             <Skeleton className="h-40 rounded-2xl" />
           ) : sectionStatus.pagarSemana.isError ? (
@@ -346,6 +357,114 @@ export default function Dashboard() {
               </div>
             )}
           </div>
+
+          {showAdvancedResources && (
+            <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+              <div className="px-4 pt-4 pb-2 flex items-center gap-2">
+                <Lightbulb className="w-4 h-4 text-amber-500" />
+                <span className="font-semibold text-sm">Insights automáticos</span>
+              </div>
+              {sectionStatus.insights.isLoading ? (
+                <div className="space-y-2 px-4 pb-4">
+                  {[1, 2].map((idx) => <Skeleton key={idx} className="h-14 rounded-md" />)}
+                </div>
+              ) : sectionStatus.insights.isError ? (
+                <div className="px-4 pb-4">
+                  <SectionErrorState compact message={sectionStatus.insights.message} />
+                </div>
+              ) : insights.length === 0 ? (
+                <div className="px-4 pb-4 text-xs text-muted-foreground">Adicione dados para ver insights personalizados.</div>
+              ) : (
+                <div className="space-y-2 px-4 pb-4">
+                  {insights.slice(0, 3).map((insight, i) => {
+                    const IconComp = insightIconMap[insight.icone] || Lightbulb;
+                    const insightAction = insight.acao
+                      ? { label: insight.acao.label, path: insight.acao.path }
+                      : fallbackInsightActionByIcon[insight.icone];
+                    const isActionable = Boolean(insightAction?.path);
+                    const styles = {
+                      positivo: "bg-emerald-500/5 border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
+                      negativo: "bg-red-500/5 border-red-500/20 text-red-700 dark:text-red-400",
+                      neutro: "bg-muted/40 border-border text-muted-foreground",
+                    };
+                    return (
+                      <div
+                        key={i}
+                        className={`rounded-md border p-3 ${styles[insight.tipo]} ${isActionable ? "cursor-pointer" : ""}`}
+                        onClick={isActionable ? () => setLocation(insightAction.path) : undefined}
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <IconComp className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                          <div className="min-w-0 space-y-2">
+                            <p className="text-sm font-medium">{insight.texto}</p>
+                            {isActionable && insightAction && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setLocation(insightAction.path);
+                                }}
+                              >
+                                {insightAction.label}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {showAdvancedResources && (
+            <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden" data-testid="mobile-score">
+              <div className="px-4 pt-4 pb-2 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-primary" />
+                <span className="font-semibold text-sm">Score detalhado</span>
+              </div>
+              {sectionStatus.scoreDetalhado.isLoading ? (
+                <div className="space-y-2 px-4 pb-4">
+                  {[1, 2].map((idx) => <Skeleton key={idx} className="h-10 rounded-md" />)}
+                </div>
+              ) : sectionStatus.scoreDetalhado.isError ? (
+                <div className="px-4 pb-4">
+                  <SectionErrorState compact message={sectionStatus.scoreDetalhado.message} />
+                </div>
+              ) : (
+                <div className="space-y-3 px-4 pb-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">Pontuação geral</span>
+                        <span className={`text-xs font-bold ${scoreLabelColor}`}>{score.classificacao}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                          <div className={`h-full rounded-full transition-all duration-500 ${scoreBarColor}`} style={{ width: `${score.valor}%` }} />
+                        </div>
+                        <span className={`text-sm font-bold ${scoreLabelColor}`}>{score.valor}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    {score.fatores.slice(0, 3).map((f, i) => (
+                      <div key={i} className="flex items-center justify-between rounded-md bg-muted/30 px-2.5 py-2 text-xs">
+                        <span className="min-w-0 truncate text-muted-foreground">{f.label}</span>
+                        <span className={`ml-2 flex-shrink-0 font-semibold ${f.tipo === "positivo" ? "text-emerald-600" : f.tipo === "negativo" ? "text-red-600" : "text-muted-foreground"}`}>
+                          {f.impacto > 0 ? "+" : ""}{f.impacto}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -436,139 +555,38 @@ export default function Dashboard() {
                 ))}
               </SelectContent>
             </Select>
-            {sectionStatus.score.isLoading ? (
-              <Skeleton className="h-12 w-full rounded-xl lg:w-[220px]" />
-            ) : sectionStatus.score.isError ? (
-              <div className="w-full lg:w-[280px]">
-                <SectionErrorState compact message={sectionStatus.score.message} />
-              </div>
-            ) : (
-              <div
-                className="flex w-full min-w-0 items-center gap-3 rounded-xl border border-border/50 bg-background px-3 py-2 sm:px-4 lg:w-auto lg:min-w-[220px]"
-                data-testid="score-financeiro"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-muted-foreground">Score financeiro</span>
-                    <span className={`text-xs font-bold ${scoreLabelColor}`}>{score.classificacao}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${scoreBarColor}`}
-                        style={{ width: `${score.valor}%` }}
-                      />
-                    </div>
-                    <span className={`text-sm font-bold ${scoreLabelColor}`}>{score.valor}</span>
-                  </div>
+            {showAdvancedResources && (
+              sectionStatus.score.isLoading ? (
+                <Skeleton className="h-12 w-full rounded-xl lg:w-[220px]" />
+              ) : sectionStatus.score.isError ? (
+                <div className="w-full lg:w-[280px]">
+                  <SectionErrorState compact message={sectionStatus.score.message} />
                 </div>
-              </div>
-            )}
-          </div>
-
-          <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
-            <div className="px-4 pt-4 pb-2 flex items-center gap-2">
-              <Lightbulb className="w-4 h-4 text-amber-500" />
-              <span className="font-semibold text-sm">Insights automáticos</span>
-            </div>
-            {sectionStatus.insights.isLoading ? (
-              <div className="space-y-2 px-4 pb-4">
-                {[1, 2].map((idx) => <Skeleton key={idx} className="h-14 rounded-md" />)}
-              </div>
-            ) : sectionStatus.insights.isError ? (
-              <div className="px-4 pb-4">
-                <SectionErrorState compact message={sectionStatus.insights.message} />
-              </div>
-            ) : insights.length === 0 ? (
-              <div className="px-4 pb-4 text-xs text-muted-foreground">Adicione dados para ver insights personalizados.</div>
-            ) : (
-              <div className="space-y-2 px-4 pb-4">
-                {insights.slice(0, 3).map((insight, i) => {
-                  const IconComp = insightIconMap[insight.icone] || Lightbulb;
-                  const insightAction = insight.acao
-                    ? { label: insight.acao.label, path: insight.acao.path }
-                    : fallbackInsightActionByIcon[insight.icone];
-                  const isActionable = Boolean(insightAction?.path);
-                  const styles = {
-                    positivo: "bg-emerald-500/5 border-emerald-500/20 text-emerald-700 dark:text-emerald-400",
-                    negativo: "bg-red-500/5 border-red-500/20 text-red-700 dark:text-red-400",
-                    neutro: "bg-muted/40 border-border text-muted-foreground",
-                  };
-                  return (
-                    <div
-                      key={i}
-                      className={`rounded-md border p-3 ${styles[insight.tipo]} ${isActionable ? "cursor-pointer" : ""}`}
-                      onClick={isActionable ? () => setLocation(insightAction.path) : undefined}
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <IconComp className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                        <div className="min-w-0 space-y-2">
-                          <p className="text-sm font-medium">{insight.texto}</p>
-                          {isActionable && insightAction && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-7 px-2 text-xs"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setLocation(insightAction.path);
-                              }}
-                            >
-                              {insightAction.label}
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden" data-testid="mobile-score">
-            <div className="px-4 pt-4 pb-2 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-primary" />
-              <span className="font-semibold text-sm">Score detalhado</span>
-            </div>
-            {sectionStatus.scoreDetalhado.isLoading ? (
-              <div className="space-y-2 px-4 pb-4">
-                {[1, 2].map((idx) => <Skeleton key={idx} className="h-10 rounded-md" />)}
-              </div>
-            ) : sectionStatus.scoreDetalhado.isError ? (
-              <div className="px-4 pb-4">
-                <SectionErrorState compact message={sectionStatus.scoreDetalhado.message} />
-              </div>
-            ) : (
-              <div className="space-y-3 px-4 pb-4">
-                <div className="flex items-center justify-between">
+              ) : (
+                <div
+                  className="flex w-full min-w-0 items-center gap-3 rounded-xl border border-border/50 bg-background px-3 py-2 sm:px-4 lg:w-auto lg:min-w-[220px]"
+                  data-testid="score-financeiro"
+                >
                   <div className="flex-1">
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Pontuação geral</span>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-muted-foreground">Score financeiro</span>
                       <span className={`text-xs font-bold ${scoreLabelColor}`}>{score.classificacao}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-                        <div className={`h-full rounded-full transition-all duration-500 ${scoreBarColor}`} style={{ width: `${score.valor}%` }} />
+                      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${scoreBarColor}`}
+                          style={{ width: `${score.valor}%` }}
+                        />
                       </div>
                       <span className={`text-sm font-bold ${scoreLabelColor}`}>{score.valor}</span>
                     </div>
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  {score.fatores.slice(0, 3).map((f, i) => (
-                    <div key={i} className="flex items-center justify-between rounded-md bg-muted/30 px-2.5 py-2 text-xs">
-                      <span className="min-w-0 truncate text-muted-foreground">{f.label}</span>
-                      <span className={`ml-2 flex-shrink-0 font-semibold ${f.tipo === "positivo" ? "text-emerald-600" : f.tipo === "negativo" ? "text-red-600" : "text-muted-foreground"}`}>
-                        {f.impacto > 0 ? "+" : ""}{f.impacto}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              )
             )}
           </div>
+
         </div>
       </div>
 
@@ -672,6 +690,15 @@ export default function Dashboard() {
         </div>
       )}
 
+      {showContextualTips && (
+        <div className="rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Dica contextual</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Priorize quitar pendências vencidas primeiro para reduzir juros e melhorar seu fluxo mensal.
+          </p>
+        </div>
+      )}
+
       {sectionStatus.pagarSemana.isLoading ? (
         <Skeleton className="h-[220px] rounded-2xl" />
       ) : sectionStatus.pagarSemana.isError ? (
@@ -771,6 +798,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
+      {showAdvancedResources && (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -845,7 +873,9 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
+      )}
 
+      {showAdvancedResources && (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -892,6 +922,7 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }
