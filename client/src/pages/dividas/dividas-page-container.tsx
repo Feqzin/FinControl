@@ -254,14 +254,14 @@ export default function DividasPage() {
 
   return (
     <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="dividas-page">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">Dividas</h1>
           <p className="text-muted-foreground">Controle parcelado de valores a receber e a pagar</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button className="w-full sm:w-auto" data-testid="button-add-divida">
+            <Button className="w-full lg:w-auto" data-testid="button-add-divida">
               <Plus className="w-4 h-4 mr-2" /> Nova dívida
             </Button>
           </DialogTrigger>
@@ -396,14 +396,14 @@ export default function DividasPage() {
         </Dialog>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
-        <div className="relative w-full min-w-0 sm:max-w-md sm:flex-1">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,_1fr)_150px_150px] lg:items-center">
+        <div className="relative w-full min-w-0 lg:max-w-none">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input data-testid="input-search-divida" className="pl-9" placeholder="Buscar pessoa ou descrição..."
             value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select value={filterTipo} onValueChange={setFilterTipo}>
-          <SelectTrigger className="w-full sm:w-[140px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos tipos</SelectItem>
             <SelectItem value="receber">A receber</SelectItem>
@@ -411,7 +411,7 @@ export default function DividasPage() {
           </SelectContent>
         </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-full sm:w-[140px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos status</SelectItem>
             <SelectItem value="pendente">Pendente</SelectItem>

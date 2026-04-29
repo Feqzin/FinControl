@@ -1017,17 +1017,17 @@ export default function CartoesPage() {
   return (
     <div className="app-page-shell app-section-stack" data-testid="cartoes-page">
       <div className="fintech-surface border-border/60 p-4 sm:p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-1">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0 space-y-1">
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Cartoes de Credito</h1>
             <p className="text-sm text-muted-foreground sm:text-base">Gerencie seus cartoes e compras parceladas</p>
           </div>
-          <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:w-auto lg:flex-wrap lg:items-center lg:justify-end">
-            <div className="flex min-w-0 flex-col items-stretch gap-2 sm:col-span-2 sm:flex-row sm:items-center lg:col-span-1">
+          <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end">
+            <div className="flex min-w-0 flex-col items-stretch gap-2 sm:col-span-2 sm:flex-row sm:items-center xl:col-span-1">
               <Button
                 variant="outline"
                 onClick={openImportDialog}
-                className="min-w-0 flex-1 justify-start text-left whitespace-normal break-words touch-feedback sm:justify-center lg:w-auto lg:flex-none lg:whitespace-nowrap"
+                className="min-w-0 flex-1 justify-start text-left whitespace-normal break-words touch-feedback sm:justify-center xl:w-auto xl:flex-none xl:whitespace-nowrap"
                 data-testid="button-importar-fatura"
               >
                 <Upload className="w-4 h-4 mr-2 flex-shrink-0" />
@@ -1054,7 +1054,7 @@ export default function CartoesPage() {
                 setOpenDeleteFaturaDialog(true);
               }}
               disabled={cartoes.length === 0}
-              className="min-w-0 w-full justify-start text-left whitespace-normal break-words touch-feedback sm:justify-center lg:w-auto lg:flex-none lg:whitespace-nowrap"
+              className="min-w-0 w-full justify-start text-left whitespace-normal break-words touch-feedback sm:justify-center xl:w-auto xl:flex-none xl:whitespace-nowrap"
               data-testid="button-excluir-fatura"
             >
               <Trash2 className="w-4 h-4 mr-2 flex-shrink-0" />
@@ -1063,7 +1063,7 @@ export default function CartoesPage() {
             {smartImportLiberado && lastImportLogId && (
               <Button
                 variant="outline"
-                className="min-w-0 w-full justify-start text-left whitespace-normal break-words touch-feedback sm:col-span-2 sm:justify-center lg:w-auto lg:flex-none lg:whitespace-nowrap"
+                className="min-w-0 w-full justify-start text-left whitespace-normal break-words touch-feedback sm:col-span-2 sm:justify-center xl:w-auto xl:flex-none xl:whitespace-nowrap"
                 onClick={handleRollbackLastImport}
                 disabled={rollbackImportMutation.isPending}
                 data-testid="button-rollback-import"
@@ -1075,7 +1075,7 @@ export default function CartoesPage() {
             <Dialog open={openCard} onOpenChange={setOpenCard}>
               <DialogTrigger asChild>
                 <Button
-                  className="w-full touch-feedback sm:col-span-2 lg:w-auto lg:flex-none"
+                  className="w-full touch-feedback sm:col-span-2 xl:w-auto xl:flex-none"
                   data-testid="button-add-cartao"
                 >
                   <Plus className="w-4 h-4 mr-2" /> Novo cartao

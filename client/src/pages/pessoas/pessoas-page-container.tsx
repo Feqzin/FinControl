@@ -280,14 +280,14 @@ export default function PessoasPage() {
 
   return (
     <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="pessoas-page">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">Pessoas</h1>
           <p className="text-sm text-muted-foreground">Controle dívidas, compras vinculadas e serviços por pessoa.</p>
         </div>
         <Dialog open={openPessoa} onOpenChange={setOpenPessoa}>
           <DialogTrigger asChild>
-            <Button className="w-full sm:w-auto" data-testid="button-add-pessoa">
+            <Button className="w-full lg:w-auto" data-testid="button-add-pessoa">
               <Plus className="w-4 h-4 mr-2" /> Adicionar pessoa
             </Button>
           </DialogTrigger>
@@ -373,8 +373,8 @@ export default function PessoasPage() {
       </div>
 
       <div className="rounded-2xl border border-border/60 bg-card p-3 sm:p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative w-full min-w-0 sm:max-w-md sm:flex-1">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative w-full min-w-0 lg:max-w-md lg:flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               data-testid="input-search-pessoa"
@@ -384,8 +384,8 @@ export default function PessoasPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <Tabs value={filterTipo} onValueChange={setFilterTipo} className="w-full sm:w-auto">
-            <TabsList className="mobile-tabs-scroll h-9 w-full sm:w-auto justify-start rounded-xl">
+          <Tabs value={filterTipo} onValueChange={setFilterTipo} className="w-full lg:w-auto">
+            <TabsList className="mobile-tabs-scroll h-9 w-full lg:w-auto justify-start rounded-xl">
               <TabsTrigger value="todos" data-testid="filter-pessoas-todos">Todos</TabsTrigger>
               <TabsTrigger value="me_deve" data-testid="filter-pessoas-me-devem">Me devem</TabsTrigger>
               <TabsTrigger value="eu_devo" data-testid="filter-pessoas-eu-devo">Eu devo</TabsTrigger>
