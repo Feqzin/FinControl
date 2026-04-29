@@ -284,11 +284,11 @@ export default function Dashboard() {
         )}
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <Card className="shadow-sm" data-testid="essencial-proxima-conta">
+          <Card className="flex flex-col shadow-sm" data-testid="essencial-proxima-conta">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Próxima conta</CardTitle>
             </CardHeader>
-            <CardContent className="flex h-full flex-col gap-2">
+            <CardContent className="flex flex-1 flex-col gap-2">
               {sectionStatus.proximosVencimentos.isLoading ? (
                 <Skeleton className="h-20 rounded-xl" />
               ) : sectionStatus.proximosVencimentos.isError ? (
@@ -323,11 +323,11 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm" data-testid="essencial-receber">
+          <Card className="flex flex-col shadow-sm" data-testid="essencial-receber">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Dinheiro para receber</CardTitle>
             </CardHeader>
-            <CardContent className="flex h-full flex-col gap-2">
+            <CardContent className="flex flex-1 flex-col gap-2">
               {totalReceber > 0 ? (
                 <>
                   <p className="text-sm text-muted-foreground">Você tem {maskValue(formatCurrencyBRL(totalReceber), visible)} para receber.</p>
