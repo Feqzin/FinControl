@@ -617,8 +617,8 @@ export default function DividasPage() {
               <Card key={d.id} className={`hover-elevate transition-all ${parcelasVencidas > 0 || simpleOverdue ? "border-red-500/30" : ""}`}
                 data-testid={`card-divida-${d.id}`}>
                 <CardContent className="p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                    <div className="flex items-start gap-3 min-w-0">
                       <div className={`w-1.5 self-stretch rounded-full flex-shrink-0 ${
                         status === "pago" ? "bg-emerald-500" : parcelasVencidas > 0 || simpleOverdue ? "bg-red-500" : "bg-amber-400"
                       }`} />
@@ -657,9 +657,9 @@ export default function DividasPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 flex-shrink-0 flex-wrap justify-end">
-                      <div className="text-right mr-1">
-                        <div className="text-lg font-bold">{formatDividaCurrency(hasParce ? valorTotal : Number(d.valor))}</div>
+                    <div className="flex items-center gap-1 flex-wrap justify-start lg:justify-end">
+                      <div className="text-left lg:text-right min-w-[124px] mr-1">
+                        <div className="text-lg font-bold leading-none">{formatDividaCurrency(hasParce ? valorTotal : Number(d.valor))}</div>
                         {hasParce && valorPendente > 0 && (
                           <div className="text-xs text-muted-foreground">Pendente: {formatDividaCurrency(valorPendente)}</div>
                         )}
