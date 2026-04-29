@@ -4,7 +4,7 @@ import {
   TrendingUp, TrendingDown, CalendarClock,
   ArrowUpRight, ArrowDownRight, Receipt,
   AlertTriangle, CreditCard, Lightbulb,
-  Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank,
+  Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank, Users, UserCircle,
   Settings2, Smartphone,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -352,23 +352,39 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        <Card className="shadow-sm" data-testid="essencial-acoes-rapidas">
+        <Card className="shadow-sm" data-testid="essencial-atalhos-uteis">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Ações rápidas</CardTitle>
+            <CardTitle className="text-base">Atalhos úteis</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Button className="h-12 justify-start rounded-xl text-sm" onClick={() => setLocation("/dividas?tipo=pagar")}>
-                <ArrowDownRight className="mr-2 h-4 w-4" /> Adicionar gasto
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <Button
+                className="h-11 justify-start rounded-xl text-sm"
+                variant="outline"
+                onClick={() => setLocation("/pessoas")}
+              >
+                <Users className="mr-2 h-4 w-4" /> Devedores
               </Button>
-              <Button className="h-12 justify-start rounded-xl text-sm" onClick={() => setLocation("/dividas?tipo=receber")} variant="secondary">
-                <ArrowUpRight className="mr-2 h-4 w-4" /> Recebi dinheiro
+              <Button
+                className="h-11 justify-start rounded-xl text-sm"
+                variant="outline"
+                onClick={() => setLocation("/cartoes")}
+              >
+                <CreditCard className="mr-2 h-4 w-4" /> Cartões
               </Button>
-              <Button className="h-12 justify-start rounded-xl text-sm" onClick={() => setLocation("/historico")} variant="outline">
-                <RotateCcw className="mr-2 h-4 w-4" /> Ver histórico
+              <Button
+                className="h-11 justify-start rounded-xl text-sm"
+                variant="outline"
+                onClick={() => setLocation("/servicos")}
+              >
+                <Receipt className="mr-2 h-4 w-4" /> Serviços
               </Button>
-              <Button className="h-12 justify-start rounded-xl text-sm" onClick={() => setLocation("/relatorios")} variant="outline">
-                <Target className="mr-2 h-4 w-4" /> Ver detalhes
+              <Button
+                className="h-11 justify-start rounded-xl text-sm"
+                variant="outline"
+                onClick={() => setLocation("/perfil")}
+              >
+                <UserCircle className="mr-2 h-4 w-4" /> Perfil
               </Button>
             </div>
           </CardContent>
