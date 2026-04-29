@@ -4,7 +4,7 @@ import {
   TrendingUp, TrendingDown, CalendarClock,
   ArrowUpRight, ArrowDownRight, Receipt,
   AlertTriangle, CreditCard, Lightbulb,
-  Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank, CheckCircle,
+  Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank,
   Settings2, Smartphone,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -147,6 +147,9 @@ export default function Dashboard() {
     .filter((insight) => !isUrgencyInsight(insight))
     .filter((insight) => !alertasUrgentesTextoSet.has(normalizeComparisonText(insight.texto)))
     .slice(0, 3);
+
+  const shouldRenderAlertasSection =
+    sectionStatus.alertas.isLoading || sectionStatus.alertas.isError || alertasUrgentes.length > 0;
 
   if (prefs.mobileMode) {
     const visibleCards = allDashCards.filter(c => !prefs.hiddenDashCards.includes(c.id));
@@ -300,106 +303,7 @@ export default function Dashboard() {
             )
           ) : null}
 
-          {showContextualTips && (
-            <div className="rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-primary">Dica rápida</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Priorize quitar os itens vencidos da semana para proteger seu fluxo de caixa do mês.
-              </p>
-            </div>
-          )}
-
-          {sectionStatus.pagarSemana.isLoading ? (
-            <Skeleton className="h-40 rounded-2xl" />
-          ) : sectionStatus.pagarSemana.isError ? (
-            <SectionErrorState message={sectionStatus.pagarSemana.message} />
-          ) : pagarSemana.length > 0 ? (
-            <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden" data-testid="mobile-pagar-semana">
-              <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CalendarClock className="w-4 h-4 text-amber-500" />
-                  <span className="font-semibold text-sm">A Pagar na Semana</span>
-                </div>
-                <span className="text-xs text-muted-foreground">Próximos 7 dias</span>
-              </div>
-              {pagarSemana.map((item, idx) => {
-                const urg = urgencyLabel(item.dateStr);
-                return (
-                  <div
-                    key={item.id}
-                    className={`flex items-center gap-3 px-4 py-3.5 ${idx < pagarSemana.length - 1 ? "border-b border-border/40" : ""}`}
-                    data-testid={`mobile-pagar-${item.id}`}
-                  >
-                    <DateBadge dateStr={item.dateStr} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.title}</p>
-                      <p className={`text-xs ${urg.cls}`}>{urg.text}</p>
-                    </div>
-                    <span className="text-sm font-bold text-red-600 flex-shrink-0">
-                      {maskValue(formatCurrencyBRL(item.amount), visible)}
-                    </span>
-                  </div>
-                );
-              })}
-              <div className="px-4 py-3 bg-muted/30 flex items-center justify-between">
-                <span className="text-xs text-muted-foreground font-medium">Total da semana</span>
-                <span className="text-sm font-bold text-red-600">
-                  {maskValue(formatCurrencyBRL(pagarSemana.reduce((s, i) => s + i.amount, 0)), visible)}
-                </span>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
-            <div className="px-4 pt-4 pb-2 flex items-center gap-2">
-              <CalendarClock className="w-4 h-4 text-primary" />
-              <span className="font-semibold text-sm">Próximos Vencimentos</span>
-            </div>
-            {sectionStatus.proximosVencimentos.isLoading ? (
-              <div className="space-y-2 px-4 pb-4">
-                {[1, 2, 3].map((idx) => <Skeleton key={idx} className="h-12 rounded-lg" />)}
-              </div>
-            ) : sectionStatus.proximosVencimentos.isError ? (
-              <div className="px-4 pb-4">
-                <SectionErrorState compact message={sectionStatus.proximosVencimentos.message} />
-              </div>
-            ) : proximosVencimentos.length === 0 ? (
-              <div className="px-4 pb-4 text-center">
-                <p className="text-sm text-muted-foreground py-2">Nenhum vencimento pendente</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-border/30">
-                {proximosVencimentos.slice(0, 6).map((item) => {
-                  const isPast = item.dataVenc < today;
-                  const isToday = item.dataVenc === today;
-                  const isThisWeek = item.dataVenc > today && item.dataVenc <= in7Days;
-                  const dotColor = isPast ? "bg-red-500" : isToday ? "bg-red-500" : isThisWeek ? "bg-amber-400" : "bg-emerald-400";
-                  const TipoIcon = item.tipo === "cartao" ? CreditCard : item.tipo === "servico" ? Receipt : ArrowDownRight;
-                  const tipoBg = item.tipo === "cartao" ? "bg-blue-500/10 text-blue-600" : item.tipo === "servico" ? "bg-amber-500/10 text-amber-600" : "bg-red-500/10 text-red-600";
-                  return (
-                    <div key={item.id} className="flex items-center gap-3 px-4 py-3" data-testid={`mobile-vencimento-${item.id}`}>
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tipoBg}`}>
-                        <TipoIcon className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.nome}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
-                          <p className={`text-xs ${isPast || isToday ? "text-red-600 font-medium" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
-                            {item.subtitulo}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="text-sm font-semibold flex-shrink-0">
-                        {maskValue(formatCurrencyBRL(item.valor), visible)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
+          {shouldRenderAlertasSection && (
           <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
             <div className="px-4 pt-4 pb-2 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-red-500" />
@@ -412,10 +316,6 @@ export default function Dashboard() {
             ) : sectionStatus.alertas.isError ? (
               <div className="px-4 pb-4">
                 <SectionErrorState compact message={sectionStatus.alertas.message} />
-              </div>
-            ) : alertasUrgentes.length === 0 ? (
-              <div className="px-4 pb-4 text-xs text-muted-foreground">
-                Nenhuma urgência real no momento.
               </div>
             ) : (
               <div className="space-y-2 px-4 pb-4">
@@ -433,6 +333,7 @@ export default function Dashboard() {
               </div>
             )}
           </div>
+          )}
 
           {showAdvancedResources && (
             <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
@@ -497,6 +398,56 @@ export default function Dashboard() {
             </div>
           )}
 
+          <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden">
+            <div className="px-4 pt-4 pb-2 flex items-center gap-2">
+              <CalendarClock className="w-4 h-4 text-primary" />
+              <span className="font-semibold text-sm">Próximos Vencimentos</span>
+            </div>
+            {sectionStatus.proximosVencimentos.isLoading ? (
+              <div className="space-y-2 px-4 pb-4">
+                {[1, 2, 3].map((idx) => <Skeleton key={idx} className="h-12 rounded-lg" />)}
+              </div>
+            ) : sectionStatus.proximosVencimentos.isError ? (
+              <div className="px-4 pb-4">
+                <SectionErrorState compact message={sectionStatus.proximosVencimentos.message} />
+              </div>
+            ) : proximosVencimentos.length === 0 ? (
+              <div className="px-4 pb-4 text-center">
+                <p className="text-sm text-muted-foreground py-2">Nenhum vencimento pendente</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border/30">
+                {proximosVencimentos.slice(0, 6).map((item) => {
+                  const isPast = item.dataVenc < today;
+                  const isToday = item.dataVenc === today;
+                  const isThisWeek = item.dataVenc > today && item.dataVenc <= in7Days;
+                  const dotColor = isPast ? "bg-red-500" : isToday ? "bg-red-500" : isThisWeek ? "bg-amber-400" : "bg-emerald-400";
+                  const TipoIcon = item.tipo === "cartao" ? CreditCard : item.tipo === "servico" ? Receipt : ArrowDownRight;
+                  const tipoBg = item.tipo === "cartao" ? "bg-blue-500/10 text-blue-600" : item.tipo === "servico" ? "bg-amber-500/10 text-amber-600" : "bg-red-500/10 text-red-600";
+                  return (
+                    <div key={item.id} className="flex items-center gap-3 px-4 py-3" data-testid={`mobile-vencimento-${item.id}`}>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tipoBg}`}>
+                        <TipoIcon className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.nome}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
+                          <p className={`text-xs ${isPast || isToday ? "text-red-600 font-medium" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
+                            {item.subtitulo}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-sm font-semibold flex-shrink-0">
+                        {maskValue(formatCurrencyBRL(item.valor), visible)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {showAdvancedResources && (
             <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden" data-testid="mobile-score">
               <div className="px-4 pt-4 pb-2 flex items-center gap-2">
@@ -541,6 +492,56 @@ export default function Dashboard() {
               )}
             </div>
           )}
+
+          {showContextualTips && (
+            <div className="rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary">Dica rápida</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Priorize quitar os itens vencidos da semana para proteger seu fluxo de caixa do mês.
+              </p>
+            </div>
+          )}
+
+          {sectionStatus.pagarSemana.isLoading ? (
+            <Skeleton className="h-40 rounded-2xl" />
+          ) : sectionStatus.pagarSemana.isError ? (
+            <SectionErrorState message={sectionStatus.pagarSemana.message} />
+          ) : pagarSemana.length > 0 ? (
+            <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden" data-testid="mobile-pagar-semana">
+              <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4 text-amber-500" />
+                  <span className="font-semibold text-sm">A Pagar na Semana</span>
+                </div>
+                <span className="text-xs text-muted-foreground">Próximos 7 dias</span>
+              </div>
+              {pagarSemana.map((item, idx) => {
+                const urg = urgencyLabel(item.dateStr);
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex items-center gap-3 px-4 py-3.5 ${idx < pagarSemana.length - 1 ? "border-b border-border/40" : ""}`}
+                    data-testid={`mobile-pagar-${item.id}`}
+                  >
+                    <DateBadge dateStr={item.dateStr} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{item.title}</p>
+                      <p className={`text-xs ${urg.cls}`}>{urg.text}</p>
+                    </div>
+                    <span className="text-sm font-bold text-red-600 flex-shrink-0">
+                      {maskValue(formatCurrencyBRL(item.amount), visible)}
+                    </span>
+                  </div>
+                );
+              })}
+              <div className="px-4 py-3 bg-muted/30 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground font-medium">Total da semana</span>
+                <span className="text-sm font-bold text-red-600">
+                  {maskValue(formatCurrencyBRL(pagarSemana.reduce((s, i) => s + i.amount, 0)), visible)}
+                </span>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -768,115 +769,9 @@ export default function Dashboard() {
         </div>
       )}
 
-      {showContextualTips && (
-        <div className="rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Dica contextual</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Priorize quitar pendências vencidas primeiro para reduzir juros e melhorar seu fluxo mensal.
-          </p>
-        </div>
-      )}
-
-      {sectionStatus.pagarSemana.isLoading ? (
-        <Skeleton className="h-[220px] rounded-2xl" />
-      ) : sectionStatus.pagarSemana.isError ? (
-        <SectionErrorState message={sectionStatus.pagarSemana.message} />
-      ) : pagarSemana.length > 0 ? (
-        <Card data-testid="pagar-semana-widget">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <CalendarClock className="w-4 h-4 text-amber-500" />
-              A Pagar na Semana
-              <span className="ml-auto text-xs font-normal text-muted-foreground">
-                Próximos 7 dias
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {pagarSemana.map((item) => {
-                const urg = urgencyLabel(item.dateStr);
-                return (
-                  <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors" data-testid={`pagar-semana-${item.id}`}>
-                    <DateBadge dateStr={item.dateStr} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.title}</p>
-                      <p className={`text-xs ${urg.cls}`}>{urg.text}</p>
-                    </div>
-                    <span className="text-sm font-semibold text-red-600 flex-shrink-0">
-                      {maskValue(formatCurrencyBRL(item.amount), visible)}
-                    </span>
-                  </div>
-                );
-              })}
-              <div className="flex items-center justify-between px-2 pt-2 border-t">
-                <span className="text-xs text-muted-foreground">Total da semana</span>
-                <span className="text-sm font-bold text-red-600">
-                  {maskValue(formatCurrencyBRL(pagarSemana.reduce((s, i) => s + i.amount, 0)), visible)}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <CalendarClock className="w-4 h-4" /> Próximos vencimentos
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {sectionStatus.proximosVencimentos.isLoading ? (
-              <div className="space-y-2">
-                {[1, 2, 3].map((idx) => <Skeleton key={idx} className="h-14 rounded-lg" />)}
-              </div>
-            ) : sectionStatus.proximosVencimentos.isError ? (
-              <SectionErrorState message={sectionStatus.proximosVencimentos.message} />
-            ) : proximosVencimentos.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <CalendarClock className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">Nenhum vencimento pendente</p>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                {proximosVencimentos.map((item) => {
-                  const isPast = item.dataVenc < today;
-                  const isToday = item.dataVenc === today;
-                  const isThisWeek = item.dataVenc > today && item.dataVenc <= in7Days;
-                  const dotColor = isPast ? "bg-red-500" : isToday ? "bg-red-500" : isThisWeek ? "bg-amber-400" : "bg-emerald-400";
-                  const TipoIcon = item.tipo === "cartao" ? CreditCard : item.tipo === "servico" ? Receipt : ArrowDownRight;
-                  const tipoBg = item.tipo === "cartao" ? "bg-blue-500/10 text-blue-600" : item.tipo === "servico" ? "bg-amber-500/10 text-amber-600" : "bg-red-500/10 text-red-600";
-                  return (
-                    <div
-                      key={item.id}
-                      className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors"
-                      data-testid={`vencimento-${item.id}`}
-                    >
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tipoBg}`}>
-                        <TipoIcon className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.nome}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
-                          <p className={`text-xs ${isPast || isToday ? "text-red-600 font-medium" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
-                            {item.subtitulo}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="text-sm font-semibold flex-shrink-0">
-                        {maskValue(formatCurrencyBRL(item.valor), visible)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-      <div className={`grid grid-cols-1 gap-3 ${showAdvancedResources ? "lg:grid-cols-2" : ""}`}>
+      {(shouldRenderAlertasSection || showAdvancedResources) && (
+      <div className={`grid grid-cols-1 gap-3 ${shouldRenderAlertasSection && showAdvancedResources ? "lg:grid-cols-2" : ""}`}>
+        {shouldRenderAlertasSection && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -890,11 +785,6 @@ export default function Dashboard() {
               </div>
             ) : sectionStatus.alertas.isError ? (
               <SectionErrorState message={sectionStatus.alertas.message} />
-            ) : alertasUrgentes.length === 0 ? (
-              <div className="text-center py-6 text-muted-foreground">
-                <CheckCircle className="w-8 h-8 mx-auto mb-2 opacity-35" />
-                <p className="text-sm">Nenhuma urgência real no momento.</p>
-              </div>
             ) : (
               <div className="space-y-2" data-testid="alerts-section">
                 {alertasUrgentes.map((alerta, i) => {
@@ -910,6 +800,7 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
+        )}
 
         {showAdvancedResources && (
           <Card>
@@ -988,6 +879,63 @@ export default function Dashboard() {
           </Card>
         )}
       </div>
+      )}
+
+      <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <CalendarClock className="w-4 h-4" /> Próximos vencimentos
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {sectionStatus.proximosVencimentos.isLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((idx) => <Skeleton key={idx} className="h-14 rounded-lg" />)}
+              </div>
+            ) : sectionStatus.proximosVencimentos.isError ? (
+              <SectionErrorState message={sectionStatus.proximosVencimentos.message} />
+            ) : proximosVencimentos.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <CalendarClock className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                <p className="text-sm">Nenhum vencimento pendente</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {proximosVencimentos.map((item) => {
+                  const isPast = item.dataVenc < today;
+                  const isToday = item.dataVenc === today;
+                  const isThisWeek = item.dataVenc > today && item.dataVenc <= in7Days;
+                  const dotColor = isPast ? "bg-red-500" : isToday ? "bg-red-500" : isThisWeek ? "bg-amber-400" : "bg-emerald-400";
+                  const TipoIcon = item.tipo === "cartao" ? CreditCard : item.tipo === "servico" ? Receipt : ArrowDownRight;
+                  const tipoBg = item.tipo === "cartao" ? "bg-blue-500/10 text-blue-600" : item.tipo === "servico" ? "bg-amber-500/10 text-amber-600" : "bg-red-500/10 text-red-600";
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors"
+                      data-testid={`vencimento-${item.id}`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tipoBg}`}>
+                        <TipoIcon className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.nome}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
+                          <p className={`text-xs ${isPast || isToday ? "text-red-600 font-medium" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
+                            {item.subtitulo}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-sm font-semibold flex-shrink-0">
+                        {maskValue(formatCurrencyBRL(item.valor), visible)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
       {showAdvancedResources && (
       <Card>
@@ -1037,6 +985,58 @@ export default function Dashboard() {
         </CardContent>
       </Card>
       )}
+
+      {showContextualTips && (
+        <div className="rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Dica contextual</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Priorize quitar pendências vencidas primeiro para reduzir juros e melhorar seu fluxo mensal.
+          </p>
+        </div>
+      )}
+
+      {sectionStatus.pagarSemana.isLoading ? (
+        <Skeleton className="h-[220px] rounded-2xl" />
+      ) : sectionStatus.pagarSemana.isError ? (
+        <SectionErrorState message={sectionStatus.pagarSemana.message} />
+      ) : pagarSemana.length > 0 ? (
+        <Card data-testid="pagar-semana-widget">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <CalendarClock className="w-4 h-4 text-amber-500" />
+              A Pagar na Semana
+              <span className="ml-auto text-xs font-normal text-muted-foreground">
+                Próximos 7 dias
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {pagarSemana.map((item) => {
+                const urg = urgencyLabel(item.dateStr);
+                return (
+                  <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors" data-testid={`pagar-semana-${item.id}`}>
+                    <DateBadge dateStr={item.dateStr} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{item.title}</p>
+                      <p className={`text-xs ${urg.cls}`}>{urg.text}</p>
+                    </div>
+                    <span className="text-sm font-semibold text-red-600 flex-shrink-0">
+                      {maskValue(formatCurrencyBRL(item.amount), visible)}
+                    </span>
+                  </div>
+                );
+              })}
+              <div className="flex items-center justify-between px-2 pt-2 border-t">
+                <span className="text-xs text-muted-foreground">Total da semana</span>
+                <span className="text-sm font-bold text-red-600">
+                  {maskValue(formatCurrencyBRL(pagarSemana.reduce((s, i) => s + i.amount, 0)), visible)}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }
