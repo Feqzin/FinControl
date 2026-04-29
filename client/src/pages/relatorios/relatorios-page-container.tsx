@@ -311,7 +311,7 @@ export default function RelatoriosPageContainer() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">Renda Total</p>
-                  <p className="text-[1.95rem] leading-none font-bold text-emerald-600 truncate">{fc(filteredData.totalRenda)}</p>
+                  <p className="fin-value-kpi truncate text-emerald-600">{fc(filteredData.totalRenda)}</p>
                 </div>
               </div>
             </div>
@@ -326,7 +326,7 @@ export default function RelatoriosPageContainer() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">Total Cartões</p>
-                  <p className="text-[1.95rem] leading-none font-bold text-red-600 truncate">{fc(filteredData.totalCartoes)}</p>
+                  <p className="fin-value-kpi truncate text-red-600">{fc(filteredData.totalCartoes)}</p>
                 </div>
               </div>
             </div>
@@ -341,7 +341,7 @@ export default function RelatoriosPageContainer() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">Total Dívidas</p>
-                  <p className="text-[1.95rem] leading-none font-bold text-red-600 truncate">{fc(filteredData.totalDividasPagar)}</p>
+                  <p className="fin-value-kpi truncate text-red-600">{fc(filteredData.totalDividasPagar)}</p>
                 </div>
               </div>
             </div>
@@ -356,7 +356,7 @@ export default function RelatoriosPageContainer() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">A Receber</p>
-                  <p className="text-[1.95rem] leading-none font-bold text-blue-600 truncate">{fc(filteredData.totalReceber)}</p>
+                  <p className="fin-value-kpi truncate text-blue-600">{fc(filteredData.totalReceber)}</p>
                 </div>
               </div>
             </div>
@@ -371,7 +371,7 @@ export default function RelatoriosPageContainer() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">Patrimônio</p>
-                  <p className="text-[1.95rem] leading-none font-bold text-indigo-600 truncate">{fc(filteredData.totalPatrimonio)}</p>
+                  <p className="fin-value-kpi truncate text-indigo-600">{fc(filteredData.totalPatrimonio)}</p>
                 </div>
               </div>
             </div>
@@ -386,7 +386,7 @@ export default function RelatoriosPageContainer() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">Saldo Líquido</p>
-                  <p className={`text-[1.95rem] leading-none font-bold truncate ${filteredData.saldoLiquido >= 0 ? "text-primary" : "text-red-600"}`}>
+                  <p className={`fin-value-kpi truncate ${filteredData.saldoLiquido >= 0 ? "text-primary" : "text-red-600"}`}>
                     {fc(filteredData.saldoLiquido)}
                   </p>
                 </div>
@@ -459,12 +459,12 @@ export default function RelatoriosPageContainer() {
                             <TableCell className="pl-6 text-xs text-muted-foreground">{cardName}</TableCell>
                             <TableCell className="max-w-[150px] truncate" title={item.descricao}>{item.descricao}</TableCell>
                             <TableCell>{item.parcelaAtual}/{item.parcelas}</TableCell>
-                            <TableCell className="text-right">{fc(Number(item.valorParcela))}</TableCell>
+                            <TableCell className="fin-value-table text-right">{fc(Number(item.valorParcela))}</TableCell>
                           </TableRow>
                         ))}
                         <TableRow className="border-t-2 font-bold">
                           <TableCell colSpan={3} className="text-right">Subtotal {cardName}</TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="fin-value-table text-right">
                             {fc(items.reduce((s, i) => s + Number(i.valorParcela), 0))}
                           </TableCell>
                         </TableRow>
@@ -514,7 +514,7 @@ export default function RelatoriosPageContainer() {
                               {total >= 0 ? "Me deve" : "Eu devo"}
                             </Badge>
                           </TableCell>
-                          <TableCell className={`text-right font-semibold ${total >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                          <TableCell className={`fin-value-table text-right ${total >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                             {fc(Math.abs(total))}
                           </TableCell>
                         </TableRow>
@@ -557,7 +557,7 @@ export default function RelatoriosPageContainer() {
                       <TableRow key={s.id}>
                         <TableCell className="font-medium">{s.nome}</TableCell>
                         <TableCell>{s.categoria}</TableCell>
-                        <TableCell className="text-right font-semibold">
+                        <TableCell className="fin-value-table text-right">
                           {fc(Number(s.valorMensal))}
                         </TableCell>
                       </TableRow>
@@ -565,7 +565,7 @@ export default function RelatoriosPageContainer() {
                   )}
                   <TableRow className="bg-muted/50 font-bold border-t-2">
                     <TableCell colSpan={2} className="text-right">Total Mensal</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="fin-value-table text-right">
                       {fc(filteredData.totalServicosMensal)}
                     </TableCell>
                   </TableRow>
@@ -613,7 +613,7 @@ export default function RelatoriosPageContainer() {
                         <TableRow key={p.id}>
                           <TableCell className="font-medium">{p.nome}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">{labels[p.tipo] || p.tipo}</TableCell>
-                          <TableCell className="text-right font-bold text-indigo-600">
+                          <TableCell className="fin-value-table text-right text-indigo-600">
                             {fc(Number(p.valorAtual))}
                           </TableCell>
                         </TableRow>
@@ -622,7 +622,7 @@ export default function RelatoriosPageContainer() {
                   )}
                   <TableRow className="bg-muted/50 font-bold border-t-2">
                     <TableCell colSpan={2} className="text-right">Total</TableCell>
-                    <TableCell className="text-right text-indigo-600">
+                    <TableCell className="fin-value-table text-right text-indigo-600">
                       {fc(filteredData.totalPatrimonio)}
                     </TableCell>
                   </TableRow>

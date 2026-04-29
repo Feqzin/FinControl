@@ -248,7 +248,7 @@ export default function Dashboard() {
               data-testid="mobile-saldo-hero"
             >
               <p className="mb-1 text-[12px] font-medium uppercase tracking-wide opacity-80">Saldo do mês</p>
-              <p className="mb-3 min-w-0 overflow-hidden text-[clamp(30px,8vw,34px)] font-bold leading-[1.1] tracking-[-0.5px] [overflow-wrap:anywhere]">
+              <p className="fin-value-hero mb-3">
                 {maskValue(formatCurrencyBRL(saldoPrevisto), visible)}
               </p>
               <div className="flex gap-4 text-sm opacity-85">
@@ -290,7 +290,7 @@ export default function Dashboard() {
                           <IconC className={`w-3.5 h-3.5 ${d.iconColor}`} />
                         </div>
                       </div>
-                      <p className={`min-w-0 overflow-hidden text-[clamp(22px,6vw,24px)] font-bold leading-[1.1] tracking-[-0.5px] [overflow-wrap:anywhere] ${d.valueColor}`}>
+                      <p className={`fin-value-kpi ${d.valueColor}`}>
                         {d.value}
                       </p>
                     </div>
@@ -678,7 +678,7 @@ export default function Dashboard() {
           >
             <CardContent className="p-[14px] md:p-[18px]">
               <p className="mb-1 text-[12px] uppercase tracking-wide opacity-85">Saldo do mês</p>
-              <p className="min-w-0 overflow-hidden text-[clamp(36px,4vw,48px)] font-bold leading-[1.1] tracking-[-0.5px] [overflow-wrap:anywhere]">
+              <p className="fin-value-hero">
                 {maskValue(formatCurrencyBRL(saldoPrevisto), visible)}
               </p>
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">

@@ -446,7 +446,7 @@ export default function PessoasPage() {
                       </Badge>
                       {hasAtraso && <AlertTriangle className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />}
                     </div>
-                    <p className="text-base font-bold mt-1">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
+                    <p className="fin-value-person mt-1">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
                     <p className="text-[11px] text-muted-foreground mt-1 line-clamp-1">
                       Dívidas {formatCurrencyBRL(totalDividasPendente)} • Compras {formatCurrencyBRL(resumo.comprasVinculadas.pendentePessoa)} • Serviços {formatCurrencyBRL(resumo.servicosMesAtual.pendente)}
                     </p>
@@ -548,7 +548,7 @@ export default function PessoasPage() {
                       <Badge variant={p.tipo === "me_deve" ? "default" : "destructive"} className="h-6 px-2.5 text-[11px]">
                         {p.tipo === "me_deve" ? "Me deve" : "Eu devo"}
                       </Badge>
-                      <p className="text-3xl leading-none font-bold tracking-tight">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
+                      <p className="fin-value-person">{formatCurrencyBRL(resumo.consolidadoPendente)}</p>
                     </div>
                   </div>
 

@@ -2137,7 +2137,7 @@ export default function CartoesPage() {
               </p>
               <Eye className="w-3.5 h-3.5 text-muted-foreground" />
             </div>
-            <p className="text-2xl font-bold tracking-tight">{formatCartaoCurrency(totalFaturas)}</p>
+            <p className="fin-value-kpi">{formatCartaoCurrency(totalFaturas)}</p>
           </div>
 
           <div className="space-y-3">

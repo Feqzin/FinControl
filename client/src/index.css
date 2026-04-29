@@ -282,6 +282,57 @@
     @apply rounded-xl border border-border/50 bg-muted/20 px-3 py-2;
   }
 
+  .fin-value-base {
+    @apply min-w-0 overflow-hidden font-bold leading-[1.1] [overflow-wrap:anywhere];
+    letter-spacing: -0.3px;
+  }
+
+  .fin-value-hero {
+    @apply fin-value-base;
+    font-size: clamp(30px, 8vw, 34px);
+    letter-spacing: -0.5px;
+  }
+
+  .fin-value-kpi {
+    @apply fin-value-base;
+    font-size: clamp(20px, 5vw, 24px);
+  }
+
+  .fin-value-person {
+    @apply fin-value-base;
+    font-size: clamp(20px, 5vw, 22px);
+  }
+
+  .fin-value-debt {
+    @apply fin-value-base;
+    font-size: clamp(18px, 4.5vw, 20px);
+    letter-spacing: -0.2px;
+  }
+
+  .fin-value-table {
+    @apply min-w-0 font-semibold leading-[1.2];
+    font-size: clamp(14px, 2.8vw, 16px);
+    letter-spacing: -0.1px;
+  }
+
+  @media (min-width: 768px) {
+    .fin-value-hero {
+      font-size: clamp(36px, 4vw, 48px);
+    }
+
+    .fin-value-kpi {
+      font-size: clamp(22px, 1.6vw, 28px);
+    }
+
+    .fin-value-person {
+      font-size: 24px;
+    }
+
+    .fin-value-debt {
+      font-size: clamp(18px, 1.4vw, 22px);
+    }
+  }
+
   .desktop-hover-lift {
     transition: transform .2s ease, box-shadow .2s ease, background-color .2s ease;
     will-change: transform;

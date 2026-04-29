@@ -394,7 +394,7 @@ export default function ServicosPage() {
             <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="text-sm text-muted-foreground">Total mensal em serviços</p>
-                <p className="text-2xl font-bold">{formatCurrencyBRL(totalMensal)}</p>
+                <p className="fin-value-kpi">{formatCurrencyBRL(totalMensal)}</p>
               </div>
               <div className="flex items-center justify-center w-10 h-10 rounded-md bg-amber-500/10">
                 <Repeat className="w-5 h-5 text-amber-600" />
@@ -408,7 +408,7 @@ export default function ServicosPage() {
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <p className="text-sm text-muted-foreground">Pendente de pessoas ({mesReferencia})</p>
-                  <p className="text-2xl font-bold text-amber-600">{formatCurrencyBRL(totalPessoasPendente)}</p>
+                  <p className="fin-value-kpi text-amber-600">{formatCurrencyBRL(totalPessoasPendente)}</p>
                 </div>
                 <div className="flex items-center justify-center w-10 h-10 rounded-md bg-blue-500/10">
                   <Users className="w-5 h-5 text-blue-600" />
@@ -489,7 +489,7 @@ export default function ServicosPage() {
                             </div>
                           </div>
                           <div className="col-span-2 sm:col-span-1 sm:col-start-3 flex items-center justify-between sm:justify-end gap-2 sm:self-start">
-                            <span className="text-2xl leading-none font-bold tracking-tight whitespace-nowrap">{formatCurrencyBRL(Number(s.valorMensal))}</span>
+                            <span className="fin-value-person whitespace-nowrap">{formatCurrencyBRL(Number(s.valorMensal))}</span>
                             <Badge variant={s.status === "ativo" ? "default" : "secondary"} className="h-7 px-2.5 text-xs font-semibold whitespace-nowrap">
                               {s.status === "ativo" ? "Ativo" : "Cancelado"}
                             </Badge>

@@ -455,11 +455,11 @@ export default function DividasPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="rounded-md bg-emerald-500/5 border border-emerald-500/10 p-3">
             <p className="text-xs text-muted-foreground mb-1">Total a receber (pendente)</p>
-            <p className="text-lg font-bold text-emerald-600">{formatDividaCurrency(totalReceber)}</p>
+            <p className="fin-value-kpi text-emerald-600">{formatDividaCurrency(totalReceber)}</p>
           </div>
           <div className="rounded-md bg-red-500/5 border border-red-500/10 p-3">
             <p className="text-xs text-muted-foreground mb-1">Total a pagar (pendente)</p>
-            <p className="text-lg font-bold text-red-600">{formatDividaCurrency(totalPagar)}</p>
+            <p className="fin-value-kpi text-red-600">{formatDividaCurrency(totalPagar)}</p>
           </div>
         </div>
       )}
@@ -546,7 +546,7 @@ export default function DividasPage() {
 
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <div className="text-right">
-                          <p className="font-bold text-sm">
+                          <p className="fin-value-debt">
                             {formatDividaCurrency(hasParce ? valorTotal : Number(d.valor))}
                           </p>
                           {hasParce && valorPendente > 0 && status !== "pago" && (
@@ -692,7 +692,7 @@ export default function DividasPage() {
                     </div>
                     <div className="flex items-center gap-1 flex-wrap justify-start lg:justify-end">
                       <div className="text-left lg:text-right min-w-[124px] mr-1">
-                        <div className="text-lg font-bold leading-none">{formatDividaCurrency(hasParce ? valorTotal : Number(d.valor))}</div>
+                        <div className="fin-value-debt">{formatDividaCurrency(hasParce ? valorTotal : Number(d.valor))}</div>
                         {hasParce && valorPendente > 0 && (
                           <div className="text-xs text-muted-foreground">Pendente: {formatDividaCurrency(valorPendente)}</div>
                         )}

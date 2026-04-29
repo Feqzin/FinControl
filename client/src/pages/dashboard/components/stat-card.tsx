@@ -27,7 +27,7 @@ export function StatCard({
           <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
             <p className="truncate text-[12px] font-medium uppercase tracking-wide text-muted-foreground">{title}</p>
             <p
-              className={`${compact ? "text-[clamp(24px,2vw,32px)]" : "text-[36px]"} min-w-0 overflow-hidden font-bold leading-[1.1] tracking-[-0.5px] [overflow-wrap:anywhere] ${valueColor || ""}`}
+              className={`fin-value-kpi ${valueColor || ""}`}
               title={value}
             >
               {value}
