@@ -100,7 +100,7 @@ export default function PrevisaoPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 space-y-6">
         <Skeleton className="h-8 w-48" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-28" />)}
@@ -111,15 +111,15 @@ export default function PrevisaoPage() {
   }
 
   return (
-    <div className="p-6 space-y-6" data-testid="previsao-page">
+    <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 space-y-6" data-testid="previsao-page">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Previsão de Entradas e Saídas</h1>
         <p className="text-muted-foreground">Projeção financeira para {format(now, "MMMM yyyy")}</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="hover-elevate">
-          <CardContent className="p-5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Card className="hover-elevate h-full">
+          <CardContent className="p-4 sm:p-5 h-full flex flex-col justify-between gap-3">
             <div className="flex items-center gap-3 mb-2">
               <div className="flex items-center justify-center w-9 h-9 rounded-md bg-emerald-500/10 shrink-0">
                 <ArrowUpRight className="w-4 h-4 text-emerald-600" />
@@ -127,7 +127,7 @@ export default function PrevisaoPage() {
               <p className="text-xs text-muted-foreground">Total entradas</p>
             </div>
             <p className="text-xl font-bold text-emerald-600">{mask(formatCurrency(totalEntradas))}</p>
-            <div className="mt-1 space-y-0.5">
+            <div className="space-y-0.5">
               {rendaMensal > 0 && (
                 <p className="text-xs text-muted-foreground flex justify-between">
                   <span>Renda</span><span className="font-medium">{mask(formatCurrency(rendaMensal))}</span>
@@ -142,8 +142,8 @@ export default function PrevisaoPage() {
           </CardContent>
         </Card>
 
-        <Card className="hover-elevate">
-          <CardContent className="p-5">
+        <Card className="hover-elevate h-full">
+          <CardContent className="p-4 sm:p-5 h-full flex flex-col justify-between gap-3">
             <div className="flex items-center gap-3 mb-2">
               <div className="flex items-center justify-center w-9 h-9 rounded-md bg-red-500/10 shrink-0">
                 <ArrowDownRight className="w-4 h-4 text-red-600" />
@@ -151,7 +151,7 @@ export default function PrevisaoPage() {
               <p className="text-xs text-muted-foreground">Total de saídas</p>
             </div>
             <p className="text-xl font-bold text-red-600">{mask(formatCurrency(totalSaida))}</p>
-            <div className="mt-1 space-y-0.5">
+            <div className="space-y-0.5">
               {pagarDividas > 0 && (
                 <p className="text-xs text-muted-foreground flex justify-between">
                   <span>Dívidas</span><span className="font-medium">{mask(formatCurrency(pagarDividas))}</span>
@@ -166,8 +166,8 @@ export default function PrevisaoPage() {
           </CardContent>
         </Card>
 
-        <Card className="hover-elevate">
-          <CardContent className="p-5">
+        <Card className="hover-elevate h-full">
+          <CardContent className="p-4 sm:p-5 h-full flex flex-col justify-between gap-3">
             <div className="flex items-center gap-3 mb-2">
               <div className={`flex items-center justify-center w-9 h-9 rounded-md shrink-0 ${saldoPrevisto >= 0 ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
                 {saldoPrevisto >= 0
@@ -179,14 +179,14 @@ export default function PrevisaoPage() {
             <p className={`text-xl font-bold ${saldoPrevisto >= 0 ? "text-emerald-600" : "text-red-600"}`}>
               {mask(formatCurrency(saldoPrevisto))}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground">
               {saldoPrevisto >= 0 ? "Finanças equilibradas" : "Despesas excedem receitas"}
             </p>
           </CardContent>
         </Card>
 
-        <Card className="hover-elevate">
-          <CardContent className="p-5">
+        <Card className="hover-elevate h-full">
+          <CardContent className="p-4 sm:p-5 h-full flex flex-col justify-between gap-3">
             <div className="flex items-center gap-3 mb-2">
               <div className="flex items-center justify-center w-9 h-9 rounded-md bg-primary/10 shrink-0">
                 <Wallet className="w-4 h-4 text-primary" />
@@ -196,7 +196,7 @@ export default function PrevisaoPage() {
             <p className="text-xl font-bold text-primary">
               {pctComprometido !== null ? `${pctComprometido}%` : "—"}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground">
               {pctComprometido === null
                 ? "Cadastre fontes de renda"
                 : pctComprometido < 50

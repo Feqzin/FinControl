@@ -257,7 +257,7 @@ export default function RelatoriosPageContainer() {
 
   if (isLoading) {
     return (
-      <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5">
+      <div className="mx-auto w-full max-w-[1600px] overflow-x-hidden p-4 sm:p-6 space-y-5">
         <div className="flex justify-between items-center">
           <Skeleton className="h-10 w-48" />
           <Skeleton className="h-10 w-32" />
@@ -274,7 +274,7 @@ export default function RelatoriosPageContainer() {
   const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "—";
 
   return (
-    <div className="w-full max-w-full overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="relatorios-page">
+    <div className="mx-auto w-full max-w-[1600px] overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="relatorios-page">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Relatórios</h1>
@@ -301,72 +301,96 @@ export default function RelatoriosPageContainer() {
       </div>
 
       {/* Section 1 — Resumo Geral */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
         <Card className="hover-elevate">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-2 bg-emerald-500/10 rounded-lg">
-              <Wallet className="w-5 h-5 text-emerald-600" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Renda Total</p>
-              <p className="text-lg font-bold text-emerald-600">{fc(filteredData.totalRenda)}</p>
+          <CardContent className="p-4 sm:p-5 min-h-[104px]">
+            <div className="h-full flex items-center justify-center">
+              <div className="flex w-full max-w-[260px] min-w-0 items-center gap-3">
+                <div className="p-2 bg-emerald-500/10 rounded-lg shrink-0">
+                  <Wallet className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Renda Total</p>
+                  <p className="text-[1.95rem] leading-none font-bold text-emerald-600 truncate">{fc(filteredData.totalRenda)}</p>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
         <Card className="hover-elevate">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-2 bg-red-500/10 rounded-lg">
-              <CreditCard className="w-5 h-5 text-red-600" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Cartões</p>
-              <p className="text-lg font-bold text-red-600">{fc(filteredData.totalCartoes)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="hover-elevate">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-2 bg-red-500/10 rounded-lg">
-              <Receipt className="w-5 h-5 text-red-600" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Dívidas</p>
-              <p className="text-lg font-bold text-red-600">{fc(filteredData.totalDividasPagar)}</p>
+          <CardContent className="p-4 sm:p-5 min-h-[104px]">
+            <div className="h-full flex items-center justify-center">
+              <div className="flex w-full max-w-[260px] min-w-0 items-center gap-3">
+                <div className="p-2 bg-red-500/10 rounded-lg shrink-0">
+                  <CreditCard className="w-5 h-5 text-red-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Total Cartões</p>
+                  <p className="text-[1.95rem] leading-none font-bold text-red-600 truncate">{fc(filteredData.totalCartoes)}</p>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
         <Card className="hover-elevate">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-2 bg-blue-500/10 rounded-lg">
-              <TrendingUp className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">A Receber</p>
-              <p className="text-lg font-bold text-blue-600">{fc(filteredData.totalReceber)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="hover-elevate">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-2 bg-indigo-500/10 rounded-lg">
-              <PiggyBank className="w-5 h-5 text-indigo-600" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Patrimônio</p>
-              <p className="text-lg font-bold text-indigo-600">{fc(filteredData.totalPatrimonio)}</p>
+          <CardContent className="p-4 sm:p-5 min-h-[104px]">
+            <div className="h-full flex items-center justify-center">
+              <div className="flex w-full max-w-[260px] min-w-0 items-center gap-3">
+                <div className="p-2 bg-red-500/10 rounded-lg shrink-0">
+                  <Receipt className="w-5 h-5 text-red-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Total Dívidas</p>
+                  <p className="text-[1.95rem] leading-none font-bold text-red-600 truncate">{fc(filteredData.totalDividasPagar)}</p>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
         <Card className="hover-elevate">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <div className="w-5 h-5 flex items-center justify-center font-bold text-primary">B$</div>
+          <CardContent className="p-4 sm:p-5 min-h-[104px]">
+            <div className="h-full flex items-center justify-center">
+              <div className="flex w-full max-w-[260px] min-w-0 items-center gap-3">
+                <div className="p-2 bg-blue-500/10 rounded-lg shrink-0">
+                  <TrendingUp className="w-5 h-5 text-blue-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">A Receber</p>
+                  <p className="text-[1.95rem] leading-none font-bold text-blue-600 truncate">{fc(filteredData.totalReceber)}</p>
+                </div>
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Saldo Líquido</p>
-              <p className={`text-lg font-bold ${filteredData.saldoLiquido >= 0 ? "text-primary" : "text-red-600"}`}>
-                {fc(filteredData.saldoLiquido)}
-              </p>
+          </CardContent>
+        </Card>
+        <Card className="hover-elevate">
+          <CardContent className="p-4 sm:p-5 min-h-[104px]">
+            <div className="h-full flex items-center justify-center">
+              <div className="flex w-full max-w-[260px] min-w-0 items-center gap-3">
+                <div className="p-2 bg-indigo-500/10 rounded-lg shrink-0">
+                  <PiggyBank className="w-5 h-5 text-indigo-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Patrimônio</p>
+                  <p className="text-[1.95rem] leading-none font-bold text-indigo-600 truncate">{fc(filteredData.totalPatrimonio)}</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="hover-elevate">
+          <CardContent className="p-4 sm:p-5 min-h-[104px]">
+            <div className="h-full flex items-center justify-center">
+              <div className="flex w-full max-w-[260px] min-w-0 items-center gap-3">
+                <div className="p-2 bg-primary/10 rounded-lg shrink-0">
+                  <div className="w-5 h-5 flex items-center justify-center font-bold text-primary">B$</div>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Saldo Líquido</p>
+                  <p className={`text-[1.95rem] leading-none font-bold truncate ${filteredData.saldoLiquido >= 0 ? "text-primary" : "text-red-600"}`}>
+                    {fc(filteredData.saldoLiquido)}
+                  </p>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
