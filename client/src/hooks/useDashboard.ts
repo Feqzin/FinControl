@@ -1,14 +1,14 @@
 ﻿import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Cartao, CompraCartao, Divida, ParcelaCompra, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
-import type { FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
+import type { DashboardOverviewResponse, FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
 import { addDays, differenceInDays, format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AlertTriangle, Bell, CheckCircle, CreditCard, TrendingDown } from "lucide-react";
 import { maskValue } from "@/context/values-visibility";
 import { toMoneyNumber } from "@/lib/money";
 import { calculateCardUsedLimit, groupParcelasCompraByCompraId } from "@/lib/card-limit-usage";
-import { fetchFinancialSummary } from "@/services/api/dashboard";
+import { fetchDashboardOverview, fetchFinancialSummary } from "@/services/api/dashboard";
 import { formatCurrencyBRL } from "@/utils/formatters";
 
 export type DashboardAlert = {
@@ -122,64 +122,85 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     return opts;
   }, []);
 
+  const dashboardOverviewQuery = useQuery<DashboardOverviewResponse>({
+    queryKey: ["/api/dashboard/overview", selectedMonth],
+    queryFn: () => fetchDashboardOverview(selectedMonth),
+  });
+
+  const shouldUseLegacyFallback = dashboardOverviewQuery.isError;
+  const shouldEnableLegacyQueries = shouldUseLegacyFallback;
+
   const dividasQuery = useQuery<Divida[]>({
     queryKey: ["/api/dividas"],
     queryFn: () => fetchDashboardJson<Divida[]>("/api/dividas", "dívidas"),
+    enabled: shouldEnableLegacyQueries,
   });
   const servicosQuery = useQuery<Servico[]>({
     queryKey: ["/api/servicos"],
     queryFn: () => fetchDashboardJson<Servico[]>("/api/servicos", "serviços"),
+    enabled: shouldEnableLegacyQueries,
   });
   const pessoasQuery = useQuery<Pessoa[]>({
     queryKey: ["/api/pessoas"],
     queryFn: () => fetchDashboardJson<Pessoa[]>("/api/pessoas", "pessoas"),
+    enabled: shouldEnableLegacyQueries,
   });
   const cartoesQuery = useQuery<Cartao[]>({
     queryKey: ["/api/cartoes"],
     queryFn: () => fetchDashboardJson<Cartao[]>("/api/cartoes", "cartões"),
+    enabled: shouldEnableLegacyQueries,
   });
   const comprasQuery = useQuery<CompraCartao[]>({
     queryKey: ["/api/compras-cartao"],
     queryFn: () => fetchDashboardJson<CompraCartao[]>("/api/compras-cartao", "compras de cartão"),
+    enabled: shouldEnableLegacyQueries,
   });
   const parcelasCompraQuery = useQuery<ParcelaCompra[]>({
     queryKey: ["/api/parcelas-compra"],
     queryFn: () => fetchDashboardJson<ParcelaCompra[]>("/api/parcelas-compra", "parcelas de compra"),
+    enabled: shouldEnableLegacyQueries,
   });
   const rendasQuery = useQuery<Renda[]>({
     queryKey: ["/api/rendas"],
     queryFn: () => fetchDashboardJson<Renda[]>("/api/rendas", "rendas"),
+    enabled: shouldEnableLegacyQueries,
   });
   const patrimoniosQuery = useQuery<Patrimonio[]>({
     queryKey: ["/api/patrimonios"],
     queryFn: () => fetchDashboardJson<Patrimonio[]>("/api/patrimonios", "patrimônio"),
+    enabled: shouldEnableLegacyQueries,
   });
   const financialScoreQuery = useQuery<FinancialScore>({
     queryKey: ["/api/financial/score"],
     queryFn: () => fetchDashboardJson<FinancialScore>("/api/financial/score", "score financeiro"),
+    enabled: shouldEnableLegacyQueries,
   });
   const financialInsightsQuery = useQuery<FinancialInsight[]>({
     queryKey: ["/api/financial/insights"],
     queryFn: () => fetchDashboardJson<FinancialInsight[]>("/api/financial/insights", "insights financeiros"),
+    enabled: shouldEnableLegacyQueries,
   });
   const financialSummaryQuery = useQuery<FinancialSummary>({
     queryKey: ["/api/financial/summary", selectedMonth],
     queryFn: () => fetchFinancialSummary(selectedMonth),
+    enabled: shouldEnableLegacyQueries,
   });
 
-  const dividas = dividasQuery.data ?? [];
-  const servicos = servicosQuery.data ?? [];
-  const pessoas = pessoasQuery.data ?? [];
-  const cartoes = cartoesQuery.data ?? [];
-  const compras = comprasQuery.data ?? [];
-  const parcelasCompra = parcelasCompraQuery.data ?? [];
-  const rendas = rendasQuery.data ?? [];
-  const patrimonios = patrimoniosQuery.data ?? [];
-  const financialScore = financialScoreQuery.data;
-  const financialInsights = financialInsightsQuery.data ?? [];
-  const financialSummary = financialSummaryQuery.data;
+  const dashboardOverview = dashboardOverviewQuery.data;
 
-  const isLoading =
+  const dividas = shouldUseLegacyFallback ? (dividasQuery.data ?? []) : (dashboardOverview?.dividas ?? []);
+  const servicos = shouldUseLegacyFallback ? (servicosQuery.data ?? []) : (dashboardOverview?.servicos ?? []);
+  const pessoas = shouldUseLegacyFallback ? (pessoasQuery.data ?? []) : (dashboardOverview?.pessoas ?? []);
+  const cartoes = shouldUseLegacyFallback ? (cartoesQuery.data ?? []) : (dashboardOverview?.cartoes ?? []);
+  const compras = shouldUseLegacyFallback ? (comprasQuery.data ?? []) : (dashboardOverview?.compras ?? []);
+  const parcelasCompra = shouldUseLegacyFallback ? (parcelasCompraQuery.data ?? []) : (dashboardOverview?.parcelasCompra ?? []);
+  const rendas = shouldUseLegacyFallback ? (rendasQuery.data ?? []) : (dashboardOverview?.rendas ?? []);
+  const patrimonios = shouldUseLegacyFallback ? (patrimoniosQuery.data ?? []) : (dashboardOverview?.patrimonios ?? []);
+  const financialScore = shouldUseLegacyFallback ? financialScoreQuery.data : dashboardOverview?.financialScore;
+  const financialInsights = shouldUseLegacyFallback ? (financialInsightsQuery.data ?? []) : (dashboardOverview?.financialInsights ?? []);
+  const financialSummary = shouldUseLegacyFallback ? financialSummaryQuery.data : dashboardOverview?.financialSummary;
+
+  const legacyIsLoading =
     dividasQuery.isLoading
     || servicosQuery.isLoading
     || pessoasQuery.isLoading
@@ -187,7 +208,15 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     || financialInsightsQuery.isLoading
     || financialSummaryQuery.isLoading;
 
-  const sectionStatus = {
+  const isLoading = shouldUseLegacyFallback ? legacyIsLoading : dashboardOverviewQuery.isLoading;
+
+  const overviewSectionStatus = toSectionStatus({
+    isLoading: dashboardOverviewQuery.isLoading,
+    isError: dashboardOverviewQuery.isError,
+    error: dashboardOverviewQuery.error,
+  });
+
+  const legacySectionStatus = {
     saldo: toSectionStatus({
       isLoading: financialSummaryQuery.isLoading,
       isError: financialSummaryQuery.isError,
@@ -243,6 +272,20 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       { isLoading: pessoasQuery.isLoading, isError: pessoasQuery.isError, error: pessoasQuery.error },
     ]),
   } as const;
+
+  const sectionStatus = shouldUseLegacyFallback
+    ? legacySectionStatus
+    : ({
+      saldo: overviewSectionStatus,
+      entradasSaidas: overviewSectionStatus,
+      cardsResumo: overviewSectionStatus,
+      score: overviewSectionStatus,
+      scoreDetalhado: overviewSectionStatus,
+      insights: overviewSectionStatus,
+      alertas: overviewSectionStatus,
+      proximosVencimentos: overviewSectionStatus,
+      pagarSemana: overviewSectionStatus,
+    } as const);
 
   const totalRenda = financialSummary?.totalRenda ?? 0;
   const totalPatrimonio = patrimonios.reduce((s, p) => s + toMoneyNumber(p.valorAtual), 0);

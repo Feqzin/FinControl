@@ -10,6 +10,13 @@ export function createFinancialController(service: FinancialService) {
       return res.json(await service.getCardSummaries(userId));
     },
 
+    overview: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const parsedQuery = parseFinancialQuery(req.query as Record<string, unknown>);
+      const overview = await service.getDashboardOverview(userId, parsedQuery.month, parsedQuery.simulation);
+      return res.json(overview);
+    },
+
     summary: async (req: Request, res: Response) => {
       const userId = getUserId(req);
       const parsedQuery = parseFinancialQuery(req.query as Record<string, unknown>);

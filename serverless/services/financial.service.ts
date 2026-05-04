@@ -1,6 +1,21 @@
 import { format } from "date-fns";
-import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Renda, Servico } from "../../shared/schema.js";
-import type { FinancialInsight, FinancialScore, FinancialSummary } from "../../shared/financial.js";
+import type {
+  Cartao,
+  CompraCartao,
+  Divida,
+  Parcela,
+  ParcelaCompra,
+  Patrimonio,
+  Pessoa,
+  Renda,
+  Servico,
+} from "../../shared/schema.js";
+import type {
+  DashboardOverviewResponse,
+  FinancialInsight,
+  FinancialScore,
+  FinancialSummary,
+} from "../../shared/financial.js";
 import type { FinancialRepository } from "../repositories/financial.repository.js";
 import { formatMoneyFixed, parseMoney, toCentsBigInt } from "../../utils/money.js";
 import { toErrorLog, writeTechnicalLog } from "../logger.js";
@@ -622,29 +637,26 @@ export class FinancialService {
     return { cartoes, compras, parcelasCompra };
   }
 
-  async getSummary(
-    userId: string,
+  private buildSummaryFromContext(
+    context: FinancialContext,
     monthReference?: string,
-    simulation?: FinancialSimulationInput,
-  ): Promise<FinancialSummary> {
-    const ctx = await this.loadContext(userId);
-    const simulated = applyFinancialSimulation(ctx, simulation);
+  ): FinancialSummary {
     const mesReferencia = resolveMonthReference(monthReference);
-    const debtInput = { dividas: simulated.dividas, parcelas: simulated.parcelas };
-    const cardInput = { compras: simulated.compras, parcelasCompra: simulated.parcelasCompra };
+    const debtInput = { dividas: context.dividas, parcelas: context.parcelas };
+    const cardInput = { compras: context.compras, parcelasCompra: context.parcelasCompra };
     const { totalReceberMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, mesReferencia);
     const { totalCartoesMes } = getMonthlyCardTotals(cardInput, mesReferencia);
     const debtPortfolio = getDebtPortfolioSummary(debtInput);
 
-    const totalRenda = sumMoneyBy(simulated.rendas.filter((r) => r.ativo), (r) => r.valor);
-    const totalServicos = sumMoneyBy(simulated.servicos.filter((s) => s.status === "ativo"), (sv) => sv.valorMensal);
+    const totalRenda = sumMoneyBy(context.rendas.filter((r) => r.ativo), (r) => r.valor);
+    const totalServicos = sumMoneyBy(context.servicos.filter((s) => s.status === "ativo"), (sv) => sv.valorMensal);
 
     const totalEntradas = totalRenda + totalReceberMes;
     const totalSaidas = totalPagarMes + totalServicos + totalCartoesMes;
     const saldo = totalEntradas - totalSaidas;
 
-    const parcelasPagas = simulated.parcelas.filter((p) => p.status === "pago");
-    const parcelasPendentes = simulated.parcelas.filter((p) => p.status === "pendente");
+    const parcelasPagas = context.parcelas.filter((p) => p.status === "pago");
+    const parcelasPendentes = context.parcelas.filter((p) => p.status === "pendente");
 
     return {
       mesReferencia,
@@ -660,12 +672,52 @@ export class FinancialService {
       dividaTotalPendente: round2(debtPortfolio.totalPendente),
       dividaTotalPaga: round2(debtPortfolio.totalPago),
       parcelas: {
-        total: simulated.parcelas.length,
+        total: context.parcelas.length,
         pagas: parcelasPagas.length,
         pendentes: parcelasPendentes.length,
         valorPago: round2(sumMoneyBy(parcelasPagas, (p) => p.valor)),
         valorPendente: round2(sumMoneyBy(parcelasPendentes, (p) => p.valor)),
       },
+    };
+  }
+
+  async getSummary(
+    userId: string,
+    monthReference?: string,
+    simulation?: FinancialSimulationInput,
+  ): Promise<FinancialSummary> {
+    const ctx = await this.loadContext(userId);
+    const simulated = applyFinancialSimulation(ctx, simulation);
+    return this.buildSummaryFromContext(simulated, monthReference);
+  }
+
+  async getDashboardOverview(
+    userId: string,
+    monthReference?: string,
+    simulation?: FinancialSimulationInput,
+  ): Promise<DashboardOverviewResponse> {
+    const [ctx, pessoas, patrimonios] = await Promise.all([
+      this.loadContext(userId),
+      this.loadContextSlice(userId, "pessoas", () => this.repository.getPessoas(userId), [] as Pessoa[]),
+      this.loadContextSlice(userId, "patrimonios", () => this.repository.getPatrimonios(userId), [] as Patrimonio[]),
+    ]);
+
+    const simulated = applyFinancialSimulation(ctx, simulation);
+    const financialSummary = this.buildSummaryFromContext(simulated, monthReference);
+
+    return {
+      mesReferencia: financialSummary.mesReferencia,
+      dividas: simulated.dividas,
+      servicos: simulated.servicos,
+      pessoas,
+      cartoes: simulated.cartoes,
+      compras: simulated.compras,
+      parcelasCompra: simulated.parcelasCompra,
+      rendas: simulated.rendas,
+      patrimonios,
+      financialSummary,
+      financialScore: calculateScoreFromContext(simulated),
+      financialInsights: generateInsightsFromContext(simulated),
     };
   }
 

@@ -1,4 +1,4 @@
-import type { FinancialSummary } from "@shared/financial";
+import type { DashboardOverviewResponse, FinancialSummary } from "@shared/financial";
 import { apiRequest } from "@/lib/queryClient";
 
 const DASHBOARD_SUMMARY_TIMEOUT_MS = 12_000;
@@ -19,6 +19,27 @@ export async function fetchFinancialSummary(month: string): Promise<FinancialSum
   const durationMs = Date.now() - startedAt;
   if (durationMs >= 3_000) {
     console.warn(`[dashboard] query lenta: resumo financeiro (${durationMs}ms)`);
+  }
+
+  return response.json();
+}
+
+export async function fetchDashboardOverview(month: string): Promise<DashboardOverviewResponse> {
+  const startedAt = Date.now();
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error("Tempo limite ao carregar visão geral do dashboard."));
+    }, DASHBOARD_SUMMARY_TIMEOUT_MS);
+  });
+
+  const response = await Promise.race([
+    apiRequest("GET", `/api/dashboard/overview?month=${encodeURIComponent(month)}`),
+    timeoutPromise,
+  ]);
+
+  const durationMs = Date.now() - startedAt;
+  if (durationMs >= 3_000) {
+    console.warn(`[dashboard] query lenta: visão geral (${durationMs}ms)`);
   }
 
   return response.json();

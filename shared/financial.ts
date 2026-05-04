@@ -1,3 +1,14 @@
+import type {
+  Cartao,
+  CompraCartao,
+  Divida,
+  ParcelaCompra,
+  Patrimonio,
+  Pessoa,
+  Renda,
+  Servico,
+} from "./schema.js";
+
 export interface FinancialScoreFactor {
   label: string;
   impacto: number;
@@ -45,4 +56,19 @@ export interface FinancialSummary {
     valorPago: number;
     valorPendente: number;
   };
+}
+
+export interface DashboardOverviewResponse {
+  mesReferencia: string;
+  dividas: Divida[];
+  servicos: Servico[];
+  pessoas: Pessoa[];
+  cartoes: Cartao[];
+  compras: CompraCartao[];
+  parcelasCompra: ParcelaCompra[];
+  rendas: Renda[];
+  patrimonios: Patrimonio[];
+  financialSummary: FinancialSummary;
+  financialScore: FinancialScore;
+  financialInsights: FinancialInsight[];
 }

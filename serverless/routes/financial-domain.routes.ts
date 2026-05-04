@@ -26,6 +26,7 @@ type ParcelasController = {
 
 type FinancialController = {
   cardSummary: RequestHandler;
+  overview: RequestHandler;
   summary: RequestHandler;
   score: RequestHandler;
   insights: RequestHandler;
@@ -88,6 +89,7 @@ export function registerFinancialDomainRoutes(app: Express, controllers: Financi
   app.delete("/api/compras-cartao/:id", requireAuth, comprasCartaoController.delete);
   app.delete("/api/cartoes/compras/:compraId", requireAuth, comprasCartaoController.deleteByCardRoute);
 
+  app.get("/api/dashboard/overview", requireAuth, financialController.overview);
   app.get("/api/financial/summary", requireAuth, financialController.summary);
   app.get("/api/financial/score", requireAuth, financialController.score);
   app.get("/api/financial/insights", requireAuth, financialController.insights);
