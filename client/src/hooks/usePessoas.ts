@@ -21,6 +21,7 @@ import {
   deletePessoa,
   desvincularPessoaDeCompra,
   getPessoaResumo,
+  listPessoasWithResumo,
   listPessoaSaldoMovimentacoes,
   listTimelinePagamentosByPessoa,
   marcarDividaPessoaComoPaga,
@@ -31,6 +32,7 @@ import {
   type PessoaSaldoMovimentacaoPayload,
   type PessoaSaldoMovimentacoesResponse,
   type PessoaResumo,
+  type PessoaWithResumo,
   updateTimelinePagamentoObservacao,
   updatePessoa,
   uploadTimelinePagamentoComprovante,
@@ -144,7 +146,28 @@ export function usePessoas({
     }
   };
 
-  const { data: pessoas = [], isLoading } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
+  const pessoasComResumoQuery = useQuery<PessoaWithResumo[]>({
+    queryKey: ["/api/pessoas", "includeResumo=true"],
+    queryFn: () => listPessoasWithResumo(),
+  });
+  const shouldUseLegacyPessoasList = pessoasComResumoQuery.isError;
+  const legacyPessoasQuery = useQuery<Pessoa[]>({
+    queryKey: ["/api/pessoas"],
+    enabled: shouldUseLegacyPessoasList,
+  });
+
+  const pessoasFromBatch = useMemo<Pessoa[]>(() => {
+    const data = pessoasComResumoQuery.data ?? [];
+    return data.map(({ resumo: _resumo, ...pessoa }) => pessoa);
+  }, [pessoasComResumoQuery.data]);
+
+  const pessoas = shouldUseLegacyPessoasList
+    ? (legacyPessoasQuery.data ?? [])
+    : pessoasFromBatch;
+
+  const isLoading = shouldUseLegacyPessoasList
+    ? legacyPessoasQuery.isLoading
+    : pessoasComResumoQuery.isLoading;
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: comprasCartao = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
   const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
@@ -170,17 +193,45 @@ export function usePessoas({
     },
   });
 
+  const resumoByIdFromBatch = useMemo(() => {
+    const map = new Map<string, PessoaResumo>();
+    for (const pessoa of pessoasComResumoQuery.data ?? []) {
+      if (!pessoa.resumo?.totais || !pessoa.resumo?.alertas) continue;
+      map.set(pessoa.id, {
+        pessoa: {
+          id: pessoa.id,
+          userId: pessoa.userId,
+          nome: pessoa.nome,
+          tipo: pessoa.tipo,
+          telefone: pessoa.telefone,
+          observacao: pessoa.observacao,
+        },
+        totais: pessoa.resumo.totais,
+        alertas: pessoa.resumo.alertas,
+      });
+    }
+    return map;
+  }, [pessoasComResumoQuery.data]);
+
+  const shouldUseResumoPerPessoaFallback =
+    shouldUseLegacyPessoasList
+    || pessoas.some((pessoa) => !resumoByIdFromBatch.has(pessoa.id));
+
   const pessoaResumoQueries = useQueries({
     queries: pessoas.map((pessoa) => ({
       queryKey: ["/api/pessoas", pessoa.id, "resumo"],
-      enabled: Boolean(pessoa.id),
+      enabled: shouldUseResumoPerPessoaFallback && Boolean(pessoa.id),
       staleTime: 30_000,
       queryFn: async () => getPessoaResumo(pessoa.id),
     })),
   });
 
   const pessoaResumoById = useMemo(() => {
-    const map = new Map<string, PessoaResumo>();
+    const map = new Map<string, PessoaResumo>(resumoByIdFromBatch);
+    if (!shouldUseResumoPerPessoaFallback) {
+      return map;
+    }
+
     pessoas.forEach((pessoa, index) => {
       const resumo = pessoaResumoQueries[index]?.data;
       if (resumo) {
@@ -188,7 +239,7 @@ export function usePessoas({
       }
     });
     return map;
-  }, [pessoaResumoQueries, pessoas]);
+  }, [pessoaResumoQueries, pessoas, resumoByIdFromBatch, shouldUseResumoPerPessoaFallback]);
 
   const createPessoaMutation = useMutation({
     mutationFn: (payload: PessoaPayload) => createPessoa(payload),

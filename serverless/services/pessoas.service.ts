@@ -1,5 +1,13 @@
 import { addMonths, format, parseISO } from "date-fns";
-import type { CompraCartao, Divida, Pessoa, PessoaSaldoMovimentacao, ServicoPagamento } from "../../shared/schema.js";
+import type {
+  CompraCartao,
+  Divida,
+  ParcelaCompra,
+  Pessoa,
+  PessoaSaldoMovimentacao,
+  ServicoPagamento,
+  ServicoPessoa,
+} from "../../shared/schema.js";
 import { parseMoney } from "../../utils/money.js";
 import { db } from "../db.js";
 import { createFinancialRepository } from "../repositories/financial.repository.js";
@@ -358,14 +366,12 @@ type CompraResumo = {
   usaParcelasReais: boolean;
 };
 
-async function summarizeCompraPessoa(
-  storage: IStorage,
+function summarizeCompraPessoa(
   compra: CompraCartao,
-  userId: string,
+  rows: ParcelaCompra[],
   todayIso: string,
   saldoMovimentacoes: PessoaSaldoMovimentacao[],
-): Promise<CompraResumo> {
-  const rows = await storage.getParcelasCompra(compra.id, userId);
+): CompraResumo {
   if (rows.length > 0) {
     let pendentePessoa = 0;
     let pagoPessoa = 0;
@@ -435,11 +441,282 @@ async function summarizeCompraPessoa(
   };
 }
 
+type PessoaResumoBatchData = {
+  dividas: Divida[];
+  comprasVinculadas: CompraCartao[];
+  parcelasCompraByCompraId: Map<string, ParcelaCompra[]>;
+  servicoPessoas: ServicoPessoa[];
+  servicoPagamentosByServicoPessoaId: Map<string, ServicoPagamento[]>;
+  saldoMovimentacoes: PessoaSaldoMovimentacao[];
+};
+
+type PessoaResumoComputado = {
+  totais: PessoaResumo["totais"];
+  alertas: PessoaResumo["alertas"];
+  totalDeve: number;
+  totalReceber: number;
+  saldoAtual: number;
+  servicosMesAtual: number;
+  movimentacoes: number;
+  proximosRecebimentos: number;
+};
+
+function computePessoaResumo({
+  dividas,
+  comprasVinculadas,
+  parcelasCompraByCompraId,
+  servicoPessoas,
+  servicoPagamentosByServicoPessoaId,
+  saldoMovimentacoes,
+}: PessoaResumoBatchData): PessoaResumoComputado {
+  const todayIso = format(new Date(), "yyyy-MM-dd");
+  const mesReferencia = format(new Date(), "yyyy-MM");
+
+  let comigoPendente = 0;
+  let comigoPago = 0;
+  let comigoVencidas = 0;
+  let comigoQuantidadePendentes = 0;
+  let euDevoPendente = 0;
+  let euDevoPago = 0;
+  let euDevoVencidas = 0;
+  let euDevoQuantidadePendentes = 0;
+
+  for (const divida of dividas) {
+    const valor = toMoneyNumber(divida.valor);
+    const pago = isPaid(divida.status);
+    const vencida = !pago && isOverdue(divida.dataVencimento, todayIso);
+    const isComigo = divida.tipo === "receber";
+
+    if (isComigo) {
+      if (pago) {
+        comigoPago += valor;
+      } else {
+        comigoPendente += valor;
+        comigoQuantidadePendentes += 1;
+        if (vencida) comigoVencidas += 1;
+      }
+    } else if (pago) {
+      euDevoPago += valor;
+    } else {
+      euDevoPendente += valor;
+      euDevoQuantidadePendentes += 1;
+      if (vencida) euDevoVencidas += 1;
+    }
+  }
+
+  const comprasResumo = comprasVinculadas.map((compra) => {
+    const parcelasCompra = parcelasCompraByCompraId.get(compra.id) ?? [];
+    return summarizeCompraPessoa(
+      compra,
+      parcelasCompra,
+      todayIso,
+      saldoMovimentacoes,
+    );
+  });
+
+  const comprasPendentePessoa = round2(
+    comprasResumo.reduce((sum, item) => sum + item.pendentePessoa, 0),
+  );
+  const comprasPagoPessoa = round2(
+    comprasResumo.reduce((sum, item) => sum + item.pagoPessoa, 0),
+  );
+  const parcelasPendentesPessoa = comprasResumo.reduce((sum, item) => sum + item.parcelasPendentesPessoa, 0);
+  const parcelasVencidasPessoa = comprasResumo.reduce((sum, item) => sum + item.parcelasAtrasadasPessoa, 0);
+  const comprasAtrasadas = comprasResumo.filter((item) => item.compraAtrasada).length;
+  const comprasComParcelasReais = comprasResumo.filter((item) => item.usaParcelasReais).length;
+  const comprasEmFallbackLegado = comprasResumo.length - comprasComParcelasReais;
+
+  let servicosPendentes = 0;
+  let servicosPagos = 0;
+  let servicosPendentesQuantidade = 0;
+
+  for (const servicoPessoa of servicoPessoas) {
+    const valorDevidoMes = toMoneyNumber(servicoPessoa.valorDevido);
+    const pagamentosDoServico = servicoPagamentosByServicoPessoaId.get(servicoPessoa.id) ?? [];
+    const contextoMes = getPagamentoServicoMesContexto(pagamentosDoServico, mesReferencia);
+    const jaPagoNoMes = contextoMes && normalizeStatus(contextoMes.status) === "pago";
+
+    if (jaPagoNoMes) {
+      servicosPagos += valorDevidoMes;
+      continue;
+    }
+
+    const abatidoSaldoMes = getServicoMesSaldoAbatido(saldoMovimentacoes, servicoPessoa.id, mesReferencia);
+    const pagoNoMes = Math.min(valorDevidoMes, abatidoSaldoMes);
+    const pendenteNoMes = Math.max(0, valorDevidoMes - pagoNoMes);
+
+    servicosPagos += pagoNoMes;
+    servicosPendentes += pendenteNoMes;
+    if (pendenteNoMes > 0) {
+      servicosPendentesQuantidade += 1;
+    }
+  }
+
+  const saldoPessoa = buildPessoaSaldoResumo(saldoMovimentacoes);
+  const consolidadoPendente = round2(
+    comigoPendente
+    + euDevoPendente
+    + comprasPendentePessoa
+    + servicosPendentes,
+  );
+
+  const totais: PessoaResumo["totais"] = {
+    dividas: {
+      comigo: {
+        pendente: round2(comigoPendente),
+        pago: round2(comigoPago),
+        vencidas: comigoVencidas,
+        quantidadePendentes: comigoQuantidadePendentes,
+      },
+      euDevo: {
+        pendente: round2(euDevoPendente),
+        pago: round2(euDevoPago),
+        vencidas: euDevoVencidas,
+        quantidadePendentes: euDevoQuantidadePendentes,
+      },
+      pagueiDoMeuBolso: {
+        pendente: comprasPendentePessoa,
+        pago: comprasPagoPessoa,
+        parcelasPendentes: parcelasPendentesPessoa,
+      },
+    },
+    comprasVinculadas: {
+      pendentePessoa: comprasPendentePessoa,
+      pagoPessoa: comprasPagoPessoa,
+      parcelasPendentesPessoa,
+      comprasComParcelasReais,
+      comprasEmFallbackLegado,
+    },
+    servicosMesAtual: {
+      escopo: "mes_atual",
+      mesReferencia,
+      pendente: round2(servicosPendentes),
+      pago: round2(servicosPagos),
+      pendentesQuantidade: servicosPendentesQuantidade,
+      totalVinculos: servicoPessoas.length,
+    },
+    saldoPessoa,
+    consolidadoPendente,
+  };
+
+  const alertas: PessoaResumo["alertas"] = {
+    comprasAtrasadas,
+    parcelasVencidasPessoa,
+    servicosPendentes: servicosPendentesQuantidade,
+    parcelasPendentesPessoa,
+  };
+
+  const proximosRecebimentos = dividas.filter((divida) => (
+    divida.tipo === "receber"
+    && isOutstanding(divida.status)
+    && !isOverdue(divida.dataVencimento, todayIso)
+  )).length;
+
+  return {
+    totais,
+    alertas,
+    totalDeve: round2(euDevoPendente + comprasPendentePessoa + servicosPendentes),
+    totalReceber: round2(comigoPendente),
+    saldoAtual: saldoPessoa.saldoAtual,
+    servicosMesAtual: round2(servicosPendentes),
+    movimentacoes: saldoPessoa.movimentacoes,
+    proximosRecebimentos,
+  };
+}
+
 export class PessoasService {
   constructor(private readonly storage: IStorage) {}
 
   async list(userId: string) {
     return this.storage.getPessoas(userId);
+  }
+
+  async listWithResumo(userId: string) {
+    const [
+      pessoas,
+      dividas,
+      comprasCartao,
+      parcelasCompra,
+      servicoPessoas,
+      servicoPagamentos,
+      saldoMovimentacoes,
+    ] = await Promise.all([
+      this.storage.getPessoas(userId),
+      this.storage.getDividas(userId),
+      this.storage.getComprasCartao(userId),
+      this.storage.getParcelasCompraByUser(userId),
+      this.storage.getServicoPessoas(userId),
+      this.storage.getServicoPagamentos(userId),
+      this.storage.getPessoaSaldoMovimentacoes(userId),
+    ]);
+
+    const dividasByPessoa = new Map<string, Divida[]>();
+    for (const divida of dividas) {
+      const rows = dividasByPessoa.get(divida.pessoaId) ?? [];
+      rows.push(divida);
+      dividasByPessoa.set(divida.pessoaId, rows);
+    }
+
+    const comprasByPessoa = new Map<string, CompraCartao[]>();
+    for (const compra of comprasCartao) {
+      if (!compra.pessoaId) continue;
+      const rows = comprasByPessoa.get(compra.pessoaId) ?? [];
+      rows.push(compra);
+      comprasByPessoa.set(compra.pessoaId, rows);
+    }
+
+    const parcelasCompraByCompraId = new Map<string, ParcelaCompra[]>();
+    for (const parcela of parcelasCompra) {
+      const rows = parcelasCompraByCompraId.get(parcela.compraCartaoId) ?? [];
+      rows.push(parcela);
+      parcelasCompraByCompraId.set(parcela.compraCartaoId, rows);
+    }
+
+    const servicoPessoasByPessoa = new Map<string, ServicoPessoa[]>();
+    for (const servicoPessoa of servicoPessoas) {
+      const rows = servicoPessoasByPessoa.get(servicoPessoa.pessoaId) ?? [];
+      rows.push(servicoPessoa);
+      servicoPessoasByPessoa.set(servicoPessoa.pessoaId, rows);
+    }
+
+    const servicoPagamentosByServicoPessoaId = new Map<string, ServicoPagamento[]>();
+    for (const pagamento of servicoPagamentos) {
+      const rows = servicoPagamentosByServicoPessoaId.get(pagamento.servicoPessoaId) ?? [];
+      rows.push(pagamento);
+      servicoPagamentosByServicoPessoaId.set(pagamento.servicoPessoaId, rows);
+    }
+
+    const saldoMovimentacoesByPessoa = new Map<string, PessoaSaldoMovimentacao[]>();
+    for (const movimentacao of saldoMovimentacoes) {
+      const rows = saldoMovimentacoesByPessoa.get(movimentacao.pessoaId) ?? [];
+      rows.push(movimentacao);
+      saldoMovimentacoesByPessoa.set(movimentacao.pessoaId, rows);
+    }
+
+    return pessoas.map((pessoa) => {
+      const resumo = computePessoaResumo({
+        dividas: dividasByPessoa.get(pessoa.id) ?? [],
+        comprasVinculadas: comprasByPessoa.get(pessoa.id) ?? [],
+        parcelasCompraByCompraId,
+        servicoPessoas: servicoPessoasByPessoa.get(pessoa.id) ?? [],
+        servicoPagamentosByServicoPessoaId,
+        saldoMovimentacoes: saldoMovimentacoesByPessoa.get(pessoa.id) ?? [],
+      });
+
+      return {
+        ...pessoa,
+        resumo: {
+          totalDeve: resumo.totalDeve,
+          totalReceber: resumo.totalReceber,
+          saldoAtual: resumo.saldoAtual,
+          servicosMesAtual: resumo.servicosMesAtual,
+          movimentacoes: resumo.movimentacoes,
+          proximosRecebimentos: resumo.proximosRecebimentos,
+          totais: resumo.totais,
+          alertas: resumo.alertas,
+        },
+      };
+    });
   }
 
   async create(userId: string, data: PessoaBodyInput) {
@@ -828,158 +1105,42 @@ export class PessoasService {
     const pessoa = await this.storage.getPessoa(pessoaId, userId);
     if (!pessoa) return null;
 
-    const todayIso = format(new Date(), "yyyy-MM-dd");
-    const mesReferencia = format(new Date(), "yyyy-MM");
-
-    const [dividas, comprasVinculadas, servicoPessoas, servicoPagamentos, saldoMovimentacoes] = await Promise.all([
+    const [dividas, comprasVinculadas, parcelasCompra, servicoPessoas, servicoPagamentos, saldoMovimentacoes] = await Promise.all([
       this.storage.getDividasByPessoa(pessoaId, userId),
       this.storage.getComprasByPessoa(pessoaId, userId),
+      this.storage.getParcelasCompraByUser(userId),
       this.storage.getServicoPessoasByPessoa(pessoaId, userId),
       this.storage.getServicoPagamentos(userId),
       this.storage.getPessoaSaldoMovimentacoesByPessoa(pessoaId, userId),
     ]);
 
-    let comigoPendente = 0;
-    let comigoPago = 0;
-    let comigoVencidas = 0;
-    let comigoQuantidadePendentes = 0;
-    let euDevoPendente = 0;
-    let euDevoPago = 0;
-    let euDevoVencidas = 0;
-    let euDevoQuantidadePendentes = 0;
-
-    for (const divida of dividas) {
-      const valor = toMoneyNumber(divida.valor);
-      const pago = isPaid(divida.status);
-      const vencida = !pago && isOverdue(divida.dataVencimento, todayIso);
-      const isComigo = divida.tipo === "receber";
-
-      if (isComigo) {
-        if (pago) {
-          comigoPago += valor;
-        } else {
-          comigoPendente += valor;
-          comigoQuantidadePendentes += 1;
-          if (vencida) comigoVencidas += 1;
-        }
-      } else if (pago) {
-        euDevoPago += valor;
-      } else {
-        euDevoPendente += valor;
-        euDevoQuantidadePendentes += 1;
-        if (vencida) euDevoVencidas += 1;
-      }
+    const parcelasCompraByCompraId = new Map<string, ParcelaCompra[]>();
+    for (const parcela of parcelasCompra) {
+      const rows = parcelasCompraByCompraId.get(parcela.compraCartaoId) ?? [];
+      rows.push(parcela);
+      parcelasCompraByCompraId.set(parcela.compraCartaoId, rows);
     }
 
-    const comprasResumo = await Promise.all(
-      comprasVinculadas.map((compra) => summarizeCompraPessoa(
-        this.storage,
-        compra,
-        userId,
-        todayIso,
-        saldoMovimentacoes,
-      )),
-    );
-
-    const comprasPendentePessoa = round2(
-      comprasResumo.reduce((sum, item) => sum + item.pendentePessoa, 0),
-    );
-    const comprasPagoPessoa = round2(
-      comprasResumo.reduce((sum, item) => sum + item.pagoPessoa, 0),
-    );
-    const parcelasPendentesPessoa = comprasResumo.reduce((sum, item) => sum + item.parcelasPendentesPessoa, 0);
-    // Semantica unica:
-    // - parcela vencida: parcela pendente com vencimento passado.
-    // - compra atrasada: compra com pelo menos uma parcela vencida.
-    const parcelasVencidasPessoa = comprasResumo.reduce((sum, item) => sum + item.parcelasAtrasadasPessoa, 0);
-    const comprasAtrasadas = comprasResumo.filter((item) => item.compraAtrasada).length;
-    const comprasComParcelasReais = comprasResumo.filter((item) => item.usaParcelasReais).length;
-    const comprasEmFallbackLegado = comprasResumo.length - comprasComParcelasReais;
-
-    let servicosPendentes = 0;
-    let servicosPagos = 0;
-    let servicosPendentesQuantidade = 0;
-
-    for (const servicoPessoa of servicoPessoas) {
-      const valorDevidoMes = toMoneyNumber(servicoPessoa.valorDevido);
-      const pagamentosDoServico = servicoPagamentos.filter((pagamento) =>
-        pagamento.servicoPessoaId === servicoPessoa.id,
-      );
-      const contextoMes = getPagamentoServicoMesContexto(pagamentosDoServico, mesReferencia);
-      const jaPagoNoMes = contextoMes && normalizeStatus(contextoMes.status) === "pago";
-
-      if (jaPagoNoMes) {
-        servicosPagos += valorDevidoMes;
-        continue;
-      }
-
-      // Semantica mensal: abatimento por saldo de servico acumula no ledger por servicoPessoaId+mes.
-      const abatidoSaldoMes = getServicoMesSaldoAbatido(saldoMovimentacoes, servicoPessoa.id, mesReferencia);
-      const pagoNoMes = Math.min(valorDevidoMes, abatidoSaldoMes);
-      const pendenteNoMes = Math.max(0, valorDevidoMes - pagoNoMes);
-
-      servicosPagos += pagoNoMes;
-      servicosPendentes += pendenteNoMes;
-      if (pendenteNoMes > 0) {
-        servicosPendentesQuantidade += 1;
-      }
+    const servicoPagamentosByServicoPessoaId = new Map<string, ServicoPagamento[]>();
+    for (const pagamento of servicoPagamentos) {
+      const rows = servicoPagamentosByServicoPessoaId.get(pagamento.servicoPessoaId) ?? [];
+      rows.push(pagamento);
+      servicoPagamentosByServicoPessoaId.set(pagamento.servicoPessoaId, rows);
     }
 
-    const saldoPessoa = buildPessoaSaldoResumo(saldoMovimentacoes);
-
-    const consolidadoPendente = round2(
-      comigoPendente
-      + euDevoPendente
-      + comprasPendentePessoa
-      + servicosPendentes,
-    );
+    const resumo = computePessoaResumo({
+      dividas,
+      comprasVinculadas,
+      parcelasCompraByCompraId,
+      servicoPessoas,
+      servicoPagamentosByServicoPessoaId,
+      saldoMovimentacoes,
+    });
 
     return {
       pessoa,
-      totais: {
-        dividas: {
-          comigo: {
-            pendente: round2(comigoPendente),
-            pago: round2(comigoPago),
-            vencidas: comigoVencidas,
-            quantidadePendentes: comigoQuantidadePendentes,
-          },
-          euDevo: {
-            pendente: round2(euDevoPendente),
-            pago: round2(euDevoPago),
-            vencidas: euDevoVencidas,
-            quantidadePendentes: euDevoQuantidadePendentes,
-          },
-          pagueiDoMeuBolso: {
-            pendente: comprasPendentePessoa,
-            pago: comprasPagoPessoa,
-            parcelasPendentes: parcelasPendentesPessoa,
-          },
-        },
-        comprasVinculadas: {
-          pendentePessoa: comprasPendentePessoa,
-          pagoPessoa: comprasPagoPessoa,
-          parcelasPendentesPessoa,
-          comprasComParcelasReais,
-          comprasEmFallbackLegado,
-        },
-        servicosMesAtual: {
-          escopo: "mes_atual",
-          mesReferencia,
-          pendente: round2(servicosPendentes),
-          pago: round2(servicosPagos),
-          pendentesQuantidade: servicosPendentesQuantidade,
-          totalVinculos: servicoPessoas.length,
-        },
-        saldoPessoa,
-        consolidadoPendente,
-      },
-      alertas: {
-        comprasAtrasadas,
-        parcelasVencidasPessoa,
-        servicosPendentes: servicosPendentesQuantidade,
-        parcelasPendentesPessoa,
-      },
+      totais: resumo.totais,
+      alertas: resumo.alertas,
     };
   }
 }

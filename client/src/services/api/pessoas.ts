@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import type { Pessoa } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 
 export type PessoaPayload = {
@@ -209,6 +210,21 @@ export type PessoaResumo = {
   };
 };
 
+export type PessoaResumoEmLote = {
+  totalDeve: number;
+  totalReceber: number;
+  saldoAtual: number;
+  servicosMesAtual: number;
+  movimentacoes: number;
+  proximosRecebimentos: number;
+  totais: PessoaResumo["totais"];
+  alertas: PessoaResumo["alertas"];
+};
+
+export type PessoaWithResumo = Pessoa & {
+  resumo?: PessoaResumoEmLote;
+};
+
 export async function createPessoa(payload: PessoaPayload): Promise<void> {
   await apiRequest("POST", "/api/pessoas", payload);
 }
@@ -282,6 +298,11 @@ export async function listTimelinePagamentosByPessoa(pessoaId: string): Promise<
 export async function getPessoaResumo(pessoaId: string): Promise<PessoaResumo> {
   const res = await apiRequest("GET", `/api/pessoas/${pessoaId}/resumo`);
   return (await res.json()) as PessoaResumo;
+}
+
+export async function listPessoasWithResumo(): Promise<PessoaWithResumo[]> {
+  const res = await apiRequest("GET", "/api/pessoas?includeResumo=true");
+  return (await res.json()) as PessoaWithResumo[];
 }
 
 export async function listPessoaSaldoMovimentacoesByUser(): Promise<PessoaSaldoMovimentacao[]> {

@@ -215,6 +215,11 @@ export function createPessoasController(service: PessoasService) {
 
     list: async (req: Request, res: Response) => {
       const userId = getUserId(req);
+      const includeResumoRaw = String(req.query.includeResumo ?? "").trim().toLowerCase();
+      const includeResumo = includeResumoRaw === "true" || includeResumoRaw === "1";
+      if (includeResumo) {
+        return res.json(await service.listWithResumo(userId));
+      }
       return res.json(await service.list(userId));
     },
 
