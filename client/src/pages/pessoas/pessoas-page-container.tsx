@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +19,12 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { usePessoas } from "@/hooks/usePessoas";
+import { PessoasPageHeader } from "@/components/pessoas/PessoasPageHeader";
+import { PessoasSummarySection } from "@/components/pessoas/PessoasSummarySection";
+import { PessoasFilterBar } from "@/components/pessoas/PessoasFilterBar";
+import { PessoasGrid } from "@/components/pessoas/PessoasGrid";
+import { PessoasEmptyState } from "@/components/pessoas/PessoasEmptyState";
+import { PessoasDialogs } from "@/components/pessoas/PessoasDialogs";
 import {
   buildPlanLimitFriendlyMessage,
   parsePlanLimitError,
@@ -27,8 +32,8 @@ import {
 import { CompraCartaoSearchPicker } from "@/components/compra-cartao-search-picker";
 import { PaymentTimeline } from "@/pages/pessoas/components/payment-timeline";
 import {
-  Plus, Users, Phone, Trash2, Search, Receipt, Check,
-  Clock, ArrowUpRight, ArrowDownRight, Pencil, CreditCard, Repeat, ChevronRight, AlertTriangle, ExternalLink, RotateCcw, Wallet, ArrowUpCircle, ArrowDownCircle,
+  Plus, Trash2, Receipt, Check,
+  ArrowUpRight, ArrowDownRight, CreditCard, Repeat, AlertTriangle, ExternalLink, RotateCcw, Wallet, ArrowUpCircle, ArrowDownCircle,
 } from "lucide-react";
 import { useUIPreferences } from "@/context/ui-preferences";
 import type { Pessoa, Divida, CompraCartao, Cartao, ServicoPessoa, ServicoPagamento, Servico } from "@shared/schema";
@@ -278,413 +283,152 @@ export default function PessoasPage() {
     setVisiblePessoasCount(prefs.mobileMode ? 12 : 18);
   }, [prefs.mobileMode, search, filterTipo]);
 
+  const handleAddDividaFromPessoa = (pessoa: Pessoa) => {
+    setSelectedPessoa(pessoa);
+    setDividaForm({
+      tipo: pessoa.tipo === "me_deve" ? "receber" : "pagar",
+      valor: "",
+      dataVencimento: "",
+      descricao: "",
+      formaPagamento: "pix",
+    });
+    setOpenDivida(true);
+  };
+
+  const handleEditPessoa = (pessoa: Pessoa) => {
+    setEditingPessoa(pessoa);
+    setEditForm({
+      nome: pessoa.nome,
+      tipo: pessoa.tipo,
+      telefone: pessoa.telefone || "",
+      observacao: pessoa.observacao || "",
+    });
+  };
+
+  const handleDeletePessoa = (pessoa: Pessoa) => {
+    deleteMutation.mutate(pessoa.id, {
+      onSuccess: () => {
+        if (historyPessoa?.id === pessoa.id) {
+          setHistoryPessoa(null);
+        }
+        toast({ title: "Pessoa removida" });
+      },
+      onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+    });
+  };
+
   return (
     <div className="app-page-shell app-section-stack" data-testid="pessoas-page">
-      <div className="fintech-page-header">
-        <div className="fintech-page-header-row">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Pessoas</h1>
-            <p className="text-sm text-muted-foreground">Controle dívidas, compras vinculadas e serviços por pessoa.</p>
-          </div>
-          <Dialog open={openPessoa} onOpenChange={setOpenPessoa}>
-          <DialogTrigger asChild>
-            <Button className="h-9 w-full px-4 sm:w-auto" data-testid="button-add-pessoa">
-              <Plus className="w-4 h-4 mr-2" /> Adicionar pessoa
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Nova Pessoa</DialogTitle>
-            </DialogHeader>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                createPessoaMutation.mutate(pessoaForm, {
-                  onSuccess: () => {
-                    setOpenPessoa(false);
-                    setPessoaForm({ nome: "", tipo: "me_deve", telefone: "", observacao: "" });
-                    toast({ title: "Pessoa adicionada" });
-                  },
-                  onError: (err: Error) => {
-                    const planLimitError = parsePlanLimitError(err);
-                    if (planLimitError) {
-                      toast({
-                        title: "Limite do plano Free atingido",
-                        description: buildPlanLimitFriendlyMessage(planLimitError),
-                        variant: "destructive",
-                      });
-                      return;
-                    }
+      <PessoasPageHeader onAddPessoa={() => setOpenPessoa(true)} />
 
-                    toast({ title: "Erro", description: err.message, variant: "destructive" });
-                  },
-                });
-              }}
-              className="space-y-4"
-            >
-              <div className="space-y-2">
-                <Label>Nome</Label>
-                <Input
-                  data-testid="input-pessoa-nome"
-                  value={pessoaForm.nome}
-                  onChange={(e) => setPessoaForm({ ...pessoaForm, nome: e.target.value })}
-                  placeholder="Nome da pessoa"
-                  required
-                />
-                {duplicatePessoa && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400" data-testid="warning-duplicate-pessoa">
-                    Atenção: já existe uma pessoa com nome similar: <strong>{duplicatePessoa.nome}</strong>
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label>Tipo</Label>
-                <Select value={pessoaForm.tipo} onValueChange={(v) => setPessoaForm({ ...pessoaForm, tipo: v as PessoaKind })}>
-                  <SelectTrigger data-testid="select-pessoa-tipo"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="me_deve">Me deve</SelectItem>
-                    <SelectItem value="eu_devo">Eu devo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Telefone (opcional)</Label>
-                <Input
-                  data-testid="input-pessoa-telefone"
-                  value={pessoaForm.telefone}
-                  onChange={(e) => setPessoaForm({ ...pessoaForm, telefone: e.target.value })}
-                  placeholder="(00) 00000-0000"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Observacao</Label>
-                <Textarea
-                  data-testid="input-pessoa-obs"
-                  value={pessoaForm.observacao}
-                  onChange={(e) => setPessoaForm({ ...pessoaForm, observacao: e.target.value })}
-                  placeholder="Notas sobre essa pessoa"
-                />
-              </div>
-              <Button type="submit" className="w-full" data-testid="button-save-pessoa" disabled={createPessoaMutation.isPending}>
-                {createPessoaMutation.isPending ? "Salvando..." : "Salvar"}
-              </Button>
-            </form>
-          </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-border/60 bg-card p-2.5 sm:p-3.5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative w-full min-w-0 lg:max-w-md lg:flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              data-testid="input-search-pessoa"
-              className="h-9 rounded-xl pl-9"
-              placeholder="Buscar por nome..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <Tabs value={filterTipo} onValueChange={setFilterTipo} className="w-full lg:w-auto">
-            <TabsList className="mobile-tabs-scroll h-8 w-full justify-start rounded-lg lg:w-auto">
-              <TabsTrigger value="todos" className="h-7 px-2.5 text-xs" data-testid="filter-pessoas-todos">Todos</TabsTrigger>
-              <TabsTrigger value="me_deve" className="h-7 px-2.5 text-xs" data-testid="filter-pessoas-me-devem">Me devem</TabsTrigger>
-              <TabsTrigger value="eu_devo" className="h-7 px-2.5 text-xs" data-testid="filter-pessoas-eu-devo">Eu devo</TabsTrigger>
-              <TabsTrigger value="atrasados" className="h-7 px-2.5 text-xs" data-testid="filter-pessoas-atrasados">Atrasados</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-      </div>
+      <PessoasFilterBar
+        search={search}
+        filterTipo={filterTipo}
+        onSearchChange={setSearch}
+        onFilterChange={setFilterTipo}
+      />
 
       {filteredByStatus.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border/60 bg-card/70 p-8 text-center" data-testid="empty-pessoas">
-          <Users className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
-          <p className="text-lg font-semibold">Nenhuma pessoa cadastrada ainda</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Adicione alguém para controlar dívidas, compras compartilhadas e serviços.
-          </p>
-          <Button
-            className="mt-4"
-            onClick={() => setOpenPessoa(true)}
-            data-testid="button-empty-add-pessoa"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Adicionar pessoa
-          </Button>
-        </div>
-      ) : prefs.mobileMode ? (
-        <div className="space-y-2.5">
-          {visiblePessoas.map((p) => {
-            const stats = getPessoaStats(p.id);
-            const resumo = getPessoaResumoConsolidado(p.id);
-            const isMeDeve = p.tipo === "me_deve";
-            const hasAtraso = resumo.alertas.comprasAtrasadas > 0 || resumo.dividas.comigo.vencidas > 0;
-            const dividasPendentesValor = (resumo.dividas.comigo.pendente ?? 0) + (resumo.dividas.euDevo.pendente ?? 0);
-            const comprasPendentesValor = resumo.comprasVinculadas.pendentePessoa ?? 0;
-            const servicosPendentesValor = resumo.servicosMesAtual.pendente ?? 0;
-            return (
-              <div
-                key={p.id}
-                className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm"
-                data-testid={`card-pessoa-${p.id}`}
-              >
-                <div className="space-y-2.5 px-3.5 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
-                        <span className="text-sm font-bold text-primary">
-                          {p.nome.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-base font-semibold">{p.nome}</p>
-                        {p.telefone && (
-                          <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-                            <Phone className="h-3 w-3" /> {p.telefone}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1 text-right">
-                      <Badge variant={isMeDeve ? "default" : "destructive"} className="h-5 rounded-full px-2 py-0 text-[10px] font-medium">
-                        {isMeDeve ? "Me deve" : "Eu devo"}
-                      </Badge>
-                      <p className="text-[clamp(18px,5vw,22px)] font-semibold leading-[1.1] tracking-tight">
-                        {formatCurrencyBRL(resumo.consolidadoPendente)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-muted-foreground">
-                    Dívidas {formatCurrencyBRL(dividasPendentesValor)} • Compras {formatCurrencyBRL(comprasPendentesValor)} • Serviços {formatCurrencyBRL(servicosPendentesValor)}
-                  </p>
-
-                  <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                    <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-400">
-                      Saldo + {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}
-                    </span>
-                    <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                      {stats.total} dívida(s)
-                    </span>
-                  </div>
-
-                  {hasAtraso && (
-                    <div className="rounded-md border border-red-200/70 bg-red-50/70 px-2.5 py-1.5 text-[11px] text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
-                      <div className="flex items-center gap-2">
-                        <span className="h-4 w-1 rounded-full bg-red-500" />
-                        <span className="truncate">
-                          Pendência encontrada
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="h-px bg-border/60" />
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/60 bg-background px-3 text-xs font-medium text-primary transition-colors hover:bg-muted/50"
-                      onClick={() => {
-                        setSelectedPessoa(p);
-                        setDividaForm({
-                          tipo: p.tipo === "me_deve" ? "receber" : "pagar",
-                          valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
-                        });
-                        setOpenDivida(true);
-                      }}
-                      data-testid={`button-add-divida-pessoa-${p.id}`}
-                    >
-                      <Plus className="h-3.5 w-3.5" /> Nova dívida
-                    </button>
-                    <button
-                      className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50"
-                      onClick={() => setHistoryPessoa(p)}
-                      data-testid={`button-history-pessoa-${p.id}`}
-                    >
-                      <Clock className="h-3.5 w-3.5" /> Histórico
-                    </button>
-                    <div className="ml-auto flex items-center gap-1">
-                      <button
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/50"
-                        onClick={() => {
-                          setEditingPessoa(p);
-                          setEditForm({ nome: p.nome, tipo: p.tipo, telefone: p.telefone || "", observacao: p.observacao || "" });
-                        }}
-                        data-testid={`button-edit-pessoa-${p.id}`}
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-950/30"
-                        onClick={() =>
-                          deleteMutation.mutate(p.id, {
-                            onSuccess: () => {
-                              if (historyPessoa?.id === p.id) setHistoryPessoa(null);
-                              toast({ title: "Pessoa removida" });
-                            },
-                            onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
-                          })
-                        }
-                        data-testid={`button-delete-pessoa-${p.id}`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <PessoasEmptyState onAddPessoa={() => setOpenPessoa(true)} />
       ) : (
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {visiblePessoas.map((p) => {
-            const stats = getPessoaStats(p.id);
-            const resumo = getPessoaResumoConsolidado(p.id);
-            const isMeDeve = p.tipo === "me_deve";
-            const parcelasVencidasPessoa = resumo.alertas.parcelasVencidasPessoa ?? resumo.alertas.comprasAtrasadas;
-            const hasAtraso = resumo.alertas.comprasAtrasadas > 0 || resumo.dividas.comigo.vencidas > 0;
-            const dividasPendentesValor = (resumo.dividas.comigo.pendente ?? 0) + (resumo.dividas.euDevo.pendente ?? 0);
-            const comprasPendentesValor = resumo.comprasVinculadas.pendentePessoa ?? 0;
-            const servicosPendentesValor = resumo.servicosMesAtual.pendente ?? 0;
-            const comprasVinculadas = resumo.comprasVinculadas.comprasComParcelasReais + resumo.comprasVinculadas.comprasEmFallbackLegado;
-            return (
-              <Card
-                key={p.id}
-                className="rounded-2xl border border-border/60 bg-card shadow-sm"
-                data-testid={`card-pessoa-${p.id}`}
-              >
-                <CardContent className="flex h-full min-h-[200px] flex-col gap-3 p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
-                        <span className="text-sm font-bold text-primary">
-                          {p.nome.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-lg font-semibold">{p.nome}</p>
-                        {p.telefone && (
-                          <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                            <Phone className="h-3 w-3" /> {p.telefone}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="min-w-[132px] text-right flex flex-col items-end justify-center gap-2">
-                      <Badge variant={isMeDeve ? "default" : "destructive"} className="h-6 px-2.5 text-[11px]">
-                        {isMeDeve ? "Me deve" : "Eu devo"}
-                      </Badge>
-                      <p className="text-2xl leading-none font-bold">
-                        {formatCurrencyBRL(resumo.consolidadoPendente)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-muted-foreground">
-                    Dívidas {formatCurrencyBRL(dividasPendentesValor)} • Compras {formatCurrencyBRL(comprasPendentesValor)} • Serviços {formatCurrencyBRL(servicosPendentesValor)}
-                  </p>
-
-                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                    <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-400">
-                      Saldo + {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}
-                    </span>
-                    <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                      {stats.total} dívida(s)
-                    </span>
-                    {comprasVinculadas > 0 && (
-                      <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                        Compras vinculadas {comprasVinculadas}
-                      </span>
-                    )}
-                  </div>
-
-                  {hasAtraso && (
-                    <div className="rounded-xl border border-red-300/40 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
-                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span className="truncate">
-                          {resumo.alertas.comprasAtrasadas} compra(s) atrasada(s) • {parcelasVencidasPessoa} parcela(s) vencida(s)
-                      </span>
-                    </div>
-                  )}
-
-                  <Separator />
-
-                  <div className="mt-auto grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:items-center">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 w-full sm:flex-1 sm:min-w-[130px]"
-                      onClick={() => {
-                        setSelectedPessoa(p);
-                        setDividaForm({
-                          tipo: p.tipo === "me_deve" ? "receber" : "pagar",
-                          valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
-                        });
-                        setOpenDivida(true);
-                      }}
-                      data-testid={`button-add-divida-pessoa-${p.id}`}
-                    >
-                      <Plus className="mr-1 h-3.5 w-3.5" /> Nova dívida
-                    </Button>
-                    <button
-                      className="inline-flex h-8 w-full items-center justify-center gap-1 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/50 sm:flex-1 sm:min-w-[120px] sm:justify-start"
-                      onClick={() => setHistoryPessoa(p)}
-                      data-testid={`button-history-pessoa-${p.id}`}
-                    >
-                      <Clock className="h-3.5 w-3.5" /> Histórico
-                    </button>
-                    <div className="col-span-2 ml-auto flex items-center justify-end gap-1 sm:col-span-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => {
-                          setEditingPessoa(p);
-                          setEditForm({ nome: p.nome, tipo: p.tipo, telefone: p.telefone || "", observacao: p.observacao || "" });
-                        }}
-                        data-testid={`button-edit-pessoa-${p.id}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() =>
-                          deleteMutation.mutate(p.id, {
-                            onSuccess: () => {
-                              if (historyPessoa?.id === p.id) setHistoryPessoa(null);
-                              toast({ title: "Pessoa removida" });
-                            },
-                            onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
-                          })
-                        }
-                        data-testid={`button-delete-pessoa-${p.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+        <PessoasGrid
+          pessoas={visiblePessoas}
+          mobileMode={prefs.mobileMode}
+          getPessoaResumoConsolidado={getPessoaResumoConsolidado}
+          getPessoaStats={getPessoaStats}
+          onAddDivida={handleAddDividaFromPessoa}
+          onOpenHistory={setHistoryPessoa}
+          onEdit={handleEditPessoa}
+          onDelete={handleDeletePessoa}
+        />
       )}
 
-      {hasMorePessoas && (
-        <div className="flex justify-center">
-          <Button
-            variant="outline"
-            onClick={() => setVisiblePessoasCount((prev) => prev + (prefs.mobileMode ? 8 : 12))}
-            data-testid="button-load-more-pessoas"
+      <PessoasSummarySection
+        hasMorePessoas={hasMorePessoas}
+        onLoadMore={() => setVisiblePessoasCount((prev) => prev + (prefs.mobileMode ? 8 : 12))}
+      />
+
+      <PessoasDialogs>
+      <Dialog open={openPessoa} onOpenChange={setOpenPessoa}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nova Pessoa</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              createPessoaMutation.mutate(pessoaForm, {
+                onSuccess: () => {
+                  setOpenPessoa(false);
+                  setPessoaForm({ nome: "", tipo: "me_deve", telefone: "", observacao: "" });
+                  toast({ title: "Pessoa adicionada" });
+                },
+                onError: (err: Error) => {
+                  const planLimitError = parsePlanLimitError(err);
+                  if (planLimitError) {
+                    toast({
+                      title: "Limite do plano Free atingido",
+                      description: buildPlanLimitFriendlyMessage(planLimitError),
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+
+                  toast({ title: "Erro", description: err.message, variant: "destructive" });
+                },
+              });
+            }}
+            className="space-y-4"
           >
-            Carregar mais pessoas
-          </Button>
-        </div>
-      )}
+            <div className="space-y-2">
+              <Label>Nome</Label>
+              <Input
+                data-testid="input-pessoa-nome"
+                value={pessoaForm.nome}
+                onChange={(e) => setPessoaForm({ ...pessoaForm, nome: e.target.value })}
+                placeholder="Nome da pessoa"
+                required
+              />
+              {duplicatePessoa && (
+                <p className="text-xs text-amber-600 dark:text-amber-400" data-testid="warning-duplicate-pessoa">
+                  Atenção: já existe uma pessoa com nome similar: <strong>{duplicatePessoa.nome}</strong>
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Tipo</Label>
+              <Select value={pessoaForm.tipo} onValueChange={(v) => setPessoaForm({ ...pessoaForm, tipo: v as PessoaKind })}>
+                <SelectTrigger data-testid="select-pessoa-tipo"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="me_deve">Me deve</SelectItem>
+                  <SelectItem value="eu_devo">Eu devo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Telefone (opcional)</Label>
+              <Input
+                data-testid="input-pessoa-telefone"
+                value={pessoaForm.telefone}
+                onChange={(e) => setPessoaForm({ ...pessoaForm, telefone: e.target.value })}
+                placeholder="(00) 00000-0000"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Observacao</Label>
+              <Textarea
+                data-testid="input-pessoa-obs"
+                value={pessoaForm.observacao}
+                onChange={(e) => setPessoaForm({ ...pessoaForm, observacao: e.target.value })}
+                placeholder="Notas sobre essa pessoa"
+              />
+            </div>
+            <Button type="submit" className="w-full" data-testid="button-save-pessoa" disabled={createPessoaMutation.isPending}>
+              {createPessoaMutation.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!editingPessoa} onOpenChange={(v) => { if (!v) setEditingPessoa(null); }}>
         <DialogContent>
@@ -1941,6 +1685,7 @@ export default function PessoasPage() {
           )}
         </SheetContent>
       </Sheet>
+      </PessoasDialogs>
     </div>
   );
 }
