@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search } from "lucide-react";
 
-type CartoesTab = "resumo" | "fatura" | "compras" | "parcelas" | "limite";
+type CartoesTab = "resumo" | "fatura" | "compras";
 
 type CartoesFilterBarProps = {
   cartoesTab: CartoesTab;

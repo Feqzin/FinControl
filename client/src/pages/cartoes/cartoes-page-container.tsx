@@ -399,7 +399,7 @@ export default function CartoesPage() {
   };
 
   const compraSearchNormalized = compraSearch.trim().toLowerCase();
-  const activeCartoesTab = cartoesTab === "limite"
+  const activeCartoesTab: "resumo" | "fatura" | "compras" = cartoesTab === "limite"
     ? "resumo"
     : cartoesTab === "parcelas"
       ? "compras"

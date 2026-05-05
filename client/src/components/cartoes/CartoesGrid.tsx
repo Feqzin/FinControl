@@ -7,7 +7,7 @@ import { Trash2 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
 import { CartaoCard } from "@/components/cartoes/CartaoCard";
 
-type CartoesTab = "resumo" | "fatura" | "compras" | "parcelas" | "limite";
+type CartoesTab = "resumo" | "fatura" | "compras";
 
 type CartoesGridProps = {
   cartoes: Cartao[];
@@ -23,9 +23,9 @@ type CartoesGridProps = {
 };
 
 const INITIAL_VISIBLE_ITEMS = 8;
-const VISIBLE_STEP = 8;
+const ITEMS_PER_PAGE = INITIAL_VISIBLE_ITEMS;
 
-type VisibleByCard = Record<string, number>;
+type PageByCard = Record<string, number>;
 
 export function CartoesGrid({
   cartoes,
@@ -39,18 +39,19 @@ export function CartoesGrid({
   onOpenCompras,
   onDeleteCompra,
 }: CartoesGridProps) {
-  const [visibleFaturaByCard, setVisibleFaturaByCard] = useState<VisibleByCard>({});
+  const [faturaPageByCard, setFaturaPageByCard] = useState<PageByCard>({});
 
   useEffect(() => {
     if (cartoesTab !== "fatura") return;
-    setVisibleFaturaByCard((prev) => {
-      const next: VisibleByCard = {};
+    setFaturaPageByCard((prev) => {
+      const next: PageByCard = {};
       let changed = false;
       for (const cartao of cartoes) {
         const total = getFilteredCardCompras(cartao.id).length;
-        const nextValue = Math.min(prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS, Math.max(total, INITIAL_VISIBLE_ITEMS));
+        const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
+        const nextValue = Math.min(prev[cartao.id] ?? 1, totalPages);
         next[cartao.id] = nextValue;
-        if ((prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS) !== nextValue) {
+        if ((prev[cartao.id] ?? 1) !== nextValue) {
           changed = true;
         }
       }
@@ -63,9 +64,7 @@ export function CartoesGrid({
 
   if (cartoes.length === 0 || cartoesTab === "compras") return null;
 
-  const normalizedTab = cartoesTab === "limite" || cartoesTab === "parcelas" ? "resumo" : cartoesTab;
-
-  if (normalizedTab === "resumo") {
+  if (cartoesTab === "resumo") {
     return (
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {cartoes.map((cartao) => {
@@ -144,18 +143,25 @@ export function CartoesGrid({
     );
   }
 
-  if (normalizedTab === "fatura") {
+  if (cartoesTab === "fatura") {
     return (
       <div className="space-y-3">
         {cartoes.map((cartao) => {
           const comprasFiltradas = getFilteredCardCompras(cartao.id);
-          const visibleCount = Math.min(
-            visibleFaturaByCard[cartao.id] ?? INITIAL_VISIBLE_ITEMS,
-            comprasFiltradas.length,
+          const currentPage = faturaPageByCard[cartao.id] ?? 1;
+          const totalPages = Math.max(1, Math.ceil(comprasFiltradas.length / ITEMS_PER_PAGE));
+          const safePage = Math.min(currentPage, totalPages);
+          const startIndex = (safePage - 1) * ITEMS_PER_PAGE;
+          const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, comprasFiltradas.length);
+          const visibleCompras = comprasFiltradas.slice(startIndex, endIndex);
+          const hasPagination = comprasFiltradas.length > ITEMS_PER_PAGE;
+          const maxVisiblePages = 5;
+          const pageWindowStart = Math.max(1, safePage - Math.floor(maxVisiblePages / 2));
+          const pageWindowEnd = Math.min(totalPages, pageWindowStart + maxVisiblePages - 1);
+          const pageNumbers = Array.from(
+            { length: Math.max(0, pageWindowEnd - pageWindowStart + 1) },
+            (_, idx) => pageWindowStart + idx,
           );
-          const visibleCompras = comprasFiltradas.slice(0, visibleCount);
-          const canShowMore = visibleCount < comprasFiltradas.length;
-          const canShowLess = comprasFiltradas.length > INITIAL_VISIBLE_ITEMS && visibleCount > INITIAL_VISIBLE_ITEMS;
 
           return (
             <CartaoCard key={cartao.id} contentClassName="space-y-3 p-4">
@@ -168,7 +174,9 @@ export function CartoesGrid({
               ) : (
                 <>
                   <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <span>Mostrando {visibleCount} de {comprasFiltradas.length} compras</span>
+                    <span>
+                      Mostrando {startIndex + 1}–{endIndex} de {comprasFiltradas.length} compras
+                    </span>
                   </div>
                   <div className="space-y-2">
                     {visibleCompras.map((compra) => (
@@ -194,38 +202,55 @@ export function CartoesGrid({
                       </div>
                     ))}
                   </div>
-                  {canShowMore || canShowLess ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      {canShowMore ? (
+                  {hasPagination ? (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-2.5 text-xs"
+                        disabled={safePage <= 1}
+                        onClick={() => {
+                          setFaturaPageByCard((prev) => ({
+                            ...prev,
+                            [cartao.id]: Math.max(1, (prev[cartao.id] ?? 1) - 1),
+                          }));
+                        }}
+                        data-testid={`button-paginacao-anterior-fatura-${cartao.id}`}
+                      >
+                        Anterior
+                      </Button>
+                      {pageNumbers.map((page) => (
                         <Button
-                          variant="outline"
+                          key={page}
+                          variant={page === safePage ? "default" : "ghost"}
                           size="sm"
+                          className="h-8 min-w-8 px-2 text-xs"
                           onClick={() => {
-                            setVisibleFaturaByCard((prev) => ({
+                            setFaturaPageByCard((prev) => ({
                               ...prev,
-                              [cartao.id]: (prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS) + VISIBLE_STEP,
+                              [cartao.id]: page,
                             }));
                           }}
-                          data-testid={`button-ver-mais-fatura-${cartao.id}`}
+                          data-testid={`button-paginacao-fatura-${cartao.id}-${page}`}
                         >
-                          Ver mais
+                          {page}
                         </Button>
-                      ) : null}
-                      {canShowLess ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setVisibleFaturaByCard((prev) => ({
-                              ...prev,
-                              [cartao.id]: INITIAL_VISIBLE_ITEMS,
-                            }));
-                          }}
-                          data-testid={`button-ver-menos-fatura-${cartao.id}`}
-                        >
-                          Ver menos
-                        </Button>
-                      ) : null}
+                      ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-2.5 text-xs"
+                        disabled={safePage >= totalPages}
+                        onClick={() => {
+                          setFaturaPageByCard((prev) => ({
+                            ...prev,
+                            [cartao.id]: Math.min(totalPages, (prev[cartao.id] ?? 1) + 1),
+                          }));
+                        }}
+                        data-testid={`button-paginacao-proxima-fatura-${cartao.id}`}
+                      >
+                        Próxima
+                      </Button>
                     </div>
                   ) : null}
                 </>

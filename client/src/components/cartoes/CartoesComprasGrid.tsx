@@ -39,9 +39,9 @@ type CartoesComprasGridProps = {
 };
 
 const INITIAL_VISIBLE_ITEMS = 8;
-const VISIBLE_STEP = 8;
+const ITEMS_PER_PAGE = INITIAL_VISIBLE_ITEMS;
 
-type VisibleByCard = Record<string, number>;
+type PageByCard = Record<string, number>;
 
 export function CartoesComprasGrid({
   cartoes,
@@ -62,17 +62,18 @@ export function CartoesComprasGrid({
   onDeleteCompra,
   onMarcarReembolso,
 }: CartoesComprasGridProps) {
-  const [visibleByCard, setVisibleByCard] = useState<VisibleByCard>({});
+  const [pageByCard, setPageByCard] = useState<PageByCard>({});
 
   useEffect(() => {
-    setVisibleByCard((prev) => {
-      const next: VisibleByCard = {};
+    setPageByCard((prev) => {
+      const next: PageByCard = {};
       let changed = false;
       for (const cartao of cartoes) {
         const total = getFilteredCardCompras(cartao.id).length;
-        const nextValue = Math.min(prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS, Math.max(total, INITIAL_VISIBLE_ITEMS));
+        const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
+        const nextValue = Math.min(prev[cartao.id] ?? 1, totalPages);
         next[cartao.id] = nextValue;
-        if ((prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS) !== nextValue) {
+        if ((prev[cartao.id] ?? 1) !== nextValue) {
           changed = true;
         }
       }
@@ -95,10 +96,20 @@ export function CartoesComprasGrid({
         const daysUntil = getDaysUntilInvoice(Number(cartao.diaVencimento));
         const nextDate = getNextInvoiceDate(Number(cartao.diaVencimento));
         const isUrgent = daysUntil <= 5;
-        const visibleCount = Math.min(visibleByCard[cartao.id] ?? INITIAL_VISIBLE_ITEMS, cardCompras.length);
-        const visibleCompras = cardCompras.slice(0, visibleCount);
-        const canShowMore = visibleCount < cardCompras.length;
-        const canShowLess = cardCompras.length > INITIAL_VISIBLE_ITEMS && visibleCount > INITIAL_VISIBLE_ITEMS;
+        const currentPage = pageByCard[cartao.id] ?? 1;
+        const totalPages = Math.max(1, Math.ceil(cardCompras.length / ITEMS_PER_PAGE));
+        const safePage = Math.min(currentPage, totalPages);
+        const startIndex = (safePage - 1) * ITEMS_PER_PAGE;
+        const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, cardCompras.length);
+        const visibleCompras = cardCompras.slice(startIndex, endIndex);
+        const hasPagination = cardCompras.length > ITEMS_PER_PAGE;
+        const maxVisiblePages = 5;
+        const pageWindowStart = Math.max(1, safePage - Math.floor(maxVisiblePages / 2));
+        const pageWindowEnd = Math.min(totalPages, pageWindowStart + maxVisiblePages - 1);
+        const pageNumbers = Array.from(
+          { length: Math.max(0, pageWindowEnd - pageWindowStart + 1) },
+          (_, idx) => pageWindowStart + idx,
+        );
 
         return (
           <CartaoCard
@@ -155,7 +166,7 @@ export function CartoesComprasGrid({
               </div>
               <Progress
                 value={Math.min(percentUsed, 100)}
-                className={`h-2 ${percentUsed > 80 ? "[&>div]:bg-red-500" : percentUsed > 60 ? "[&>div]:bg-amber-500" : ""}`}
+                className={`h-2 ${percentUsed >= 90 ? "[&>div]:bg-red-500" : percentUsed >= 75 ? "[&>div]:bg-amber-500" : ""}`}
               />
             </div>
 
@@ -189,7 +200,7 @@ export function CartoesComprasGrid({
             {cardCompras.length > 0 ? (
               <>
                 <p className="text-xs text-muted-foreground">
-                  Mostrando {visibleCount} de {cardCompras.length} parcelas/compras
+                  Mostrando {startIndex + 1}–{endIndex} de {cardCompras.length} parcelas/compras
                 </p>
                 <div className="space-y-2">
                   {visibleCompras.map((compra) => {
@@ -280,38 +291,55 @@ export function CartoesComprasGrid({
                     );
                   })}
                 </div>
-                {canShowMore || canShowLess ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {canShowMore ? (
+                {hasPagination ? (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-2.5 text-xs"
+                      disabled={safePage <= 1}
+                      onClick={() => {
+                        setPageByCard((prev) => ({
+                          ...prev,
+                          [cartao.id]: Math.max(1, (prev[cartao.id] ?? 1) - 1),
+                        }));
+                      }}
+                      data-testid={`button-paginacao-anterior-compras-${cartao.id}`}
+                    >
+                      Anterior
+                    </Button>
+                    {pageNumbers.map((page) => (
                       <Button
-                        variant="outline"
+                        key={page}
+                        variant={page === safePage ? "default" : "ghost"}
                         size="sm"
+                        className="h-8 min-w-8 px-2 text-xs"
                         onClick={() => {
-                          setVisibleByCard((prev) => ({
+                          setPageByCard((prev) => ({
                             ...prev,
-                            [cartao.id]: (prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS) + VISIBLE_STEP,
+                            [cartao.id]: page,
                           }));
                         }}
-                        data-testid={`button-ver-mais-compras-${cartao.id}`}
+                        data-testid={`button-paginacao-compras-${cartao.id}-${page}`}
                       >
-                        Ver mais
+                        {page}
                       </Button>
-                    ) : null}
-                    {canShowLess ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setVisibleByCard((prev) => ({
-                            ...prev,
-                            [cartao.id]: INITIAL_VISIBLE_ITEMS,
-                          }));
-                        }}
-                        data-testid={`button-ver-menos-compras-${cartao.id}`}
-                      >
-                        Ver menos
-                      </Button>
-                    ) : null}
+                    ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-2.5 text-xs"
+                      disabled={safePage >= totalPages}
+                      onClick={() => {
+                        setPageByCard((prev) => ({
+                          ...prev,
+                          [cartao.id]: Math.min(totalPages, (prev[cartao.id] ?? 1) + 1),
+                        }));
+                      }}
+                      data-testid={`button-paginacao-proxima-compras-${cartao.id}`}
+                    >
+                      Próxima
+                    </Button>
                   </div>
                 ) : null}
               </>

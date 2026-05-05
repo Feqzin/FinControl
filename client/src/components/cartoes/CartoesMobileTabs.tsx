@@ -24,9 +24,9 @@ type CartoesMobileTabsProps = {
 };
 
 const INITIAL_VISIBLE_ITEMS = 6;
-const VISIBLE_STEP = 6;
+const ITEMS_PER_PAGE = INITIAL_VISIBLE_ITEMS;
 
-type VisibleByCard = Record<string, number>;
+type PageByCard = Record<string, number>;
 
 export function CartoesMobileTabs({
   cartoes,
@@ -42,17 +42,18 @@ export function CartoesMobileTabs({
   onOpenParcelas,
   onDeleteCompra,
 }: CartoesMobileTabsProps) {
-  const [visibleByCard, setVisibleByCard] = useState<VisibleByCard>({});
+  const [pageByCard, setPageByCard] = useState<PageByCard>({});
 
   useEffect(() => {
-    setVisibleByCard((prev) => {
-      const next: VisibleByCard = {};
+    setPageByCard((prev) => {
+      const next: PageByCard = {};
       let changed = false;
       for (const cartao of cartoes) {
         const total = getFilteredCardCompras(cartao.id).length;
-        const nextValue = Math.min(prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS, Math.max(total, INITIAL_VISIBLE_ITEMS));
+        const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
+        const nextValue = Math.min(prev[cartao.id] ?? 1, totalPages);
         next[cartao.id] = nextValue;
-        if ((prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS) !== nextValue) {
+        if ((prev[cartao.id] ?? 1) !== nextValue) {
           changed = true;
         }
       }
@@ -83,10 +84,13 @@ export function CartoesMobileTabs({
           const nextDate = getNextInvoiceDate(Number(cartao.diaVencimento));
           const [nextDay, nextMonth] = nextDate.split("/");
           const comprasFiltradas = getFilteredCardCompras(cartao.id);
-          const visibleCount = Math.min(visibleByCard[cartao.id] ?? INITIAL_VISIBLE_ITEMS, comprasFiltradas.length);
-          const visibleCompras = comprasFiltradas.slice(0, visibleCount);
-          const canShowMore = visibleCount < comprasFiltradas.length;
-          const canShowLess = comprasFiltradas.length > INITIAL_VISIBLE_ITEMS && visibleCount > INITIAL_VISIBLE_ITEMS;
+          const currentPage = pageByCard[cartao.id] ?? 1;
+          const totalPages = Math.max(1, Math.ceil(comprasFiltradas.length / ITEMS_PER_PAGE));
+          const safePage = Math.min(currentPage, totalPages);
+          const startIndex = (safePage - 1) * ITEMS_PER_PAGE;
+          const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, comprasFiltradas.length);
+          const visibleCompras = comprasFiltradas.slice(startIndex, endIndex);
+          const hasPagination = comprasFiltradas.length > ITEMS_PER_PAGE;
 
           return (
             <div
@@ -135,7 +139,7 @@ export function CartoesMobileTabs({
                   ) : (
                     <>
                       <p className="px-4 py-2 text-xs text-muted-foreground">
-                        Mostrando {visibleCount} de {comprasFiltradas.length} parcelas/compras
+                        Mostrando {startIndex + 1}–{endIndex} de {comprasFiltradas.length} parcelas/compras
                       </p>
                       {visibleCompras.map((compra) => {
                         const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
@@ -179,40 +183,41 @@ export function CartoesMobileTabs({
                           </div>
                         );
                       })}
-                      {canShowMore || canShowLess ? (
-                        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
-                          {canShowMore ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8"
-                              onClick={() => {
-                                setVisibleByCard((prev) => ({
-                                  ...prev,
-                                  [cartao.id]: (prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS) + VISIBLE_STEP,
-                                }));
-                              }}
-                              data-testid={`button-ver-mais-mobile-${cartao.id}`}
-                            >
-                              Ver mais
-                            </Button>
-                          ) : null}
-                          {canShowLess ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8"
-                              onClick={() => {
-                                setVisibleByCard((prev) => ({
-                                  ...prev,
-                                  [cartao.id]: INITIAL_VISIBLE_ITEMS,
-                                }));
-                              }}
-                              data-testid={`button-ver-menos-mobile-${cartao.id}`}
-                            >
-                              Ver menos
-                            </Button>
-                          ) : null}
+                      {hasPagination ? (
+                        <div className="flex items-center justify-between gap-2 px-4 py-2.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2.5 text-xs"
+                            disabled={safePage <= 1}
+                            onClick={() => {
+                              setPageByCard((prev) => ({
+                                ...prev,
+                                [cartao.id]: Math.max(1, (prev[cartao.id] ?? 1) - 1),
+                              }));
+                            }}
+                            data-testid={`button-paginacao-anterior-mobile-${cartao.id}`}
+                          >
+                            Anterior
+                          </Button>
+                          <span className="text-xs text-muted-foreground">
+                            Página {safePage} de {totalPages}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2.5 text-xs"
+                            disabled={safePage >= totalPages}
+                            onClick={() => {
+                              setPageByCard((prev) => ({
+                                ...prev,
+                                [cartao.id]: Math.min(totalPages, (prev[cartao.id] ?? 1) + 1),
+                              }));
+                            }}
+                            data-testid={`button-paginacao-proxima-mobile-${cartao.id}`}
+                          >
+                            Próxima
+                          </Button>
                         </div>
                       ) : null}
                     </>
