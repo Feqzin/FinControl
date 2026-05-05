@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Cartao, CompraCartao, ParcelaCompra, Pessoa, PessoaSaldoMovimentacao, Servico } from "@shared/schema";
 import { toMoneyNumber } from "@/lib/money";
@@ -29,11 +29,19 @@ import {
   type UpdateCompraPayload,
 } from "@/services/api/cartoes";
 
+const ENABLE_CARTOES_LOCAL_FALLBACK =
+  String(import.meta.env.VITE_CARTOES_LOCAL_FALLBACK_ENABLED ?? "true").toLowerCase() !== "false";
+
 export function useCartoes(viewingCompraId?: string) {
   const { data: cartoes = [], isLoading } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
   const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
-  const { data: cartoesResumo = [] } = useQuery<CartaoResumo[]>({
+  const {
+    data: cartoesResumo = [],
+    isError: isCartoesResumoError,
+    isSuccess: isCartoesResumoSuccess,
+    error: cartoesResumoError,
+  } = useQuery<CartaoResumo[]>({
     queryKey: ["/api/cartoes/resumo"],
     queryFn: fetchCartoesResumo,
   });
@@ -248,6 +256,7 @@ export function useCartoes(viewingCompraId?: string) {
     () => new Map(cartoesResumo.map((item) => [item.cartaoId, item])),
     [cartoesResumo],
   );
+  const fallbackLogsRef = useRef(new Set<string>());
 
   // FALLBACK TRANSITORIO:
   // Mantem compatibilidade enquanto a tela migra para a fonte de verdade
@@ -262,12 +271,59 @@ export function useCartoes(viewingCompraId?: string) {
     return limite - getCardUsedLimitFallback(cartaoId);
   };
 
+  const logFallbackUsage = (metric: string, cartaoId: string, reason: "resumo_error" | "resumo_incompleto") => {
+    const key = `${metric}:${cartaoId}:${reason}`;
+    if (fallbackLogsRef.current.has(key)) return;
+    fallbackLogsRef.current.add(key);
+
+    const errorMessage = cartoesResumoError instanceof Error
+      ? cartoesResumoError.message
+      : String(cartoesResumoError ?? "");
+
+    console.warn("[cartoes][backend-first] fallback local em uso", {
+      metric,
+      cartaoId,
+      reason,
+      fallbackEnabled: ENABLE_CARTOES_LOCAL_FALLBACK,
+      cartoesResumoStatus: {
+        isError: isCartoesResumoError,
+        isSuccess: isCartoesResumoSuccess,
+      },
+      error: errorMessage || undefined,
+    });
+  };
+
+  const resolveCartaoResumoMetric = (
+    cartaoId: string,
+    metric: "faturaAtual" | "limiteComprometido" | "limiteDisponivel",
+    fallbackResolver: (id: string) => number,
+  ) => {
+    const resumo = cartoesResumoById.get(cartaoId);
+    const backendValue = resumo?.[metric];
+    if (typeof backendValue === "number" && Number.isFinite(backendValue)) {
+      return backendValue;
+    }
+
+    const fallbackReason = isCartoesResumoError
+      ? "resumo_error"
+      : isCartoesResumoSuccess
+        ? "resumo_incompleto"
+        : null;
+
+    if (!ENABLE_CARTOES_LOCAL_FALLBACK || !fallbackReason) {
+      return 0;
+    }
+
+    logFallbackUsage(metric, cartaoId, fallbackReason);
+    return fallbackResolver(cartaoId);
+  };
+
   const getCardTotal = (cartaoId: string) =>
-    cartoesResumoById.get(cartaoId)?.faturaAtual ?? getCardTotalFallback(cartaoId);
+    resolveCartaoResumoMetric(cartaoId, "faturaAtual", getCardTotalFallback);
   const getCardUsedLimit = (cartaoId: string) =>
-    cartoesResumoById.get(cartaoId)?.limiteComprometido ?? getCardUsedLimitFallback(cartaoId);
+    resolveCartaoResumoMetric(cartaoId, "limiteComprometido", getCardUsedLimitFallback);
   const getCardAvailableLimit = (cartaoId: string) =>
-    cartoesResumoById.get(cartaoId)?.limiteDisponivel ?? getCardAvailableLimitFallback(cartaoId);
+    resolveCartaoResumoMetric(cartaoId, "limiteDisponivel", getCardAvailableLimitFallback);
 
   const totalFaturas = cartoes.reduce((sum, cartao) => sum + getCardTotal(cartao.id), 0);
   const totalAguardandoReembolso = compras

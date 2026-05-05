@@ -3,6 +3,8 @@ import { toMoneyNumber } from "@/lib/money";
 
 export type ParcelasCompraByCompraId = Map<string, ParcelaCompra[]>;
 
+// Regras locais de limite ficam como fallback transitorio.
+// Fonte oficial de calculo: backend /api/cartoes/resumo.
 export function groupParcelasCompraByCompraId(parcelasCompra: ParcelaCompra[]): ParcelasCompraByCompraId {
   const grouped = new Map<string, ParcelaCompra[]>();
   for (const row of parcelasCompra) {

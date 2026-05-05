@@ -1,30 +1,13 @@
 import { useState, lazy, Suspense, useEffect } from "react";
-import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
-} from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import { usePremiumAccess } from "@/hooks/use-premium-access";
 import { useLocation } from "wouter";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  Plus, CreditCard, Trash2, CalendarClock, ShoppingBag, User, Pencil,
-  RefreshCw, Upload, List, Check, X, ChevronRight,
-  Eye, Wallet,
+  Plus, Trash2, Upload, ChevronRight, RefreshCw,
 } from "lucide-react";
-import { BrandIconDisplay } from "@/lib/brand-icons";
 import { useUIPreferences } from "@/context/ui-preferences";
 import type { Cartao, CompraCartao, ParcelaCompra } from "@shared/schema";
 import { format } from "date-fns";
@@ -37,10 +20,14 @@ import { CartoesPageHeader } from "@/components/cartoes/CartoesPageHeader";
 import { CartoesSummarySection } from "@/components/cartoes/CartoesSummarySection";
 import { CartoesFilterBar } from "@/components/cartoes/CartoesFilterBar";
 import { CartoesGrid } from "@/components/cartoes/CartoesGrid";
-import { CartaoCard } from "@/components/cartoes/CartaoCard";
 import { CartoesEmptyState } from "@/components/cartoes/CartoesEmptyState";
 import { CartoesDialogs } from "@/components/cartoes/CartoesDialogs";
 import { CartoesInsights, type CartaoInsightItem } from "@/components/cartoes/CartoesInsights";
+import { CartaoFormDialog } from "@/components/cartoes/CartaoFormDialog";
+import { EditarCompraCartaoDialog, NovaCompraCartaoDialog } from "@/components/cartoes/CompraCartaoDialog";
+import { CartoesMobileTabs } from "@/components/cartoes/CartoesMobileTabs";
+import { CartoesComprasGrid } from "@/components/cartoes/CartoesComprasGrid";
+import { ParcelasTab } from "@/components/cartoes/ParcelasTab";
 import {
   deleteCompraCartaoComEscopo,
   previewImportCompras,
@@ -1151,52 +1138,13 @@ export default function CartoesPage() {
                 {rollbackImportMutation.isPending ? "Revertendo..." : "Desfazer Ultima Importacao"}
               </Button>
             ) : null}
-            <Dialog open={openCard} onOpenChange={setOpenCard}>
-              <DialogTrigger asChild>
-                <Button
-                  className="w-full touch-feedback sm:col-span-2 xl:w-auto xl:flex-none"
-                  data-testid="button-add-cartao"
-                >
-                  <Plus className="mr-2 h-4 w-4" /> Novo cartao
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader><DialogTitle>Novo Cartao</DialogTitle></DialogHeader>
-                <form onSubmit={(e) => { e.preventDefault(); handleCreateCard(); }} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Icone</Label>
-                    <Suspense fallback={<Skeleton className="h-14 w-full" />}>
-                      <IconPicker value={newCardIcone} name={cardForm.nome} onChange={setNewCardIcone} size="md" />
-                    </Suspense>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Nome do cartao</Label>
-                    <Input data-testid="input-cartao-nome" value={cardForm.nome}
-                      onChange={(e) => setCardForm({ ...cardForm, nome: e.target.value })} placeholder="Ex: Nubank, Itau..." required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Limite total</Label>
-                    <Input data-testid="input-cartao-limite" type="number" step="0.01" value={cardForm.limite}
-                      onChange={(e) => setCardForm({ ...cardForm, limite: e.target.value })} placeholder="0,00" required />
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Melhor dia de compra</Label>
-                      <Input data-testid="input-cartao-melhordia" type="number" min="1" max="31" value={cardForm.melhorDiaCompra}
-                        onChange={(e) => setCardForm({ ...cardForm, melhorDiaCompra: e.target.value })} required />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Dia de vencimento</Label>
-                      <Input data-testid="input-cartao-vencimento" type="number" min="1" max="31" value={cardForm.diaVencimento}
-                        onChange={(e) => setCardForm({ ...cardForm, diaVencimento: e.target.value })} required />
-                    </div>
-                  </div>
-                  <Button type="submit" className="w-full touch-feedback" data-testid="button-save-cartao" disabled={createCardMutation.isPending}>
-                    {createCardMutation.isPending ? "Salvando..." : "Salvar"}
-                  </Button>
-                </form>
-              </DialogContent>
-            </Dialog>
+            <Button
+              className="w-full touch-feedback sm:col-span-2 xl:w-auto xl:flex-none"
+              data-testid="button-add-cartao"
+              onClick={() => setOpenCard(true)}
+            >
+              <Plus className="mr-2 h-4 w-4" /> Novo cartao
+            </Button>
           </>
         )}
       />
@@ -1218,718 +1166,188 @@ export default function CartoesPage() {
         )}
       />
 
-      <CartoesDialogs>
-      <Dialog open={openCompra} onOpenChange={setOpenCompra}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Nova Compra Parcelada</DialogTitle></DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); handleCreateCompra(); }} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Descricao</Label>
-              <Input data-testid="input-compra-descricao" value={compraForm.descricao}
-                onChange={(e) => setCompraForm({ ...compraForm, descricao: e.target.value })} placeholder="O que comprou?" required />
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Valor total</Label>
-                <Input data-testid="input-compra-valor" type="number" step="0.01" value={compraForm.valorTotal}
-                  onChange={(e) => setCompraForm({ ...compraForm, valorTotal: e.target.value })} placeholder="0,00" required />
-              </div>
-              <div className="space-y-2">
-                <Label>Parcelas</Label>
-                <Input data-testid="input-compra-parcelas" type="number" min="1" max="48" value={compraForm.parcelas}
-                  onChange={(e) => setCompraForm({ ...compraForm, parcelas: e.target.value })} required />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Data da compra</Label>
-              <Input data-testid="input-compra-data" type="date" value={compraForm.dataCompra}
-                onChange={(e) => setCompraForm({ ...compraForm, dataCompra: e.target.value })} required />
-            </div>
-            {pessoas.length > 0 && (
-              <div className="space-y-2">
-                <Label>Vincular a uma pessoa (opcional)</Label>
-                <Select value={compraForm.pessoaId || "__none__"}
-                  onValueChange={(v) => setCompraForm({ ...compraForm, pessoaId: v === "__none__" ? "" : v })}>
-                  <SelectTrigger data-testid="select-compra-pessoa"><SelectValue placeholder="Nenhuma" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Nenhuma (compra propria)</SelectItem>
-                    {pessoas.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {compraForm.valorTotal && compraForm.parcelas && (
-              <div className="p-3 rounded-md bg-muted/50">
-                <p className="text-sm">
-                  <span className="text-muted-foreground">Parcela: </span>
-                  <span className="font-semibold">{formatCartaoCurrency(parseFloat(compraForm.valorTotal) / parseInt(compraForm.parcelas || "1"))}</span>
-                  <span className="text-muted-foreground"> x {compraForm.parcelas}x</span>
-                </p>
-              </div>
-            )}
-            <Button type="submit" className="w-full" data-testid="button-save-compra" disabled={createCompraMutation.isPending}>
-              {createCompraMutation.isPending ? "Salvando..." : "Registrar compra"}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <NovaCompraCartaoDialog
+        open={openCompra}
+        onOpenChange={setOpenCompra}
+        form={compraForm}
+        setForm={setCompraForm}
+        pessoas={pessoas}
+        formatCurrency={formatCartaoCurrency}
+        onSubmit={handleCreateCompra}
+        isPending={createCompraMutation.isPending}
+      />
 
-      <Dialog open={!!editingCard} onOpenChange={(v) => { if (!v) { setEditingCard(null); setEditCardIcone(null); } }}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Editar Cartao</DialogTitle></DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); handleUpdateCard(); }} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Ícone</Label>
-              <Suspense fallback={<Skeleton className="h-14 w-full" />}>
-                <IconPicker value={editCardIcone} name={editCardForm.nome} onChange={setEditCardIcone} size="md" />
-              </Suspense>
-            </div>
-            <div className="space-y-2">
-              <Label>Nome do cartao</Label>
-              <Input data-testid="input-edit-cartao-nome" value={editCardForm.nome}
-                onChange={(e) => setEditCardForm({ ...editCardForm, nome: e.target.value })} required />
-            </div>
-            <div className="space-y-2">
-              <Label>Limite total</Label>
-              <Input data-testid="input-edit-cartao-limite" type="number" step="0.01" value={editCardForm.limite}
-                onChange={(e) => setEditCardForm({ ...editCardForm, limite: e.target.value })} required />
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Melhor dia de compra</Label>
-                <Input data-testid="input-edit-cartao-melhordia" type="number" min="1" max="31" value={editCardForm.melhorDiaCompra}
-                  onChange={(e) => setEditCardForm({ ...editCardForm, melhorDiaCompra: e.target.value })} required />
-              </div>
-              <div className="space-y-2">
-                <Label>Dia de vencimento</Label>
-                <Input data-testid="input-edit-cartao-vencimento" type="number" min="1" max="31" value={editCardForm.diaVencimento}
-                  onChange={(e) => setEditCardForm({ ...editCardForm, diaVencimento: e.target.value })} required />
-              </div>
-            </div>
-            <Button type="submit" className="w-full" data-testid="button-save-edit-cartao" disabled={updateCardMutation.isPending}>
-              {updateCardMutation.isPending ? "Salvando..." : "Salvar alteracoes"}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!editingCompra} onOpenChange={(v) => { if (!v) setEditingCompra(null); }}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Editar Compra</DialogTitle></DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); handleUpdateCompra(); }} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Descricao</Label>
-              <Input data-testid="input-edit-compra-descricao" value={editCompraForm.descricao}
-                onChange={(e) => setEditCompraForm({ ...editCompraForm, descricao: e.target.value })} required />
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Valor total</Label>
-                <Input data-testid="input-edit-compra-valor" type="number" step="0.01" value={editCompraForm.valorTotal}
-                  onChange={(e) => setEditCompraForm({ ...editCompraForm, valorTotal: e.target.value })} required />
-              </div>
-              <div className="space-y-2">
-                <Label>Numero de parcelas</Label>
-                <Input data-testid="input-edit-compra-parcelas" type="number" min="1" max="48" value={editCompraForm.parcelas}
-                  onChange={(e) => setEditCompraForm({ ...editCompraForm, parcelas: e.target.value })} required />
-              </div>
-            </div>
-            {editCompraForm.valorTotal && editCompraForm.parcelas && (
-              <div className="p-3 rounded-md bg-muted/50 text-sm">
-                <span className="text-muted-foreground">Nova parcela: </span>
-                <span className="font-semibold">{formatCartaoCurrency(parseFloat(editCompraForm.valorTotal) / parseInt(editCompraForm.parcelas || "1"))}</span>
-                <span className="text-muted-foreground"> x {editCompraForm.parcelas}x</span>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label>Pessoa vinculada (opcional)</Label>
-              <Select value={editCompraForm.pessoaId || "__none__"}
-                onValueChange={(v) => setEditCompraForm({ ...editCompraForm, pessoaId: v === "__none__" ? "" : v, statusPessoa: v === "__none__" ? "" : (editCompraForm.statusPessoa || "pendente") })}>
-                <SelectTrigger data-testid="select-edit-compra-pessoa"><SelectValue placeholder="Nenhuma" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Nenhuma (compra propria)</SelectItem>
-                  {pessoas.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            {editCompraForm.pessoaId && (
-              <div className="space-y-2">
-                <Label>Status do reembolso</Label>
-                <Select value={editCompraForm.statusPessoa || "pendente"}
-                  onValueChange={(v) => setEditCompraForm({ ...editCompraForm, statusPessoa: v })}>
-                  <SelectTrigger data-testid="select-edit-compra-status-pessoa"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pendente">Aguardando reembolso</SelectItem>
-                    <SelectItem value="pago">Reembolsado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <Button type="submit" className="w-full" data-testid="button-save-edit-compra" disabled={updateCompraMutation.isPending}>
-              {updateCompraMutation.isPending ? "Salvando..." : "Salvar alteracoes"}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={openDeleteFaturaDialog}
-        onOpenChange={(open) => {
-          setOpenDeleteFaturaDialog(open);
-          if (!open) {
-            setDeleteFaturaImpact(null);
-            setDeleteFaturaImpactLoading(false);
-          }
+      <CartaoFormDialog
+        open={openCard}
+        onOpenChange={setOpenCard}
+        title="Novo Cartao"
+        form={cardForm}
+        setForm={setCardForm}
+        iconPicker={(
+          <Suspense fallback={<Skeleton className="h-14 w-full" />}>
+            <IconPicker value={newCardIcone} name={cardForm.nome} onChange={setNewCardIcone} size="md" />
+          </Suspense>
+        )}
+        onSubmit={handleCreateCard}
+        isPending={createCardMutation.isPending}
+        pendingLabel="Salvando..."
+        submitLabel="Salvar"
+        testIds={{
+          nome: "input-cartao-nome",
+          limite: "input-cartao-limite",
+          melhorDiaCompra: "input-cartao-melhordia",
+          diaVencimento: "input-cartao-vencimento",
+          submit: "button-save-cartao",
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Excluir fatura</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Escopo da exclusão</Label>
-              <Select
-                value={deleteFaturaScope}
-                onValueChange={(value) => {
-                  if (value === "cartao" || value === "todos") {
-                    setDeleteFaturaScope(value);
-                    setDeleteFaturaImpact(null);
-                  }
-                }}
-              >
-                <SelectTrigger data-testid="select-delete-fatura-scope">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cartao">Excluir fatura deste cartão</SelectItem>
-                  <SelectItem value="todos">Excluir faturas de todos os cartões neste mês</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      />
 
-            {deleteFaturaScope === "cartao" && (
-              <div className="space-y-2">
-                <Label>Cartão afetado</Label>
-                <Select
-                  value={deleteFaturaCartaoId}
-                  onValueChange={(value) => {
-                    setDeleteFaturaCartaoId(value);
-                    setDeleteFaturaImpact(null);
-                  }}
-                >
-                  <SelectTrigger data-testid="select-delete-fatura-cartao">
-                    <SelectValue placeholder="Selecione um cartão" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {cartoes.map((cartao) => (
-                      <SelectItem key={cartao.id} value={cartao.id}>
-                        {cartao.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label>Mês da fatura</Label>
-              <Input
-                type="month"
-                value={deleteFaturaMes}
-                onChange={(event) => {
-                  setDeleteFaturaMes(event.target.value);
-                  setDeleteFaturaImpact(null);
-                }}
-                data-testid="input-delete-fatura-mes"
-              />
-            </div>
-
-            <Card className="border-dashed">
-              <CardContent className="p-3 space-y-2 text-sm">
-                <p className="font-medium">Impacto da exclusão</p>
-                {deleteFaturaImpactLoading && (
-                  <p className="text-muted-foreground">Calculando impacto...</p>
-                )}
-                {!deleteFaturaImpactLoading && deleteFaturaImpact && (
-                  <>
-                    <p className="text-muted-foreground">
-                      Mês: <span className="font-medium text-foreground">{formatMesExibicao(deleteFaturaImpact.impact.mes)}</span>
-                    </p>
-                    <p className="text-muted-foreground">
-                      Compras: <span className="font-medium text-foreground">{deleteFaturaImpact.impact.comprasRemovidas}</span>
-                    </p>
-                    <p className="text-muted-foreground">
-                      Parcelas: <span className="font-medium text-foreground">{deleteFaturaImpact.impact.parcelasRemovidas}</span>
-                    </p>
-                    <p className="text-muted-foreground">
-                      Total removido:{" "}
-                      <span className="font-medium text-foreground">
-                        {formatCartaoCurrency(deleteFaturaImpact.impact.valorTotalRemovido)}
-                      </span>
-                    </p>
-                    {deleteFaturaImpact.impact.cartoesAfetados.length > 0 && (
-                      <div className="pt-1 space-y-1">
-                        {deleteFaturaImpact.impact.cartoesAfetados.map((item) => (
-                          <p key={item.cartaoId} className="text-xs text-muted-foreground">
-                            {item.cartaoNome}: {item.comprasRemovidas} compra(s), {item.parcelasRemovidas} parcela(s),{" "}
-                            {formatCartaoCurrency(item.valorTotalRemovido)}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-                {!deleteFaturaImpactLoading && !deleteFaturaImpact && (
-                  <p className="text-muted-foreground">Selecione os dados para visualizar o impacto.</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Button
-              type="button"
-              className="w-full"
-              variant="destructive"
-              disabled={
-                deleteFaturaImpactLoading
-                || deleteFaturaCartaoMutation.isPending
-                || deleteFaturasMesMutation.isPending
-                || !deleteFaturaImpact
-                || deleteFaturaImpact.impact.comprasRemovidas === 0
-              }
-              onClick={handleConfirmDeleteFatura}
-              data-testid="button-confirm-delete-fatura"
-            >
-              {deleteFaturaCartaoMutation.isPending || deleteFaturasMesMutation.isPending
-                ? "Excluindo..."
-                : "Confirmar exclusão"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={openDeleteCompraDialog}
+      <CartaoFormDialog
+        open={!!editingCard}
         onOpenChange={(open) => {
           if (!open) {
-            resetDeleteCompraDialog();
-          } else {
-            setOpenDeleteCompraDialog(true);
+            setEditingCard(null);
+            setEditCardIcone(null);
           }
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Excluir compra</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Compra: <span className="font-medium text-foreground">{deleteCompraTarget?.descricao ?? "-"}</span>
-            </p>
+        title="Editar Cartao"
+        form={editCardForm}
+        setForm={setEditCardForm}
+        iconPicker={(
+          <Suspense fallback={<Skeleton className="h-14 w-full" />}>
+            <IconPicker value={editCardIcone} name={editCardForm.nome} onChange={setEditCardIcone} size="md" />
+          </Suspense>
+        )}
+        onSubmit={handleUpdateCard}
+        isPending={updateCardMutation.isPending}
+        pendingLabel="Salvando..."
+        submitLabel="Salvar alteracoes"
+        testIds={{
+          nome: "input-edit-cartao-nome",
+          limite: "input-edit-cartao-limite",
+          melhorDiaCompra: "input-edit-cartao-melhordia",
+          diaVencimento: "input-edit-cartao-vencimento",
+          submit: "button-save-edit-cartao",
+        }}
+      />
 
-            {deleteCompraTarget && Number(deleteCompraTarget.parcelas) > 1 && (
-              <div className="space-y-2">
-                <Label>Como deseja excluir?</Label>
-                <Select
-                  value={deleteCompraScope}
-                  onValueChange={(value) => {
-                    if (value === "all_parcelas" || value === "single_parcela") {
-                      setDeleteCompraScope(value);
-                      setDeleteCompraImpact(null);
-                    }
-                  }}
-                >
-                  <SelectTrigger data-testid="select-delete-compra-scope">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="single_parcela">Excluir apenas esta parcela</SelectItem>
-                    <SelectItem value="all_parcelas">Excluir todas as parcelas da compra</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+      <EditarCompraCartaoDialog
+        open={!!editingCompra}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingCompra(null);
+          }
+        }}
+        form={editCompraForm}
+        setForm={setEditCompraForm}
+        pessoas={pessoas}
+        formatCurrency={formatCartaoCurrency}
+        onSubmit={handleUpdateCompra}
+        isPending={updateCompraMutation.isPending}
+      />
 
-            <Card className="border-dashed">
-              <CardContent className="p-3 space-y-2 text-sm">
-                <p className="font-medium">Impacto da exclusão</p>
-                {deleteCompraImpactLoading && <p className="text-muted-foreground">Calculando impacto...</p>}
-                {!deleteCompraImpactLoading && deleteCompraImpactError && (
-                  <div className="space-y-2">
-                    <p className="text-red-700 text-sm">{deleteCompraImpactError}</p>
-                    {deleteCompraTarget && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => {
-                          void loadDeleteCompraImpact(deleteCompraTarget, deleteCompraScope);
-                        }}
-                        disabled={deleteCompraImpactLoading || deleteCompraSubmitting}
-                        data-testid="button-retry-delete-compra-impact"
-                      >
-                        Tentar novamente
-                      </Button>
-                    )}
-                  </div>
-                )}
-                {!deleteCompraImpactLoading && deleteCompraImpact && (
-                  <>
-                    <p className="text-muted-foreground">
-                      Cartão afetado:{" "}
-                      <span className="font-medium text-foreground">
-                        {deleteCompraImpact.impact.cartao?.nome ?? "Não identificado"}
-                      </span>
-                    </p>
-                    <p className="text-muted-foreground">
-                      Compras removidas:{" "}
-                      <span className="font-medium text-foreground">{deleteCompraImpact.impact.comprasRemovidas}</span>
-                    </p>
-                    <p className="text-muted-foreground">
-                      Parcelas removidas:{" "}
-                      <span className="font-medium text-foreground">{deleteCompraImpact.impact.parcelasRemovidas}</span>
-                    </p>
-                    <p className="text-muted-foreground">
-                      Total removido:{" "}
-                      <span className="font-medium text-foreground">
-                        {formatCartaoCurrency(deleteCompraImpact.impact.valorTotalRemovido)}
-                      </span>
-                    </p>
-                    {deleteCompraImpact.impact.parcelaAlvo && (
-                      <p className="text-xs text-muted-foreground">
-                        Parcela alvo: {deleteCompraImpact.impact.parcelaAlvo.numero} -{" "}
-                        {formatCartaoCurrency(deleteCompraImpact.impact.parcelaAlvo.valor)}
-                      </p>
-                    )}
-                  </>
-                )}
-                {!deleteCompraImpactLoading && !deleteCompraImpact && (
-                  <p className="text-muted-foreground">Não foi possível calcular o impacto com os dados atuais.</p>
-                )}
-              </CardContent>
-            </Card>
+      <CartoesDialogs
+        openDeleteFaturaDialog={openDeleteFaturaDialog}
+        setOpenDeleteFaturaDialog={setOpenDeleteFaturaDialog}
+        deleteFaturaScope={deleteFaturaScope}
+        setDeleteFaturaScope={setDeleteFaturaScope}
+        deleteFaturaMes={deleteFaturaMes}
+        setDeleteFaturaMes={setDeleteFaturaMes}
+        deleteFaturaCartaoId={deleteFaturaCartaoId}
+        setDeleteFaturaCartaoId={setDeleteFaturaCartaoId}
+        deleteFaturaImpact={deleteFaturaImpact}
+        setDeleteFaturaImpact={setDeleteFaturaImpact}
+        deleteFaturaImpactLoading={deleteFaturaImpactLoading}
+        setDeleteFaturaImpactLoading={setDeleteFaturaImpactLoading}
+        deleteFaturaCartaoPending={deleteFaturaCartaoMutation.isPending}
+        deleteFaturasMesPending={deleteFaturasMesMutation.isPending}
+        onConfirmDeleteFatura={handleConfirmDeleteFatura}
+        formatMesExibicao={formatMesExibicao}
+        formatCurrency={formatCartaoCurrency}
+        cartoes={cartoes}
+        openDeleteCompraDialog={openDeleteCompraDialog}
+        setOpenDeleteCompraDialog={setOpenDeleteCompraDialog}
+        resetDeleteCompraDialog={resetDeleteCompraDialog}
+        deleteCompraTarget={deleteCompraTarget}
+        deleteCompraScope={deleteCompraScope}
+        setDeleteCompraScope={setDeleteCompraScope}
+        deleteCompraImpact={deleteCompraImpact}
+        setDeleteCompraImpact={setDeleteCompraImpact}
+        deleteCompraImpactLoading={deleteCompraImpactLoading}
+        deleteCompraImpactError={deleteCompraImpactError}
+        deleteCompraSubmitting={deleteCompraSubmitting}
+        onRetryDeleteCompraImpact={() => {
+          if (!deleteCompraTarget) return;
+          void loadDeleteCompraImpact(deleteCompraTarget, deleteCompraScope);
+        }}
+        onConfirmDeleteCompra={handleConfirmDeleteCompra}
+      />
 
-            <Button
-              type="button"
-              className="w-full"
-              variant="destructive"
-              onClick={handleConfirmDeleteCompra}
-              disabled={
-                deleteCompraSubmitting
-                || deleteCompraImpactLoading
-                || !deleteCompraImpact
-                || deleteCompraImpact.impact.parcelasRemovidas === 0
-              }
-              data-testid="button-confirm-delete-compra"
-            >
-              {deleteCompraSubmitting ? "Excluindo..." : "Confirmar exclusão"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      </CartoesDialogs>
-
-      <Sheet open={!!viewingCompra} onOpenChange={(v) => {
-        if (!v) {
-          setViewingCompra(null);
-          setAbaterSaldoParcelaId(null);
-        }
-      }}>
-        <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
-          {viewingCompra && (
-            <>
-              <SheetHeader className="mb-4">
-                <SheetTitle>Parcelas — {viewingCompra.descricao}</SheetTitle>
-                <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                  <span>{viewingCompra.parcelas}x de {formatCartaoCurrency(Number(viewingCompra.valorParcela))}</span>
-                  <span>Total: {formatCartaoCurrency(Number(viewingCompra.valorTotal))}</span>
-                </div>
-              </SheetHeader>
-
-              <div className="mb-4 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
-                {(() => {
-                  const pagas = parcelasCompraData.filter((p) => p.statusCartao === "pago").length;
-                  const pendentes = parcelasCompraData.filter((p) => isParcelaComprometendoLimite(p.statusCartao)).length;
-                  const vencidas = parcelasCompraData.filter(
-                    (p) => isParcelaVencida(p) && getParcelaSaldoPendente(p) > 0,
-                  ).length;
-                  return (
-                    <>
-                      <div className="rounded-md bg-emerald-500/5 p-2 text-center">
-                        <p className="text-xs text-muted-foreground">Pagas</p>
-                        <p className="font-bold text-emerald-600">{pagas}</p>
-                      </div>
-                      <div className="rounded-md bg-muted/30 p-2 text-center">
-                        <p className="text-xs text-muted-foreground">Pendentes</p>
-                        <p className="font-bold">{pendentes}</p>
-                      </div>
-                      <div className="rounded-md bg-red-500/5 p-2 text-center">
-                        <p className="text-xs text-muted-foreground">Vencidas</p>
-                        <p className="font-bold text-red-600">{vencidas}</p>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-
-              <div className="space-y-2">
-                {parcelasCompraData.map((p) => {
-                  const saldoPendente = getParcelaSaldoPendente(p);
-                  const vencida = isParcelaVencida(p) && saldoPendente > 0;
-                  const pago = p.statusCartao === "pago";
-                  const isPaying = payingParcelaId === p.id;
-                  const isEditing = editingParcelaId === p.id;
-                  const pessoaVinculadaId = viewingCompra.pessoaId || null;
-                  const saldoAbatido = getParcelaSaldoAbatido(p.id);
-                  const parcialViaSaldo = !pago && saldoAbatido > 0;
-                  const saldoPessoaDisponivel = pessoaVinculadaId ? getPessoaSaldoDisponivel(pessoaVinculadaId) : 0;
-                  const podeAbaterSaldo = Boolean(pessoaVinculadaId) && !pago && p.statusCartao !== "cancelado"
-                    && saldoPendente > 0 && saldoPessoaDisponivel > 0;
-                  const aguardaReembolso = pago && viewingCompra.pessoaId && (!p.statusPessoa || p.statusPessoa === "pendente");
-                  return (
-                    <div
-                      key={p.id}
-                      className={`p-3 rounded-md border text-sm space-y-2 ${pago ? "bg-emerald-500/5 border-emerald-500/10" : vencida ? "bg-red-500/5 border-red-500/20" : "bg-muted/20 border-border/40"}`}
-                      data-testid={`row-parcela-compra-${p.id}`}
-                    >
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${pago ? "bg-emerald-500 text-white" : vencida ? "bg-red-500 text-white" : "bg-muted text-muted-foreground"}`}>
-                            {pago ? <Check className="w-3 h-3" /> : p.numero}
-                          </div>
-                          {isEditing ? (
-                            <div className="flex items-center gap-1">
-                              <Input type="number" step="0.01" className="h-6 w-20 text-xs px-1"
-                                value={editingParcelaValor}
-                                onChange={(e) => setEditingParcelaValor(e.target.value)} />
-                              <Input type="date" className="h-6 text-xs px-1"
-                                value={editingParcelaData}
-                                onChange={(e) => setEditingParcelaData(e.target.value)} />
-                              <Button variant="ghost" size="icon" className="h-5 w-5"
-                                onClick={() => handleEditParcela(p.id)}>
-                                <Check className="w-3 h-3 text-emerald-600" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setEditingParcelaId(null)}>
-                                <X className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-semibold">{formatCartaoCurrency(Number(p.valor))}</span>
-                                {pago && (
-                                  <span className="text-xs text-emerald-600">
-                                    Pago {p.dataPagamentoCartao ? `em ${p.dataPagamentoCartao}` : ""}
-                                  </span>
-                                )}
-                                {parcialViaSaldo && (
-                                  <span className="text-xs text-blue-600">
-                                    Parcial via saldo: abatido {formatCartaoCurrency(saldoAbatido)} · pendente {formatCartaoCurrency(saldoPendente)}
-                                  </span>
-                                )}
-                                {!pago && p.dataVencimento && (
-                                  <span className={`text-xs ${vencida ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
-                                    Venc. {p.dataVencimento}{vencida ? " · VENCIDA" : ""}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1 flex-wrap mt-0.5">
-                                {saldoAbatido > 0 && (
-                                  <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600">Saldo pessoa</span>
-                                )}
-                                {aguardaReembolso && (
-                                  <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600">Ag. reembolso</span>
-                                )}
-                                {p.statusPessoa === "pago" && (
-                                  <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600">Reembolsado</span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          {!isEditing && !isPaying && !pago && (
-                            <>
-                              <Button variant="ghost" size="icon" className="h-7 w-7"
-                                title="Editar parcela"
-                                onClick={() => { setEditingParcelaId(p.id); setEditingParcelaValor(String(p.valor)); setEditingParcelaData(p.dataVencimento || ""); }}
-                                data-testid={`button-edit-parcela-compra-${p.id}`}>
-                                <Pencil className="w-3 h-3 text-muted-foreground" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7"
-                                title="Marcar como pago"
-                                onClick={() => setPayingParcelaId(p.id)}
-                                data-testid={`button-pay-parcela-compra-${p.id}`}>
-                                <Check className="w-3 h-3 text-emerald-600" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                title="Abater com saldo da pessoa"
-                                onClick={() => {
-                                  if (!pessoaVinculadaId) return;
-                                  openAbaterSaldoParcelaDialog(p.id, pessoaVinculadaId);
-                                }}
-                                data-testid={`button-abater-saldo-parcela-${p.id}`}
-                                disabled={!podeAbaterSaldo}
-                              >
-                                <Wallet className="w-3 h-3 text-blue-600" />
-                              </Button>
-                            </>
-                          )}
-                          {pago && (
-                            <Button variant="ghost" size="icon" className="h-7 w-7"
-                              title={saldoAbatido > 0 ? "Pago via saldo da pessoa" : "Desfazer pagamento"}
-                              onClick={() => {
-                                if (saldoAbatido > 0) return;
-                                handlePayParcela(p.id, false);
-                              }}
-                              disabled={saldoAbatido > 0}
-                              data-testid={`button-undo-parcela-compra-${p.id}`}>
-                              <X className="w-3 h-3 text-muted-foreground" />
-                            </Button>
-                          )}
-                          {aguardaReembolso && (
-                            <Button variant="ghost" size="icon" className="h-7 w-7"
-                              title="Marcar reembolso recebido"
-                              onClick={() => handlePayParcelaPessoa(p.id, true)}
-                              data-testid={`button-reembolso-parcela-${p.id}`}>
-                              <RefreshCw className="w-3 h-3 text-amber-600" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-
-                      {isPaying && (
-                        <div className="flex items-center gap-2 pt-1 border-t border-border/40">
-                          <Input type="date" className="h-7 text-xs flex-1" value={payParcelaData}
-                            onChange={(e) => setPayParcelaData(e.target.value)} />
-                          <Button size="sm" className="h-7 text-xs"
-                            onClick={() => handlePayParcela(p.id, true, payParcelaData)}
-                            data-testid={`button-confirm-pay-parcela-${p.id}`}>
-                            Confirmar
-                          </Button>
-                          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setPayingParcelaId(null)}>
-                            Cancelar
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <Dialog open={!!abaterSaldoParcelaId} onOpenChange={(open) => { if (!open) setAbaterSaldoParcelaId(null); }}>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Abater saldo na parcela</DialogTitle>
-                  </DialogHeader>
-                  <form
-                    className="space-y-4"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (!viewingCompra?.pessoaId || !abaterSaldoParcelaId) return;
-
-                      abaterSaldoParcelaMutation.mutate(
-                        {
-                          pessoaId: viewingCompra.pessoaId,
-                          parcelaId: abaterSaldoParcelaId,
-                          valor: abaterSaldoParcelaForm.valor,
-                          data: abaterSaldoParcelaForm.data,
-                          observacao: abaterSaldoParcelaForm.observacao || null,
-                        },
-                        {
-                          onSuccess: (result) => {
-                            setAbaterSaldoParcelaId(null);
-                            toast({
-                              title: result.quitada ? "Parcela quitada com saldo" : "Abatimento parcial registrado",
-                              description: `Saldo utilizado: ${formatCartaoCurrency(result.valorAbatido)}`,
-                            });
-                            refetchParcelas();
-                          },
-                          onError: (error) => {
-                            toast({
-                              title: "Erro ao abater saldo",
-                              description: getErrorMessage(error),
-                              variant: "destructive",
-                            });
-                          },
-                        },
-                      );
-                    }}
-                  >
-                    {(() => {
-                      const parcela = parcelasCompraData.find((item) => item.id === abaterSaldoParcelaId);
-                      if (!parcela || !viewingCompra?.pessoaId) return null;
-                      const pessoa = pessoas.find((item) => item.id === viewingCompra.pessoaId);
-                      const saldoDisponivel = getPessoaSaldoDisponivel(viewingCompra.pessoaId);
-                      const pendente = getParcelaSaldoPendente(parcela);
-
-                      return (
-                        <div className="rounded-md bg-muted/40 p-3 text-sm space-y-1">
-                          <p className="font-medium">
-                            Parcela {parcela.numero} - {formatCartaoCurrency(Number(parcela.valor))}
-                          </p>
-                          <p className="text-muted-foreground">
-                            Pessoa: {pessoa?.nome ?? "Vinculada"} · Saldo disponível: {formatCartaoCurrency(saldoDisponivel)}
-                          </p>
-                          <p className="text-muted-foreground">
-                            Pendente atual da parcela: {formatCartaoCurrency(pendente)}
-                          </p>
-                        </div>
-                      );
-                    })()}
-
-                    <div className="space-y-2">
-                      <Label>Valor do abatimento</Label>
-                      <Input
-                        value={abaterSaldoParcelaForm.valor}
-                        onChange={(e) => setAbaterSaldoParcelaForm((prev) => ({ ...prev, valor: e.target.value }))}
-                        placeholder="0,00"
-                        required
-                        data-testid="input-abater-saldo-parcela-valor"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Data</Label>
-                      <Input
-                        type="date"
-                        value={abaterSaldoParcelaForm.data}
-                        onChange={(e) => setAbaterSaldoParcelaForm((prev) => ({ ...prev, data: e.target.value }))}
-                        required
-                        data-testid="input-abater-saldo-parcela-data"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Observação (opcional)</Label>
-                      <Input
-                        value={abaterSaldoParcelaForm.observacao}
-                        onChange={(e) => setAbaterSaldoParcelaForm((prev) => ({ ...prev, observacao: e.target.value }))}
-                        placeholder="Ex.: abatimento usando saldo da pessoa"
-                        data-testid="input-abater-saldo-parcela-observacao"
-                      />
-                    </div>
-
-                    <Button
-                      type="submit"
-                      className="w-full"
-                      disabled={abaterSaldoParcelaMutation.isPending}
-                      data-testid="button-confirmar-abater-saldo-parcela"
-                    >
-                      {abaterSaldoParcelaMutation.isPending ? "Aplicando..." : "Aplicar abatimento"}
-                    </Button>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
+      <ParcelasTab
+        open={!!viewingCompra}
+        onOpenChange={(open) => {
+          if (!open) {
+            setViewingCompra(null);
+            setAbaterSaldoParcelaId(null);
+          }
+        }}
+        viewingCompra={viewingCompra}
+        parcelasCompraData={parcelasCompraData}
+        pessoas={pessoas}
+        formatCurrency={formatCartaoCurrency}
+        getParcelaSaldoPendente={getParcelaSaldoPendente}
+        getParcelaSaldoAbatido={getParcelaSaldoAbatido}
+        getPessoaSaldoDisponivel={getPessoaSaldoDisponivel}
+        isParcelaVencida={isParcelaVencida}
+        isParcelaComprometendoLimite={isParcelaComprometendoLimite}
+        editingParcelaId={editingParcelaId}
+        setEditingParcelaId={setEditingParcelaId}
+        editingParcelaValor={editingParcelaValor}
+        setEditingParcelaValor={setEditingParcelaValor}
+        editingParcelaData={editingParcelaData}
+        setEditingParcelaData={setEditingParcelaData}
+        payingParcelaId={payingParcelaId}
+        setPayingParcelaId={setPayingParcelaId}
+        payParcelaData={payParcelaData}
+        setPayParcelaData={setPayParcelaData}
+        onEditParcela={handleEditParcela}
+        onPayParcela={handlePayParcela}
+        onPayParcelaPessoa={handlePayParcelaPessoa}
+        onOpenAbaterSaldoParcela={openAbaterSaldoParcelaDialog}
+        abaterSaldoParcelaId={abaterSaldoParcelaId}
+        setAbaterSaldoParcelaId={setAbaterSaldoParcelaId}
+        abaterSaldoParcelaForm={abaterSaldoParcelaForm}
+        setAbaterSaldoParcelaForm={setAbaterSaldoParcelaForm}
+        onSubmitAbaterSaldo={() => {
+          if (!viewingCompra?.pessoaId || !abaterSaldoParcelaId) return;
+          abaterSaldoParcelaMutation.mutate(
+            {
+              pessoaId: viewingCompra.pessoaId,
+              parcelaId: abaterSaldoParcelaId,
+              valor: abaterSaldoParcelaForm.valor,
+              data: abaterSaldoParcelaForm.data,
+              observacao: abaterSaldoParcelaForm.observacao || null,
+            },
+            {
+              onSuccess: (result) => {
+                setAbaterSaldoParcelaId(null);
+                toast({
+                  title: result.quitada ? "Parcela quitada com saldo" : "Abatimento parcial registrado",
+                  description: `Saldo utilizado: ${formatCartaoCurrency(result.valorAbatido)}`,
+                });
+                refetchParcelas();
+              },
+              onError: (error) => {
+                toast({
+                  title: "Erro ao abater saldo",
+                  description: getErrorMessage(error),
+                  variant: "destructive",
+                });
+              },
+            },
+          );
+        }}
+        isAbaterSaldoPending={abaterSaldoParcelaMutation.isPending}
+      />
 
       <ImportFaturaDialog
         open={openImport}
@@ -2004,303 +1422,62 @@ export default function CartoesPage() {
       {cartoes.length === 0 ? (
         <CartoesEmptyState />
       ) : prefs.mobileMode ? (
-        <div className="space-y-4" data-testid="cartoes-mobile-list">
-          <CartaoCard className="touch-feedback" contentClassName="space-y-1 p-4">
-            <div className="flex items-center gap-1.5">
-              <p className="text-sm text-muted-foreground font-medium">
-                Faturas de {format(new Date(), "MMMM", { locale: ptBR }).replace(/^\w/, (c) => c.toUpperCase())}
-              </p>
-              <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-            </div>
-            <p className="fin-value-kpi">{formatCartaoCurrency(totalFaturas)}</p>
-          </CartaoCard>
-
-          <div className="space-y-3">
-            <p className="text-sm font-semibold text-muted-foreground px-1">Meus cartões</p>
-            {cartoes.map((c) => {
-              const limite = Number(c.limite);
-              const faturaAtual = getCardTotal(c.id);
-              const limiteComprometido = getCardUsedLimit(c.id);
-              const limiteDisponivel = getCardAvailableLimit(c.id);
-              const nextDate = getNextInvoiceDate(Number(c.diaVencimento));
-              const [nextDay, nextMonth] = nextDate.split("/");
-
-              return (
-                <div
-                  key={c.id}
-                  className="fintech-surface desktop-hover-lift touch-feedback overflow-hidden"
-                  data-testid={`mobile-card-cartao-${c.id}`}
-                >
-                  <div className="flex items-center gap-3 p-4">
-                    <BrandIconDisplay name={c.nome} iconeId={c.iconeId} size="md" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm leading-tight">{c.nome}</p>
-                      <p className="text-xs text-muted-foreground">Cartão manual</p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-8 rounded-lg flex-shrink-0"
-                      onClick={() => {
-                        setSelectedCartao(selectedCartao === c.id ? "" : c.id);
-                        setOpenCompra(false);
-                      }}
-                      data-testid={`button-ver-fatura-mobile-${c.id}`}
-                    >
-                      {selectedCartao === c.id ? "Fechar" : "Ver fatura"}
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-2 divide-x divide-border/70 bg-muted/25 px-4 py-3">
-                    <div className="pr-4">
-                      <p className="text-xs text-muted-foreground mb-0.5">Limite Disponível</p>
-                      <p className="text-sm font-semibold text-emerald-600">{formatCartaoCurrency(limiteDisponivel)}</p>
-                    </div>
-                    <div className="pl-4">
-                      <p className="text-xs text-muted-foreground mb-0.5">
-                        Fatura atual{" "}
-                        <span className="font-normal">(Venc.{nextDay}/{nextMonth})</span>
-                      </p>
-                      <p className="text-sm font-semibold">{formatCartaoCurrency(faturaAtual)}</p>
-                    </div>
-                  </div>
-
-                  {selectedCartao === c.id && (
-                    <div className="border-t border-border/50 divide-y divide-border/30">
-                      {getFilteredCardCompras(c.id).length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-4">Nenhuma compra na fatura</p>
-                      ) : (
-                        getFilteredCardCompras(c.id).map((compra) => {
-                          const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
-                          return (
-                            <div key={compra.id} className="flex items-center gap-3 px-4 py-3 touch-feedback">
-                              <BrandIconDisplay name={compra.descricao} size="sm" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium truncate">{compra.descricao}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {compra.parcelaAtual}/{compra.parcelas}x
-                                </p>
-                                {servicosVinculados.length > 0 && (
-                                  <p className="text-[11px] text-blue-600 mt-0.5">
-                                    Serviço vinculado ({servicosVinculados.length})
-                                  </p>
-                                )}
-                              </div>
-                              <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                <p className="text-sm font-semibold">
-                                  {formatCartaoCurrency(Number(compra.valorParcela))}
-                                </p>
-                                <div className="flex items-center gap-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    title="Ver parcelas"
-                                    onClick={() => setViewingCompra(compra)}
-                                    data-testid={`button-view-parcelas-mobile-${compra.id}`}
-                                  >
-                                    <List className="w-3 h-3 text-muted-foreground" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    title="Excluir compra"
-                                    onClick={() => openDeleteCompraConfirm(compra)}
-                                    data-testid={`button-delete-compra-mobile-${compra.id}`}
-                                  >
-                                    <Trash2 className="w-3 h-3 text-muted-foreground" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                      <div className="px-4 py-2.5">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="w-full text-xs text-muted-foreground"
-                          onClick={() => { setSelectedCartao(c.id); setOpenCompra(true); }}
-                          data-testid={`button-add-compra-mobile-${c.id}`}
-                        >
-                          <Plus className="w-3 h-3 mr-1" /> Adicionar compra
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <CartoesMobileTabs
+          cartoes={cartoes}
+          selectedCartao={selectedCartao}
+          setSelectedCartao={setSelectedCartao}
+          setOpenCompra={setOpenCompra}
+          totalFaturas={totalFaturas}
+          formatCurrency={formatCartaoCurrency}
+          getCardTotal={getCardTotal}
+          getCardAvailableLimit={getCardAvailableLimit}
+          getFilteredCardCompras={getFilteredCardCompras}
+          servicos={servicos}
+          pessoas={pessoas}
+          onOpenParcelas={setViewingCompra}
+          onDeleteCompra={openDeleteCompraConfirm}
+        />
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-          {cartoes.map((c) => {
-            const limite = Number(c.limite);
-            const faturaAtual = getCardTotal(c.id);
-            const limiteComprometido = getCardUsedLimit(c.id);
-            const limiteDisponivel = getCardAvailableLimit(c.id);
-            const percentUsed = limite > 0 ? (limiteComprometido / limite) * 100 : 0;
-            const cardCompras = getFilteredCardCompras(c.id);
-            const daysUntil = getDaysUntilInvoice(Number(c.diaVencimento));
-            const nextDate = getNextInvoiceDate(Number(c.diaVencimento));
-            const isUrgent = daysUntil <= 5;
-
-            return (
-                <CartaoCard key={c.id} testId={`card-cartao-${c.id}`} header={(
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                      <BrandIconDisplay name={c.nome} iconeId={c.iconeId} size="md" />
-                      <div>
-                        <CardTitle className="text-base">{c.nome}</CardTitle>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Melhor compra: dia {c.melhorDiaCompra} · Venc: dia {c.diaVencimento}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon"
-                        onClick={() => { setEditingCard(c); setEditCardForm({ nome: c.nome, limite: String(c.limite), melhorDiaCompra: String(c.melhorDiaCompra), diaVencimento: String(c.diaVencimento) }); setEditCardIcone(c.iconeId || null); }}
-                        data-testid={`button-edit-cartao-${c.id}`}>
-                        <Pencil className="w-4 h-4 text-muted-foreground" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDeleteCard(c.id)}
-                        data-testid={`button-delete-cartao-${c.id}`}>
-                        <Trash2 className="w-4 h-4 text-muted-foreground" />
-                      </Button>
-                    </div>
-                  </div>
-                )} contentClassName="space-y-4">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div className="fintech-stat-card">
-                        <p className="text-xs text-muted-foreground mb-1">Fatura atual</p>
-                        <p className="text-lg font-bold">{formatCartaoCurrency(faturaAtual)}</p>
-                      </div>
-                      <div className="fintech-stat-card bg-emerald-500/5">
-                        <p className="text-xs text-muted-foreground mb-1">Disponível</p>
-                        <p className="text-lg font-bold text-emerald-600">{formatCartaoCurrency(limiteDisponivel)}</p>
-                      </div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-                      <span>{formatCartaoCurrency(limiteComprometido)} usados</span>
-                      <span>Limite: {formatCartaoCurrency(limite)}</span>
-                    </div>
-                    <Progress
-                      value={Math.min(percentUsed, 100)}
-                      className={`h-2 ${percentUsed > 80 ? "[&>div]:bg-red-500" : percentUsed > 60 ? "[&>div]:bg-amber-500" : ""}`}
-                    />
-                  </div>
-
-                  <div className={`flex items-center gap-2 p-3 rounded-md ${isUrgent ? "bg-red-500/5 border border-red-500/10" : "bg-muted/30"}`}>
-                    <CalendarClock className={`w-4 h-4 flex-shrink-0 ${isUrgent ? "text-red-500" : "text-muted-foreground"}`} />
-                    <div>
-                      <p className="text-xs text-muted-foreground">Proxima fatura</p>
-                      <p className={`text-sm font-semibold ${isUrgent ? "text-red-600" : ""}`}>
-                        {nextDate} · {daysUntil} dia(s)
-                      </p>
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <ShoppingBag className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">Compras parceladas ({cardCompras.length})</span>
-                    </div>
-                    <Button variant="outline" size="sm"
-                      onClick={() => { setSelectedCartao(c.id); setOpenCompra(true); }}
-                      data-testid={`button-add-compra-${c.id}`}>
-                      <Plus className="w-3 h-3 mr-1" /> Adicionar
-                    </Button>
-                  </div>
-
-                  {cardCompras.length > 0 && (
-                    <div className="space-y-2">
-                      {cardCompras.map((compra) => {
-                        const aguardandoReembolso = compra.pessoaId && (!compra.statusPessoa || compra.statusPessoa === "pendente");
-                        const reembolsado = compra.pessoaId && compra.statusPessoa === "pago";
-                        const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
-                        return (
-                          <div key={compra.id} className="fintech-surface-subtle p-2.5 text-sm touch-feedback" data-testid={`compra-${compra.id}`}>
-                            <div className="flex items-center gap-3 mb-2">
-                              <BrandIconDisplay name={compra.descricao} size="sm" />
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <p className="truncate font-medium">{compra.descricao}</p>
-                                  {compra.pessoaId && (
-                                    <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 flex-shrink-0">
-                                      <User className="w-2.5 h-2.5" />
-                                      {pessoas.find((p) => p.id === compra.pessoaId)?.nome ?? "Pessoa"}
-                                    </span>
-                                  )}
-                                  {aguardandoReembolso && (
-                                    <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 flex-shrink-0">
-                                      <RefreshCw className="w-2.5 h-2.5" /> Ag. reembolso
-                                    </span>
-                                  )}
-                                  {reembolsado && (
-                                    <span className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 flex-shrink-0">
-                                      Reembolsado
-                                    </span>
-                                  )}
-                                  {servicosVinculados.length > 0 && (
-                                    <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-700 dark:text-blue-300 flex-shrink-0">
-                                      <CreditCard className="w-2.5 h-2.5" />
-                                      Serviço vinculado ({servicosVinculados.length})
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  {compra.parcelaAtual}/{compra.parcelas}x de {formatCartaoCurrency(Number(compra.valorParcela))}
-                                  {" · "}total: {formatCartaoCurrency(Number(compra.valorTotal))}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                <span className="font-semibold text-sm">{formatCartaoCurrency(Number(compra.valorParcela))}</span>
-                                {aguardandoReembolso && (
-                                  <Button variant="ghost" size="icon" className="h-7 w-7"
-                                    title="Marcar como reembolsado"
-                                    onClick={() => handleMarcarReembolso(compra.id, true)}
-                                    data-testid={`button-reembolso-${compra.id}`}>
-                                    <RefreshCw className="w-3 h-3 text-amber-600" />
-                                  </Button>
-                                )}
-                                <Button variant="ghost" size="icon" className="h-7 w-7"
-                                  title="Ver parcelas"
-                                  onClick={() => setViewingCompra(compra)}
-                                  data-testid={`button-view-parcelas-${compra.id}`}>
-                                  <List className="w-3 h-3 text-muted-foreground" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-7 w-7"
-                                  onClick={() => { setEditingCompra(compra); setEditCompraForm({ descricao: compra.descricao, valorTotal: String(compra.valorTotal), parcelas: String(compra.parcelas), pessoaId: compra.pessoaId ?? "", statusPessoa: compra.statusPessoa ?? "pendente" }); }}
-                                  data-testid={`button-edit-compra-${compra.id}`}>
-                                  <Pencil className="w-3 h-3 text-muted-foreground" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-7 w-7"
-                                  onClick={() => openDeleteCompraConfirm(compra)}
-                                  data-testid={`button-delete-compra-${compra.id}`}>
-                                  <Trash2 className="w-3 h-3 text-muted-foreground" />
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {cardCompras.length === 0 && (
-                    <p className="text-center py-3 text-sm text-muted-foreground">Nenhuma compra parcelada</p>
-                  )}
-                </CartaoCard>
-            );
-          })}
-        </div>
+        <CartoesComprasGrid
+          cartoes={cartoes}
+          pessoas={pessoas}
+          servicos={servicos}
+          formatCurrency={formatCartaoCurrency}
+          getCardTotal={getCardTotal}
+          getCardUsedLimit={getCardUsedLimit}
+          getCardAvailableLimit={getCardAvailableLimit}
+          getFilteredCardCompras={getFilteredCardCompras}
+          getDaysUntilInvoice={getDaysUntilInvoice}
+          getNextInvoiceDate={getNextInvoiceDate}
+          onEditCartao={(cartao) => {
+            setEditingCard(cartao);
+            setEditCardForm({
+              nome: cartao.nome,
+              limite: String(cartao.limite),
+              melhorDiaCompra: String(cartao.melhorDiaCompra),
+              diaVencimento: String(cartao.diaVencimento),
+            });
+            setEditCardIcone(cartao.iconeId || null);
+          }}
+          onDeleteCartao={handleDeleteCard}
+          onAddCompra={(cartaoId) => {
+            setSelectedCartao(cartaoId);
+            setOpenCompra(true);
+          }}
+          onOpenParcelas={setViewingCompra}
+          onEditCompra={(compra) => {
+            setEditingCompra(compra);
+            setEditCompraForm({
+              descricao: compra.descricao,
+              valorTotal: String(compra.valorTotal),
+              parcelas: String(compra.parcelas),
+              pessoaId: compra.pessoaId ?? "",
+              statusPessoa: compra.statusPessoa ?? "pendente",
+            });
+          }}
+          onDeleteCompra={openDeleteCompraConfirm}
+          onMarcarReembolso={(compraId) => handleMarcarReembolso(compraId, true)}
+        />
       )}
       </div>
     </div>
