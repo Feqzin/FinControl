@@ -223,6 +223,10 @@ export default function CartoesPage() {
   useEffect(() => {
     if (cartoesTab === "limite") {
       setCartoesTab("resumo");
+      return;
+    }
+    if (cartoesTab === "parcelas") {
+      setCartoesTab("compras");
     }
   }, [cartoesTab]);
 
@@ -395,6 +399,11 @@ export default function CartoesPage() {
   };
 
   const compraSearchNormalized = compraSearch.trim().toLowerCase();
+  const activeCartoesTab = cartoesTab === "limite"
+    ? "resumo"
+    : cartoesTab === "parcelas"
+      ? "compras"
+      : cartoesTab;
 
   const getFilteredCardCompras = (cartaoId: string) => {
     const card = cartoes.find((item) => item.id === cartaoId);
@@ -1120,7 +1129,7 @@ export default function CartoesPage() {
     } finally { setImportLoading(false); }
   };
 
-  const showCompraSearch = cartoesTab === "compras" || cartoesTab === "fatura" || cartoesTab === "parcelas";
+  const showCompraSearch = activeCartoesTab === "compras" || activeCartoesTab === "fatura";
   const cartoesInsightsItems = (() => {
     if (cartoes.length === 0) return [] as CartaoInsightItem[];
 
@@ -1267,7 +1276,7 @@ export default function CartoesPage() {
         insights={<CartoesInsights items={cartoesInsightsItems} />}
         filterBar={(
           <CartoesFilterBar
-            cartoesTab={cartoesTab}
+            cartoesTab={activeCartoesTab}
             onTabChange={setCartoesTab}
             compraSearch={compraSearch}
             onCompraSearchChange={setCompraSearch}
@@ -1517,10 +1526,10 @@ export default function CartoesPage() {
         onConfirmImport={handleConfirmImport}
       />
 
-      <div data-testid={`cartoes-tab-${cartoesTab}`}>
+      <div data-testid={`cartoes-tab-${activeCartoesTab}`}>
         <CartoesGrid
           cartoes={cartoes}
-          cartoesTab={cartoesTab}
+          cartoesTab={activeCartoesTab}
           getCardTotal={getCardTotal}
           getCardUsedLimit={getCardUsedLimit}
           getCardAvailableLimit={getCardAvailableLimit}
@@ -1531,12 +1540,11 @@ export default function CartoesPage() {
             setCartoesTab("compras");
             setSelectedCartao(cartaoId);
           }}
-          onOpenParcelas={setViewingCompra}
           onDeleteCompra={openDeleteCompraConfirm}
         />
       </div>
 
-      <div className={cartoesTab === "compras" || cartoes.length === 0 ? "" : "hidden"}>
+      <div className={activeCartoesTab === "compras" || cartoes.length === 0 ? "" : "hidden"}>
       {cartoes.length === 0 ? (
         <CartoesEmptyState />
       ) : prefs.mobileMode ? (

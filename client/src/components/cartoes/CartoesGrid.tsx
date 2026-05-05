@@ -19,7 +19,6 @@ type CartoesGridProps = {
   getFilteredCardCompras: (cartaoId: string) => CompraCartao[];
   formatCartaoCurrency: (value: number) => string;
   onOpenCompras: (cartaoId: string) => void;
-  onOpenParcelas: (compra: CompraCartao) => void;
   onDeleteCompra: (compra: CompraCartao) => void;
 };
 
@@ -38,11 +37,9 @@ export function CartoesGrid({
   getFilteredCardCompras,
   formatCartaoCurrency,
   onOpenCompras,
-  onOpenParcelas,
   onDeleteCompra,
 }: CartoesGridProps) {
   const [visibleFaturaByCard, setVisibleFaturaByCard] = useState<VisibleByCard>({});
-  const [visibleParcelasByCard, setVisibleParcelasByCard] = useState<VisibleByCard>({});
 
   useEffect(() => {
     if (cartoesTab !== "fatura") return;
@@ -64,29 +61,9 @@ export function CartoesGrid({
     });
   }, [cartoes, cartoesTab, getFilteredCardCompras]);
 
-  useEffect(() => {
-    if (cartoesTab !== "parcelas") return;
-    setVisibleParcelasByCard((prev) => {
-      const next: VisibleByCard = {};
-      let changed = false;
-      for (const cartao of cartoes) {
-        const total = getFilteredCardCompras(cartao.id).length;
-        const nextValue = Math.min(prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS, Math.max(total, INITIAL_VISIBLE_ITEMS));
-        next[cartao.id] = nextValue;
-        if ((prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS) !== nextValue) {
-          changed = true;
-        }
-      }
-      if (Object.keys(prev).length !== Object.keys(next).length) {
-        changed = true;
-      }
-      return changed ? next : prev;
-    });
-  }, [cartoes, cartoesTab, getFilteredCardCompras]);
-
   if (cartoes.length === 0 || cartoesTab === "compras") return null;
 
-  const normalizedTab = cartoesTab === "limite" ? "resumo" : cartoesTab;
+  const normalizedTab = cartoesTab === "limite" || cartoesTab === "parcelas" ? "resumo" : cartoesTab;
 
   if (normalizedTab === "resumo") {
     return (
@@ -141,7 +118,7 @@ export function CartoesGrid({
 
               <div className="space-y-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2.5">
                 <div className="flex items-center justify-between gap-2 text-xs">
-                  <span className="text-muted-foreground">Comprometido</span>
+                  <span className="text-muted-foreground">Uso do limite</span>
                   <span
                     className={isCritical ? "font-semibold text-red-600" : isWarning ? "font-semibold text-amber-600" : "font-semibold text-foreground"}
                   >
@@ -149,18 +126,14 @@ export function CartoesGrid({
                   </span>
                 </div>
                 <Progress value={percentual} className={`h-1.5 ${barColorClass}`} />
-                <div className="grid grid-cols-3 gap-2 text-[11px]">
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
                   <div className="min-w-0">
                     <p className="text-muted-foreground">Limite</p>
                     <p className="truncate font-semibold">{formatCartaoCurrency(limite)}</p>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-muted-foreground">Comprom.</p>
+                    <p className="text-muted-foreground">Usado</p>
                     <p className="truncate font-semibold">{formatCartaoCurrency(comprometido)}</p>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-muted-foreground">Disponível</p>
-                    <p className="truncate font-semibold text-emerald-600">{formatCartaoCurrency(limiteDisponivel)}</p>
                   </div>
                 </div>
               </div>
@@ -264,101 +237,5 @@ export function CartoesGrid({
     );
   }
 
-  return (
-    <div className="space-y-3">
-      {cartoes.map((cartao) => {
-        const comprasFiltradas = getFilteredCardCompras(cartao.id);
-        const visibleCount = Math.min(
-          visibleParcelasByCard[cartao.id] ?? INITIAL_VISIBLE_ITEMS,
-          comprasFiltradas.length,
-        );
-        const visibleCompras = comprasFiltradas.slice(0, visibleCount);
-        const canShowMore = visibleCount < comprasFiltradas.length;
-        const canShowLess = comprasFiltradas.length > INITIAL_VISIBLE_ITEMS && visibleCount > INITIAL_VISIBLE_ITEMS;
-
-        return (
-          <CartaoCard key={cartao.id} contentClassName="space-y-3 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold">{cartao.nome}</p>
-              <Badge variant="secondary">{comprasFiltradas.length} compra(s)</Badge>
-            </div>
-            {comprasFiltradas.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Nenhuma compra encontrada para o filtro.</p>
-            ) : (
-              <>
-                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <span>Mostrando {visibleCount} de {comprasFiltradas.length} compras</span>
-                </div>
-                <div className="space-y-2">
-                  {visibleCompras.map((compra) => (
-                    <div key={compra.id} className="fintech-surface-subtle touch-feedback flex items-center justify-between gap-2 p-2.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{compra.descricao}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Parcela atual {compra.parcelaAtual}/{compra.parcelas}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onOpenParcelas(compra)}
-                          data-testid={`button-open-parcelas-tab-${compra.id}`}
-                        >
-                          Ver parcelas
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => onDeleteCompra(compra)}
-                          data-testid={`button-delete-compra-parcelas-tab-${compra.id}`}
-                        >
-                          <Trash2 className="h-3 w-3 text-muted-foreground" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {canShowMore || canShowLess ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {canShowMore ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setVisibleParcelasByCard((prev) => ({
-                            ...prev,
-                            [cartao.id]: (prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS) + VISIBLE_STEP,
-                          }));
-                        }}
-                        data-testid={`button-ver-mais-parcelas-${cartao.id}`}
-                      >
-                        Ver mais
-                      </Button>
-                    ) : null}
-                    {canShowLess ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setVisibleParcelasByCard((prev) => ({
-                            ...prev,
-                            [cartao.id]: INITIAL_VISIBLE_ITEMS,
-                          }));
-                        }}
-                        data-testid={`button-ver-menos-parcelas-${cartao.id}`}
-                      >
-                        Ver menos
-                      </Button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </>
-            )}
-          </CartaoCard>
-        );
-      })}
-    </div>
-  );
+  return null;
 }

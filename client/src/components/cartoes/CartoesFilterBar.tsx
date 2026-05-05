@@ -26,7 +26,6 @@ export function CartoesFilterBar({
           <TabsTrigger value="resumo" data-testid="tab-cartoes-resumo">Resumo</TabsTrigger>
           <TabsTrigger value="fatura" data-testid="tab-cartoes-fatura">Fatura atual</TabsTrigger>
           <TabsTrigger value="compras" data-testid="tab-cartoes-compras">Compras</TabsTrigger>
-          <TabsTrigger value="parcelas" data-testid="tab-cartoes-parcelas">Parcelas</TabsTrigger>
         </TabsList>
       </Tabs>
 
