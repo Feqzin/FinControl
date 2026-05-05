@@ -8,6 +8,7 @@ type CartoesSummarySectionProps = {
   formatCurrency: (value: number) => string;
   filterBar: ReactNode;
   insights?: ReactNode;
+  showInsights?: boolean;
 };
 
 export function CartoesSummarySection({
@@ -17,6 +18,7 @@ export function CartoesSummarySection({
   formatCurrency,
   filterBar,
   insights,
+  showInsights = true,
 }: CartoesSummarySectionProps) {
   if (!hasCartoes) return null;
 
@@ -27,9 +29,8 @@ export function CartoesSummarySection({
         totalAguardandoReembolso={totalAguardandoReembolso}
         formatCurrency={formatCurrency}
       />
-      {insights}
+      {showInsights ? insights : null}
       {filterBar}
     </div>
   );
 }
-

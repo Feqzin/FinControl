@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -37,6 +38,11 @@ type CartoesComprasGridProps = {
   onMarcarReembolso: (compraId: string) => void;
 };
 
+const INITIAL_VISIBLE_ITEMS = 8;
+const VISIBLE_STEP = 8;
+
+type VisibleByCard = Record<string, number>;
+
 export function CartoesComprasGrid({
   cartoes,
   pessoas,
@@ -56,6 +62,27 @@ export function CartoesComprasGrid({
   onDeleteCompra,
   onMarcarReembolso,
 }: CartoesComprasGridProps) {
+  const [visibleByCard, setVisibleByCard] = useState<VisibleByCard>({});
+
+  useEffect(() => {
+    setVisibleByCard((prev) => {
+      const next: VisibleByCard = {};
+      let changed = false;
+      for (const cartao of cartoes) {
+        const total = getFilteredCardCompras(cartao.id).length;
+        const nextValue = Math.min(prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS, Math.max(total, INITIAL_VISIBLE_ITEMS));
+        next[cartao.id] = nextValue;
+        if ((prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS) !== nextValue) {
+          changed = true;
+        }
+      }
+      if (Object.keys(prev).length !== Object.keys(next).length) {
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [cartoes, getFilteredCardCompras]);
+
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
       {cartoes.map((cartao) => {
@@ -68,6 +95,10 @@ export function CartoesComprasGrid({
         const daysUntil = getDaysUntilInvoice(Number(cartao.diaVencimento));
         const nextDate = getNextInvoiceDate(Number(cartao.diaVencimento));
         const isUrgent = daysUntil <= 5;
+        const visibleCount = Math.min(visibleByCard[cartao.id] ?? INITIAL_VISIBLE_ITEMS, cardCompras.length);
+        const visibleCompras = cardCompras.slice(0, visibleCount);
+        const canShowMore = visibleCount < cardCompras.length;
+        const canShowLess = cardCompras.length > INITIAL_VISIBLE_ITEMS && visibleCount > INITIAL_VISIBLE_ITEMS;
 
         return (
           <CartaoCard
@@ -156,95 +187,134 @@ export function CartoesComprasGrid({
             </div>
 
             {cardCompras.length > 0 ? (
-              <div className="space-y-2">
-                {cardCompras.map((compra) => {
-                  const aguardandoReembolso = compra.pessoaId && (!compra.statusPessoa || compra.statusPessoa === "pendente");
-                  const reembolsado = compra.pessoaId && compra.statusPessoa === "pago";
-                  const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Mostrando {visibleCount} de {cardCompras.length} parcelas/compras
+                </p>
+                <div className="space-y-2">
+                  {visibleCompras.map((compra) => {
+                    const aguardandoReembolso = compra.pessoaId && (!compra.statusPessoa || compra.statusPessoa === "pendente");
+                    const reembolsado = compra.pessoaId && compra.statusPessoa === "pago";
+                    const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
 
-                  return (
-                    <div key={compra.id} className="fintech-surface-subtle touch-feedback p-2.5 text-sm" data-testid={`compra-${compra.id}`}>
-                      <div className="mb-2 flex items-center gap-3">
-                        <BrandIconDisplay name={compra.descricao} size="sm" />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="truncate font-medium">{compra.descricao}</p>
-                            {compra.pessoaId ? (
-                              <span className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-xs text-blue-600 dark:text-blue-400">
-                                <User className="h-2.5 w-2.5" />
-                                {pessoas.find((pessoa) => pessoa.id === compra.pessoaId)?.nome ?? "Pessoa"}
-                              </span>
-                            ) : null}
-                            {aguardandoReembolso ? (
-                              <span className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-600">
-                                <RefreshCw className="h-2.5 w-2.5" /> Ag. reembolso
-                              </span>
-                            ) : null}
-                            {reembolsado ? (
-                              <span className="inline-flex flex-shrink-0 items-center rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-600">
-                                Reembolsado
-                              </span>
-                            ) : null}
-                            {servicosVinculados.length > 0 ? (
-                              <span className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-xs text-blue-700 dark:text-blue-300">
-                                <CreditCard className="h-2.5 w-2.5" />
-                                Serviço vinculado ({servicosVinculados.length})
-                              </span>
-                            ) : null}
+                    return (
+                      <div key={compra.id} className="fintech-surface-subtle touch-feedback p-2.5 text-sm" data-testid={`compra-${compra.id}`}>
+                        <div className="mb-2 flex items-center gap-3">
+                          <BrandIconDisplay name={compra.descricao} size="sm" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate font-medium">{compra.descricao}</p>
+                              {compra.pessoaId ? (
+                                <span className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-xs text-blue-600 dark:text-blue-400">
+                                  <User className="h-2.5 w-2.5" />
+                                  {pessoas.find((pessoa) => pessoa.id === compra.pessoaId)?.nome ?? "Pessoa"}
+                                </span>
+                              ) : null}
+                              {aguardandoReembolso ? (
+                                <span className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-600">
+                                  <RefreshCw className="h-2.5 w-2.5" /> Ag. reembolso
+                                </span>
+                              ) : null}
+                              {reembolsado ? (
+                                <span className="inline-flex flex-shrink-0 items-center rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-600">
+                                  Reembolsado
+                                </span>
+                              ) : null}
+                              {servicosVinculados.length > 0 ? (
+                                <span className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-xs text-blue-700 dark:text-blue-300">
+                                  <CreditCard className="h-2.5 w-2.5" />
+                                  Serviço vinculado ({servicosVinculados.length})
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {compra.parcelaAtual}/{compra.parcelas}x de {formatCurrency(Number(compra.valorParcela))}
+                              {" · "}total: {formatCurrency(Number(compra.valorTotal))}
+                            </p>
                           </div>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {compra.parcelaAtual}/{compra.parcelas}x de {formatCurrency(Number(compra.valorParcela))}
-                            {" · "}total: {formatCurrency(Number(compra.valorTotal))}
-                          </p>
-                        </div>
-                        <div className="flex flex-shrink-0 items-center gap-1">
-                          <span className="text-sm font-semibold">{formatCurrency(Number(compra.valorParcela))}</span>
-                          {aguardandoReembolso ? (
+                          <div className="flex flex-shrink-0 items-center gap-1">
+                            <span className="text-sm font-semibold">{formatCurrency(Number(compra.valorParcela))}</span>
+                            {aguardandoReembolso ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                title="Marcar como reembolsado"
+                                onClick={() => onMarcarReembolso(compra.id)}
+                                data-testid={`button-reembolso-${compra.id}`}
+                              >
+                                <RefreshCw className="h-3 w-3 text-amber-600" />
+                              </Button>
+                            ) : null}
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
-                              title="Marcar como reembolsado"
-                              onClick={() => onMarcarReembolso(compra.id)}
-                              data-testid={`button-reembolso-${compra.id}`}
+                              title="Ver parcelas"
+                              onClick={() => onOpenParcelas(compra)}
+                              data-testid={`button-view-parcelas-${compra.id}`}
                             >
-                              <RefreshCw className="h-3 w-3 text-amber-600" />
+                              <List className="h-3 w-3 text-muted-foreground" />
                             </Button>
-                          ) : null}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            title="Ver parcelas"
-                            onClick={() => onOpenParcelas(compra)}
-                            data-testid={`button-view-parcelas-${compra.id}`}
-                          >
-                            <List className="h-3 w-3 text-muted-foreground" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => onEditCompra(compra)}
-                            data-testid={`button-edit-compra-${compra.id}`}
-                          >
-                            <Pencil className="h-3 w-3 text-muted-foreground" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => onDeleteCompra(compra)}
-                            data-testid={`button-delete-compra-${compra.id}`}
-                          >
-                            <Trash2 className="h-3 w-3 text-muted-foreground" />
-                          </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => onEditCompra(compra)}
+                              data-testid={`button-edit-compra-${compra.id}`}
+                            >
+                              <Pencil className="h-3 w-3 text-muted-foreground" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => onDeleteCompra(compra)}
+                              data-testid={`button-delete-compra-${compra.id}`}
+                            >
+                              <Trash2 className="h-3 w-3 text-muted-foreground" />
+                            </Button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+                {canShowMore || canShowLess ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {canShowMore ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setVisibleByCard((prev) => ({
+                            ...prev,
+                            [cartao.id]: (prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS) + VISIBLE_STEP,
+                          }));
+                        }}
+                        data-testid={`button-ver-mais-compras-${cartao.id}`}
+                      >
+                        Ver mais
+                      </Button>
+                    ) : null}
+                    {canShowLess ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setVisibleByCard((prev) => ({
+                            ...prev,
+                            [cartao.id]: INITIAL_VISIBLE_ITEMS,
+                          }));
+                        }}
+                        data-testid={`button-ver-menos-compras-${cartao.id}`}
+                      >
+                        Ver menos
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
             ) : (
               <p className="py-3 text-center text-sm text-muted-foreground">Nenhuma compra parcelada</p>
             )}
@@ -254,4 +324,3 @@ export function CartoesComprasGrid({
     </div>
   );
 }
-

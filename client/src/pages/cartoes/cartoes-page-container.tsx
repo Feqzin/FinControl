@@ -216,6 +216,12 @@ export default function CartoesPage() {
   }, [compras, location, setLocation]);
 
   useEffect(() => {
+    if (cartoesTab === "limite") {
+      setCartoesTab("resumo");
+    }
+  }, [cartoesTab]);
+
+  useEffect(() => {
     if (!openDeleteFaturaDialog) return;
     if (deleteFaturaScope === "cartao") {
       const fallbackCartaoId = selectedCartao || cartoes[0]?.id || "";
@@ -1154,6 +1160,7 @@ export default function CartoesPage() {
         totalFaturas={totalFaturas}
         totalAguardandoReembolso={totalAguardandoReembolso}
         formatCurrency={formatCartaoCurrency}
+        showInsights={false}
         insights={<CartoesInsights items={cartoesInsightsItems} />}
         filterBar={(
           <CartoesFilterBar
@@ -1433,7 +1440,6 @@ export default function CartoesPage() {
           getCardAvailableLimit={getCardAvailableLimit}
           getFilteredCardCompras={getFilteredCardCompras}
           servicos={servicos}
-          pessoas={pessoas}
           onOpenParcelas={setViewingCompra}
           onDeleteCompra={openDeleteCompraConfirm}
         />

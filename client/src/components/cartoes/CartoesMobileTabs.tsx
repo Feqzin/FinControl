@@ -1,7 +1,8 @@
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CartaoCard } from "@/components/cartoes/CartaoCard";
 import { BrandIconDisplay } from "@/lib/brand-icons";
-import type { Cartao, CompraCartao, Servico, Pessoa } from "@shared/schema";
+import type { Cartao, CompraCartao, Servico } from "@shared/schema";
 import { Eye, List, Plus, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -18,10 +19,14 @@ type CartoesMobileTabsProps = {
   getCardAvailableLimit: (cartaoId: string) => number;
   getFilteredCardCompras: (cartaoId: string) => CompraCartao[];
   servicos: Servico[];
-  pessoas: Pessoa[];
   onOpenParcelas: (compra: CompraCartao) => void;
   onDeleteCompra: (compra: CompraCartao) => void;
 };
+
+const INITIAL_VISIBLE_ITEMS = 6;
+const VISIBLE_STEP = 6;
+
+type VisibleByCard = Record<string, number>;
 
 export function CartoesMobileTabs({
   cartoes,
@@ -34,10 +39,30 @@ export function CartoesMobileTabs({
   getCardAvailableLimit,
   getFilteredCardCompras,
   servicos,
-  pessoas,
   onOpenParcelas,
   onDeleteCompra,
 }: CartoesMobileTabsProps) {
+  const [visibleByCard, setVisibleByCard] = useState<VisibleByCard>({});
+
+  useEffect(() => {
+    setVisibleByCard((prev) => {
+      const next: VisibleByCard = {};
+      let changed = false;
+      for (const cartao of cartoes) {
+        const total = getFilteredCardCompras(cartao.id).length;
+        const nextValue = Math.min(prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS, Math.max(total, INITIAL_VISIBLE_ITEMS));
+        next[cartao.id] = nextValue;
+        if ((prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS) !== nextValue) {
+          changed = true;
+        }
+      }
+      if (Object.keys(prev).length !== Object.keys(next).length) {
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [cartoes, getFilteredCardCompras]);
+
   return (
     <div className="space-y-4" data-testid="cartoes-mobile-list">
       <CartaoCard className="touch-feedback" contentClassName="space-y-1 p-4">
@@ -58,6 +83,10 @@ export function CartoesMobileTabs({
           const nextDate = getNextInvoiceDate(Number(cartao.diaVencimento));
           const [nextDay, nextMonth] = nextDate.split("/");
           const comprasFiltradas = getFilteredCardCompras(cartao.id);
+          const visibleCount = Math.min(visibleByCard[cartao.id] ?? INITIAL_VISIBLE_ITEMS, comprasFiltradas.length);
+          const visibleCompras = comprasFiltradas.slice(0, visibleCount);
+          const canShowMore = visibleCount < comprasFiltradas.length;
+          const canShowLess = comprasFiltradas.length > INITIAL_VISIBLE_ITEMS && visibleCount > INITIAL_VISIBLE_ITEMS;
 
           return (
             <div
@@ -104,48 +133,89 @@ export function CartoesMobileTabs({
                   {comprasFiltradas.length === 0 ? (
                     <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma compra na fatura</p>
                   ) : (
-                    comprasFiltradas.map((compra) => {
-                      const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
-                      return (
-                        <div key={compra.id} className="touch-feedback flex items-center gap-3 px-4 py-3">
-                          <BrandIconDisplay name={compra.descricao} size="sm" />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium">{compra.descricao}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {compra.parcelaAtual}/{compra.parcelas}x
-                            </p>
-                            {servicosVinculados.length > 0 ? (
-                              <p className="mt-0.5 text-[11px] text-blue-600">Serviço vinculado ({servicosVinculados.length})</p>
-                            ) : null}
-                          </div>
-                          <div className="flex flex-shrink-0 flex-col items-end gap-1">
-                            <p className="text-sm font-semibold">{formatCurrency(Number(compra.valorParcela))}</p>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                title="Ver parcelas"
-                                onClick={() => onOpenParcelas(compra)}
-                                data-testid={`button-view-parcelas-mobile-${compra.id}`}
-                              >
-                                <List className="h-3 w-3 text-muted-foreground" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                title="Excluir compra"
-                                onClick={() => onDeleteCompra(compra)}
-                                data-testid={`button-delete-compra-mobile-${compra.id}`}
-                              >
-                                <Trash2 className="h-3 w-3 text-muted-foreground" />
-                              </Button>
+                    <>
+                      <p className="px-4 py-2 text-xs text-muted-foreground">
+                        Mostrando {visibleCount} de {comprasFiltradas.length} parcelas/compras
+                      </p>
+                      {visibleCompras.map((compra) => {
+                        const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
+                        return (
+                          <div key={compra.id} className="touch-feedback flex items-center gap-3 px-4 py-3">
+                            <BrandIconDisplay name={compra.descricao} size="sm" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium">{compra.descricao}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {compra.parcelaAtual}/{compra.parcelas}x
+                              </p>
+                              {servicosVinculados.length > 0 ? (
+                                <p className="mt-0.5 text-[11px] text-blue-600">Serviço vinculado ({servicosVinculados.length})</p>
+                              ) : null}
+                            </div>
+                            <div className="flex flex-shrink-0 flex-col items-end gap-1">
+                              <p className="text-sm font-semibold">{formatCurrency(Number(compra.valorParcela))}</p>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  title="Ver parcelas"
+                                  onClick={() => onOpenParcelas(compra)}
+                                  data-testid={`button-view-parcelas-mobile-${compra.id}`}
+                                >
+                                  <List className="h-3 w-3 text-muted-foreground" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  title="Excluir compra"
+                                  onClick={() => onDeleteCompra(compra)}
+                                  data-testid={`button-delete-compra-mobile-${compra.id}`}
+                                >
+                                  <Trash2 className="h-3 w-3 text-muted-foreground" />
+                                </Button>
+                              </div>
                             </div>
                           </div>
+                        );
+                      })}
+                      {canShowMore || canShowLess ? (
+                        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
+                          {canShowMore ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8"
+                              onClick={() => {
+                                setVisibleByCard((prev) => ({
+                                  ...prev,
+                                  [cartao.id]: (prev[cartao.id] ?? INITIAL_VISIBLE_ITEMS) + VISIBLE_STEP,
+                                }));
+                              }}
+                              data-testid={`button-ver-mais-mobile-${cartao.id}`}
+                            >
+                              Ver mais
+                            </Button>
+                          ) : null}
+                          {canShowLess ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8"
+                              onClick={() => {
+                                setVisibleByCard((prev) => ({
+                                  ...prev,
+                                  [cartao.id]: INITIAL_VISIBLE_ITEMS,
+                                }));
+                              }}
+                              data-testid={`button-ver-menos-mobile-${cartao.id}`}
+                            >
+                              Ver menos
+                            </Button>
+                          ) : null}
                         </div>
-                      );
-                    })
+                      ) : null}
+                    </>
                   )}
                   <div className="px-4 py-2.5">
                     <Button
@@ -170,4 +240,3 @@ export function CartoesMobileTabs({
     </div>
   );
 }
-
