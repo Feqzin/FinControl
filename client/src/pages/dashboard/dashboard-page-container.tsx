@@ -4,7 +4,7 @@ import {
   TrendingUp, TrendingDown, CalendarClock,
   ArrowUpRight, ArrowDownRight, Receipt,
   AlertTriangle, CreditCard, Lightbulb,
-  Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank, Users, UserCircle, Repeat,
+  Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank,
   Settings2, Smartphone,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -34,6 +34,7 @@ import { DateBadge, urgencyLabel } from "@/pages/dashboard/components/date-badge
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { useLocation } from "wouter";
 import type { UsageMode } from "@/context/ui-preferences";
+import { DashboardQuickActions } from "@/components/dashboard/DashboardQuickActions";
 
 const insightIconMap: Record<string, any> = {
   trophy: Trophy,
@@ -181,11 +182,22 @@ export default function Dashboard() {
   if (isEssentialMode) {
     return (
       <div className="app-page-shell app-section-stack" data-testid="dashboard-essencial">
-        <div className="fintech-page-header">
+        <div className="fintech-page-header border border-border/60 bg-card/95 shadow-sm">
           <div className="fintech-page-header-row gap-3">
             <div className="min-w-0">
-              <h1 className="fintech-page-title">Painel Essencial</h1>
-              <p className="fintech-page-subtitle capitalize">{selectedMonthLabel}</p>
+              <h1 className="text-3xl font-semibold tracking-tight">Painel Essencial</h1>
+              <p className="text-sm text-muted-foreground/90 capitalize">{selectedMonthLabel}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
+                  {pessoas.length} pessoa(s)
+                </span>
+                <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-amber-700 dark:text-amber-400">
+                  A pagar {maskValue(formatCurrencyBRL(totalPagar), visible)}
+                </span>
+                <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-400">
+                  A receber {maskValue(formatCurrencyBRL(totalReceber), visible)}
+                </span>
+              </div>
             </div>
             <div className="fintech-actions-wrap w-full lg:w-auto">
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
@@ -352,41 +364,17 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        <Card className="shadow-sm" data-testid="essencial-atalhos-uteis">
+        <Card className="border-border/60 shadow-sm" data-testid="essencial-atalhos-uteis">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Atalhos úteis</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              <Button
-                className="h-11 justify-start rounded-xl text-sm"
-                variant="outline"
-                onClick={() => setLocation("/pessoas")}
-              >
-                <Users className="mr-2 h-4 w-4" /> Devedores
-              </Button>
-              <Button
-                className="h-11 justify-start rounded-xl text-sm"
-                variant="outline"
-                onClick={() => setLocation("/cartoes")}
-              >
-                <CreditCard className="mr-2 h-4 w-4" /> Cartões
-              </Button>
-              <Button
-                className="h-11 justify-start rounded-xl text-sm"
-                variant="outline"
-                onClick={() => setLocation("/servicos")}
-              >
-                <Repeat className="mr-2 h-4 w-4" /> Serviços
-              </Button>
-              <Button
-                className="h-11 justify-start rounded-xl text-sm"
-                variant="outline"
-                onClick={() => setLocation("/perfil")}
-              >
-                <UserCircle className="mr-2 h-4 w-4" /> Perfil
-              </Button>
-            </div>
+            <DashboardQuickActions
+              onGoPessoas={() => setLocation("/pessoas")}
+              onGoCartoes={() => setLocation("/cartoes")}
+              onGoServicos={() => setLocation("/servicos")}
+              onGoPerfil={() => setLocation("/perfil")}
+            />
           </CardContent>
         </Card>
       </div>
@@ -790,13 +778,24 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="app-page-shell app-section-stack" data-testid="dashboard-page">
-      <div className="fintech-page-header">
+      <div className="app-page-shell app-section-stack" data-testid="dashboard-page">
+      <div className="fintech-page-header border border-border/60 bg-card/95 shadow-sm">
         <div className="fintech-page-header-row gap-4">
           <div className="flex min-w-0 items-center justify-between gap-3 lg:justify-start">
             <div className="min-w-0">
-              <h1 className="fintech-page-title">Painel</h1>
-              <p className="fintech-page-subtitle capitalize">{selectedMonthLabel}</p>
+              <h1 className="text-3xl font-semibold tracking-tight">Painel</h1>
+              <p className="text-sm text-muted-foreground/90 capitalize">{selectedMonthLabel}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
+                  {pessoas.length} pessoa(s)
+                </span>
+                <span className="rounded-full bg-red-500/10 px-2.5 py-1 text-red-700 dark:text-red-400">
+                  Saídas {maskValue(formatCurrencyBRL(totalSaidas), visible)}
+                </span>
+                <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-400">
+                  Entradas {maskValue(formatCurrencyBRL(totalEntradas), visible)}
+                </span>
+              </div>
             </div>
             <Dialog>
               <DialogTrigger asChild>
@@ -942,13 +941,13 @@ export default function Dashboard() {
       )}
 
       {sectionStatus.cardsResumo.isLoading ? (
-        <div className={`fintech-grid-fluid-260 ${prefs.dashboardCompact ? "gap-2" : "gap-3"}`}>
+        <div className={`fintech-grid-fluid-280 ${prefs.dashboardCompact ? "gap-2" : "gap-3"}`}>
           {[1, 2, 3, 4, 5].map((idx) => <Skeleton key={idx} className="h-[84px] rounded-xl" />)}
         </div>
       ) : sectionStatus.cardsResumo.isError ? (
         <SectionErrorState message={sectionStatus.cardsResumo.message} />
       ) : (
-        <div className={`fintech-grid-fluid-260 ${prefs.dashboardCompact ? "gap-2" : "gap-3"}`}>
+        <div className={`fintech-grid-fluid-280 ${prefs.dashboardCompact ? "gap-2" : "gap-3"}`}>
           {!prefs.hiddenDashCards.includes("receber") && (
             <StatCard
               title="A receber"
@@ -1014,7 +1013,7 @@ export default function Dashboard() {
       {(shouldRenderAlertasSection || showAdvancedResources) && (
       <div className={`grid grid-cols-1 gap-3 ${shouldRenderAlertasSection && showAdvancedResources ? "lg:grid-cols-2" : ""}`}>
         {shouldRenderAlertasSection && (
-        <Card>
+        <Card className="border-border/60 bg-card/95 shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-red-500" /> Alertas importantes
@@ -1032,7 +1031,7 @@ export default function Dashboard() {
                 {alertasUrgentes.map((alerta, i) => {
                   const IconComp = alerta.icon || AlertTriangle;
                   return (
-                    <div key={`${alerta.texto}-${i}`} className={`flex items-start gap-3 rounded-md border p-3 ${alerta.bgColor}`}>
+                    <div key={`${alerta.texto}-${i}`} className={`flex items-start gap-3 rounded-lg border p-3 ${alerta.bgColor}`}>
                       <IconComp className={`mt-0.5 h-4 w-4 flex-shrink-0 ${alerta.color}`} />
                       <p className={`text-sm font-medium ${alerta.color}`}>{alerta.texto}</p>
                     </div>
@@ -1045,7 +1044,7 @@ export default function Dashboard() {
         )}
 
         {showAdvancedResources && (
-          <Card>
+          <Card className="border-border/60 bg-card/95 shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Lightbulb className="w-4 h-4 text-amber-500" /> Insights automáticos
@@ -1079,7 +1078,7 @@ export default function Dashboard() {
                     return (
                       <div
                         key={i}
-                        className={`flex items-start gap-3 p-3 rounded-md border ${styles[insight.tipo]} ${isActionable ? "cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
+                        className={`flex items-start gap-3 rounded-lg border p-3 ${styles[insight.tipo]} ${isActionable ? "cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
                         data-testid={`insight-${i}`}
                         role={isActionable ? "button" : undefined}
                         tabIndex={isActionable ? 0 : -1}
@@ -1123,7 +1122,7 @@ export default function Dashboard() {
       </div>
       )}
 
-      <Card>
+      <Card className="border-border/60 bg-card/95 shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <CalendarClock className="w-4 h-4" /> Próximos vencimentos
@@ -1153,7 +1152,7 @@ export default function Dashboard() {
                   return (
                     <div
                       key={item.id}
-                      className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/50 transition-colors"
+                      className="flex items-center gap-3 rounded-lg p-2.5 transition-colors hover:bg-muted/50"
                       data-testid={`vencimento-${item.id}`}
                     >
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tipoBg}`}>
@@ -1180,7 +1179,7 @@ export default function Dashboard() {
         </Card>
 
       {showAdvancedResources && (
-      <Card>
+      <Card className="border-border/60 bg-card/95 shadow-sm">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="w-4 h-4" /> Score detalhado
@@ -1242,7 +1241,7 @@ export default function Dashboard() {
       ) : sectionStatus.pagarSemana.isError ? (
         <SectionErrorState message={sectionStatus.pagarSemana.message} />
       ) : pagarSemana.length > 0 ? (
-        <Card data-testid="pagar-semana-widget">
+        <Card className="border-border/60 bg-card/95 shadow-sm" data-testid="pagar-semana-widget">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <CalendarClock className="w-4 h-4 text-amber-500" />
