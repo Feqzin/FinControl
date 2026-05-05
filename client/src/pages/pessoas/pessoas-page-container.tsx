@@ -151,6 +151,10 @@ export default function PessoasPage() {
     historyFilter,
   });
 
+  useEffect(() => {
+    setVisiblePessoasCount(prefs.mobileMode ? 12 : 18);
+  }, [prefs.mobileMode, search, filterTipo]);
+
   if (isLoading) {
     return (
       <div className="app-page-shell app-section-stack">
@@ -287,10 +291,6 @@ export default function PessoasPage() {
       },
     );
   };
-
-  useEffect(() => {
-    setVisiblePessoasCount(prefs.mobileMode ? 12 : 18);
-  }, [prefs.mobileMode, search, filterTipo]);
 
   const handleAddDividaFromPessoa = (pessoa: Pessoa) => {
     setSelectedPessoa(pessoa);
