@@ -209,6 +209,15 @@ export default function PessoasPage() {
       return resumoPessoa.alertas.comprasAtrasadas > 0 || resumoPessoa.dividas.comigo.vencidas > 0;
     })
     : filtered;
+  const headerTotalPessoas = filteredByStatus.length;
+  const headerTotalPendente = filteredByStatus.reduce((sum, pessoa) => {
+    const resumo = getPessoaResumoConsolidado(pessoa.id);
+    return sum + resumo.consolidadoPendente;
+  }, 0);
+  const headerTotalAReceber = filteredByStatus.reduce((sum, pessoa) => {
+    const resumo = getPessoaResumoConsolidado(pessoa.id);
+    return sum + resumo.dividas.comigo.pendente + resumo.comprasVinculadas.pendentePessoa + resumo.servicosMesAtual.pendente;
+  }, 0);
   const visiblePessoas = filteredByStatus.slice(0, visiblePessoasCount);
   const hasMorePessoas = filteredByStatus.length > visiblePessoas.length;
   const visibleHistoryDividas = historyDividas.slice(0, historyVisible.dividas);
@@ -319,7 +328,12 @@ export default function PessoasPage() {
 
   return (
     <div className="app-page-shell app-section-stack" data-testid="pessoas-page">
-      <PessoasPageHeader onAddPessoa={() => setOpenPessoa(true)} />
+      <PessoasPageHeader
+        onAddPessoa={() => setOpenPessoa(true)}
+        totalPessoas={headerTotalPessoas}
+        totalPendente={headerTotalPendente}
+        totalAReceber={headerTotalAReceber}
+      />
 
       <PessoasFilterBar
         search={search}

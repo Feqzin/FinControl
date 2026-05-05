@@ -8,10 +8,10 @@ import { Separator } from "@/components/ui/separator";
 import {
   AlertTriangle,
   Clock,
-  Phone,
   Pencil,
   Plus,
   Trash2,
+  Eye,
 } from "lucide-react";
 
 type PessoaCardProps = {
@@ -46,31 +46,29 @@ export function PessoaCard({
   if (mobileMode) {
     return (
       <div
-        className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm"
+        className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm transition-all active:scale-[0.998]"
         data-testid={`card-pessoa-${pessoa.id}`}
       >
-        <div className="space-y-2.5 px-3.5 py-3">
-          <div className="flex items-start justify-between gap-3">
+        <div className="space-y-2.5 px-3.5 py-3.5">
+          <div className="flex items-start justify-between gap-2.5">
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
-                <span className="text-sm font-bold text-primary">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/10">
+                <span className="text-sm font-semibold">
                   {pessoa.nome.charAt(0).toUpperCase()}
                 </span>
               </div>
               <div className="min-w-0">
-                <p className="truncate text-base font-semibold">{pessoa.nome}</p>
+                <p className="truncate text-[17px] font-semibold leading-tight">{pessoa.nome}</p>
                 {pessoa.telefone && (
-                  <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-                    <Phone className="h-3 w-3" /> {pessoa.telefone}
-                  </p>
+                  <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{pessoa.telefone}</p>
                 )}
               </div>
             </div>
             <div className="flex flex-col items-end gap-1 text-right">
-              <Badge variant={isMeDeve ? "default" : "destructive"} className="h-5 rounded-full px-2 py-0 text-[10px] font-medium">
+              <Badge variant={isMeDeve ? "default" : "destructive"} className="h-5 rounded-full px-2 py-0 text-[10px] font-medium shadow-sm">
                 {isMeDeve ? "Me deve" : "Eu devo"}
               </Badge>
-              <p className="text-[clamp(18px,5vw,22px)] font-semibold leading-[1.1] tracking-tight">
+              <p className="text-[clamp(18px,5vw,22px)] font-semibold leading-[1.1] tracking-[-0.2px]">
                 {formatCurrencyBRL(resumo.consolidadoPendente)}
               </p>
             </div>
@@ -103,23 +101,24 @@ export function PessoaCard({
           <div className="flex flex-wrap items-center gap-2">
             <button
               className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/60 bg-background px-3 text-xs font-medium text-primary transition-colors hover:bg-muted/50"
+              onClick={() => onOpenHistory(pessoa)}
+              data-testid={`button-history-pessoa-${pessoa.id}`}
+            >
+              <Eye className="h-3.5 w-3.5" /> Ver detalhes
+            </button>
+            <button
+              className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/60 bg-background px-3 text-xs font-medium text-primary transition-colors hover:bg-muted/50"
               onClick={() => onAddDivida(pessoa)}
               data-testid={`button-add-divida-pessoa-${pessoa.id}`}
             >
               <Plus className="h-3.5 w-3.5" /> Nova dívida
-            </button>
-            <button
-              className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50"
-              onClick={() => onOpenHistory(pessoa)}
-              data-testid={`button-history-pessoa-${pessoa.id}`}
-            >
-              <Clock className="h-3.5 w-3.5" /> Histórico
             </button>
             <div className="ml-auto flex items-center gap-1">
               <button
                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/50"
                 onClick={() => onEdit(pessoa)}
                 data-testid={`button-edit-pessoa-${pessoa.id}`}
+                title="Editar"
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
@@ -127,6 +126,7 @@ export function PessoaCard({
                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-950/30"
                 onClick={() => onDelete(pessoa)}
                 data-testid={`button-delete-pessoa-${pessoa.id}`}
+                title="Excluir"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -139,49 +139,47 @@ export function PessoaCard({
 
   return (
     <Card
-      className="rounded-2xl border border-border/60 bg-card shadow-sm"
+      className="rounded-2xl border border-border/60 bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
       data-testid={`card-pessoa-${pessoa.id}`}
     >
-      <CardContent className="flex h-full min-h-[200px] flex-col gap-3 p-5">
-        <div className="flex items-center justify-between gap-3">
+      <CardContent className="flex h-full min-h-[210px] flex-col gap-3 p-5">
+        <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
-              <span className="text-sm font-bold text-primary">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/10">
+              <span className="text-sm font-semibold">
                 {pessoa.nome.charAt(0).toUpperCase()}
               </span>
             </div>
             <div className="min-w-0">
-              <p className="truncate text-lg font-semibold">{pessoa.nome}</p>
+              <p className="truncate text-lg font-semibold leading-tight">{pessoa.nome}</p>
               {pessoa.telefone && (
-                <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                  <Phone className="h-3 w-3" /> {pessoa.telefone}
-                </p>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">{pessoa.telefone}</p>
               )}
             </div>
           </div>
-          <div className="flex min-w-[132px] flex-col items-end justify-center gap-2 text-right">
-            <Badge variant={isMeDeve ? "default" : "destructive"} className="h-6 px-2.5 text-[11px]">
+          <div className="flex min-w-[132px] flex-col items-end justify-center gap-1.5 text-right">
+            <Badge variant={isMeDeve ? "default" : "destructive"} className="h-6 px-2.5 text-[11px] shadow-sm">
               {isMeDeve ? "Me deve" : "Eu devo"}
             </Badge>
-            <p className="text-2xl font-bold leading-none">
+            <p className="text-[clamp(20px,2vw,24px)] font-semibold leading-[1.1] tracking-[-0.2px]">
               {formatCurrencyBRL(resumo.consolidadoPendente)}
             </p>
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[13px] text-muted-foreground">
           Dívidas {formatCurrencyBRL(dividasPendentesValor)} • Compras {formatCurrencyBRL(comprasPendentesValor)} • Serviços {formatCurrencyBRL(servicosPendentesValor)}
         </p>
 
         <div className="flex flex-wrap items-center gap-2 text-[11px]">
-          <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-400">
+          <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-400">
             Saldo + {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}
           </span>
-          <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
+          <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
             {totalDividas} dívida(s)
           </span>
           {comprasVinculadas > 0 && (
-            <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
+            <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
               Compras vinculadas {comprasVinculadas}
             </span>
           )}
@@ -196,22 +194,31 @@ export function PessoaCard({
           </div>
         )}
 
-        <Separator />
+        <Separator className="opacity-70" />
 
-        <div className="mt-auto grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:items-center">
+        <div className="mt-auto grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
           <Button
             variant="outline"
             size="sm"
-            className="h-8 w-full sm:min-w-[130px] sm:flex-1"
+            className="h-8 w-full rounded-lg text-xs font-medium sm:min-w-[130px] sm:flex-1"
+            onClick={() => onOpenHistory(pessoa)}
+            data-testid={`button-history-pessoa-${pessoa.id}`}
+          >
+            <Eye className="mr-1 h-3.5 w-3.5" /> Ver detalhes
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-full rounded-lg text-xs font-medium sm:min-w-[130px] sm:flex-1"
             onClick={() => onAddDivida(pessoa)}
             data-testid={`button-add-divida-pessoa-${pessoa.id}`}
           >
             <Plus className="mr-1 h-3.5 w-3.5" /> Nova dívida
           </Button>
           <button
-            className="inline-flex h-8 w-full items-center justify-center gap-1 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/50 sm:min-w-[120px] sm:flex-1 sm:justify-start"
+            className="inline-flex h-8 w-full items-center justify-center gap-1 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 sm:min-w-[110px] sm:flex-1 sm:justify-start"
             onClick={() => onOpenHistory(pessoa)}
-            data-testid={`button-history-pessoa-${pessoa.id}`}
+            data-testid={`button-history-secondary-pessoa-${pessoa.id}`}
           >
             <Clock className="h-3.5 w-3.5" /> Histórico
           </button>
@@ -219,18 +226,20 @@ export function PessoaCard({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 rounded-lg"
               onClick={() => onEdit(pessoa)}
               data-testid={`button-edit-pessoa-${pessoa.id}`}
+              title="Editar"
             >
               <Pencil className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 rounded-lg text-red-500 hover:text-red-600"
               onClick={() => onDelete(pessoa)}
               data-testid={`button-delete-pessoa-${pessoa.id}`}
+              title="Excluir"
             >
               <Trash2 className="h-4 w-4" />
             </Button>

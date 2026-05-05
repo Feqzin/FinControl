@@ -7,14 +7,16 @@ type PessoasEmptyStateProps = {
 
 export function PessoasEmptyState({ onAddPessoa }: PessoasEmptyStateProps) {
   return (
-    <div className="rounded-2xl border border-dashed border-border/60 bg-card/70 p-8 text-center" data-testid="empty-pessoas">
-      <Users className="mx-auto mb-3 h-12 w-12 text-muted-foreground/40" />
-      <p className="text-lg font-semibold">Nenhuma pessoa cadastrada ainda</p>
+    <div className="rounded-2xl border border-dashed border-border/60 bg-card p-7 text-center shadow-sm" data-testid="empty-pessoas">
+      <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted/70">
+        <Users className="h-6 w-6 text-muted-foreground/70" />
+      </div>
+      <p className="text-lg font-semibold tracking-tight">Nenhuma pessoa cadastrada</p>
       <p className="mt-1 text-sm text-muted-foreground">
-        Adicione alguém para controlar dívidas, compras compartilhadas e serviços.
+        Comece adicionando a primeira pessoa.
       </p>
       <Button
-        className="mt-4"
+        className="mt-4 h-10 rounded-xl px-4"
         onClick={onAddPessoa}
         data-testid="button-empty-add-pessoa"
       >

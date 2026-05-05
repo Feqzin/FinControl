@@ -44,7 +44,7 @@ export function PessoasGrid({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       {pessoas.map((pessoa) => (
         <PessoaCard
           key={pessoa.id}
