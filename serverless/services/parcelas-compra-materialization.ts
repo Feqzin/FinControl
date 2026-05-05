@@ -25,6 +25,24 @@ export type ParcelasCompraSyncResult = {
   materialized: boolean;
 };
 
+function isRowProtectedForDeletion(
+  row: {
+    id: string;
+    statusCartao: string;
+    statusPessoa: string | null;
+    dataPagamentoCartao: string | null;
+    dataPagamentoPessoa: string | null;
+  },
+  movimentacoesByParcelaId: Set<string>,
+): boolean {
+  if (movimentacoesByParcelaId.has(row.id)) return true;
+  if (row.statusCartao === "pago") return true;
+  if (row.statusPessoa === "pago") return true;
+  if (row.dataPagamentoCartao) return true;
+  if (row.dataPagamentoPessoa) return true;
+  return false;
+}
+
 function normalizeParcelas(value: number): number {
   if (!Number.isFinite(value)) return 1;
   return Math.max(1, Math.trunc(value));
@@ -107,4 +125,68 @@ export async function syncParcelasCompraForCompraId(
   const syncResult = await materializeParcelasCompraIfMissing(repository, compra);
   await recomputeCardPurchaseAggregate(repository, compra.id, userId);
   return syncResult;
+}
+
+/**
+ * Sincroniza parcelas materializadas após edição de compra.
+ * Mantém IDs existentes sempre que possível para preservar trilha auditável.
+ */
+export async function syncMaterializedParcelasAfterCompraUpdate(
+  repository: FinancialRepository,
+  compra: CompraScheduleSource,
+): Promise<void> {
+  const existing = await repository.getParcelasCompra(compra.id, compra.userId);
+  if (existing.length === 0) {
+    await materializeParcelasCompraIfMissing(repository, compra);
+    return;
+  }
+
+  const expectedRows = buildParcelasCompraRows(compra);
+  const expectedCount = expectedRows.length;
+  const existingByNumber = new Map(existing.map((row) => [row.numero, row]));
+
+  // Atualiza parcelas existentes em número compatível para refletir novo valor/data.
+  const upperBound = Math.min(existing.length, expectedCount);
+  for (let numero = 1; numero <= upperBound; numero += 1) {
+    const current = existingByNumber.get(numero);
+    const expected = expectedRows[numero - 1];
+    if (!current || !expected) continue;
+
+    await repository.updateParcelaCompra(current.id, compra.userId, {
+      valor: expected.valor,
+      dataVencimento: expected.dataVencimento,
+    });
+  }
+
+  // Adiciona novas parcelas quando a compra passa a ter mais meses.
+  if (expectedCount > existing.length) {
+    const toCreate = expectedRows.slice(existing.length).map((row) => ({
+      ...row,
+      statusCartao: row.statusCartao ?? "pendente",
+    }));
+    if (toCreate.length > 0) {
+      await repository.createParcelasCompraBulk(toCreate);
+    }
+  }
+
+  // Reduz quantidade apenas quando for seguro não perder histórico/auditoria.
+  if (expectedCount < existing.length) {
+    const extras = existing.filter((row) => row.numero > expectedCount);
+    if (extras.length > 0) {
+      const movimentacoes = await repository.getPessoaSaldoMovimentacoes(compra.userId);
+      const movimentacoesByParcelaId = new Set(
+        movimentacoes
+          .map((mov) => mov.parcelaCompraId)
+          .filter((value): value is string => Boolean(value)),
+      );
+
+      const removable = extras.filter((row) => !isRowProtectedForDeletion(row, movimentacoesByParcelaId));
+      // Só remove quando todas as extras são removíveis para evitar estado parcial inconsistente.
+      if (removable.length === extras.length) {
+        for (const row of removable) {
+          await repository.deleteParcelaCompra(row.id, compra.userId);
+        }
+      }
+    }
+  }
 }

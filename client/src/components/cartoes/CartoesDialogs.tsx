@@ -19,6 +19,9 @@ type CartoesDialogsProps = {
   deleteFaturaImpact: DeleteFaturaResponse | null;
   setDeleteFaturaImpact: (impact: DeleteFaturaResponse | null) => void;
   deleteFaturaImpactLoading: boolean;
+  deleteFaturaImpactError: string | null;
+  setDeleteFaturaImpactError: (message: string | null) => void;
+  onRetryDeleteFaturaImpact: () => void;
   setDeleteFaturaImpactLoading: (value: boolean) => void;
   deleteFaturaCartaoPending: boolean;
   deleteFaturasMesPending: boolean;
@@ -53,6 +56,9 @@ export function CartoesDialogs({
   deleteFaturaImpact,
   setDeleteFaturaImpact,
   deleteFaturaImpactLoading,
+  deleteFaturaImpactError,
+  setDeleteFaturaImpactError,
+  onRetryDeleteFaturaImpact,
   setDeleteFaturaImpactLoading,
   deleteFaturaCartaoPending,
   deleteFaturasMesPending,
@@ -83,6 +89,7 @@ export function CartoesDialogs({
           if (!open) {
             setDeleteFaturaImpact(null);
             setDeleteFaturaImpactLoading(false);
+            setDeleteFaturaImpactError(null);
           }
         }}
       >
@@ -99,6 +106,7 @@ export function CartoesDialogs({
                   if (value === "cartao" || value === "todos") {
                     setDeleteFaturaScope(value);
                     setDeleteFaturaImpact(null);
+                    setDeleteFaturaImpactError(null);
                   }
                 }}
               >
@@ -120,6 +128,7 @@ export function CartoesDialogs({
                   onValueChange={(value) => {
                     setDeleteFaturaCartaoId(value);
                     setDeleteFaturaImpact(null);
+                    setDeleteFaturaImpactError(null);
                   }}
                 >
                   <SelectTrigger data-testid="select-delete-fatura-cartao">
@@ -144,6 +153,7 @@ export function CartoesDialogs({
                 onChange={(event) => {
                   setDeleteFaturaMes(event.target.value);
                   setDeleteFaturaImpact(null);
+                  setDeleteFaturaImpactError(null);
                 }}
                 data-testid="input-delete-fatura-mes"
               />
@@ -153,6 +163,22 @@ export function CartoesDialogs({
               <CardContent className="space-y-2 p-3 text-sm">
                 <p className="font-medium">Impacto da exclusão</p>
                 {deleteFaturaImpactLoading ? <p className="text-muted-foreground">Calculando impacto...</p> : null}
+                {!deleteFaturaImpactLoading && deleteFaturaImpactError ? (
+                  <div className="space-y-2">
+                    <p className="text-sm text-red-700">{deleteFaturaImpactError}</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={onRetryDeleteFaturaImpact}
+                      disabled={deleteFaturaImpactLoading || deleteFaturaCartaoPending || deleteFaturasMesPending}
+                      data-testid="button-retry-delete-fatura-impact"
+                    >
+                      Tentar novamente
+                    </Button>
+                  </div>
+                ) : null}
                 {!deleteFaturaImpactLoading && deleteFaturaImpact ? (
                   <>
                     <p className="text-muted-foreground">
@@ -319,4 +345,3 @@ export function CartoesDialogs({
     </>
   );
 }
-

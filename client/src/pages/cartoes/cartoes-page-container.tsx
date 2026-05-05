@@ -29,6 +29,8 @@ import { CartoesMobileTabs } from "@/components/cartoes/CartoesMobileTabs";
 import { CartoesComprasGrid } from "@/components/cartoes/CartoesComprasGrid";
 import { ParcelasTab } from "@/components/cartoes/ParcelasTab";
 import {
+  deleteFaturaCartaoMes,
+  deleteFaturasMes,
   deleteCompraCartaoComEscopo,
   previewImportCompras,
   type DeleteCompraScope,
@@ -56,6 +58,7 @@ const IconPicker = lazy(() =>
 );
 
 const DELETE_MODAL_TIMEOUT_MS = 20_000;
+const IS_DEV = import.meta.env.DEV;
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -132,6 +135,7 @@ export default function CartoesPage() {
   const [deleteFaturaCartaoId, setDeleteFaturaCartaoId] = useState("");
   const [deleteFaturaImpact, setDeleteFaturaImpact] = useState<DeleteFaturaResponse | null>(null);
   const [deleteFaturaImpactLoading, setDeleteFaturaImpactLoading] = useState(false);
+  const [deleteFaturaImpactError, setDeleteFaturaImpactError] = useState<string | null>(null);
 
   const [openDeleteCompraDialog, setOpenDeleteCompraDialog] = useState(false);
   const [deleteCompraTarget, setDeleteCompraTarget] = useState<CompraCartao | null>(null);
@@ -140,6 +144,7 @@ export default function CartoesPage() {
   const [deleteCompraImpactLoading, setDeleteCompraImpactLoading] = useState(false);
   const [deleteCompraImpactError, setDeleteCompraImpactError] = useState<string | null>(null);
   const [deleteCompraSubmitting, setDeleteCompraSubmitting] = useState(false);
+  const [parcelaSubmittingId, setParcelaSubmittingId] = useState<string | null>(null);
 
   const {
     cartoes,
@@ -239,29 +244,43 @@ export default function CartoesPage() {
       if (deleteFaturaScope === "cartao" && !deleteFaturaCartaoId) return;
 
       setDeleteFaturaImpactLoading(true);
+      setDeleteFaturaImpactError(null);
       try {
-        const response = deleteFaturaScope === "cartao"
-          ? await deleteFaturaCartaoMutation.mutateAsync({
-            cartaoId: deleteFaturaCartaoId,
-            mes: deleteFaturaMes,
-            dryRun: true,
-          })
-          : await deleteFaturasMesMutation.mutateAsync({
-            mes: deleteFaturaMes,
-            dryRun: true,
-          });
+        logDev("delete-fatura:preview:start", {
+          scope: deleteFaturaScope,
+          mes: deleteFaturaMes,
+          cartaoId: deleteFaturaScope === "cartao" ? deleteFaturaCartaoId : undefined,
+        });
+        const response = await withTimeout(
+          deleteFaturaScope === "cartao"
+            ? deleteFaturaCartaoMes(deleteFaturaCartaoId, deleteFaturaMes, { dryRun: true })
+            : deleteFaturasMes(deleteFaturaMes, { dryRun: true }),
+          DELETE_MODAL_TIMEOUT_MS,
+          "Tempo limite ao calcular impacto. Tente novamente.",
+        );
         if (active) {
           setDeleteFaturaImpact(response);
+          setDeleteFaturaImpactError(null);
         }
+        logDev("delete-fatura:preview:success", {
+          comprasRemovidas: response.impact.comprasRemovidas,
+          parcelasRemovidas: response.impact.parcelasRemovidas,
+          valorTotalRemovido: response.impact.valorTotalRemovido,
+        });
       } catch (error) {
         if (active) {
           setDeleteFaturaImpact(null);
+          const message = getErrorMessage(error);
+          setDeleteFaturaImpactError(message);
           toast({
             title: "Erro ao calcular impacto",
-            description: getErrorMessage(error),
+            description: message,
             variant: "destructive",
           });
         }
+        logDev("delete-fatura:preview:error", {
+          message: error instanceof Error ? error.message : String(error),
+        });
       } finally {
         if (active) {
           setDeleteFaturaImpactLoading(false);
@@ -277,8 +296,6 @@ export default function CartoesPage() {
     deleteFaturaScope,
     deleteFaturaMes,
     deleteFaturaCartaoId,
-    deleteFaturaCartaoMutation,
-    deleteFaturasMesMutation,
   ]);
 
   useEffect(() => {
@@ -314,6 +331,11 @@ export default function CartoesPage() {
       return buildPremiumFeatureFriendlyMessage(premiumFeatureError);
     }
     return error instanceof Error ? error.message : "Erro inesperado";
+  };
+
+  const logDev = (event: string, payload?: Record<string, unknown>) => {
+    if (!IS_DEV) return;
+    console.info("[cartoes][dev]", event, payload ?? {});
   };
 
   const showSmartImportPremiumToast = () => {
@@ -398,6 +420,41 @@ export default function CartoesPage() {
     if (!ano || !Number.isFinite(parsedMonth) || parsedMonth < 1 || parsedMonth > 12) return mes;
     const data = new Date(Number(ano), parsedMonth - 1, 1);
     return format(data, "MMMM 'de' yyyy", { locale: ptBR }).replace(/^\w/, (char) => char.toUpperCase());
+  };
+
+  const retryDeleteFaturaImpact = async () => {
+    if (!deleteFaturaMes) return;
+    if (deleteFaturaScope === "cartao" && !deleteFaturaCartaoId) return;
+    setDeleteFaturaImpact(null);
+    setDeleteFaturaImpactError(null);
+    setDeleteFaturaImpactLoading(true);
+    try {
+      const response = await withTimeout(
+        deleteFaturaScope === "cartao"
+          ? deleteFaturaCartaoMes(deleteFaturaCartaoId, deleteFaturaMes, { dryRun: true })
+          : deleteFaturasMes(deleteFaturaMes, { dryRun: true }),
+        DELETE_MODAL_TIMEOUT_MS,
+        "Tempo limite ao calcular impacto. Tente novamente.",
+      );
+      setDeleteFaturaImpact(response);
+      logDev("delete-fatura:preview:retry-success", {
+        comprasRemovidas: response.impact.comprasRemovidas,
+        parcelasRemovidas: response.impact.parcelasRemovidas,
+      });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setDeleteFaturaImpactError(message);
+      toast({
+        title: "Erro ao calcular impacto",
+        description: message,
+        variant: "destructive",
+      });
+      logDev("delete-fatura:preview:retry-error", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setDeleteFaturaImpactLoading(false);
+    }
   };
 
   const getCurrentParcelaIdForCompra = (compra: CompraCartao): string | null => {
@@ -630,6 +687,13 @@ export default function CartoesPage() {
 
   const handleUpdateCompra = () => {
     if (!editingCompra) return;
+    logDev("update-compra:start", {
+      compraId: editingCompra.id,
+      cartaoId: editingCompra.cartaoId,
+      valorTotal: editCompraForm.valorTotal,
+      parcelas: editCompraForm.parcelas,
+      pessoaId: editCompraForm.pessoaId || null,
+    });
     updateCompraMutation.mutate(
       {
         id: editingCompra.id,
@@ -639,9 +703,14 @@ export default function CartoesPage() {
         onSuccess: () => {
           setEditingCompra(null);
           toast({ title: "Compra atualizada" });
+          logDev("update-compra:success", { compraId: editingCompra.id });
         },
         onError: (error) => {
           toast({ title: "Erro", description: getErrorMessage(error), variant: "destructive" });
+          logDev("update-compra:error", {
+            compraId: editingCompra.id,
+            message: error instanceof Error ? error.message : String(error),
+          });
         },
       },
     );
@@ -676,6 +745,12 @@ export default function CartoesPage() {
       return;
     }
 
+    logDev("delete-fatura:confirm:start", {
+      scope: deleteFaturaScope,
+      mes: deleteFaturaMes,
+      cartaoId: deleteFaturaScope === "cartao" ? deleteFaturaCartaoId : undefined,
+    });
+
     const mutation = deleteFaturaScope === "cartao"
       ? deleteFaturaCartaoMutation.mutateAsync({
         cartaoId: deleteFaturaCartaoId,
@@ -683,18 +758,31 @@ export default function CartoesPage() {
       })
       : deleteFaturasMesMutation.mutateAsync({ mes: deleteFaturaMes });
 
-    void mutation.then((response) => {
+    void withTimeout(
+      mutation,
+      DELETE_MODAL_TIMEOUT_MS,
+      "Tempo limite ao excluir fatura. Tente novamente.",
+    ).then((response) => {
       setOpenDeleteFaturaDialog(false);
       setDeleteFaturaImpact(null);
+      setDeleteFaturaImpactError(null);
       toast({
         title: "Fatura excluída com sucesso",
         description: `${response.impact.comprasRemovidas} compra(s) e ${response.impact.parcelasRemovidas} parcela(s) removidas.`,
+      });
+      logDev("delete-fatura:confirm:success", {
+        comprasRemovidas: response.impact.comprasRemovidas,
+        parcelasRemovidas: response.impact.parcelasRemovidas,
+        valorTotalRemovido: response.impact.valorTotalRemovido,
       });
     }).catch((error) => {
       toast({
         title: "Erro ao excluir fatura",
         description: getErrorMessage(error),
         variant: "destructive",
+      });
+      logDev("delete-fatura:confirm:error", {
+        message: error instanceof Error ? error.message : String(error),
       });
     });
   };
@@ -741,12 +829,26 @@ export default function CartoesPage() {
   };
 
   const handlePayParcela = (id: string, pago: boolean, dataPagamento?: string) => {
+    setParcelaSubmittingId(id);
+    logDev("pay-parcela:start", { parcelaId: id, pago, dataPagamento: dataPagamento ?? null });
     payParcelaMutation.mutate(
       { id, pago, dataPagamento },
       {
         onSuccess: () => {
           setPayingParcelaId(null);
           toast({ title: "Status da parcela atualizado" });
+          logDev("pay-parcela:success", { parcelaId: id, pago });
+        },
+        onError: (error) => {
+          toast({ title: "Erro ao atualizar parcela", description: getErrorMessage(error), variant: "destructive" });
+          logDev("pay-parcela:error", {
+            parcelaId: id,
+            pago,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        },
+        onSettled: () => {
+          setParcelaSubmittingId((current) => (current === id ? null : current));
         },
       },
     );
@@ -1123,6 +1225,7 @@ export default function CartoesPage() {
                 setDeleteFaturaScope("cartao");
                 setDeleteFaturaMes(format(new Date(), "yyyy-MM"));
                 setDeleteFaturaImpact(null);
+                setDeleteFaturaImpactError(null);
                 setOpenDeleteFaturaDialog(true);
               }}
               disabled={cartoes.length === 0}
@@ -1264,6 +1367,11 @@ export default function CartoesPage() {
         deleteFaturaImpact={deleteFaturaImpact}
         setDeleteFaturaImpact={setDeleteFaturaImpact}
         deleteFaturaImpactLoading={deleteFaturaImpactLoading}
+        deleteFaturaImpactError={deleteFaturaImpactError}
+        setDeleteFaturaImpactError={setDeleteFaturaImpactError}
+        onRetryDeleteFaturaImpact={() => {
+          void retryDeleteFaturaImpact();
+        }}
         setDeleteFaturaImpactLoading={setDeleteFaturaImpactLoading}
         deleteFaturaCartaoPending={deleteFaturaCartaoMutation.isPending}
         deleteFaturasMesPending={deleteFaturasMesMutation.isPending}
@@ -1295,6 +1403,7 @@ export default function CartoesPage() {
           if (!open) {
             setViewingCompra(null);
             setAbaterSaldoParcelaId(null);
+            setParcelaSubmittingId(null);
           }
         }}
         viewingCompra={viewingCompra}
@@ -1319,6 +1428,8 @@ export default function CartoesPage() {
         onEditParcela={handleEditParcela}
         onPayParcela={handlePayParcela}
         onPayParcelaPessoa={handlePayParcelaPessoa}
+        parcelaActionLoadingId={parcelaSubmittingId}
+        isParcelaActionPending={payParcelaMutation.isPending}
         onOpenAbaterSaldoParcela={openAbaterSaldoParcelaDialog}
         abaterSaldoParcelaId={abaterSaldoParcelaId}
         setAbaterSaldoParcelaId={setAbaterSaldoParcelaId}

@@ -31,6 +31,9 @@ import {
 
 const ENABLE_CARTOES_LOCAL_FALLBACK =
   String(import.meta.env.VITE_CARTOES_LOCAL_FALLBACK_ENABLED ?? "true").toLowerCase() !== "false";
+const IS_DEV = import.meta.env.DEV;
+
+type QueryKey = readonly unknown[];
 
 export function useCartoes(viewingCompraId?: string) {
   const { data: cartoes = [], isLoading } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
@@ -55,47 +58,86 @@ export function useCartoes(viewingCompraId?: string) {
     enabled: !!viewingCompraId,
   });
 
+  const invalidateAndRefetch = async (keys: QueryKey[]) => {
+    await Promise.all(
+      keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+    );
+    await Promise.all(
+      keys.map((queryKey) => queryClient.refetchQueries({ queryKey, type: "active" })),
+    );
+  };
+
+  const refreshCartoesQueries = async (options?: { includePessoas?: boolean; includeUsage?: boolean }) => {
+    const keys: QueryKey[] = [
+      ["/api/cartoes"],
+      ["/api/cartoes/resumo"],
+      ["/api/compras-cartao"],
+      ["/api/parcelas-compra"],
+      ["/api/dashboard/overview"],
+      ["/api/financial/summary"],
+      ["/api/financial/score"],
+      ["/api/financial/insights"],
+    ];
+
+    if (viewingCompraId) {
+      keys.push(["/api/parcelas-compra", viewingCompraId]);
+    }
+    if (options?.includePessoas) {
+      keys.push(["/api/pessoas"]);
+      keys.push(["/api/pessoas", "includeResumo=true"]);
+      keys.push(["/api/pessoas/saldo-movimentacoes"]);
+    }
+    if (options?.includeUsage) {
+      keys.push(["/api/subscription/usage"]);
+    }
+
+    await invalidateAndRefetch(keys);
+  };
+
+  const logDev = (event: string, payload?: Record<string, unknown>) => {
+    if (!IS_DEV) return;
+    console.info("[cartoes][mutation]", event, payload ?? {});
+  };
+
   const createCardMutation = useMutation({
     mutationFn: (data: CartaoPayload) => createCartao(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
+    onSuccess: async () => {
+      await refreshCartoesQueries({ includeUsage: true });
     },
   });
 
   const updateCardMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: CartaoPayload }) => updateCartao(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+    onSuccess: async () => {
+      await refreshCartoesQueries();
     },
   });
 
   const deleteCardMutation = useMutation({
     mutationFn: (id: string) => deleteCartao(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
+    onSuccess: async () => {
+      await refreshCartoesQueries({ includeUsage: true });
     },
   });
 
   const createCompraMutation = useMutation({
     mutationFn: (data: CompraPayload) => createCompraCartao(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+    onSuccess: async () => {
+      await refreshCartoesQueries({ includePessoas: true });
     },
   });
 
   const updateCompraMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateCompraPayload }) => updateCompraCartao(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+    onSuccess: async (_result, variables) => {
+      logDev("update-compra:success", { compraId: variables.id });
+      await refreshCartoesQueries({ includePessoas: true });
+    },
+    onError: (error, variables) => {
+      logDev("update-compra:error", {
+        compraId: variables.id,
+        message: error instanceof Error ? error.message : String(error),
+      });
     },
   });
 
@@ -111,15 +153,9 @@ export function useCartoes(viewingCompraId?: string) {
       parcelaId?: string;
       dryRun?: boolean;
     }) => deleteCompraCartaoComEscopo(compraId, { scope, parcelaId, dryRun }),
-    onSuccess: (_data, variables) => {
+    onSuccess: async (_data, variables) => {
       if (variables.dryRun) return;
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/financial/score"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/financial/insights"] });
+      await refreshCartoesQueries({ includePessoas: true });
     },
   });
 
@@ -133,67 +169,100 @@ export function useCartoes(viewingCompraId?: string) {
       mes: string;
       dryRun?: boolean;
     }) => deleteFaturaCartaoMes(cartaoId, mes, { dryRun }),
-    onSuccess: (_data, variables) => {
+    onSuccess: async (_data, variables) => {
       if (variables.dryRun) return;
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/financial/score"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/financial/insights"] });
+      await refreshCartoesQueries({ includePessoas: true });
     },
   });
 
   const deleteFaturasMesMutation = useMutation({
     mutationFn: ({ mes, dryRun }: { mes: string; dryRun?: boolean }) =>
       deleteFaturasMes(mes, { dryRun }),
-    onSuccess: (_data, variables) => {
+    onSuccess: async (_data, variables) => {
       if (variables.dryRun) return;
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/financial/score"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/financial/insights"] });
+      await refreshCartoesQueries({ includePessoas: true });
     },
   });
 
   const marcarReembolsoMutation = useMutation({
     mutationFn: ({ id, pago }: { id: string; pago: boolean }) => updateCompraReembolso(id, pago),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+    onSuccess: async () => {
+      await refreshCartoesQueries({ includePessoas: true });
     },
   });
 
   const payParcelaMutation = useMutation({
     mutationFn: ({ id, pago, dataPagamento }: { id: string; pago: boolean; dataPagamento?: string }) =>
       updateParcelaCompraStatusCartao(id, pago, dataPagamento),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra", viewingCompraId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+    onMutate: async (variables) => {
+      const allKey: QueryKey = ["/api/parcelas-compra"];
+      const compraKey: QueryKey = viewingCompraId
+        ? ["/api/parcelas-compra", viewingCompraId]
+        : ["/api/parcelas-compra", "__noop__"];
+
+      await queryClient.cancelQueries({ queryKey: allKey });
+      if (viewingCompraId) {
+        await queryClient.cancelQueries({ queryKey: compraKey });
+      }
+
+      const previousAll = queryClient.getQueryData<ParcelaCompra[]>(allKey);
+      const previousCompra = viewingCompraId
+        ? queryClient.getQueryData<ParcelaCompra[]>(compraKey)
+        : undefined;
+
+      const applyPatch = (rows: ParcelaCompra[] | undefined) =>
+        rows?.map((row) => (
+          row.id === variables.id
+            ? {
+              ...row,
+              statusCartao: variables.pago ? "pago" : "pendente",
+              dataPagamentoCartao: variables.pago
+                ? (variables.dataPagamento ?? new Date().toISOString().slice(0, 10))
+                : null,
+            }
+            : row
+        ));
+
+      if (previousAll) {
+        queryClient.setQueryData(allKey, applyPatch(previousAll));
+      }
+      if (viewingCompraId && previousCompra) {
+        queryClient.setQueryData(compraKey, applyPatch(previousCompra));
+      }
+
+      return { previousAll, previousCompra, allKey, compraKey };
+    },
+    onError: (error, variables, context) => {
+      if (context?.previousAll) {
+        queryClient.setQueryData(context.allKey, context.previousAll);
+      }
+      if (viewingCompraId && context?.previousCompra) {
+        queryClient.setQueryData(context.compraKey, context.previousCompra);
+      }
+      logDev("pay-parcela:error", {
+        parcelaId: variables.id,
+        pago: variables.pago,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    },
+    onSuccess: async (_result, variables) => {
+      logDev("pay-parcela:success", { parcelaId: variables.id, pago: variables.pago });
+      await refreshCartoesQueries({ includePessoas: true });
     },
   });
 
   const payParcelaPessoaMutation = useMutation({
     mutationFn: ({ id, pago }: { id: string; pago: boolean }) => updateParcelaCompraStatusPessoa(id, pago),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra", viewingCompraId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+    onSuccess: async () => {
+      await refreshCartoesQueries({ includePessoas: true });
     },
   });
 
   const editParcelaMutation = useMutation({
     mutationFn: ({ id, valor, dataVencimento }: { id: string; valor?: string; dataVencimento?: string }) =>
       updateParcelaCompraValores(id, { valor, dataVencimento }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra", viewingCompraId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+    onSuccess: async () => {
+      await refreshCartoesQueries({ includePessoas: true });
     },
   });
 
@@ -211,15 +280,12 @@ export function useCartoes(viewingCompraId?: string) {
       data?: string | null;
       observacao?: string | null;
     }) => abaterSaldoParcelaPessoa(pessoaId, parcelaId, { valor, data, observacao }),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra", viewingCompraId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "saldo-movimentacoes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "resumo"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
+    onSuccess: async (_data, variables) => {
+      await refreshCartoesQueries({ includePessoas: true });
+      await invalidateAndRefetch([
+        ["/api/pessoas", variables.pessoaId, "saldo-movimentacoes"],
+        ["/api/pessoas", variables.pessoaId, "resumo"],
+      ]);
     },
   });
 
@@ -231,19 +297,15 @@ export function useCartoes(viewingCompraId?: string) {
       sourceType?: "texto" | "csv" | "ofx" | "qfx" | "manual";
       sourceName?: string;
     }) => importComprasLote(items, cartaoId, { previewLogId, sourceType, sourceName }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+    onSuccess: async () => {
+      await refreshCartoesQueries({ includePessoas: true });
     },
   });
 
   const rollbackImportMutation = useMutation({
     mutationFn: (importLogId: string) => rollbackImportCompras(importLogId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+    onSuccess: async () => {
+      await refreshCartoesQueries({ includePessoas: true });
     },
   });
 

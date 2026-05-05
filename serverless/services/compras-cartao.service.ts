@@ -6,7 +6,10 @@ import type {
   CompraUpdateBodyInput,
 } from "../validators/financial.validators.js";
 import { recomputeCardPurchaseAggregate } from "./financial-aggregate-consistency.js";
-import { materializeParcelasCompraIfMissing } from "./parcelas-compra-materialization.js";
+import {
+  materializeParcelasCompraIfMissing,
+  syncMaterializedParcelasAfterCompraUpdate,
+} from "./parcelas-compra-materialization.js";
 import { runFinancialTransaction } from "./transaction-utils.js";
 
 export type DeleteCompraScope = "all_parcelas" | "single_parcela";
@@ -89,7 +92,7 @@ export class ComprasCartaoService {
       const updated = await repository.updateCompraCartao(id, userId, data);
       if (!updated) return { error: "NOT_FOUND" as const };
       // Fluxo explicito para registros legados sem cronograma materializado.
-      await materializeParcelasCompraIfMissing(repository, updated);
+      await syncMaterializedParcelasAfterCompraUpdate(repository, updated);
       await recomputeCardPurchaseAggregate(repository, updated.id, userId);
       const refreshed = await repository.getCompraCartao(updated.id, userId);
       if (!refreshed) return { error: "NOT_FOUND" as const };

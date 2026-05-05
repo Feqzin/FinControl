@@ -37,6 +37,8 @@ type ParcelasTabProps = {
   onEditParcela: (id: string) => void;
   onPayParcela: (id: string, pago: boolean, dataPagamento?: string) => void;
   onPayParcelaPessoa: (id: string, pago: boolean) => void;
+  parcelaActionLoadingId: string | null;
+  isParcelaActionPending: boolean;
   onOpenAbaterSaldoParcela: (parcelaId: string, pessoaId: string) => void;
   abaterSaldoParcelaId: string | null;
   setAbaterSaldoParcelaId: (id: string | null) => void;
@@ -71,6 +73,8 @@ export function ParcelasTab({
   onEditParcela,
   onPayParcela,
   onPayParcelaPessoa,
+  parcelaActionLoadingId,
+  isParcelaActionPending,
   onOpenAbaterSaldoParcela,
   abaterSaldoParcelaId,
   setAbaterSaldoParcelaId,
@@ -132,6 +136,7 @@ export function ParcelasTab({
                 const podeAbaterSaldo = Boolean(pessoaVinculadaId) && !pago && parcela.statusCartao !== "cancelado"
                   && saldoPendente > 0 && saldoPessoaDisponivel > 0;
                 const aguardaReembolso = pago && viewingCompra.pessoaId && (!parcela.statusPessoa || parcela.statusPessoa === "pendente");
+                const isSubmittingThisRow = isParcelaActionPending && parcelaActionLoadingId === parcela.id;
 
                 return (
                   <div
@@ -215,6 +220,7 @@ export function ParcelasTab({
                                 setEditingParcelaData(parcela.dataVencimento || "");
                               }}
                               data-testid={`button-edit-parcela-compra-${parcela.id}`}
+                              disabled={isSubmittingThisRow}
                             >
                               <Pencil className="h-3 w-3 text-muted-foreground" />
                             </Button>
@@ -225,6 +231,7 @@ export function ParcelasTab({
                               title="Marcar como pago"
                               onClick={() => setPayingParcelaId(parcela.id)}
                               data-testid={`button-pay-parcela-compra-${parcela.id}`}
+                              disabled={isSubmittingThisRow}
                             >
                               <Check className="h-3 w-3 text-emerald-600" />
                             </Button>
@@ -238,7 +245,7 @@ export function ParcelasTab({
                                 onOpenAbaterSaldoParcela(parcela.id, pessoaVinculadaId);
                               }}
                               data-testid={`button-abater-saldo-parcela-${parcela.id}`}
-                              disabled={!podeAbaterSaldo}
+                              disabled={!podeAbaterSaldo || isSubmittingThisRow}
                             >
                               <Wallet className="h-3 w-3 text-blue-600" />
                             </Button>
@@ -254,7 +261,7 @@ export function ParcelasTab({
                               if (saldoAbatido > 0) return;
                               onPayParcela(parcela.id, false);
                             }}
-                            disabled={saldoAbatido > 0}
+                            disabled={saldoAbatido > 0 || isSubmittingThisRow}
                             data-testid={`button-undo-parcela-compra-${parcela.id}`}
                           >
                             <X className="h-3 w-3 text-muted-foreground" />
@@ -288,8 +295,9 @@ export function ParcelasTab({
                           className="h-7 text-xs"
                           onClick={() => onPayParcela(parcela.id, true, payParcelaData)}
                           data-testid={`button-confirm-pay-parcela-${parcela.id}`}
+                          disabled={isSubmittingThisRow}
                         >
-                          Confirmar
+                          {isSubmittingThisRow ? "Salvando..." : "Confirmar"}
                         </Button>
                         <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setPayingParcelaId(null)}>
                           Cancelar
@@ -379,4 +387,3 @@ export function ParcelasTab({
     </Sheet>
   );
 }
-
