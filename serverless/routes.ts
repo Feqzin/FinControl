@@ -33,6 +33,7 @@ import { createBillingController } from "./controllers/billing.controller.js";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.js";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
 import { registerDebugDbPingRoute } from "./routes/debug-db-ping.route.js";
+import { guardDebugRouteAccess, sendDebugUnavailable } from "./routes/debug-route-guard.js";
 import { PagamentosTimelineService } from "./services/pagamentos-timeline.service.js";
 import { BackupJsonParseError, parseBackupJsonImportRequest } from "./validators/backup-import.validators.js";
 import { transformBackupForPersistence } from "./services/backup-import-transform.service.js";
@@ -113,16 +114,9 @@ export function registerRoutes(app: Express): void {
   // Rota temporaria de diagnostico de banco/schema em runtime.
   // Remover apos conclusao da investigacao de ambiente em producao.
   app.get("/api/debug/db-check", async (req, res) => {
-    const configuredToken = process.env.DEBUG_DB_CHECK_TOKEN?.trim();
-    const providedToken = req.get("x-debug-token")?.trim() ?? "";
-    const isProduction = ENV.nodeEnv === "production";
-
-    if (isProduction && !configuredToken) {
-      return res.status(404).json({ message: "Not found" });
-    }
-
-    if (configuredToken && providedToken !== configuredToken) {
-      return res.status(401).json({ message: "Nao autorizado" });
+    const debugAccess = guardDebugRouteAccess(req, res, "db-check");
+    if (!debugAccess.allowed) {
+      return;
     }
 
     let hostSanitized: string | null = null;
@@ -134,6 +128,14 @@ export function registerRoutes(app: Express): void {
     }
 
     try {
+      if (debugAccess.isProduction) {
+        await pool.query("select 1 as ok");
+        return res.json({
+          ok: true,
+          status: "ok",
+        });
+      }
+
       const result = await pool.query<{
         currentDatabase: string;
         currentSchema: string;
@@ -160,6 +162,7 @@ export function registerRoutes(app: Express): void {
       `);
 
       const row = result.rows[0];
+
       return res.json({
         ok: true,
         hostSanitized,
@@ -171,6 +174,11 @@ export function registerRoutes(app: Express): void {
         usersCount: row?.usersCount ?? 0,
       });
     } catch (error) {
+      if (debugAccess.isProduction) {
+        sendDebugUnavailable(res);
+        return;
+      }
+
       return res.status(500).json({
         ok: false,
         hostSanitized,
@@ -182,16 +190,9 @@ export function registerRoutes(app: Express): void {
   // Rota temporaria de diagnostico de conectividade Postgres em runtime.
   // Remover apos conclusao da investigacao de timeout em producao.
   app.get("/api/debug/db-connectivity", async (req, res) => {
-    const configuredToken = process.env.DEBUG_DB_CHECK_TOKEN?.trim();
-    const providedToken = req.get("x-debug-token")?.trim() ?? "";
-    const isProduction = ENV.nodeEnv === "production";
-
-    if (isProduction && !configuredToken) {
-      return res.status(404).json({ message: "Not found" });
-    }
-
-    if (configuredToken && providedToken !== configuredToken) {
-      return res.status(401).json({ message: "Nao autorizado" });
+    const debugAccess = guardDebugRouteAccess(req, res, "db-connectivity");
+    if (!debugAccess.allowed) {
+      return;
     }
 
     let hostSanitized: string | null = null;
@@ -216,16 +217,29 @@ export function registerRoutes(app: Express): void {
           currentDatabase: string;
           currentSchema: string;
           currentUser: string;
-        }>(`
+        }>(
+          debugAccess.isProduction
+            ? "select 1 as ok"
+            : `
           SELECT
             current_database() AS "currentDatabase",
             current_schema() AS "currentSchema",
             current_user AS "currentUser",
             1 AS "ok"
-        `);
+        `,
+        );
         select1Ms = Date.now() - selectStartedAt;
 
         const row = result.rows[0];
+        if (debugAccess.isProduction) {
+          return res.json({
+            ok: true,
+            status: "ok",
+            connectAttemptMs,
+            select1Ms,
+          });
+        }
+
         return res.json({
           ok: true,
           hostSanitized,
@@ -240,6 +254,11 @@ export function registerRoutes(app: Express): void {
         client.release();
       }
     } catch (error) {
+      if (debugAccess.isProduction) {
+        sendDebugUnavailable(res);
+        return;
+      }
+
       return res.status(500).json({
         ok: false,
         hostSanitized,
