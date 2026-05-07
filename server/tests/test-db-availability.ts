@@ -3,8 +3,18 @@ import pg from "pg";
 const DB_PROBE_TIMEOUT_MS = 1500;
 let cachedAvailabilityPromise: Promise<boolean> | null = null;
 
+function resolveTestDatabaseUrl(): string | null {
+  const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
+  if (testDatabaseUrl) return testDatabaseUrl;
+
+  const legacyTestDatabaseUrl = process.env.DATABASE_URL_TEST?.trim();
+  if (legacyTestDatabaseUrl) return legacyTestDatabaseUrl;
+
+  return null;
+}
+
 function hasRequiredDbEnv(): boolean {
-  return Boolean(process.env.DATABASE_URL?.trim()) && Boolean(process.env.SESSION_SECRET?.trim());
+  return Boolean(resolveTestDatabaseUrl()) && Boolean(process.env.SESSION_SECRET?.trim());
 }
 
 async function probeDatabaseConnection(databaseUrl: string): Promise<boolean> {
@@ -33,7 +43,7 @@ export async function shouldRunDbIntegrationTests(): Promise<boolean> {
 
   cachedAvailabilityPromise = (async () => {
     if (!hasRequiredDbEnv()) return false;
-    const databaseUrl = process.env.DATABASE_URL?.trim();
+    const databaseUrl = resolveTestDatabaseUrl();
     if (!databaseUrl) return false;
 
     try {

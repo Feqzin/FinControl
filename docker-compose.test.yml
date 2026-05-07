@@ -1,0 +1,23 @@
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: fincontrol-postgres-test
+    environment:
+      POSTGRES_USER: ${TEST_DB_USER:-fincontrol_test}
+      POSTGRES_PASSWORD: ${TEST_DB_PASSWORD:-fincontrol_test}
+      POSTGRES_DB: ${TEST_DB_NAME:-debt_control_test}
+    ports:
+      - "${TEST_DB_PORT:-54329}:5432"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${TEST_DB_USER:-fincontrol_test} -d ${TEST_DB_NAME:-debt_control_test}
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+    volumes:
+      - fincontrol_postgres_test_data:/var/lib/postgresql/data
+
+volumes:
+  fincontrol_postgres_test_data:

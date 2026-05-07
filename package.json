@@ -48,6 +48,9 @@
     "test:audit-log-unit": "tsx --test server/tests/audit-log.unit.test.ts",
     "test:pagamentos-timeline-integration": "tsx --test server/tests/pagamentos-timeline.integration.test.ts",
     "test:security": "tsx --test serverless/tests/security/index.test.ts",
+    "test:security:db": "tsx scripts/test-security-db.ts",
+    "test:db:up": "docker compose -f docker-compose.test.yml --env-file .env.test up -d",
+    "test:db:down": "docker compose -f docker-compose.test.yml --env-file .env.test down -v",
     "package:source": "powershell -ExecutionPolicy Bypass -File script/package-source.ps1"
   },
   "dependencies": {
