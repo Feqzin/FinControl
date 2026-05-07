@@ -34,6 +34,13 @@ import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
 import { registerDebugDbPingRoute } from "./routes/debug-db-ping.route.js";
 import { guardDebugRouteAccess, sendDebugUnavailable } from "./routes/debug-route-guard.js";
+import {
+  backupRateLimit,
+  billingRateLimit,
+  importRateLimit,
+  uploadRateLimit,
+  webhookRateLimit,
+} from "./middleware/rate-limit.js";
 import { PagamentosTimelineService } from "./services/pagamentos-timeline.service.js";
 import { BackupJsonParseError, parseBackupJsonImportRequest } from "./validators/backup-import.validators.js";
 import { transformBackupForPersistence } from "./services/backup-import-transform.service.js";
@@ -274,24 +281,24 @@ export function registerRoutes(app: Express): void {
 
   app.get("/api/pessoas/:pessoaId/timeline-pagamentos", requireAuth, pagamentosTimelineController.listByPessoa);
   app.patch("/api/pagamentos/:sourceType/:sourceId/observacao", requireAuth, pagamentosTimelineController.updateObservacao);
-  app.post("/api/pagamentos/:sourceType/:sourceId/comprovante", requireAuth, pagamentosTimelineController.uploadComprovante);
+  app.post("/api/pagamentos/:sourceType/:sourceId/comprovante", uploadRateLimit, requireAuth, pagamentosTimelineController.uploadComprovante);
   app.get("/api/pagamentos/:sourceType/:sourceId/comprovante", requireAuth, pagamentosTimelineController.getComprovante);
 
   app.get("/api/imports/logs", requireAuth, requirePremiumFeature("smartImport"), importsController.list);
-  app.post("/api/imports/preview", requireAuth, requirePremiumFeature("smartImport"), importsController.preview);
-  app.post("/api/imports/confirm", requireAuth, requirePremiumFeature("smartImport"), importsController.confirm);
-  app.post("/api/imports/:id/rollback", requireAuth, requirePremiumFeature("smartImport"), importsController.rollback);
+  app.post("/api/imports/preview", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.preview);
+  app.post("/api/imports/confirm", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.confirm);
+  app.post("/api/imports/:id/rollback", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.rollback);
   app.get("/api/subscription/usage", requireAuth, subscriptionController.getUsage);
-  app.post("/api/billing/mercadopago/webhook", billingController.processMercadoPagoWebhook);
+  app.post("/api/billing/mercadopago/webhook", webhookRateLimit, billingController.processMercadoPagoWebhook);
   app.get("/api/billing/status", requireAuth, billingController.getStatus);
-  app.post("/api/billing/trial/start", requireAuth, billingController.startTrial);
-  app.post("/api/billing/mercadopago/checkout", requireAuth, billingController.createMercadoPagoCheckout);
-  app.post("/api/billing/mercadopago/cancel", requireAuth, billingController.cancelMercadoPagoSubscription);
-  app.post("/api/backups/cloud", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.createManual);
+  app.post("/api/billing/trial/start", billingRateLimit, requireAuth, billingController.startTrial);
+  app.post("/api/billing/mercadopago/checkout", billingRateLimit, requireAuth, billingController.createMercadoPagoCheckout);
+  app.post("/api/billing/mercadopago/cancel", billingRateLimit, requireAuth, billingController.cancelMercadoPagoSubscription);
+  app.post("/api/backups/cloud", backupRateLimit, requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.createManual);
   app.get("/api/backups/cloud", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.listByUser);
-  app.get("/api/backups/cloud/:id/download", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.downloadById);
-  app.post("/api/backups/cloud/:id/restore", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.restoreById);
-  app.post("/api/import", requireAuth, async (req, res) => {
+  app.get("/api/backups/cloud/:id/download", backupRateLimit, requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.downloadById);
+  app.post("/api/backups/cloud/:id/restore", backupRateLimit, requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.restoreById);
+  app.post("/api/import", importRateLimit, requireAuth, async (req, res) => {
     const currentUserId = (req.user as { id?: unknown } | undefined)?.id;
 
     if (typeof currentUserId !== "string" || currentUserId.trim() === "") {
