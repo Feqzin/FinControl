@@ -1,15 +1,25 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { CompraCartao, ParcelaCompra, Pessoa } from "@shared/schema";
-import { Check, Pencil, RefreshCw, Wallet, X } from "lucide-react";
+import { Check, ExternalLink, Paperclip, Pencil, RefreshCw, Wallet, X } from "lucide-react";
+import { formatBytes } from "@/pages/pessoas/payment-timeline.utils";
 
 type AbaterSaldoParcelaForm = {
   valor: string;
   data: string;
   observacao: string;
+};
+
+type ParcelaComprovanteResumo = {
+  nome: string;
+  mimeType: string;
+  tamanho: number;
+  enviadoEm: string | null;
+  downloadUrl: string;
 };
 
 type ParcelasTabProps = {
@@ -46,6 +56,9 @@ type ParcelasTabProps = {
   setAbaterSaldoParcelaForm: (updater: (prev: AbaterSaldoParcelaForm) => AbaterSaldoParcelaForm) => void;
   onSubmitAbaterSaldo: () => void;
   isAbaterSaldoPending: boolean;
+  getParcelaComprovante: (parcela: ParcelaCompra) => ParcelaComprovanteResumo | null;
+  onUploadParcelaComprovante: (parcelaId: string, file: File) => Promise<void> | void;
+  comprovanteUploadLoadingId: string | null;
 };
 
 export function ParcelasTab({
@@ -82,7 +95,18 @@ export function ParcelasTab({
   setAbaterSaldoParcelaForm,
   onSubmitAbaterSaldo,
   isAbaterSaldoPending,
+  getParcelaComprovante,
+  onUploadParcelaComprovante,
+  comprovanteUploadLoadingId,
 }: ParcelasTabProps) {
+  const [comprovanteFiles, setComprovanteFiles] = useState<Record<string, File | null>>({});
+
+  const setComprovanteFile = (parcelaId: string, file: File | null) => {
+    setComprovanteFiles((prev) => ({ ...prev, [parcelaId]: file }));
+  };
+
+  const getComprovanteFile = (parcelaId: string): File | null => comprovanteFiles[parcelaId] ?? null;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
@@ -137,6 +161,9 @@ export function ParcelasTab({
                   && saldoPendente > 0 && saldoPessoaDisponivel > 0;
                 const aguardaReembolso = pago && viewingCompra.pessoaId && (!parcela.statusPessoa || parcela.statusPessoa === "pendente");
                 const isSubmittingThisRow = isParcelaActionPending && parcelaActionLoadingId === parcela.id;
+                const comprovante = getParcelaComprovante(parcela);
+                const uploadFile = getComprovanteFile(parcela.id);
+                const isUploadingComprovante = comprovanteUploadLoadingId === parcela.id;
 
                 return (
                   <div
@@ -200,6 +227,19 @@ export function ParcelasTab({
                               ) : null}
                               {parcela.statusPessoa === "pago" ? (
                                 <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-xs text-blue-600">Reembolsado</span>
+                              ) : null}
+                              {comprovante ? (
+                                <a
+                                  href={comprovante.downloadUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-700 hover:bg-emerald-500/15"
+                                  title={`Comprovante: ${comprovante.nome}`}
+                                  data-testid={`link-comprovante-parcela-${parcela.id}`}
+                                >
+                                  <ExternalLink className="h-2.5 w-2.5" />
+                                  Comprovante
+                                </a>
                               ) : null}
                             </div>
                           </div>
@@ -279,8 +319,71 @@ export function ParcelasTab({
                             <RefreshCw className="h-3 w-3 text-amber-600" />
                           </Button>
                         ) : null}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title={comprovante ? "Ver comprovante" : "Anexar comprovante"}
+                          onClick={() => {
+                            if (comprovante) {
+                              window.open(comprovante.downloadUrl, "_blank", "noopener,noreferrer");
+                              return;
+                            }
+                            const input = document.getElementById(`input-comprovante-parcela-${parcela.id}`) as HTMLInputElement | null;
+                            input?.click();
+                          }}
+                          disabled={isUploadingComprovante}
+                          data-testid={`button-comprovante-parcela-${parcela.id}`}
+                        >
+                          <Paperclip className="h-3 w-3 text-muted-foreground" />
+                        </Button>
                       </div>
                     </div>
+
+                    {!pago || comprovante ? (
+                      <div className="space-y-1 border-t border-border/40 pt-1.5">
+                        {comprovante ? (
+                          <p className="text-[11px] text-muted-foreground">
+                            {comprovante.nome} · {formatBytes(comprovante.tamanho)}
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground">Nenhum comprovante anexado.</p>
+                        )}
+                        <input
+                          id={`input-comprovante-parcela-${parcela.id}`}
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                          className="hidden"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0] ?? null;
+                            setComprovanteFile(parcela.id, file);
+                          }}
+                        />
+                        {!comprovante ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            {uploadFile ? (
+                              <span className="max-w-full truncate text-[11px] text-muted-foreground">{uploadFile.name}</span>
+                            ) : null}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              disabled={!uploadFile || isUploadingComprovante}
+                              onClick={() => {
+                                if (!uploadFile) return;
+                                const maybePromise = onUploadParcelaComprovante(parcela.id, uploadFile);
+                                Promise.resolve(maybePromise).finally(() => {
+                                  setComprovanteFile(parcela.id, null);
+                                });
+                              }}
+                              data-testid={`button-upload-comprovante-parcela-${parcela.id}`}
+                            >
+                              {isUploadingComprovante ? "Enviando..." : "Anexar comprovante"}
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     {isPaying ? (
                       <div className="flex items-center gap-2 border-t border-border/40 pt-1">

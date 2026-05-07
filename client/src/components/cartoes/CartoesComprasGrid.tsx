@@ -38,7 +38,7 @@ type CartoesComprasGridProps = {
   onMarcarReembolso: (compraId: string) => void;
 };
 
-const INITIAL_VISIBLE_ITEMS = 8;
+const INITIAL_VISIBLE_ITEMS = 6;
 const ITEMS_PER_PAGE = INITIAL_VISIBLE_ITEMS;
 
 type PageByCard = Record<string, number>;
@@ -85,7 +85,7 @@ export function CartoesComprasGrid({
   }, [cartoes, getFilteredCardCompras]);
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
       {cartoes.map((cartao) => {
         const limite = Number(cartao.limite);
         const faturaAtual = getCardTotal(cartao.id);
@@ -146,38 +146,38 @@ export function CartoesComprasGrid({
                 </div>
               </div>
             )}
-            contentClassName="space-y-4"
+            contentClassName="space-y-3 p-4"
           >
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="fintech-stat-card">
-                <p className="mb-1 text-xs text-muted-foreground">Fatura atual</p>
-                <p className="text-lg font-bold">{formatCurrency(faturaAtual)}</p>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <div className="fintech-stat-card p-3">
+                <p className="mb-0.5 text-[11px] text-muted-foreground">Fatura atual</p>
+                <p className="text-base font-bold">{formatCurrency(faturaAtual)}</p>
               </div>
-              <div className="fintech-stat-card bg-emerald-500/5">
-                <p className="mb-1 text-xs text-muted-foreground">Disponível</p>
-                <p className="text-lg font-bold text-emerald-600">{formatCurrency(limiteDisponivel)}</p>
+              <div className="fintech-stat-card bg-emerald-500/5 p-3">
+                <p className="mb-0.5 text-[11px] text-muted-foreground">Disponível</p>
+                <p className="text-base font-bold text-emerald-600">{formatCurrency(limiteDisponivel)}</p>
               </div>
             </div>
 
-            <div>
-              <div className="mb-1.5 flex justify-between text-xs text-muted-foreground">
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-[11px] text-muted-foreground">
                 <span>{formatCurrency(limiteComprometido)} usados</span>
                 <span>Limite: {formatCurrency(limite)}</span>
               </div>
               <Progress
-                value={Math.min(percentUsed, 100)}
-                className={`h-2 ${percentUsed >= 90 ? "[&>div]:bg-red-500" : percentUsed >= 75 ? "[&>div]:bg-amber-500" : ""}`}
+                value={Math.max(0, Math.min(percentUsed, 100))}
+                className={`h-1.5 ${percentUsed >= 90 ? "[&>div]:bg-red-500" : percentUsed >= 75 ? "[&>div]:bg-amber-500" : ""}`}
               />
             </div>
 
-            <div className={`flex items-center gap-2 rounded-md p-3 ${isUrgent ? "border border-red-500/10 bg-red-500/5" : "bg-muted/30"}`}>
-              <CalendarClock className={`h-4 w-4 flex-shrink-0 ${isUrgent ? "text-red-500" : "text-muted-foreground"}`} />
-              <div>
+            <div className={`flex flex-wrap items-center justify-between gap-2 rounded-md px-3 py-2 ${isUrgent ? "border border-red-500/10 bg-red-500/5" : "bg-muted/30"}`}>
+              <div className="flex items-center gap-2">
+                <CalendarClock className={`h-3.5 w-3.5 flex-shrink-0 ${isUrgent ? "text-red-500" : "text-muted-foreground"}`} />
                 <p className="text-xs text-muted-foreground">Próxima fatura</p>
-                <p className={`text-sm font-semibold ${isUrgent ? "text-red-600" : ""}`}>
-                  {nextDate} · {daysUntil} dia(s)
-                </p>
               </div>
+              <p className={`text-xs font-semibold ${isUrgent ? "text-red-600" : ""}`}>
+                {nextDate} · {daysUntil} dia(s)
+              </p>
             </div>
 
             <Separator />
@@ -209,8 +209,8 @@ export function CartoesComprasGrid({
                     const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
 
                     return (
-                      <div key={compra.id} className="fintech-surface-subtle touch-feedback p-2.5 text-sm" data-testid={`compra-${compra.id}`}>
-                        <div className="mb-2 flex items-center gap-3">
+                    <div key={compra.id} className="fintech-surface-subtle touch-feedback p-2 text-sm" data-testid={`compra-${compra.id}`}>
+                        <div className="flex items-center gap-2.5">
                           <BrandIconDisplay name={compra.descricao} size="sm" />
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
@@ -238,13 +238,13 @@ export function CartoesComprasGrid({
                                 </span>
                               ) : null}
                             </div>
-                            <p className="mt-0.5 text-xs text-muted-foreground">
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
                               {compra.parcelaAtual}/{compra.parcelas}x de {formatCurrency(Number(compra.valorParcela))}
                               {" · "}total: {formatCurrency(Number(compra.valorTotal))}
                             </p>
                           </div>
                           <div className="flex flex-shrink-0 items-center gap-1">
-                            <span className="text-sm font-semibold">{formatCurrency(Number(compra.valorParcela))}</span>
+                            <span className="text-xs font-semibold">{formatCurrency(Number(compra.valorParcela))}</span>
                             {aguardandoReembolso ? (
                               <Button
                                 variant="ghost"

@@ -1,4 +1,5 @@
 import { useState, lazy, Suspense, useEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,10 +33,13 @@ import {
   deleteFaturaCartaoMes,
   deleteFaturasMes,
   deleteCompraCartaoComEscopo,
+  getParcelaComprovanteDownloadUrl,
   previewImportCompras,
+  type ParcelaComprovanteResumo,
   type DeleteCompraScope,
   type DeleteCompraResponse,
   type DeleteFaturaResponse,
+  uploadParcelaComprovante,
 } from "@/services/api/cartoes";
 import { isParcelaComprometendoLimite } from "@/lib/card-limit-usage";
 import {
@@ -59,6 +63,20 @@ const IconPicker = lazy(() =>
 
 const DELETE_MODAL_TIMEOUT_MS = 20_000;
 const IS_DEV = import.meta.env.DEV;
+type CartoesTab = "resumo" | "fatura" | "compras";
+
+function normalizeCartoesTab(value: string | null | undefined): CartoesTab {
+  if (value === "fatura" || value === "compras" || value === "resumo") {
+    return value;
+  }
+  if (value === "parcelas") {
+    return "compras";
+  }
+  if (value === "limite") {
+    return "resumo";
+  }
+  return "resumo";
+}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -124,7 +142,11 @@ export default function CartoesPage() {
   const [importSourceType, setImportSourceType] = useState<"texto" | "csv" | "ofx" | "qfx" | "manual">("manual");
   const [importSourceName, setImportSourceName] = useState("");
   const [lastImportLogId, setLastImportLogId] = useState<string | null>(null);
-  const [cartoesTab, setCartoesTab] = useState<"resumo" | "fatura" | "compras" | "parcelas" | "limite">("resumo");
+  const [cartoesTab, setCartoesTab] = useState<CartoesTab>(() => {
+    if (typeof window === "undefined") return "resumo";
+    const params = new URLSearchParams(window.location.search);
+    return normalizeCartoesTab(params.get("tab"));
+  });
   const [compraSearch, setCompraSearch] = useState("");
   const [importEditForm, setImportEditForm] = useState({
     descricao: "", valor: "", dataCompra: "", parcelas: "", parcelaAtual: "", vencimentoFatura: "",
@@ -145,6 +167,8 @@ export default function CartoesPage() {
   const [deleteCompraImpactError, setDeleteCompraImpactError] = useState<string | null>(null);
   const [deleteCompraSubmitting, setDeleteCompraSubmitting] = useState(false);
   const [parcelaSubmittingId, setParcelaSubmittingId] = useState<string | null>(null);
+  const [comprovanteUploadParcelaId, setComprovanteUploadParcelaId] = useState<string | null>(null);
+  const [parcelaComprovantesById, setParcelaComprovantesById] = useState<Record<string, ParcelaComprovanteResumo>>({});
 
   const {
     cartoes,
@@ -221,14 +245,19 @@ export default function CartoesPage() {
   }, [compras, location, setLocation]);
 
   useEffect(() => {
-    if (cartoesTab === "limite") {
-      setCartoesTab("resumo");
-      return;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const rawTab = params.get("tab");
+    const normalizedTab = normalizeCartoesTab(rawTab);
+    if (rawTab !== null && normalizedTab !== rawTab) {
+      params.set("tab", normalizedTab);
+      const nextPath = params.toString().length > 0 ? `/cartoes?${params.toString()}` : "/cartoes";
+      if (location !== nextPath) {
+        setLocation(nextPath);
+      }
+      setCartoesTab(normalizedTab);
     }
-    if (cartoesTab === "parcelas") {
-      setCartoesTab("compras");
-    }
-  }, [cartoesTab]);
+  }, [location, setLocation]);
 
   useEffect(() => {
     if (!openDeleteFaturaDialog) return;
@@ -399,11 +428,68 @@ export default function CartoesPage() {
   };
 
   const compraSearchNormalized = compraSearch.trim().toLowerCase();
-  const activeCartoesTab: "resumo" | "fatura" | "compras" = cartoesTab === "limite"
-    ? "resumo"
-    : cartoesTab === "parcelas"
-      ? "compras"
-      : cartoesTab;
+  const activeCartoesTab: CartoesTab = cartoesTab;
+
+  const parcelaComprovanteMutation = useMutation({
+    mutationFn: async ({ parcelaId, file }: { parcelaId: string; file: File }) => {
+      const comprovante = await uploadParcelaComprovante(parcelaId, file);
+      return { parcelaId, comprovante };
+    },
+    onMutate: ({ parcelaId }) => {
+      setComprovanteUploadParcelaId(parcelaId);
+    },
+    onSuccess: ({ parcelaId, comprovante }) => {
+      setParcelaComprovantesById((prev) => ({
+        ...prev,
+        [parcelaId]: comprovante,
+      }));
+      toast({ title: "Comprovante anexado" });
+      refetchParcelas();
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro ao anexar comprovante",
+        description: getErrorMessage(error),
+        variant: "destructive",
+      });
+    },
+    onSettled: () => {
+      setComprovanteUploadParcelaId(null);
+    },
+  });
+
+  const getParcelaComprovante = (parcela: ParcelaCompra): ParcelaComprovanteResumo | null => {
+    const override = parcelaComprovantesById[parcela.id];
+    if (override) return override;
+
+    const raw = parcela as unknown as Record<string, unknown>;
+    const nome = typeof raw.comprovanteNome === "string" ? raw.comprovanteNome : null;
+    const mimeType = typeof raw.comprovanteMimeType === "string" ? raw.comprovanteMimeType : null;
+    const tamanhoRaw = raw.comprovanteTamanho;
+    const tamanho = typeof tamanhoRaw === "number"
+      ? tamanhoRaw
+      : typeof tamanhoRaw === "string"
+        ? Number(tamanhoRaw)
+        : NaN;
+    const enviadoEmRaw = raw.comprovanteEnviadoEm;
+    const enviadoEm = typeof enviadoEmRaw === "string"
+      ? enviadoEmRaw
+      : enviadoEmRaw instanceof Date
+        ? enviadoEmRaw.toISOString()
+        : null;
+
+    if (!nome || !mimeType || !Number.isFinite(tamanho)) {
+      return null;
+    }
+
+    return {
+      nome,
+      mimeType,
+      tamanho,
+      enviadoEm,
+      downloadUrl: getParcelaComprovanteDownloadUrl(parcela.id),
+    };
+  };
 
   const getFilteredCardCompras = (cartaoId: string) => {
     const card = cartoes.find((item) => item.id === cartaoId);
@@ -1413,6 +1499,7 @@ export default function CartoesPage() {
             setViewingCompra(null);
             setAbaterSaldoParcelaId(null);
             setParcelaSubmittingId(null);
+            setComprovanteUploadParcelaId(null);
           }
         }}
         viewingCompra={viewingCompra}
@@ -1474,6 +1561,11 @@ export default function CartoesPage() {
           );
         }}
         isAbaterSaldoPending={abaterSaldoParcelaMutation.isPending}
+        getParcelaComprovante={getParcelaComprovante}
+        onUploadParcelaComprovante={async (parcelaId, file) => {
+          await parcelaComprovanteMutation.mutateAsync({ parcelaId, file });
+        }}
+        comprovanteUploadLoadingId={comprovanteUploadParcelaId}
       />
 
       <ImportFaturaDialog

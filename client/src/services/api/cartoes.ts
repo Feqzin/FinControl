@@ -231,6 +231,48 @@ export async function updateParcelaCompraStatusPessoa(id: string, pago: boolean)
   });
 }
 
+export type ParcelaComprovanteResumo = {
+  nome: string;
+  mimeType: string;
+  tamanho: number;
+  enviadoEm: string | null;
+  downloadUrl: string;
+};
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      const base64 = result.includes(",") ? (result.split(",")[1] ?? "") : result;
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error("Falha ao ler o arquivo."));
+    reader.readAsDataURL(file);
+  });
+}
+
+export function getParcelaComprovanteDownloadUrl(parcelaId: string): string {
+  return `/api/pagamentos/parcela/${parcelaId}/comprovante`;
+}
+
+export async function uploadParcelaComprovante(
+  parcelaId: string,
+  file: File,
+): Promise<ParcelaComprovanteResumo> {
+  const contentBase64 = await fileToBase64(file);
+  const response = await apiRequest("POST", `/api/pagamentos/parcela/${parcelaId}/comprovante`, {
+    fileName: file.name,
+    mimeType: file.type || "application/octet-stream",
+    contentBase64,
+  });
+  const payload = await response.json() as { comprovante?: ParcelaComprovanteResumo };
+  if (!payload?.comprovante) {
+    throw new Error("Resposta inválida ao anexar comprovante.");
+  }
+  return payload.comprovante;
+}
+
 export async function updateParcelaCompraValores(id: string, payload: { valor?: string; dataVencimento?: string }): Promise<void> {
   await apiRequest("PATCH", `/api/parcelas-compra/${id}`, {
     ...(payload.valor !== undefined ? { valor: payload.valor } : {}),
