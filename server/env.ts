@@ -150,6 +150,12 @@ if (isProduction && isVercel) {
   }
 }
 
+const databaseSslRejectUnauthorizedRaw = parseBooleanEnv(
+  "DATABASE_SSL_REJECT_UNAUTHORIZED",
+  process.env.DATABASE_SSL_REJECT_UNAUTHORIZED,
+);
+const databaseSslRejectUnauthorized = databaseSslRejectUnauthorizedRaw ?? isProduction;
+
 const sessionSecret = requireEnv(
   "SESSION_SECRET",
   "Defina no arquivo .env com pelo menos 16 caracteres.\n" +
@@ -273,6 +279,12 @@ export const ENV = {
   nodeEnv,
   isVercel,
   databaseUrl,
+  database: {
+    ssl: {
+      rejectUnauthorized: databaseSslRejectUnauthorized,
+      fromEnv: databaseSslRejectUnauthorizedRaw !== undefined,
+    },
+  },
   sessionSecret,
   port: resolvePort(process.env.PORT),
   supabase: {

@@ -5,6 +5,8 @@ import { ENV } from "./env";
 
 const isServerlessRuntime =
   ENV.isVercel || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+const shouldConfigureSsl =
+  ENV.nodeEnv === "production" || ENV.database.ssl.fromEnv;
 
 const poolConfig: pg.PoolConfig = {
   connectionString: ENV.databaseUrl,
@@ -15,6 +17,13 @@ const poolConfig: pg.PoolConfig = {
   allowExitOnIdle: ENV.nodeEnv !== "production",
   keepAlive: true,
   maxUses: isServerlessRuntime ? 7_500 : undefined,
+  ...(shouldConfigureSsl
+    ? {
+      ssl: {
+        rejectUnauthorized: ENV.database.ssl.rejectUnauthorized,
+      },
+    }
+    : {}),
 };
 
 type GlobalWithPgPool = typeof globalThis & {
@@ -29,6 +38,11 @@ export const pool =
   new pg.Pool(poolConfig);
 
 if (!globalWithPgPool.__debtControlPgPool) {
+  const sslMode = shouldConfigureSsl
+    ? `enabled (rejectUnauthorized=${ENV.database.ssl.rejectUnauthorized ? "true" : "false"})`
+    : "disabled";
+  console.info(`[db.pool][ssl] mode=${sslMode}; env=${ENV.nodeEnv}; runtime=server`);
+
   globalWithPgPool.__debtControlPgPool = pool;
   pool.on("error", (error) => {
     console.error("[db.pool] unexpected idle client error", error);

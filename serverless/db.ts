@@ -1,17 +1,14 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
 import * as schema from "../shared/schema.js";
+import { ENV } from "./env.js";
 
-const connectionString = process.env.DATABASE_URL;
-
-if (!connectionString) {
-  throw new Error("[DB] Variavel obrigatoria ausente: DATABASE_URL");
-}
+const connectionString = ENV.databaseUrl;
 
 const poolConfig: PoolConfig = {
   connectionString,
   ssl: {
-    rejectUnauthorized: false,
+    rejectUnauthorized: ENV.database.ssl.rejectUnauthorized,
   },
   max: 1,
   min: 0,
@@ -30,6 +27,9 @@ const globalWithPgPool = globalThis as GlobalWithPgPool;
 export const pool = globalWithPgPool.__debtControlPgPool ?? new Pool(poolConfig);
 
 if (!globalWithPgPool.__debtControlPgPool) {
+  const sslMode = `enabled (rejectUnauthorized=${ENV.database.ssl.rejectUnauthorized ? "true" : "false"})`;
+  console.info(`[db.pool][ssl] mode=${sslMode}; env=${ENV.nodeEnv}; runtime=serverless`);
+
   globalWithPgPool.__debtControlPgPool = pool;
   pool.on("error", (error) => {
     console.error("[db.pool] unexpected idle client error", error);
