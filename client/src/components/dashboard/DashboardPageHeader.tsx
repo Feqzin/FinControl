@@ -14,9 +14,6 @@ type DashboardSectionStatus = {
 type DashboardPageHeaderProps = {
   title: string;
   subtitle: string;
-  peopleCount: number;
-  entradasText: string;
-  saidasText: string;
   selectedMonth: string;
   monthOptions: Array<{ value: string; label: string }>;
   onMonthChange: (value: string) => void;
@@ -40,9 +37,6 @@ function HeaderScoreError({ message }: { message: string | null }) {
 export function DashboardPageHeader({
   title,
   subtitle,
-  peopleCount,
-  entradasText,
-  saidasText,
   selectedMonth,
   monthOptions,
   onMonthChange,
@@ -59,18 +53,7 @@ export function DashboardPageHeader({
         <div className="flex min-w-0 items-center justify-between gap-3 lg:justify-start">
           <div className="min-w-0">
             <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
-            <p className="text-sm text-muted-foreground/90 capitalize">{subtitle}</p>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-              <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
-                {peopleCount} pessoa(s)
-              </span>
-              <span className="rounded-full bg-red-500/10 px-2.5 py-1 text-red-700 dark:text-red-400">
-                Saídas {saidasText}
-              </span>
-              <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-400">
-                Entradas {entradasText}
-              </span>
-            </div>
+            <p className="text-sm text-muted-foreground/90">{subtitle}</p>
           </div>
 
           <Dialog>
@@ -131,4 +114,3 @@ export function DashboardPageHeader({
     </div>
   );
 }
-

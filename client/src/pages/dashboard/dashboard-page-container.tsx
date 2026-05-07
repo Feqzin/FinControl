@@ -29,7 +29,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useDashboard } from "@/hooks/useDashboard";
-import { DateBadge, urgencyLabel } from "@/pages/dashboard/components/date-badge";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { useLocation } from "wouter";
 import type { UsageMode } from "@/context/ui-preferences";
@@ -181,6 +180,7 @@ export default function Dashboard() {
   const principalReceberNome = principalReceberEntry
     ? (pessoas.find((p) => p.id === principalReceberEntry[0])?.nome ?? null)
     : null;
+  const pagarSemanaTotal = pagarSemana.reduce((sum, item) => sum + item.amount, 0);
   const summaryCards = [
     {
       id: "receber",
@@ -294,18 +294,7 @@ export default function Dashboard() {
           <div className="fintech-page-header-row gap-3">
             <div className="min-w-0">
               <h1 className="text-3xl font-semibold tracking-tight">Painel Essencial</h1>
-              <p className="text-sm text-muted-foreground/90 capitalize">{selectedMonthLabel}</p>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
-                  {pessoas.length} pessoa(s)
-                </span>
-                <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-amber-700 dark:text-amber-400">
-                  A pagar {maskValue(formatCurrencyBRL(totalPagar), visible)}
-                </span>
-                <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-400">
-                  A receber {maskValue(formatCurrencyBRL(totalReceber), visible)}
-                </span>
-              </div>
+              <p className="text-sm text-muted-foreground/90">Visão simplificada para decisões rápidas.</p>
             </div>
             <div className="fintech-actions-wrap w-full lg:w-auto">
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
@@ -740,6 +729,11 @@ export default function Dashboard() {
             <div className="px-4 pt-4 pb-2 flex items-center gap-2">
               <CalendarClock className="w-4 h-4 text-primary" />
               <span className="font-semibold text-sm">Próximos Vencimentos</span>
+              {!sectionStatus.pagarSemana.isLoading && !sectionStatus.pagarSemana.isError && pagarSemana.length > 0 ? (
+                <span className="ml-auto rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                  {pagarSemana.length} na semana
+                </span>
+              ) : null}
             </div>
             {sectionStatus.proximosVencimentos.isLoading ? (
               <div className="space-y-2 px-4 pb-4">
@@ -784,6 +778,30 @@ export default function Dashboard() {
                 })}
               </div>
             )}
+
+            {!sectionStatus.proximosVencimentos.isLoading && !sectionStatus.proximosVencimentos.isError ? (
+              <div className="border-t border-border/60 px-4 py-3">
+                {sectionStatus.pagarSemana.isLoading ? (
+                  <Skeleton className="h-10 rounded-lg" />
+                ) : sectionStatus.pagarSemana.isError ? (
+                  <p className="text-xs text-muted-foreground">Resumo da semana indisponível no momento.</p>
+                ) : pagarSemana.length > 0 ? (
+                  <div className="flex items-center justify-between rounded-lg bg-amber-500/5 px-3 py-2">
+                    <div>
+                      <p className="text-[11px] font-medium text-muted-foreground">A pagar em 7 dias</p>
+                      <p className="text-sm font-semibold text-red-600">
+                        {maskValue(formatCurrencyBRL(pagarSemanaTotal), visible)}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                      {pagarSemana.length} item(ns)
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Sem pagamentos críticos nos próximos 7 dias.</p>
+                )}
+              </div>
+            ) : null}
           </div>
 
           {showAdvancedResources && (
@@ -832,54 +850,13 @@ export default function Dashboard() {
           )}
 
           {showContextualTips && (
-            <div className="rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-primary">Dica rápida</p>
-              <p className="mt-1 text-sm text-muted-foreground">
+            <div className="rounded-xl border border-primary/15 bg-primary/5 px-3 py-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Dica rápida</p>
+              <p className="mt-1 text-xs text-muted-foreground">
                 Priorize quitar os itens vencidos da semana para proteger seu fluxo de caixa do mês.
               </p>
             </div>
           )}
-
-          {sectionStatus.pagarSemana.isLoading ? (
-            <Skeleton className="h-40 rounded-2xl" />
-          ) : sectionStatus.pagarSemana.isError ? (
-            <SectionErrorState message={sectionStatus.pagarSemana.message} />
-          ) : pagarSemana.length > 0 ? (
-            <div className="bg-card rounded-2xl shadow-sm border border-border/50 overflow-hidden" data-testid="mobile-pagar-semana">
-              <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CalendarClock className="w-4 h-4 text-amber-500" />
-                  <span className="font-semibold text-sm">A Pagar na Semana</span>
-                </div>
-                <span className="text-xs text-muted-foreground">Próximos 7 dias</span>
-              </div>
-              {pagarSemana.map((item, idx) => {
-                const urg = urgencyLabel(item.dateStr);
-                return (
-                  <div
-                    key={item.id}
-                    className={`flex items-center gap-3 px-4 py-3.5 ${idx < pagarSemana.length - 1 ? "border-b border-border/40" : ""}`}
-                    data-testid={`mobile-pagar-${item.id}`}
-                  >
-                    <DateBadge dateStr={item.dateStr} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.title}</p>
-                      <p className={`text-xs ${urg.cls}`}>{urg.text}</p>
-                    </div>
-                    <span className="text-sm font-bold text-red-600 flex-shrink-0">
-                      {maskValue(formatCurrencyBRL(item.amount), visible)}
-                    </span>
-                  </div>
-                );
-              })}
-              <div className="px-4 py-3 bg-muted/30 flex items-center justify-between">
-                <span className="text-xs text-muted-foreground font-medium">Total da semana</span>
-                <span className="text-sm font-bold text-red-600">
-                  {maskValue(formatCurrencyBRL(pagarSemana.reduce((s, i) => s + i.amount, 0)), visible)}
-                </span>
-              </div>
-            </div>
-          ) : null}
         </div>
       </div>
     );
@@ -889,10 +866,7 @@ export default function Dashboard() {
       <div className="app-page-shell app-section-stack" data-testid="dashboard-page">
       <DashboardPageHeader
         title="Painel"
-        subtitle={selectedMonthLabel}
-        peopleCount={pessoas.length}
-        entradasText={maskValue(formatCurrencyBRL(totalEntradas), visible)}
-        saidasText={maskValue(formatCurrencyBRL(totalSaidas), visible)}
+        subtitle="Visão financeira consolidada do período."
         selectedMonth={selectedMonth}
         monthOptions={monthOptions}
         onMonthChange={setSelectedMonth}

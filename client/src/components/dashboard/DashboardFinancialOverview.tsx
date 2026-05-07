@@ -2,7 +2,6 @@ import type { FinancialScore } from "@shared/financial";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowDownRight, CalendarClock, CreditCard, Receipt, TrendingUp } from "lucide-react";
-import { DateBadge, urgencyLabel } from "@/pages/dashboard/components/date-badge";
 import { DashboardEmptyState } from "@/components/dashboard/DashboardEmptyState";
 
 type DashboardSectionStatus = {
@@ -71,12 +70,19 @@ export function DashboardFinancialOverview({
   in7Days,
   formatMoney,
 }: DashboardFinancialOverviewProps) {
+  const pagarSemanaTotal = pagarSemana.reduce((sum, item) => sum + item.amount, 0);
+
   return (
     <>
       <Card className="border-border/60 bg-card/95 shadow-sm">
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex flex-wrap items-center gap-2 text-base">
             <CalendarClock className="h-4 w-4" /> Próximos vencimentos
+            {!pagarSemanaStatus.isLoading && !pagarSemanaStatus.isError && pagarSemana.length > 0 ? (
+              <span className="ml-auto rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                {pagarSemana.length} na semana
+              </span>
+            ) : null}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -128,6 +134,28 @@ export function DashboardFinancialOverview({
               })}
             </div>
           )}
+
+          {!proximosStatus.isLoading && !proximosStatus.isError ? (
+            <div className="mt-3 border-t border-border/60 pt-3">
+              {pagarSemanaStatus.isLoading ? (
+                <Skeleton className="h-11 rounded-lg" />
+              ) : pagarSemanaStatus.isError ? (
+                <p className="text-xs text-muted-foreground">Resumo da semana indisponível no momento.</p>
+              ) : pagarSemana.length > 0 ? (
+                <div className="flex items-center justify-between rounded-lg bg-amber-500/5 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-muted-foreground">A pagar em 7 dias</p>
+                    <p className="truncate text-sm font-semibold text-red-600">{formatMoney(pagarSemanaTotal)}</p>
+                  </div>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                    {pagarSemana.length} item(ns)
+                  </span>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Sem pagamentos críticos nos próximos 7 dias.</p>
+              )}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -192,57 +220,13 @@ export function DashboardFinancialOverview({
       ) : null}
 
       {showContextualTips ? (
-        <div className="rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Dica contextual</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Priorize quitar pendências vencidas primeiro para reduzir juros e melhorar seu fluxo mensal.
+        <div className="rounded-xl border border-primary/15 bg-primary/5 px-3 py-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Dica contextual</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Priorize pendências vencidas para reduzir juros e proteger o caixa do mês.
           </p>
         </div>
-      ) : null}
-
-      {pagarSemanaStatus.isLoading ? (
-        <Skeleton className="h-[220px] rounded-2xl" />
-      ) : pagarSemanaStatus.isError ? (
-        <SectionErrorState message={pagarSemanaStatus.message} />
-      ) : pagarSemana.length > 0 ? (
-        <Card className="border-border/60 bg-card/95 shadow-sm" data-testid="pagar-semana-widget">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CalendarClock className="h-4 w-4 text-amber-500" />
-              A Pagar na Semana
-              <span className="ml-auto text-xs font-normal text-muted-foreground">Próximos 7 dias</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {pagarSemana.map((item) => {
-                const urg = urgencyLabel(item.dateStr);
-                return (
-                  <div
-                    key={item.id}
-                    className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/50"
-                    data-testid={`pagar-semana-${item.id}`}
-                  >
-                    <DateBadge dateStr={item.dateStr} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{item.title}</p>
-                      <p className={`text-xs ${urg.cls}`}>{urg.text}</p>
-                    </div>
-                    <span className="flex-shrink-0 text-sm font-semibold text-red-600">{formatMoney(item.amount)}</span>
-                  </div>
-                );
-              })}
-              <div className="flex items-center justify-between border-t px-2 pt-2">
-                <span className="text-xs text-muted-foreground">Total da semana</span>
-                <span className="text-sm font-bold text-red-600">
-                  {formatMoney(pagarSemana.reduce((s, i) => s + i.amount, 0))}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       ) : null}
     </>
   );
 }
-

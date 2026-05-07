@@ -35,9 +35,13 @@ function SummaryCardsError({ message }: { message: string | null }) {
 }
 
 export function DashboardSummaryCards({ status, cards, hiddenCardIds, compact }: DashboardSummaryCardsProps) {
+  const gridClass = compact
+    ? "grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5"
+    : "grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5";
+
   if (status.isLoading) {
     return (
-      <div className={`fintech-grid-fluid-280 ${compact ? "gap-2" : "gap-3"}`}>
+      <div className={gridClass}>
         {[1, 2, 3, 4, 5].map((idx) => (
           <Skeleton key={idx} className="h-[84px] rounded-xl" />
         ))}
@@ -50,7 +54,7 @@ export function DashboardSummaryCards({ status, cards, hiddenCardIds, compact }:
   }
 
   return (
-    <div className={`fintech-grid-fluid-280 ${compact ? "gap-2" : "gap-3"}`}>
+    <div className={gridClass}>
       {cards
         .filter((card) => !hiddenCardIds.includes(card.id))
         .map((card) => (
@@ -69,4 +73,3 @@ export function DashboardSummaryCards({ status, cards, hiddenCardIds, compact }:
     </div>
   );
 }
-

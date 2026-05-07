@@ -55,7 +55,7 @@ export function DashboardInsights({
     <div className={`grid grid-cols-1 gap-3 ${shouldRenderAlertasSection && showAdvancedResources ? "lg:grid-cols-2" : ""}`}>
       {shouldRenderAlertasSection ? (
         <Card className="border-border/60 bg-card/95 shadow-sm">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <AlertTriangle className="h-4 w-4 text-red-500" /> Alertas importantes
             </CardTitle>
@@ -64,19 +64,19 @@ export function DashboardInsights({
             {alertasStatus.isLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((idx) => (
-                  <Skeleton key={idx} className="h-14 rounded-md" />
+                  <Skeleton key={idx} className="h-12 rounded-md" />
                 ))}
               </div>
             ) : alertasStatus.isError ? (
               <SectionErrorState message={alertasStatus.message} />
             ) : (
-              <div className="space-y-2" data-testid="alerts-section">
+              <div className="space-y-1.5" data-testid="alerts-section">
                 {alertasUrgentes.map((alerta, i) => {
                   const IconComp = alerta.icon || AlertTriangle;
                   return (
-                    <div key={`${alerta.texto}-${i}`} className={`flex items-start gap-3 rounded-lg border p-3 ${alerta.bgColor}`}>
+                    <div key={`${alerta.texto}-${i}`} className={`flex items-start gap-2.5 rounded-lg border p-2.5 ${alerta.bgColor}`}>
                       <IconComp className={`mt-0.5 h-4 w-4 flex-shrink-0 ${alerta.color}`} />
-                      <p className={`text-sm font-medium ${alerta.color}`}>{alerta.texto}</p>
+                      <p className={`text-xs font-medium leading-relaxed ${alerta.color}`}>{alerta.texto}</p>
                     </div>
                   );
                 })}
@@ -88,7 +88,7 @@ export function DashboardInsights({
 
       {showAdvancedResources ? (
         <Card className="border-border/60 bg-card/95 shadow-sm">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <Lightbulb className="h-4 w-4 text-amber-500" /> Insights automáticos
             </CardTitle>
@@ -97,7 +97,7 @@ export function DashboardInsights({
             {insightsStatus.isLoading ? (
               <div className="space-y-2">
                 {[1, 2].map((idx) => (
-                  <Skeleton key={idx} className="h-16 rounded-md" />
+                  <Skeleton key={idx} className="h-14 rounded-md" />
                 ))}
               </div>
             ) : insightsStatus.isError ? (
@@ -108,7 +108,7 @@ export function DashboardInsights({
                 <p className="text-sm">Sem oportunidades relevantes no momento.</p>
               </div>
             ) : (
-              <div className="space-y-2" data-testid="insights-section">
+              <div className="space-y-1.5" data-testid="insights-section">
                 {insightsOportunidades.map((insight, i) => {
                   const IconComp = insightIconMap[insight.icone] || Lightbulb;
                   const insightAction = insight.acao
@@ -124,7 +124,7 @@ export function DashboardInsights({
                   return (
                     <div
                       key={i}
-                      className={`flex items-start gap-3 rounded-lg border p-3 ${styles[insight.tipo]} ${isActionable ? "cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
+                      className={`flex items-start gap-2.5 rounded-lg border p-2.5 ${styles[insight.tipo]} ${isActionable ? "cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
                       data-testid={`insight-${i}`}
                       role={isActionable ? "button" : undefined}
                       tabIndex={isActionable ? 0 : -1}
@@ -141,15 +141,15 @@ export function DashboardInsights({
                       }
                     >
                       <IconComp className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <p className="text-sm font-medium">{insight.texto}</p>
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <p className="text-xs font-medium leading-relaxed">{insight.texto}</p>
                         {isActionable && insightAction ? (
                           <div>
                             <Button
                               type="button"
                               size="sm"
                               variant="outline"
-                              className="h-7 px-2.5 text-xs"
+                              className="h-6 px-2 text-[11px]"
                               onClick={(event) => {
                                 event.stopPropagation();
                                 onNavigate(insightAction.path);
@@ -172,4 +172,3 @@ export function DashboardInsights({
     </div>
   );
 }
-
