@@ -5,12 +5,14 @@ import {
   recomputeDebtAggregate,
 } from "./financial-aggregate-consistency";
 import { runFinancialTransaction } from "./transaction-utils";
+import { materializeParcelasCompraIfMissing } from "./parcelas-compra-materialization";
 import {
   type AnteciparParcelasBodyInput,
   type ParcelaCompraUpdateBodyInput,
   type ParcelaUpdateBodyInput,
   type ParcelasCompraBulkBodyInput,
 } from "../validators/financial.validators";
+import { toErrorLog, writeTechnicalLog } from "../logger";
 
 export class ParcelasService {
   constructor(private readonly repository: FinancialRepository) {}
@@ -78,10 +80,33 @@ export class ParcelasService {
   }
 
   async listParcelasCompra(compraId: string, userId: string) {
-    const compra = await this.repository.getCompraCartao(compraId, userId);
-    if (!compra) return { error: "COMPRA_NOT_FOUND" as const };
-    const rows = await this.repository.getParcelasCompra(compraId, userId);
-    return { rows };
+    return runFinancialTransaction(this.repository, async (repository) => {
+      try {
+        const compra = await repository.getCompraCartao(compraId, userId);
+        if (!compra) return { error: "COMPRA_NOT_FOUND" as const };
+
+        let rows = await repository.getParcelasCompra(compraId, userId);
+        if (rows.length === 0) {
+          await materializeParcelasCompraIfMissing(repository, compra);
+          await recomputeCardPurchaseAggregate(repository, compraId, userId);
+          rows = await repository.getParcelasCompra(compraId, userId);
+        }
+
+        return { rows };
+      } catch (error) {
+        writeTechnicalLog({
+          event: "parcelas_compra.list.error",
+          source: "parcelas.service",
+          level: "error",
+          data: {
+            userId,
+            compraId,
+            error: toErrorLog(error),
+          },
+        });
+        throw error;
+      }
+    });
   }
 
   async updateParcelaCompra(id: string, userId: string, data: ParcelaCompraUpdateBodyInput) {

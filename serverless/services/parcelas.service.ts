@@ -12,6 +12,7 @@ import {
   type ParcelaUpdateBodyInput,
   type ParcelasCompraBulkBodyInput,
 } from "../validators/financial.validators.js";
+import { toErrorLog, writeTechnicalLog } from "../logger.js";
 
 export class ParcelasService {
   constructor(private readonly repository: FinancialRepository) {}
@@ -80,42 +81,70 @@ export class ParcelasService {
 
   async listParcelasCompra(compraId: string, userId: string) {
     return runFinancialTransaction(this.repository, async (repository) => {
-      const compra = await repository.getCompraCartao(compraId, userId);
-      if (!compra) return { error: "COMPRA_NOT_FOUND" as const };
+      try {
+        const compra = await repository.getCompraCartao(compraId, userId);
+        if (!compra) return { error: "COMPRA_NOT_FOUND" as const };
 
-      let rows = await repository.getParcelasCompra(compraId, userId);
-      if (rows.length === 0) {
-        await materializeParcelasCompraIfMissing(repository, compra);
-        await recomputeCardPurchaseAggregate(repository, compraId, userId);
-        rows = await repository.getParcelasCompra(compraId, userId);
+        let rows = await repository.getParcelasCompra(compraId, userId);
+        if (rows.length === 0) {
+          await materializeParcelasCompraIfMissing(repository, compra);
+          await recomputeCardPurchaseAggregate(repository, compraId, userId);
+          rows = await repository.getParcelasCompra(compraId, userId);
+        }
+
+        return { rows };
+      } catch (error) {
+        writeTechnicalLog({
+          event: "parcelas_compra.list.error",
+          source: "parcelas.service",
+          level: "error",
+          data: {
+            userId,
+            compraId,
+            error: toErrorLog(error),
+          },
+        });
+        throw error;
       }
-
-      return { rows };
     });
   }
 
   async listParcelasCompraByUser(userId: string) {
     return runFinancialTransaction(this.repository, async (repository) => {
-      const rows = await repository.getParcelasCompraByUser(userId);
-      const compras = await repository.getComprasCartao(userId);
+      try {
+        const rows = await repository.getParcelasCompraByUser(userId);
+        const compras = await repository.getComprasCartao(userId);
 
-      if (compras.length === 0) {
-        return rows;
+        if (compras.length === 0) {
+          return rows;
+        }
+
+        const compraIdsWithParcelas = new Set(rows.map((row) => row.compraCartaoId));
+        const comprasSemParcelas = compras.filter((compra) => !compraIdsWithParcelas.has(compra.id));
+
+        if (comprasSemParcelas.length === 0) {
+          return rows;
+        }
+
+        for (const compra of comprasSemParcelas) {
+          await materializeParcelasCompraIfMissing(repository, compra);
+          await recomputeCardPurchaseAggregate(repository, compra.id, userId);
+        }
+
+        return repository.getParcelasCompraByUser(userId);
+      } catch (error) {
+        writeTechnicalLog({
+          event: "parcelas_compra.list.error",
+          source: "parcelas.service",
+          level: "error",
+          data: {
+            userId,
+            scope: "by_user",
+            error: toErrorLog(error),
+          },
+        });
+        throw error;
       }
-
-      const compraIdsWithParcelas = new Set(rows.map((row) => row.compraCartaoId));
-      const comprasSemParcelas = compras.filter((compra) => !compraIdsWithParcelas.has(compra.id));
-
-      if (comprasSemParcelas.length === 0) {
-        return rows;
-      }
-
-      for (const compra of comprasSemParcelas) {
-        await materializeParcelasCompraIfMissing(repository, compra);
-        await recomputeCardPurchaseAggregate(repository, compra.id, userId);
-      }
-
-      return repository.getParcelasCompraByUser(userId);
     });
   }
 

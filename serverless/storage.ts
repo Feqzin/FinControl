@@ -775,13 +775,32 @@ export class DatabaseStorage implements IStorage {
   }
   async createParcelasCompraBulk(rows: InsertParcelaCompra[]) {
     if (rows.length === 0) return [];
-    return this.database.insert(parcelasCompra).values(rows).returning();
+    try {
+      return await this.database.insert(parcelasCompra).values(rows).returning();
+    } catch (error) {
+      if (!isMissingParcelasCompraComprovanteColumnsError(error)) throw error;
+      const created: ParcelaCompraWithoutComprovante[] = await this.database
+        .insert(parcelasCompra)
+        .values(rows)
+        .returning(parcelasCompraProjectionWithoutComprovante);
+      return created.map(withParcelaCompraComprovanteDefaults);
+    }
   }
   async updateParcelaCompra(id: string, userId: string, data: Partial<InsertParcelaCompra>) {
-    const [p] = await this.database.update(parcelasCompra).set(data).where(
-      and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId))
-    ).returning();
-    return p;
+    try {
+      const [p] = await this.database.update(parcelasCompra).set(data).where(
+        and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId))
+      ).returning();
+      return p;
+    } catch (error) {
+      if (!isMissingParcelasCompraComprovanteColumnsError(error)) throw error;
+      const [p] = await this.database
+        .update(parcelasCompra)
+        .set(data)
+        .where(and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId)))
+        .returning(parcelasCompraProjectionWithoutComprovante);
+      return p ? withParcelaCompraComprovanteDefaults(p) : undefined;
+    }
   }
   async deleteParcelaCompra(id: string, userId: string) {
     const result = await this.database.delete(parcelasCompra).where(

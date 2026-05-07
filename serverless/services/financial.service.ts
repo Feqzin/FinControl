@@ -5,6 +5,7 @@ import type {
   Divida,
   Parcela,
   ParcelaCompra,
+  PessoaSaldoMovimentacao,
   Patrimonio,
   Pessoa,
   Renda,
@@ -734,8 +735,58 @@ export class FinancialService {
   }
 
   async getCardSummaries(userId: string): Promise<CardConsolidatedSummary[]> {
-    const { cartoes, compras, parcelasCompra } = await this.loadCardContext(userId);
-    const saldoMovimentacoes = await this.repository.getPessoaSaldoMovimentacoes(userId);
-    return getCardConsolidatedSummaries({ cartoes, compras, parcelasCompra, saldoMovimentacoes });
+    try {
+      const { cartoes, compras, parcelasCompra } = await this.loadCardContext(userId);
+      const saldoMovimentacoes = await this.loadContextSlice(
+        userId,
+        "pessoa_saldo_movimentacoes",
+        () => this.repository.getPessoaSaldoMovimentacoes(userId),
+        [] as PessoaSaldoMovimentacao[],
+      );
+      const summaries = getCardConsolidatedSummaries({ cartoes, compras, parcelasCompra, saldoMovimentacoes });
+
+      const compraById = new Map(compras.map((compra) => [compra.id, compra]));
+      const pendingByCard = new Map<string, number>();
+      for (const parcela of parcelasCompra) {
+        const status = String(parcela.statusCartao || "").trim().toLowerCase();
+        if (status === "pago" || status === "cancelado") continue;
+        const compra = compraById.get(parcela.compraCartaoId);
+        if (!compra) continue;
+        const current = pendingByCard.get(compra.cartaoId) ?? 0;
+        pendingByCard.set(compra.cartaoId, round2(current + toMoneyNumber(parcela.valor)));
+      }
+
+      for (const summary of summaries) {
+        const pendingFromParcelas = pendingByCard.get(summary.cartaoId) ?? 0;
+        if (pendingFromParcelas <= 0) continue;
+        if (summary.faturaAtual > 0 && summary.limiteComprometido > 0) continue;
+
+        writeTechnicalLog({
+          event: "cartoes.resumo.inconsistent_usage",
+          source: "financial.service",
+          level: "warn",
+          data: {
+            userId,
+            cartaoId: summary.cartaoId,
+            pendingFromParcelas,
+            faturaAtual: summary.faturaAtual,
+            limiteComprometido: summary.limiteComprometido,
+          },
+        });
+      }
+
+      return summaries;
+    } catch (error) {
+      writeTechnicalLog({
+        event: "cartoes.resumo.parcelas_load_error",
+        source: "financial.service",
+        level: "error",
+        data: {
+          userId,
+          error: toErrorLog(error),
+        },
+      });
+      throw error;
+    }
   }
 }

@@ -573,13 +573,32 @@ export class DatabaseStorage implements IStorage {
   }
   async createParcelasCompraBulk(rows: InsertParcelaCompra[]) {
     if (rows.length === 0) return [];
-    return this.database.insert(parcelasCompra).values(rows).returning();
+    try {
+      return await this.database.insert(parcelasCompra).values(rows).returning();
+    } catch (error) {
+      if (!this.isMissingParcelasCompraComprovanteColumnsError(error)) throw error;
+      const created = await this.database
+        .insert(parcelasCompra)
+        .values(rows)
+        .returning(this.parcelasCompraProjectionWithoutComprovante);
+      return created.map((row: any) => this.toParcelaCompraWithComprovanteDefaults(row));
+    }
   }
   async updateParcelaCompra(id: string, userId: string, data: Partial<InsertParcelaCompra>) {
-    const [p] = await this.database.update(parcelasCompra).set(data).where(
-      and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId))
-    ).returning();
-    return p;
+    try {
+      const [p] = await this.database.update(parcelasCompra).set(data).where(
+        and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId))
+      ).returning();
+      return p;
+    } catch (error) {
+      if (!this.isMissingParcelasCompraComprovanteColumnsError(error)) throw error;
+      const [p] = await this.database
+        .update(parcelasCompra)
+        .set(data)
+        .where(and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId)))
+        .returning(this.parcelasCompraProjectionWithoutComprovante);
+      return p ? this.toParcelaCompraWithComprovanteDefaults(p) : undefined;
+    }
   }
   async deleteParcelaCompra(id: string, userId: string) {
     const result = await this.database.delete(parcelasCompra).where(

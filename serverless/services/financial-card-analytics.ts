@@ -129,17 +129,12 @@ function buildParcelaSaldoAbatidoMap(rows: PessoaSaldoMovimentacao[] | undefined
 
 function getOutstandingAmount(
   obligation: CardInstallmentObligation,
-  parcelaSaldoAbatidoMap: Map<string, number>,
+  _parcelaSaldoAbatidoMap: Map<string, number>,
 ): number {
   if (!isOutstandingStatus(obligation.statusCartao)) return 0;
 
   const valorOriginal = toMoneyNumber(obligation.valor);
-  if (obligation.source !== "parcela_compra" || !obligation.parcelaCompraId) {
-    return round2(Math.max(0, valorOriginal));
-  }
-
-  const abatido = parcelaSaldoAbatidoMap.get(obligation.parcelaCompraId) ?? 0;
-  return round2(Math.max(0, valorOriginal - abatido));
+  return round2(Math.max(0, valorOriginal));
 }
 
 function buildFallbackInstallments(compra: CompraCartao): CardInstallmentObligation[] {
