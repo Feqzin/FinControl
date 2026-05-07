@@ -221,6 +221,31 @@ export function createBillingController(service: BillingService) {
           ? req.rawBody
           : JSON.stringify(req.body ?? {});
 
+      const webhookValidation = service.validateMercadoPagoWebhookRequest({
+        query: req.query as Record<string, unknown>,
+        payload: req.body,
+        xSignature: req.get("x-signature"),
+        xRequestId: req.get("x-request-id"),
+      });
+
+      if (!webhookValidation.isValid) {
+        auditRequest(req, {
+          action: "update",
+          status: "failure",
+          domain: "billing.webhook.mercado_pago",
+          details: {
+            provider: "mercado_pago",
+            outcome: "blocked",
+            reason: webhookValidation.reason,
+            providerEventId: webhookValidation.providerEventId,
+          },
+        });
+
+        return res.status(webhookValidation.statusCode).json({
+          error: webhookValidation.responseError,
+        });
+      }
+
       try {
         const result = await service.processMercadoPagoWebhook({
           query: req.query as Record<string, unknown>,

@@ -14,6 +14,7 @@ import {
   type UserSubscription,
 } from "../../shared/schema.js";
 import { db } from "../db.js";
+import { ENV } from "../env.js";
 import { storage, type IStorage } from "../storage.js";
 import { toErrorLog, writeTechnicalLog } from "../logger.js";
 
@@ -103,6 +104,20 @@ export type BillingWebhookProcessResult = {
   reason: string;
   providerEventId: string;
 };
+
+export type BillingWebhookValidationResult =
+  | {
+    isValid: true;
+    providerEventId: string;
+    reason: "validated" | "permissive_non_production";
+  }
+  | {
+    isValid: false;
+    providerEventId: string;
+    reason: "missing_secret_in_production" | "invalid_signature";
+    statusCode: 401 | 403;
+    responseError: "Unauthorized" | "Forbidden";
+  };
 
 export type BillingCancelResponse = {
   message: string;
@@ -607,6 +622,49 @@ function buildFallbackProviderEventId(payload: unknown, queryId: string | null, 
   return `generated:${hash}`;
 }
 
+type MercadoPagoWebhookMetadata = {
+  topic: string | null;
+  queryId: string | null;
+  providerEventId: string;
+  dataId: string | null;
+};
+
+function extractMercadoPagoWebhookMetadata(input: {
+  query: Record<string, unknown>;
+  payload: unknown;
+  xRequestId: string | null;
+}): MercadoPagoWebhookMetadata {
+  const topic =
+    normalizeOptionalText(extractString(input.query.topic))
+    ?? normalizeOptionalText(extractString(input.query.type))
+    ?? normalizeOptionalText(extractString((input.payload as { topic?: unknown } | null | undefined)?.topic))
+    ?? normalizeOptionalText(extractString((input.payload as { type?: unknown } | null | undefined)?.type));
+
+  const queryId = normalizeOptionalText(extractString(input.query.id));
+  const payloadId = normalizeOptionalText(extractString((input.payload as { id?: unknown } | null | undefined)?.id));
+  const providerEventId = toSafeProviderEventId(
+    normalizeOptionalText(input.xRequestId)
+    ?? queryId
+    ?? payloadId
+    ?? buildFallbackProviderEventId(input.payload, queryId, topic),
+  );
+
+  const dataIdFromPayload = normalizeOptionalText(
+    extractString((input.payload as { data?: { id?: unknown } } | null | undefined)?.data?.id),
+  );
+  const dataIdFromQuery = normalizeOptionalText(
+    extractString((input.query as Record<string, unknown>)["data.id"]),
+  );
+  const dataId = dataIdFromPayload ?? dataIdFromQuery ?? queryId;
+
+  return {
+    topic,
+    queryId,
+    providerEventId,
+    dataId,
+  };
+}
+
 export class BillingServiceError extends Error {
   readonly status: number;
 
@@ -851,6 +909,92 @@ export class BillingService {
       .digest("hex");
 
     return safeCompareHexSignature(expected, parsedSignature.v1);
+  }
+
+  validateMercadoPagoWebhookRequest(input: {
+    query: Record<string, unknown>;
+    payload: unknown;
+    xSignature: string | null;
+    xRequestId: string | null;
+  }): BillingWebhookValidationResult {
+    const metadata = extractMercadoPagoWebhookMetadata({
+      query: input.query,
+      payload: input.payload,
+      xRequestId: normalizeOptionalText(input.xRequestId),
+    });
+
+    const webhookSecret = process.env.MERCADO_PAGO_WEBHOOK_SECRET?.trim() ?? "";
+
+    if (ENV.nodeEnv === "production" && webhookSecret.length === 0) {
+      writeTechnicalLog({
+        event: "billing.webhook.blocked",
+        source: "billing.service",
+        level: "error",
+        data: {
+          providerEventId: metadata.providerEventId,
+          reason: "missing_secret_in_production",
+        },
+      });
+      return {
+        isValid: false,
+        providerEventId: metadata.providerEventId,
+        reason: "missing_secret_in_production",
+        statusCode: 403,
+        responseError: "Forbidden",
+      };
+    }
+
+    if (webhookSecret.length === 0) {
+      writeTechnicalLog({
+        event: "billing.webhook.permissive_mode",
+        source: "billing.service",
+        level: "warn",
+        data: {
+          providerEventId: metadata.providerEventId,
+          nodeEnv: ENV.nodeEnv,
+        },
+      });
+      return {
+        isValid: true,
+        providerEventId: metadata.providerEventId,
+        reason: "permissive_non_production",
+      };
+    }
+
+    const signatureValid = this.validateMercadoPagoWebhookSignature({
+      webhookSecret,
+      dataId: metadata.dataId,
+      xRequestId: normalizeOptionalText(input.xRequestId),
+      xSignature: normalizeOptionalText(input.xSignature),
+    });
+
+    if (!signatureValid) {
+      writeTechnicalLog({
+        event: "billing.webhook.blocked",
+        source: "billing.service",
+        level: "warn",
+        data: {
+          providerEventId: metadata.providerEventId,
+          reason: "invalid_signature",
+          hasSignature: Boolean(normalizeOptionalText(input.xSignature)),
+          hasRequestId: Boolean(normalizeOptionalText(input.xRequestId)),
+          hasDataId: Boolean(metadata.dataId),
+        },
+      });
+      return {
+        isValid: false,
+        providerEventId: metadata.providerEventId,
+        reason: "invalid_signature",
+        statusCode: 401,
+        responseError: "Unauthorized",
+      };
+    }
+
+    return {
+      isValid: true,
+      providerEventId: metadata.providerEventId,
+      reason: "validated",
+    };
   }
 
   private async updateWebhookEventStatus(
@@ -1249,45 +1393,25 @@ export class BillingService {
     xSignature: string | null;
     xRequestId: string | null;
   }): Promise<BillingWebhookProcessResult> {
-    const topic =
-      normalizeOptionalText(extractString(input.query.topic))
-      ?? normalizeOptionalText(extractString(input.query.type))
-      ?? normalizeOptionalText(extractString((input.payload as { topic?: unknown } | null | undefined)?.topic))
-      ?? normalizeOptionalText(extractString((input.payload as { type?: unknown } | null | undefined)?.type));
+    const metadata = extractMercadoPagoWebhookMetadata({
+      query: input.query,
+      payload: input.payload,
+      xRequestId: normalizeOptionalText(input.xRequestId),
+    });
+    const { topic, dataId, providerEventId } = metadata;
 
-    const queryId = normalizeOptionalText(extractString(input.query.id));
-    const payloadId = normalizeOptionalText(extractString((input.payload as { id?: unknown } | null | undefined)?.id));
-    const providerEventId = toSafeProviderEventId(
-      normalizeOptionalText(input.xRequestId)
-      ?? queryId
-      ?? payloadId
-      ?? buildFallbackProviderEventId(input.payload, queryId, topic),
-    );
-
-    const dataIdFromPayload = normalizeOptionalText(
-      extractString((input.payload as { data?: { id?: unknown } } | null | undefined)?.data?.id),
-    );
-    const dataIdFromQuery = normalizeOptionalText(
-      extractString((input.query as Record<string, unknown>)["data.id"]),
-    );
-    const dataId = dataIdFromPayload ?? dataIdFromQuery ?? queryId;
-
-    const webhookSecret = process.env.MERCADO_PAGO_WEBHOOK_SECRET?.trim() ?? "";
-    if (webhookSecret.length > 0) {
-      const signatureValid = this.validateMercadoPagoWebhookSignature({
-        webhookSecret,
-        dataId,
-        xRequestId: normalizeOptionalText(input.xRequestId),
-        xSignature: normalizeOptionalText(input.xSignature),
-      });
-
-      if (!signatureValid) {
-        return {
-          outcome: "ignored",
-          reason: "invalid_signature",
-          providerEventId,
-        };
-      }
+    const webhookValidation = this.validateMercadoPagoWebhookRequest({
+      query: input.query,
+      payload: input.payload,
+      xSignature: input.xSignature,
+      xRequestId: input.xRequestId,
+    });
+    if (!webhookValidation.isValid) {
+      return {
+        outcome: "ignored",
+        reason: webhookValidation.reason,
+        providerEventId: webhookValidation.providerEventId,
+      };
     }
 
     const eventRegistration = await this.registerWebhookEventIdempotent({
