@@ -141,6 +141,10 @@ function createFinancialRepositoryBase(targetStorage: IStorage) {
       return targetStorage.getParcelasCompraByUser(userId);
     },
 
+    async getParcelaCompraById(id: string, userId: string) {
+      return targetStorage.getParcelaCompraById(id, userId);
+    },
+
     async createParcelasCompraBulk(rows: InsertParcelaCompra[]) {
       return targetStorage.createParcelasCompraBulk(rows);
     },

@@ -204,6 +204,11 @@ export const parcelasCompra = pgTable("parcelas_compra", {
   dataPagamentoCartao: date("data_pagamento_cartao", { mode: "string" }),
   statusPessoa: text("status_pessoa"),
   dataPagamentoPessoa: date("data_pagamento_pessoa", { mode: "string" }),
+  comprovantePath: text("comprovante_path"),
+  comprovanteNome: text("comprovante_nome"),
+  comprovanteMimeType: text("comprovante_mime_type"),
+  comprovanteTamanho: integer("comprovante_tamanho"),
+  comprovanteEnviadoEm: timestamp("comprovante_enviado_em"),
 }, (table) => ({
   parcelasCompraUserIdIdx: index("idx_parcelas_compra_user_id").on(table.userId),
   parcelasCompraCompraIdIdx: index("idx_parcelas_compra_compra_id").on(table.compraCartaoId),

@@ -10,6 +10,7 @@ import {
   Plus, Trash2, Upload, ChevronRight, RefreshCw,
 } from "lucide-react";
 import { useUIPreferences } from "@/context/ui-preferences";
+import { queryClient } from "@/lib/queryClient";
 import type { Cartao, CompraCartao, ParcelaCompra } from "@shared/schema";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -438,13 +439,32 @@ export default function CartoesPage() {
     onMutate: ({ parcelaId }) => {
       setComprovanteUploadParcelaId(parcelaId);
     },
-    onSuccess: ({ parcelaId, comprovante }) => {
+    onSuccess: async ({ parcelaId, comprovante }) => {
       setParcelaComprovantesById((prev) => ({
         ...prev,
         [parcelaId]: comprovante,
       }));
       toast({ title: "Comprovante anexado" });
-      refetchParcelas();
+
+      const keys: Array<ReadonlyArray<unknown>> = [
+        ["/api/parcelas-compra"],
+        ["/api/compras-cartao"],
+        ["/api/cartoes"],
+        ["/api/cartoes/resumo"],
+        ["/api/dashboard/overview"],
+        ["/api/financial/summary"],
+        ["/api/financial/score"],
+        ["/api/financial/insights"],
+      ];
+
+      if (viewingCompra?.id) {
+        keys.push(["/api/parcelas-compra", viewingCompra.id]);
+      }
+
+      await Promise.all(
+        keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+      );
+      await refetchParcelas();
     },
     onError: (error) => {
       toast({

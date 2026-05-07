@@ -239,6 +239,8 @@ export type ParcelaComprovanteResumo = {
   downloadUrl: string;
 };
 
+const PARCELA_CARTAO_SOURCE_TYPE = "parcela_compra";
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -253,7 +255,20 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export function getParcelaComprovanteDownloadUrl(parcelaId: string): string {
-  return `/api/pagamentos/parcela/${parcelaId}/comprovante`;
+  return `/api/pagamentos/${PARCELA_CARTAO_SOURCE_TYPE}/${parcelaId}/comprovante`;
+}
+
+function resolveComprovanteMimeType(file: File): string {
+  const normalized = (file.type || "").toLowerCase();
+  if (normalized === "application/pdf" || normalized === "image/jpeg" || normalized === "image/jpg" || normalized === "image/png") {
+    return normalized;
+  }
+
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith(".pdf")) return "application/pdf";
+  if (lowerName.endsWith(".png")) return "image/png";
+  if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) return "image/jpeg";
+  return normalized || "application/octet-stream";
 }
 
 export async function uploadParcelaComprovante(
@@ -261,9 +276,9 @@ export async function uploadParcelaComprovante(
   file: File,
 ): Promise<ParcelaComprovanteResumo> {
   const contentBase64 = await fileToBase64(file);
-  const response = await apiRequest("POST", `/api/pagamentos/parcela/${parcelaId}/comprovante`, {
+  const response = await apiRequest("POST", `/api/pagamentos/${PARCELA_CARTAO_SOURCE_TYPE}/${parcelaId}/comprovante`, {
     fileName: file.name,
-    mimeType: file.type || "application/octet-stream",
+    mimeType: resolveComprovanteMimeType(file),
     contentBase64,
   });
   const payload = await response.json() as { comprovante?: ParcelaComprovanteResumo };

@@ -340,7 +340,19 @@ export function ParcelasTab({
                       </div>
                     </div>
 
-                    {!pago || comprovante ? (
+                    <input
+                      id={`input-comprovante-parcela-${parcela.id}`}
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        setComprovanteFile(parcela.id, file);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+
+                    {!pago || comprovante || uploadFile ? (
                       <div className="space-y-1 border-t border-border/40 pt-1.5">
                         {comprovante ? (
                           <p className="text-[11px] text-muted-foreground">
@@ -349,16 +361,6 @@ export function ParcelasTab({
                         ) : (
                           <p className="text-[11px] text-muted-foreground">Nenhum comprovante anexado.</p>
                         )}
-                        <input
-                          id={`input-comprovante-parcela-${parcela.id}`}
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-                          className="hidden"
-                          onChange={(event) => {
-                            const file = event.target.files?.[0] ?? null;
-                            setComprovanteFile(parcela.id, file);
-                          }}
-                        />
                         {!comprovante ? (
                           <div className="flex flex-wrap items-center gap-2">
                             {uploadFile ? (

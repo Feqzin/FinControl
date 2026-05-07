@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import type { Divida, Parcela } from "@shared/schema";
+import type { Divida, Parcela, ParcelaCompra } from "@shared/schema";
 import type { FinancialRepository } from "../repositories/financial.repository";
 import {
   comprovanteStorage as defaultComprovanteStorage,
@@ -51,8 +51,6 @@ type TimelineSourceRecord = {
 };
 
 type SourceDetails = {
-  divida: Divida;
-  parcela: Parcela | null;
   source: TimelineSourceRecord;
 };
 
@@ -262,11 +260,7 @@ export class PagamentosTimelineService {
     if (sourceType === "parcela") {
       const parcela = await this.repository.getParcela(sourceId, userId);
       if (!parcela) return null;
-      const divida = await this.repository.getDivida(parcela.dividaId, userId);
-      if (!divida) return null;
       return {
-        divida,
-        parcela,
         source: {
           sourceType,
           sourceId: parcela.id,
@@ -280,11 +274,26 @@ export class PagamentosTimelineService {
       };
     }
 
+    if (sourceType === "parcela_compra") {
+      const parcelaCompra: ParcelaCompra | undefined = await this.repository.getParcelaCompraById(sourceId, userId);
+      if (!parcelaCompra) return null;
+      return {
+        source: {
+          sourceType,
+          sourceId: parcelaCompra.id,
+          observacaoPagamento: null,
+          comprovantePath: parcelaCompra.comprovantePath ?? null,
+          comprovanteNome: parcelaCompra.comprovanteNome ?? null,
+          comprovanteMimeType: parcelaCompra.comprovanteMimeType ?? null,
+          comprovanteTamanho: parcelaCompra.comprovanteTamanho ?? null,
+          comprovanteEnviadoEm: parcelaCompra.comprovanteEnviadoEm ?? null,
+        },
+      };
+    }
+
     const divida = await this.repository.getDivida(sourceId, userId);
     if (!divida) return null;
     return {
-      divida,
-      parcela: null,
       source: {
         sourceType,
         sourceId: divida.id,
@@ -313,6 +322,10 @@ export class PagamentosTimelineService {
       });
       if (!updated) return { error: "NOT_FOUND" };
       return { ok: true, observacaoPagamento: updated.observacaoPagamento ?? null };
+    }
+
+    if (sourceType === "parcela_compra") {
+      return { error: "NOT_FOUND" };
     }
 
     const updated = await this.repository.updateDivida(sourceId, userId, {
@@ -358,6 +371,15 @@ export class PagamentosTimelineService {
 
     if (sourceType === "parcela") {
       const updated = await this.repository.updateParcela(sourceId, userId, {
+        comprovantePath: persisted.relativePath,
+        comprovanteNome: persisted.fileName,
+        comprovanteMimeType: persisted.mimeType,
+        comprovanteTamanho: persisted.size,
+        comprovanteEnviadoEm: persisted.uploadedAt,
+      });
+      if (!updated) return { error: "NOT_FOUND" };
+    } else if (sourceType === "parcela_compra") {
+      const updated = await this.repository.updateParcelaCompra(sourceId, userId, {
         comprovantePath: persisted.relativePath,
         comprovanteNome: persisted.fileName,
         comprovanteMimeType: persisted.mimeType,

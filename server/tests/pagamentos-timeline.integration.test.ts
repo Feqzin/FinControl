@@ -329,3 +329,140 @@ testTimelineIntegration("observacao e comprovante ficam vinculados ao pagamento 
     await db.delete(users).where(eq(users.id, other.id));
   }
 });
+
+testTimelineIntegration("comprovante de parcela_compra persiste e continua disponivel apos reload", async () => {
+  const expressModule = await import("express");
+  const express = expressModule.default;
+  const { db } = await import("../db");
+  const { users, cartoes, comprasCartao, parcelasCompra } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+  const { financialRepository } = await import("../repositories/financial.repository");
+  const { PagamentosTimelineService } = await import("../services/pagamentos-timeline.service");
+  const { createPagamentosTimelineController } = await import("../controllers/pagamentos-timeline.controller");
+
+  const usernameOwner = `it_parcela_compra_owner_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const usernameOther = `it_parcela_compra_other_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [owner] = await db.insert(users).values({
+    username: usernameOwner,
+    password: "hash_fake",
+    nomeCompleto: "Parcela Compra Owner",
+  }).returning();
+
+  const [other] = await db.insert(users).values({
+    username: usernameOther,
+    password: "hash_fake",
+    nomeCompleto: "Parcela Compra Other",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: owner.id,
+    nome: "Cartao Teste Parcela Compra",
+    limite: "3000.00",
+    melhorDiaCompra: 10,
+    diaVencimento: 20,
+    iconeId: null,
+  }).returning();
+
+  const [compra] = await db.insert(comprasCartao).values({
+    userId: owner.id,
+    cartaoId: cartao.id,
+    descricao: "Compra com comprovante de parcela",
+    valorTotal: "180.00",
+    parcelas: 3,
+    parcelaAtual: 1,
+    valorParcela: "60.00",
+    dataCompra: "2026-05-01",
+    pessoaId: null,
+    statusPessoa: null,
+    dataPagamentoPessoa: null,
+  }).returning();
+
+  const [parcela] = await db.insert(parcelasCompra).values({
+    userId: owner.id,
+    compraCartaoId: compra.id,
+    numero: 1,
+    valor: "60.00",
+    dataVencimento: "2026-05-20",
+    statusCartao: "pago",
+    dataPagamentoCartao: "2026-05-21",
+    statusPessoa: null,
+    dataPagamentoPessoa: null,
+    comprovantePath: null,
+    comprovanteNome: null,
+    comprovanteMimeType: null,
+    comprovanteTamanho: null,
+    comprovanteEnviadoEm: null,
+  }).returning();
+
+  const app = express();
+  app.use(express.json({ limit: "8mb" }));
+  app.use((req, _res, next) => {
+    const headerUser = req.headers["x-user-id"];
+    const userId = Array.isArray(headerUser) ? headerUser[0] : headerUser;
+    (req as any).user = { id: userId || owner.id };
+    next();
+  });
+
+  const controller = createPagamentosTimelineController(new PagamentosTimelineService(financialRepository));
+  app.post("/api/pagamentos/:sourceType/:sourceId/comprovante", controller.uploadComprovante);
+  app.get("/api/pagamentos/:sourceType/:sourceId/comprovante", controller.getComprovante);
+
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const fakePdf = Buffer.from("%PDF-1.4 comprovante parcela compra").toString("base64");
+    const uploadResponse = await fetch(`${baseUrl}/api/pagamentos/parcela_compra/${parcela.id}/comprovante`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-user-id": owner.id,
+      },
+      body: JSON.stringify({
+        fileName: "parcela-compra.pdf",
+        mimeType: "application/pdf",
+        contentBase64: fakePdf,
+      }),
+    });
+    assert.equal(uploadResponse.status, 200);
+
+    const [afterUpload] = await db.select().from(parcelasCompra).where(and(
+      eq(parcelasCompra.id, parcela.id),
+      eq(parcelasCompra.userId, owner.id),
+    ));
+    assert.ok(afterUpload?.comprovantePath);
+    assert.equal(afterUpload?.comprovanteNome, "parcela-compra.pdf");
+    assert.equal(afterUpload?.comprovanteMimeType, "application/pdf");
+    assert.equal(afterUpload?.comprovanteTamanho, Buffer.from(fakePdf, "base64").byteLength);
+
+    const downloadResponse = await fetch(`${baseUrl}/api/pagamentos/parcela_compra/${parcela.id}/comprovante`, {
+      headers: { "x-user-id": owner.id },
+    });
+    assert.equal(downloadResponse.status, 200);
+    assert.equal(downloadResponse.headers.get("content-type"), "application/pdf");
+    const bytes = await downloadResponse.arrayBuffer();
+    assert.ok(bytes.byteLength > 0);
+
+    const forbiddenDownload = await fetch(`${baseUrl}/api/pagamentos/parcela_compra/${parcela.id}/comprovante`, {
+      headers: { "x-user-id": other.id },
+    });
+    assert.equal(forbiddenDownload.status, 404);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+    await db.delete(users).where(eq(users.id, owner.id));
+    await db.delete(users).where(eq(users.id, other.id));
+  }
+});

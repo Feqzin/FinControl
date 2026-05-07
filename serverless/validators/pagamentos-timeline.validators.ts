@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const pagamentoSourceType = z.enum(["parcela", "divida"]);
+export const pagamentoSourceType = z.enum(["parcela", "parcela_compra", "divida"]);
 
 export const pagamentoSourceParams = z.object({
   sourceType: pagamentoSourceType,

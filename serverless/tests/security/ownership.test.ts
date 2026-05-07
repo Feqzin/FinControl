@@ -225,6 +225,36 @@ test("download de comprovante usa userId autenticado para checagem de ownership"
   });
 });
 
+test("download de comprovante de parcela_compra usa userId autenticado", async () => {
+  let capturedUserId: string | null = null;
+  let capturedSourceType: string | null = null;
+  let capturedSourceId: string | null = null;
+
+  const controller = createPagamentosTimelineController({
+    getComprovanteDownload: async (sourceType: string, sourceId: string, userId: string) => {
+      capturedSourceType = sourceType;
+      capturedSourceId = sourceId;
+      capturedUserId = userId;
+      return { error: "NOT_FOUND" as const };
+    },
+  } as any);
+
+  const app = express();
+  app.use((req, _res, next) => {
+    (req as any).user = { id: "user_a" };
+    next();
+  });
+  app.get("/api/pagamentos/:sourceType/:sourceId/comprovante", controller.getComprovante);
+
+  await withTestServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/pagamentos/parcela_compra/parcela_compra_user_b/comprovante`);
+    assert.equal(response.status, 404);
+    assert.equal(capturedUserId, "user_a");
+    assert.equal(capturedSourceType, "parcela_compra");
+    assert.equal(capturedSourceId, "parcela_compra_user_b");
+  });
+});
+
 testOwnershipIntegration("IDOR integração: usuário A não acessa, edita ou exclui pessoa do usuário B", async () => {
   const fixture = await createOwnershipFixture();
 

@@ -88,6 +88,7 @@ export interface IStorage {
 
   getParcelasCompra(compraCartaoId: string, userId: string): Promise<ParcelaCompra[]>;
   getParcelasCompraByUser(userId: string): Promise<ParcelaCompra[]>;
+  getParcelaCompraById(id: string, userId: string): Promise<ParcelaCompra | undefined>;
   createParcelasCompraBulk(parcelas: InsertParcelaCompra[]): Promise<ParcelaCompra[]>;
   updateParcelaCompra(id: string, userId: string, data: Partial<InsertParcelaCompra>): Promise<ParcelaCompra | undefined>;
   deleteParcelaCompra(id: string, userId: string): Promise<boolean>;
@@ -453,6 +454,12 @@ export class DatabaseStorage implements IStorage {
       }
       return a.numero - b.numero;
     });
+  }
+  async getParcelaCompraById(id: string, userId: string) {
+    const [row] = await this.database.select().from(parcelasCompra).where(
+      and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId)),
+    );
+    return row;
   }
   async createParcelasCompraBulk(rows: InsertParcelaCompra[]) {
     if (rows.length === 0) return [];
