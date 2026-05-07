@@ -4,17 +4,23 @@ import * as schema from "../shared/schema.js";
 import { ENV } from "./env.js";
 
 const connectionString = ENV.databaseUrl;
+const shouldConfigureSsl =
+  ENV.nodeEnv === "production" || ENV.database.ssl.fromEnv;
 
 const poolConfig: PoolConfig = {
   connectionString,
-  ssl: {
-    rejectUnauthorized: ENV.database.ssl.rejectUnauthorized,
-  },
   max: 1,
   min: 0,
   idleTimeoutMillis: 5000,
   connectionTimeoutMillis: 15000,
   allowExitOnIdle: true,
+  ...(shouldConfigureSsl
+    ? {
+      ssl: {
+        rejectUnauthorized: ENV.database.ssl.rejectUnauthorized,
+      },
+    }
+    : {}),
 };
 
 type GlobalWithPgPool = typeof globalThis & {
@@ -27,7 +33,9 @@ const globalWithPgPool = globalThis as GlobalWithPgPool;
 export const pool = globalWithPgPool.__debtControlPgPool ?? new Pool(poolConfig);
 
 if (!globalWithPgPool.__debtControlPgPool) {
-  const sslMode = `enabled (rejectUnauthorized=${ENV.database.ssl.rejectUnauthorized ? "true" : "false"})`;
+  const sslMode = shouldConfigureSsl
+    ? `enabled (rejectUnauthorized=${ENV.database.ssl.rejectUnauthorized ? "true" : "false"})`
+    : "disabled";
   console.info(`[db.pool][ssl] mode=${sslMode}; env=${ENV.nodeEnv}; runtime=serverless`);
 
   globalWithPgPool.__debtControlPgPool = pool;

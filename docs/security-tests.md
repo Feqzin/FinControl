@@ -31,8 +31,12 @@ O script:
 1. carrega `.env.test` (se existir);
 2. exige `TEST_DATABASE_URL` ou `DATABASE_URL_TEST`;
 3. valida host seguro (localhost/127.0.0.1/::1/postgres-test/postgres);
-4. aplica `npm run db:migrate` no banco de teste;
-5. executa `npm run test:security`.
+4. valida nome de banco com `test` (evita uso acidental de producao);
+5. reseta `schema public` (somente no banco de teste validado);
+6. aplica `npm run db:push` para criar schema base completo;
+7. aplica `npm run db:migrate` para compatibilidade historica;
+8. valida tabelas essenciais (`users`, `pessoas`, `dividas`, `cartoes`, `compras_cartao`, `parcelas_compra`);
+9. executa `npm run test:security`.
 
 ## 4) Encerrar banco de teste
 

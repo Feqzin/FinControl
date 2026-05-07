@@ -66,7 +66,7 @@ async function createOwnershipFixture(): Promise<OwnershipFixture> {
   const [pessoaB] = await db.insert(pessoas).values({
     userId: userB.id,
     nome: "Pessoa IDOR B",
-    tipo: "devedor",
+    tipo: "me_deve",
     telefone: null,
     observacao: null,
   }).returning();
