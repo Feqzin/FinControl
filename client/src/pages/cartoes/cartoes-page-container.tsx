@@ -179,6 +179,9 @@ export default function CartoesPage() {
     pessoaSaldoMovimentacoes,
     parcelasCompraByUser,
     parcelasCompraData,
+    isParcelasCompraLoading,
+    isParcelasCompraError,
+    parcelasCompraError,
     refetchParcelas,
     isLoading,
     getCardCompras,
@@ -1524,6 +1527,12 @@ export default function CartoesPage() {
         }}
         viewingCompra={viewingCompra}
         parcelasCompraData={parcelasCompraData}
+        parcelasLoading={!!viewingCompra && isParcelasCompraLoading}
+        parcelasErrorMessage={
+          viewingCompra && isParcelasCompraError
+            ? getErrorMessage(parcelasCompraError)
+            : null
+        }
         pessoas={pessoas}
         formatCurrency={formatCartaoCurrency}
         getParcelaSaldoPendente={getParcelaSaldoPendente}

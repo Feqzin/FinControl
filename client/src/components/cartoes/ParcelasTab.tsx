@@ -27,6 +27,8 @@ type ParcelasTabProps = {
   onOpenChange: (open: boolean) => void;
   viewingCompra: CompraCartao | null;
   parcelasCompraData: ParcelaCompra[];
+  parcelasLoading: boolean;
+  parcelasErrorMessage: string | null;
   pessoas: Pessoa[];
   formatCurrency: (value: number) => string;
   getParcelaSaldoPendente: (parcela: ParcelaCompra) => number;
@@ -66,6 +68,8 @@ export function ParcelasTab({
   onOpenChange,
   viewingCompra,
   parcelasCompraData,
+  parcelasLoading,
+  parcelasErrorMessage,
   pessoas,
   formatCurrency,
   getParcelaSaldoPendente,
@@ -121,33 +125,49 @@ export function ParcelasTab({
             </SheetHeader>
 
             <div className="mb-4 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
-              {(() => {
-                const pagas = parcelasCompraData.filter((parcela) => parcela.statusCartao === "pago").length;
-                const pendentes = parcelasCompraData.filter((parcela) => isParcelaComprometendoLimite(parcela.statusCartao)).length;
-                const vencidas = parcelasCompraData.filter(
-                  (parcela) => isParcelaVencida(parcela) && getParcelaSaldoPendente(parcela) > 0,
-                ).length;
-                return (
-                  <>
-                    <div className="rounded-md bg-emerald-500/5 p-2 text-center">
-                      <p className="text-xs text-muted-foreground">Pagas</p>
-                      <p className="font-bold text-emerald-600">{pagas}</p>
-                    </div>
-                    <div className="rounded-md bg-muted/30 p-2 text-center">
-                      <p className="text-xs text-muted-foreground">Pendentes</p>
-                      <p className="font-bold">{pendentes}</p>
-                    </div>
-                    <div className="rounded-md bg-red-500/5 p-2 text-center">
-                      <p className="text-xs text-muted-foreground">Vencidas</p>
-                      <p className="font-bold text-red-600">{vencidas}</p>
-                    </div>
-                  </>
-                );
-              })()}
+              {parcelasLoading ? (
+                <div className="col-span-full rounded-md border border-border/50 bg-muted/30 p-3 text-center text-xs text-muted-foreground">
+                  Carregando parcelas...
+                </div>
+              ) : parcelasErrorMessage ? (
+                <div className="col-span-full rounded-md border border-red-500/20 bg-red-500/5 p-3 text-center text-xs text-red-600">
+                  Nao foi possivel carregar as parcelas agora. {parcelasErrorMessage}
+                </div>
+              ) : (
+                (() => {
+                  const pagas = parcelasCompraData.filter((parcela) => parcela.statusCartao === "pago").length;
+                  const pendentes = parcelasCompraData.filter((parcela) => isParcelaComprometendoLimite(parcela.statusCartao)).length;
+                  const vencidas = parcelasCompraData.filter(
+                    (parcela) => isParcelaVencida(parcela) && getParcelaSaldoPendente(parcela) > 0,
+                  ).length;
+                  return (
+                    <>
+                      <div className="rounded-md bg-emerald-500/5 p-2 text-center">
+                        <p className="text-xs text-muted-foreground">Pagas</p>
+                        <p className="font-bold text-emerald-600">{pagas}</p>
+                      </div>
+                      <div className="rounded-md bg-muted/30 p-2 text-center">
+                        <p className="text-xs text-muted-foreground">Pendentes</p>
+                        <p className="font-bold">{pendentes}</p>
+                      </div>
+                      <div className="rounded-md bg-red-500/5 p-2 text-center">
+                        <p className="text-xs text-muted-foreground">Vencidas</p>
+                        <p className="font-bold text-red-600">{vencidas}</p>
+                      </div>
+                    </>
+                  );
+                })()
+              )}
             </div>
 
             <div className="space-y-2">
-              {parcelasCompraData.map((parcela) => {
+              {!parcelasLoading && !parcelasErrorMessage && parcelasCompraData.length === 0 ? (
+                <div className="rounded-md border border-border/50 bg-muted/20 p-3 text-sm text-muted-foreground">
+                  Nenhuma parcela encontrada para esta compra.
+                </div>
+              ) : null}
+
+              {!parcelasLoading && !parcelasErrorMessage ? parcelasCompraData.map((parcela) => {
                 const saldoPendente = getParcelaSaldoPendente(parcela);
                 const vencida = isParcelaVencida(parcela) && saldoPendente > 0;
                 const pago = parcela.statusCartao === "pago";
@@ -411,7 +431,7 @@ export function ParcelasTab({
                     ) : null}
                   </div>
                 );
-              })}
+              }) : null}
             </div>
 
             <Dialog open={!!abaterSaldoParcelaId} onOpenChange={(isOpen) => { if (!isOpen) setAbaterSaldoParcelaId(null); }}>

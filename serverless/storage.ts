@@ -31,6 +31,32 @@ const usersBaseProjectionWithSubscriptionTier = {
   subscriptionTier: users.subscriptionTier,
 };
 
+const parcelasCompraProjectionWithoutComprovante = {
+  id: parcelasCompra.id,
+  userId: parcelasCompra.userId,
+  compraCartaoId: parcelasCompra.compraCartaoId,
+  numero: parcelasCompra.numero,
+  valor: parcelasCompra.valor,
+  dataVencimento: parcelasCompra.dataVencimento,
+  statusCartao: parcelasCompra.statusCartao,
+  dataPagamentoCartao: parcelasCompra.dataPagamentoCartao,
+  statusPessoa: parcelasCompra.statusPessoa,
+  dataPagamentoPessoa: parcelasCompra.dataPagamentoPessoa,
+};
+
+type ParcelaCompraWithoutComprovante = {
+  id: string;
+  userId: string;
+  compraCartaoId: string;
+  numero: number;
+  valor: string;
+  dataVencimento: string | null;
+  statusCartao: string;
+  dataPagamentoCartao: string | null;
+  statusPessoa: string | null;
+  dataPagamentoPessoa: string | null;
+};
+
 const USERNAME_LOOKUP_QUERY =
   `select * from "users" where lower("users"."username") = lower($1) limit 1`;
 
@@ -115,6 +141,57 @@ function toUserWithOptionalDefaults(user: {
     trialUsedAt: null,
     resetToken: null,
     resetTokenExpiry: null,
+  };
+}
+
+function isMissingParcelasCompraComprovanteColumnsError(error: unknown): boolean {
+  const messages: string[] = [];
+  const queue: unknown[] = [error];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+
+    if (typeof current === "string") {
+      messages.push(current.toLowerCase());
+      continue;
+    }
+
+    if (typeof current === "object") {
+      const maybeError = current as { message?: unknown; code?: unknown; cause?: unknown };
+      if (typeof maybeError.message === "string") {
+        messages.push(maybeError.message.toLowerCase());
+      }
+      if (typeof maybeError.code === "string") {
+        messages.push(maybeError.code.toLowerCase());
+      }
+      if (maybeError.cause !== undefined) {
+        queue.push(maybeError.cause);
+      }
+    }
+  }
+
+  const combined = messages.join(" | ");
+  if (!combined.includes("42703")) return false;
+
+  const missingComprovanteColumn =
+    combined.includes("comprovante_path") ||
+    combined.includes("comprovante_nome") ||
+    combined.includes("comprovante_mime_type") ||
+    combined.includes("comprovante_tamanho") ||
+    combined.includes("comprovante_enviado_em");
+
+  return missingComprovanteColumn;
+}
+
+function withParcelaCompraComprovanteDefaults(row: ParcelaCompraWithoutComprovante): ParcelaCompra {
+  return {
+    ...row,
+    comprovantePath: null,
+    comprovanteNome: null,
+    comprovanteMimeType: null,
+    comprovanteTamanho: null,
+    comprovanteEnviadoEm: null,
   };
 }
 
@@ -638,27 +715,63 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getParcelasCompra(compraCartaoId: string, userId: string) {
-    const rows: ParcelaCompra[] = await this.database.select().from(parcelasCompra).where(
-      and(eq(parcelasCompra.compraCartaoId, compraCartaoId), eq(parcelasCompra.userId, userId))
-    );
-    return rows.sort((a: ParcelaCompra, b: ParcelaCompra) => a.numero - b.numero);
+    try {
+      const rows: ParcelaCompra[] = await this.database.select().from(parcelasCompra).where(
+        and(eq(parcelasCompra.compraCartaoId, compraCartaoId), eq(parcelasCompra.userId, userId))
+      );
+      return rows.sort((a: ParcelaCompra, b: ParcelaCompra) => a.numero - b.numero);
+    } catch (error) {
+      if (!isMissingParcelasCompraComprovanteColumnsError(error)) throw error;
+      const rows: ParcelaCompraWithoutComprovante[] = await this.database
+        .select(parcelasCompraProjectionWithoutComprovante)
+        .from(parcelasCompra)
+        .where(and(eq(parcelasCompra.compraCartaoId, compraCartaoId), eq(parcelasCompra.userId, userId)));
+      return rows
+        .map(withParcelaCompraComprovanteDefaults)
+        .sort((a: ParcelaCompra, b: ParcelaCompra) => a.numero - b.numero);
+    }
   }
   async getParcelasCompraByUser(userId: string) {
-    const rows: ParcelaCompra[] = await this.database.select().from(parcelasCompra).where(
-      eq(parcelasCompra.userId, userId),
-    );
-    return rows.sort((a: ParcelaCompra, b: ParcelaCompra) => {
-      if (a.compraCartaoId !== b.compraCartaoId) {
-        return a.compraCartaoId.localeCompare(b.compraCartaoId);
-      }
-      return a.numero - b.numero;
-    });
+    try {
+      const rows: ParcelaCompra[] = await this.database.select().from(parcelasCompra).where(
+        eq(parcelasCompra.userId, userId),
+      );
+      return rows.sort((a: ParcelaCompra, b: ParcelaCompra) => {
+        if (a.compraCartaoId !== b.compraCartaoId) {
+          return a.compraCartaoId.localeCompare(b.compraCartaoId);
+        }
+        return a.numero - b.numero;
+      });
+    } catch (error) {
+      if (!isMissingParcelasCompraComprovanteColumnsError(error)) throw error;
+      const rows: ParcelaCompraWithoutComprovante[] = await this.database
+        .select(parcelasCompraProjectionWithoutComprovante)
+        .from(parcelasCompra)
+        .where(eq(parcelasCompra.userId, userId));
+      return rows
+        .map(withParcelaCompraComprovanteDefaults)
+        .sort((a: ParcelaCompra, b: ParcelaCompra) => {
+          if (a.compraCartaoId !== b.compraCartaoId) {
+            return a.compraCartaoId.localeCompare(b.compraCartaoId);
+          }
+          return a.numero - b.numero;
+        });
+    }
   }
   async getParcelaCompraById(id: string, userId: string) {
-    const [row] = await this.database.select().from(parcelasCompra).where(
-      and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId)),
-    );
-    return row;
+    try {
+      const [row] = await this.database.select().from(parcelasCompra).where(
+        and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId)),
+      );
+      return row;
+    } catch (error) {
+      if (!isMissingParcelasCompraComprovanteColumnsError(error)) throw error;
+      const [row] = await this.database
+        .select(parcelasCompraProjectionWithoutComprovante)
+        .from(parcelasCompra)
+        .where(and(eq(parcelasCompra.id, id), eq(parcelasCompra.userId, userId)));
+      return row ? withParcelaCompraComprovanteDefaults(row) : undefined;
+    }
   }
   async createParcelasCompraBulk(rows: InsertParcelaCompra[]) {
     if (rows.length === 0) return [];

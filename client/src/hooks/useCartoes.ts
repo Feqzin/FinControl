@@ -53,7 +53,13 @@ export function useCartoes(viewingCompraId?: string) {
   });
   const { data: pessoas = [] } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
   const { data: parcelasCompraByUser = [] } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"] });
-  const { data: parcelasCompraData = [], refetch: refetchParcelas } = useQuery<ParcelaCompra[]>({
+  const {
+    data: parcelasCompraData = [],
+    refetch: refetchParcelas,
+    isLoading: isParcelasCompraLoading,
+    isError: isParcelasCompraError,
+    error: parcelasCompraError,
+  } = useQuery<ParcelaCompra[]>({
     queryKey: ["/api/parcelas-compra", viewingCompraId],
     enabled: !!viewingCompraId,
   });
@@ -400,6 +406,9 @@ export function useCartoes(viewingCompraId?: string) {
     pessoaSaldoMovimentacoes,
     parcelasCompraByUser,
     parcelasCompraData,
+    isParcelasCompraLoading,
+    isParcelasCompraError,
+    parcelasCompraError,
     refetchParcelas,
     isLoading,
     getCardCompras,
