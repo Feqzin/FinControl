@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { sanitizeForLog } from "../logger.js";
+import { sanitizeForLog, writeTechnicalLog } from "../logger.js";
 import { PagamentosTimelineService } from "../services/pagamentos-timeline.service.js";
 import {
   pagamentoComprovanteBody,
@@ -10,6 +10,12 @@ import { auditRequest, getParam, getUserId, sendBadRequest, sendNotFound } from 
 
 function safeFileName(value: string): string {
   return value.replace(/["\r\n]/g, "_").slice(0, 120) || "comprovante";
+}
+
+function isComprovanteValidationError(errorCode: string): boolean {
+  return errorCode === "INVALID_FILE_TYPE"
+    || errorCode === "INVALID_FILE_CONTENT"
+    || errorCode === "FILE_TOO_LARGE";
 }
 
 export function createPagamentosTimelineController(service: PagamentosTimelineService) {
@@ -100,10 +106,27 @@ export function createPagamentosTimelineController(service: PagamentosTimelineSe
         const status = result.error === "NOT_FOUND" ? 404 : 400;
         const messageMap: Record<string, string> = {
           NOT_FOUND: "Not found",
-          INVALID_FILE_TYPE: "Tipo de arquivo inválido. Use PDF, JPG, JPEG ou PNG.",
-          INVALID_FILE_CONTENT: "Arquivo inválido ou corrompido.",
+          INVALID_FILE_TYPE: "Arquivo inválido ou não permitido.",
+          INVALID_FILE_CONTENT: "Arquivo inválido ou não permitido.",
           FILE_TOO_LARGE: "Arquivo excede o tamanho máximo permitido.",
         };
+
+        if (isComprovanteValidationError(result.error)) {
+          writeTechnicalLog({
+            event: "security.comprovante_upload.rejected",
+            level: "warn",
+            source: "pagamentos-timeline.controller",
+            data: {
+              userId,
+              sourceType: params.data.sourceType,
+              sourceId: params.data.sourceId,
+              errorCode: result.error,
+              fileName: parsedBody.data.fileName,
+              mimeType: parsedBody.data.mimeType,
+              payloadLength: parsedBody.data.contentBase64.length,
+            },
+          });
+        }
 
         auditRequest(req, {
           action: "update",
@@ -121,7 +144,11 @@ export function createPagamentosTimelineController(service: PagamentosTimelineSe
           },
         });
 
-        return res.status(status).json({ message: messageMap[result.error] ?? "Erro no upload do comprovante" });
+        const resolvedMessage = messageMap[result.error] ?? "Erro no upload do comprovante";
+        return res.status(status).json({
+          error: resolvedMessage,
+          message: resolvedMessage,
+        });
       }
 
       auditRequest(req, {

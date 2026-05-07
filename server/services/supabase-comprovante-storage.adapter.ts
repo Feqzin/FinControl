@@ -10,6 +10,7 @@ import {
   getComprovanteMaxBytesFromEnv,
   resolveComprovanteExtensionOrThrow,
   sanitizeComprovanteFileName,
+  validateComprovanteBinarySignatureOrThrow,
 } from "./comprovante-storage.shared";
 import { SupabaseStorageServerClient } from "./supabase-storage.client";
 import { toErrorLog, writeTechnicalLog } from "../logger";
@@ -63,6 +64,7 @@ export class SupabaseComprovanteStorageAdapter implements ComprovanteStorage {
   async persistComprovante(input: PersistComprovanteInput): Promise<PersistComprovanteOutput> {
     const extension = resolveComprovanteExtensionOrThrow(input.mimeType);
     const buffer = decodeComprovanteBase64OrThrow(input.contentBase64);
+    validateComprovanteBinarySignatureOrThrow(buffer, input.mimeType);
 
     const maxBytes = getComprovanteMaxBytesFromEnv();
     if (buffer.byteLength > maxBytes) {

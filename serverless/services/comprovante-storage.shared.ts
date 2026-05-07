@@ -11,6 +11,10 @@ const MIME_EXTENSION: Record<string, string> = {
   "image/png": "png",
 };
 
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const JPG_SIGNATURE_PREFIX = Buffer.from([0xff, 0xd8, 0xff]);
+const PDF_SIGNATURE_PREFIX = Buffer.from("%PDF", "ascii");
+
 export function getAllowedComprovanteMimeTypes(): string[] {
   return Object.keys(MIME_EXTENSION);
 }
@@ -66,4 +70,42 @@ export function decodeComprovanteBase64OrThrow(contentBase64: string): Buffer {
     throw new Error("INVALID_FILE_CONTENT");
   }
   return decoded;
+}
+
+function startsWithSignature(buffer: Buffer, signature: Buffer): boolean {
+  if (buffer.length < signature.length) return false;
+  return buffer.subarray(0, signature.length).equals(signature);
+}
+
+function detectMimeTypeByMagicBytes(buffer: Buffer): string | null {
+  if (startsWithSignature(buffer, PNG_SIGNATURE)) {
+    return "image/png";
+  }
+
+  if (startsWithSignature(buffer, JPG_SIGNATURE_PREFIX)) {
+    return "image/jpeg";
+  }
+
+  if (startsWithSignature(buffer, PDF_SIGNATURE_PREFIX)) {
+    return "application/pdf";
+  }
+
+  return null;
+}
+
+function normalizeComprovanteMimeType(mimeType: string): string {
+  if (mimeType === "image/jpg") return "image/jpeg";
+  return mimeType;
+}
+
+export function validateComprovanteBinarySignatureOrThrow(buffer: Buffer, declaredMimeType: string): void {
+  const detectedMimeType = detectMimeTypeByMagicBytes(buffer);
+  if (!detectedMimeType) {
+    throw new Error("INVALID_FILE_CONTENT");
+  }
+
+  const normalizedDeclared = normalizeComprovanteMimeType(declaredMimeType);
+  if (normalizedDeclared !== detectedMimeType) {
+    throw new Error("INVALID_FILE_CONTENT");
+  }
 }

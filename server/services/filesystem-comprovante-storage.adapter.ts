@@ -12,6 +12,7 @@ import {
   getComprovanteMaxBytesFromEnv,
   resolveComprovanteExtensionOrThrow,
   sanitizeComprovanteFileName,
+  validateComprovanteBinarySignatureOrThrow,
 } from "./comprovante-storage.shared";
 
 export class FilesystemComprovanteStorageAdapter implements ComprovanteStorage {
@@ -31,6 +32,7 @@ export class FilesystemComprovanteStorageAdapter implements ComprovanteStorage {
     const extension = resolveComprovanteExtensionOrThrow(input.mimeType);
 
     const buffer = decodeComprovanteBase64OrThrow(input.contentBase64);
+    validateComprovanteBinarySignatureOrThrow(buffer, input.mimeType);
     const maxBytes = getComprovanteMaxBytesFromEnv();
     if (buffer.byteLength > maxBytes) {
       throw new Error("FILE_TOO_LARGE");
