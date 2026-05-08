@@ -1,5 +1,4 @@
 import type { Express, Request } from "express";
-import { format } from "date-fns";
 import { setupAuth, requireAuth } from "./auth";
 import { writeAuditLog, type AuditEvent } from "./audit-log";
 import { storage } from "./storage";
@@ -33,7 +32,7 @@ import { registerCoreDomainRoutes } from "./routes/core-domain.routes";
 import { PagamentosTimelineService } from "./services/pagamentos-timeline.service";
 import { CloudBackupsService } from "./services/cloud-backups.service";
 import { requirePremiumFeature } from "./subscription-access";
-import { divide, parseMoney } from "../utils/money";
+import { importRateLimit } from "./middleware/rate-limit";
 
 function auditRoute(
   req: Request,
@@ -89,96 +88,31 @@ export function registerRoutes(app: Express): void {
   app.get("/api/pagamentos/:sourceType/:sourceId/comprovante", requireAuth, pagamentosTimelineController.getComprovante);
   app.delete("/api/pagamentos/:sourceType/:sourceId/comprovante", requireAuth, pagamentosTimelineController.deleteComprovante);
 
-  app.get("/api/imports/logs", requireAuth, importsController.list);
-  app.post("/api/imports/preview", requireAuth, importsController.preview);
-  app.post("/api/imports/confirm", requireAuth, importsController.confirm);
-  app.post("/api/imports/:id/rollback", requireAuth, importsController.rollback);
+  app.get("/api/imports/logs", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.list);
+  app.post("/api/imports/preview", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.preview);
+  app.post("/api/imports/confirm", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.confirm);
+  app.post("/api/imports/:id/rollback", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.rollback);
   app.post("/api/backups/cloud", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.createManual);
   app.get("/api/backups/cloud", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.listByUser);
 
-  app.post("/api/importar-texto", requireAuth, async (req, res) => {
-    const userId = (req.user as any).id;
-    const { texto, cartaoId } = req.body;
-    if (!texto) {
+  app.post(
+    "/api/importar-texto",
+    importRateLimit,
+    requireAuth,
+    requirePremiumFeature("smartImport"),
+    (req, res) => {
+      const userId = (req.user as { id?: unknown } | undefined)?.id;
       auditRoute(req, {
         action: "import",
         status: "failure",
-        domain: "importar_texto",
-        userId,
-        details: { reason: "missing_text" },
+        domain: "importar_texto_legacy",
+        userId: typeof userId === "string" ? userId : null,
+        details: { reason: "endpoint_deprecated" },
       });
-      return res.status(400).json({ message: "Texto obrigatorio" });
-    }
-    const cartao = await storage.getCartao(cartaoId, userId);
-    if (!cartao) {
-      auditRoute(req, {
-        action: "import",
-        status: "failure",
-        domain: "importar_texto",
-        userId,
-        details: { reason: "cartao_not_found", cartaoId },
+      return res.status(410).json({
+        message: "Endpoint legado descontinuado. Use /api/imports/preview e /api/imports/confirm.",
       });
-      return res.status(400).json({ message: "Cartao not found" });
-    }
-    const existentes = await storage.getComprasCartao(userId);
-    const linhas = texto.split(/\n/).map((l: string) => l.trim()).filter(Boolean);
-    const items: any[] = [];
-    for (const linha of linhas) {
-      const valorMatch = linha.match(/R?\$?\s*([\d]{1,3}(?:[.,]\d{3})*[.,]\d{2})/);
-      if (!valorMatch) continue;
-      const valorStr = valorMatch[1].replace(/\./g, "").replace(",", ".");
-      const valor = parseMoney(valorStr);
-      if (valor == null || valor <= 0) continue;
-      const parcelaMatch = linha.match(/(\d+)\/(\d+)/);
-      const parcelaAtual = parcelaMatch ? parseInt(parcelaMatch[1]) : 1;
-      const totalParcelas = parcelaMatch ? parseInt(parcelaMatch[2]) : 1;
-      const valorParcela = parseMoney(divide(valor, totalParcelas)) ?? 0;
-      const dataMatch = linha.match(/(\d{2})\/(\d{2})(?:\/(\d{4}))?/);
-      let dataCompra = format(new Date(), "yyyy-MM-dd");
-      if (dataMatch) {
-        const day = dataMatch[1];
-        const month = dataMatch[2];
-        const year = dataMatch[3] || String(new Date().getFullYear());
-        dataCompra = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-      }
-      let descricao = linha
-        .replace(valorMatch[0], "")
-        .replace(parcelaMatch ? parcelaMatch[0] : "", "")
-        .replace(dataMatch ? dataMatch[0] : "", "")
-        .replace(/[R$]/g, "")
-        .trim()
-        .replace(/\s+/g, " ");
-      if (!descricao) descricao = "Compra importada";
-      const duplicata = existentes.find((e: { valorParcela: string; descricao: string; cartaoId: string }) => {
-        const valorParcelaExistente = parseMoney(e.valorParcela) ?? 0;
-        const diffValor = Math.abs(valorParcelaExistente - valorParcela) / (valorParcela || 1);
-        const nomeSim = e.descricao.toLowerCase().includes(descricao.toLowerCase().slice(0, 5));
-        return diffValor < 0.05 && nomeSim && e.cartaoId === cartaoId;
-      });
-      items.push({
-        descricao,
-        valor,
-        valorParcela,
-        parcelas: totalParcelas,
-        parcelaAtual,
-        dataCompra,
-        duplicata: duplicata || null,
-      });
-    }
-    const duplicatas = items.filter((item) => item.duplicata).length;
-    auditRoute(req, {
-      action: "import",
-      status: "success",
-      domain: "importar_texto",
-      userId,
-      details: {
-        cartaoId,
-        linhasRecebidas: linhas.length,
-        itensProcessados: items.length,
-        duplicatas,
-      },
-    });
-    res.json(items);
-  });
+    },
+  );
 
 }

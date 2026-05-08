@@ -97,6 +97,27 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: 
   });
 }
 
+function tryParseApiErrorMessage(rawMessage: string): string | null {
+  const marker = ":";
+  const firstColon = rawMessage.indexOf(marker);
+  if (firstColon <= 0) return null;
+  const maybeJson = rawMessage.slice(firstColon + 1).trim();
+  if (!maybeJson.startsWith("{")) return null;
+
+  try {
+    const parsed = JSON.parse(maybeJson) as { message?: unknown; error?: unknown };
+    if (typeof parsed.message === "string" && parsed.message.trim().length > 0) {
+      return parsed.message.trim();
+    }
+    if (typeof parsed.error === "string" && parsed.error.trim().length > 0) {
+      return parsed.error.trim();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export default function CartoesPage() {
   const { toast } = useToast();
   const premiumAccess = usePremiumAccess();
@@ -370,7 +391,10 @@ export default function CartoesPage() {
     if (premiumFeatureError) {
       return buildPremiumFeatureFriendlyMessage(premiumFeatureError);
     }
-    return error instanceof Error ? error.message : "Erro inesperado";
+    if (error instanceof Error) {
+      return tryParseApiErrorMessage(error.message) ?? error.message;
+    }
+    return "Erro inesperado";
   };
 
   const logDev = (event: string, payload?: Record<string, unknown>) => {

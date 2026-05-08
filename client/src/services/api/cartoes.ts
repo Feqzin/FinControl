@@ -240,6 +240,13 @@ export type ParcelaComprovanteResumo = {
 };
 
 const PARCELA_CARTAO_SOURCE_TYPE = "parcela_compra";
+const COMPROVANTE_FILE_MESSAGE = "Arquivo invalido ou nao permitido. Envie PDF, JPG ou PNG.";
+const ALLOWED_COMPROVANTE_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+]);
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -271,14 +278,33 @@ function resolveComprovanteMimeType(file: File): string {
   return normalized || "application/octet-stream";
 }
 
+function validateComprovanteFileOrThrow(file: File, mimeType: string): void {
+  if (!file || !file.name) {
+    throw new Error(COMPROVANTE_FILE_MESSAGE);
+  }
+  if (file.size <= 0) {
+    throw new Error(COMPROVANTE_FILE_MESSAGE);
+  }
+  if (!ALLOWED_COMPROVANTE_MIME_TYPES.has(mimeType)) {
+    throw new Error(COMPROVANTE_FILE_MESSAGE);
+  }
+}
+
 export async function uploadParcelaComprovante(
   parcelaId: string,
   file: File,
 ): Promise<ParcelaComprovanteResumo> {
+  const mimeType = resolveComprovanteMimeType(file);
+  validateComprovanteFileOrThrow(file, mimeType);
+
   const contentBase64 = await fileToBase64(file);
+  if (!contentBase64 || contentBase64.trim().length === 0) {
+    throw new Error(COMPROVANTE_FILE_MESSAGE);
+  }
+
   const response = await apiRequest("POST", `/api/pagamentos/${PARCELA_CARTAO_SOURCE_TYPE}/${parcelaId}/comprovante`, {
     fileName: file.name,
-    mimeType: resolveComprovanteMimeType(file),
+    mimeType,
     contentBase64,
   });
   const payload = await response.json() as { comprovante?: ParcelaComprovanteResumo };

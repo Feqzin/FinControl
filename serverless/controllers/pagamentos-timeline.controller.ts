@@ -18,6 +18,8 @@ function isComprovanteValidationError(errorCode: string): boolean {
     || errorCode === "FILE_TOO_LARGE";
 }
 
+const INVALID_COMPROVANTE_MESSAGE = "Arquivo invalido ou nao permitido.";
+
 export function createPagamentosTimelineController(service: PagamentosTimelineService) {
   return {
     listByPessoa: async (req: Request, res: Response) => {
@@ -92,7 +94,46 @@ export function createPagamentosTimelineController(service: PagamentosTimelineSe
 
       const parsedBody = pagamentoComprovanteBody.safeParse(req.body);
       if (!parsedBody.success) {
-        return sendBadRequest(res, parsedBody.error.message);
+        const rawBody = (req.body && typeof req.body === "object")
+          ? (req.body as Record<string, unknown>)
+          : {};
+        const fileName = typeof rawBody.fileName === "string" ? rawBody.fileName : undefined;
+        const mimeType = typeof rawBody.mimeType === "string" ? rawBody.mimeType : undefined;
+        const payloadLength = typeof rawBody.contentBase64 === "string" ? rawBody.contentBase64.length : 0;
+
+        writeTechnicalLog({
+          event: "security.comprovante_upload.rejected",
+          level: "warn",
+          source: "pagamentos-timeline.controller",
+          data: {
+            userId,
+            sourceType: params.data.sourceType,
+            sourceId: params.data.sourceId,
+            reason: "payload_validation_error",
+            fileName,
+            mimeType,
+            payloadLength,
+            issueCodes: parsedBody.error.issues.map((issue) => issue.code).slice(0, 5),
+          },
+        });
+
+        auditRequest(req, {
+          action: "update",
+          status: "failure",
+          domain: "pagamentos_timeline",
+          userId,
+          targetId: params.data.sourceId,
+          details: {
+            reason: "validation_error",
+            sourceType: params.data.sourceType,
+            payload: sanitizeForLog({ fileName, mimeType }),
+          },
+        });
+
+        return res.status(400).json({
+          error: INVALID_COMPROVANTE_MESSAGE,
+          message: INVALID_COMPROVANTE_MESSAGE,
+        });
       }
 
       const result = await service.uploadComprovante(
