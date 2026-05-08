@@ -458,6 +458,9 @@ export class DatabaseStorage implements IStorage {
       );
       return rows.sort((a: ParcelaCompra, b: ParcelaCompra) => a.numero - b.numero);
     } catch (error) {
+      if (this.isMissingParcelasCompraRelationError(error)) {
+        return [];
+      }
       if (!this.isMissingParcelasCompraComprovanteColumnsError(error)) throw error;
       const rows = await this.database
         .select(this.parcelasCompraProjectionWithoutComprovante)
@@ -480,6 +483,9 @@ export class DatabaseStorage implements IStorage {
         return a.numero - b.numero;
       });
     } catch (error) {
+      if (this.isMissingParcelasCompraRelationError(error)) {
+        return [];
+      }
       if (!this.isMissingParcelasCompraComprovanteColumnsError(error)) throw error;
       const rows = await this.database
         .select(this.parcelasCompraProjectionWithoutComprovante)
@@ -524,15 +530,53 @@ export class DatabaseStorage implements IStorage {
     }
 
     const combined = messages.join(" | ");
-    if (!combined.includes("42703")) return false;
-
-    return (
+    const missingComprovanteColumn = (
       combined.includes("comprovante_path") ||
       combined.includes("comprovante_nome") ||
       combined.includes("comprovante_mime_type") ||
       combined.includes("comprovante_tamanho") ||
       combined.includes("comprovante_enviado_em")
     );
+    if (!missingComprovanteColumn) return false;
+    // Alguns drivers nao propagam `code=42703` no erro raiz.
+    return combined.includes("42703") || combined.includes("does not exist");
+  }
+
+  private isMissingParcelasCompraRelationError(error: unknown): boolean {
+    const messages: string[] = [];
+    const queue: unknown[] = [error];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current) continue;
+
+      if (typeof current === "string") {
+        messages.push(current.toLowerCase());
+        continue;
+      }
+
+      if (typeof current === "object") {
+        const maybeError = current as { message?: unknown; code?: unknown; cause?: unknown };
+        if (typeof maybeError.message === "string") {
+          messages.push(maybeError.message.toLowerCase());
+        }
+        if (typeof maybeError.code === "string") {
+          messages.push(maybeError.code.toLowerCase());
+        }
+        if (maybeError.cause !== undefined) {
+          queue.push(maybeError.cause);
+        }
+      }
+    }
+
+    const combined = messages.join(" | ");
+    const referencesParcelasCompraRelation =
+      combined.includes("relation")
+      && combined.includes("parcelas_compra")
+      && combined.includes("does not exist");
+    if (!referencesParcelasCompraRelation) return false;
+    // Alguns drivers nao propagam `code=42P01` no erro raiz.
+    return combined.includes("42p01") || combined.includes("relation");
   }
 
   private toParcelaCompraWithComprovanteDefaults(row: {
@@ -563,6 +607,9 @@ export class DatabaseStorage implements IStorage {
       );
       return row;
     } catch (error) {
+      if (this.isMissingParcelasCompraRelationError(error)) {
+        return undefined;
+      }
       if (!this.isMissingParcelasCompraComprovanteColumnsError(error)) throw error;
       const [row] = await this.database
         .select(this.parcelasCompraProjectionWithoutComprovante)

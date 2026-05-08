@@ -746,6 +746,10 @@ export class FinancialService {
       const summaries = getCardConsolidatedSummaries({ cartoes, compras, parcelasCompra, saldoMovimentacoes });
 
       const compraById = new Map(compras.map((compra) => [compra.id, compra]));
+      const comprasByCard = new Map<string, number>();
+      for (const compra of compras) {
+        comprasByCard.set(compra.cartaoId, (comprasByCard.get(compra.cartaoId) ?? 0) + 1);
+      }
       const pendingByCard = new Map<string, number>();
       for (const parcela of parcelasCompra) {
         const status = String(parcela.statusCartao || "").trim().toLowerCase();
@@ -757,6 +761,23 @@ export class FinancialService {
       }
 
       for (const summary of summaries) {
+        const comprasCount = comprasByCard.get(summary.cartaoId) ?? 0;
+        if (comprasCount > 0 && summary.faturaAtual <= 0 && summary.limiteComprometido <= 0) {
+          writeTechnicalLog({
+            event: "cartoes.resumo.zero_with_compras",
+            source: "financial.service",
+            level: "warn",
+            data: {
+              userId,
+              cartaoId: summary.cartaoId,
+              comprasCount,
+              parcelasMaterializadas: parcelasCompra.length,
+              faturaAtual: summary.faturaAtual,
+              limiteComprometido: summary.limiteComprometido,
+            },
+          });
+        }
+
         const pendingFromParcelas = pendingByCard.get(summary.cartaoId) ?? 0;
         if (pendingFromParcelas <= 0) continue;
         if (summary.faturaAtual > 0 && summary.limiteComprometido > 0) continue;

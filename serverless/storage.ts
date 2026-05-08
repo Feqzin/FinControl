@@ -172,8 +172,6 @@ function isMissingParcelasCompraComprovanteColumnsError(error: unknown): boolean
   }
 
   const combined = messages.join(" | ");
-  if (!combined.includes("42703")) return false;
-
   const missingComprovanteColumn =
     combined.includes("comprovante_path") ||
     combined.includes("comprovante_nome") ||
@@ -181,7 +179,47 @@ function isMissingParcelasCompraComprovanteColumnsError(error: unknown): boolean
     combined.includes("comprovante_tamanho") ||
     combined.includes("comprovante_enviado_em");
 
-  return missingComprovanteColumn;
+  if (!missingComprovanteColumn) return false;
+  // Alguns drivers nao propagam `code=42703` no erro raiz.
+  return combined.includes("42703") || combined.includes("does not exist");
+}
+
+function isMissingParcelasCompraRelationError(error: unknown): boolean {
+  const messages: string[] = [];
+  const queue: unknown[] = [error];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+
+    if (typeof current === "string") {
+      messages.push(current.toLowerCase());
+      continue;
+    }
+
+    if (typeof current === "object") {
+      const maybeError = current as { message?: unknown; code?: unknown; cause?: unknown };
+      if (typeof maybeError.message === "string") {
+        messages.push(maybeError.message.toLowerCase());
+      }
+      if (typeof maybeError.code === "string") {
+        messages.push(maybeError.code.toLowerCase());
+      }
+      if (maybeError.cause !== undefined) {
+        queue.push(maybeError.cause);
+      }
+    }
+  }
+
+  const combined = messages.join(" | ");
+  const referencesParcelasCompraRelation =
+    combined.includes("parcelas_compra")
+    && combined.includes("does not exist")
+    && combined.includes("relation");
+
+  if (!referencesParcelasCompraRelation) return false;
+  // Alguns drivers nao propagam `code=42P01` no erro raiz.
+  return combined.includes("42p01") || combined.includes("relation");
 }
 
 function withParcelaCompraComprovanteDefaults(row: ParcelaCompraWithoutComprovante): ParcelaCompra {
@@ -721,6 +759,9 @@ export class DatabaseStorage implements IStorage {
       );
       return rows.sort((a: ParcelaCompra, b: ParcelaCompra) => a.numero - b.numero);
     } catch (error) {
+      if (isMissingParcelasCompraRelationError(error)) {
+        return [];
+      }
       if (!isMissingParcelasCompraComprovanteColumnsError(error)) throw error;
       const rows: ParcelaCompraWithoutComprovante[] = await this.database
         .select(parcelasCompraProjectionWithoutComprovante)
@@ -743,6 +784,9 @@ export class DatabaseStorage implements IStorage {
         return a.numero - b.numero;
       });
     } catch (error) {
+      if (isMissingParcelasCompraRelationError(error)) {
+        return [];
+      }
       if (!isMissingParcelasCompraComprovanteColumnsError(error)) throw error;
       const rows: ParcelaCompraWithoutComprovante[] = await this.database
         .select(parcelasCompraProjectionWithoutComprovante)
@@ -765,6 +809,9 @@ export class DatabaseStorage implements IStorage {
       );
       return row;
     } catch (error) {
+      if (isMissingParcelasCompraRelationError(error)) {
+        return undefined;
+      }
       if (!isMissingParcelasCompraComprovanteColumnsError(error)) throw error;
       const [row] = await this.database
         .select(parcelasCompraProjectionWithoutComprovante)

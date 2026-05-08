@@ -5,7 +5,7 @@ import {
   recomputeDebtAggregate,
 } from "./financial-aggregate-consistency";
 import { runFinancialTransaction } from "./transaction-utils";
-import { materializeParcelasCompraIfMissing } from "./parcelas-compra-materialization";
+import { buildParcelasCompraRows, materializeParcelasCompraIfMissing } from "./parcelas-compra-materialization";
 import {
   type AnteciparParcelasBodyInput,
   type ParcelaCompraUpdateBodyInput,
@@ -13,6 +13,33 @@ import {
   type ParcelasCompraBulkBodyInput,
 } from "../validators/financial.validators";
 import { toErrorLog, writeTechnicalLog } from "../logger";
+
+function extractErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const maybe = error as { code?: unknown; cause?: unknown };
+  if (typeof maybe.code === "string" && maybe.code.trim()) return maybe.code;
+  if (maybe.cause && typeof maybe.cause === "object") {
+    const cause = maybe.cause as { code?: unknown };
+    if (typeof cause.code === "string" && cause.code.trim()) return cause.code;
+  }
+  return null;
+}
+
+function extractSafeErrorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  return raw.slice(0, 220);
+}
+
+function isMissingParcelasCompraRelationError(error: unknown): boolean {
+  const code = (extractErrorCode(error) ?? "").toLowerCase();
+  const message = extractSafeErrorMessage(error).toLowerCase();
+  return (
+    code === "42p01"
+    && message.includes("relation")
+    && message.includes("parcelas_compra")
+    && message.includes("does not exist")
+  );
+}
 
 export class ParcelasService {
   constructor(private readonly repository: FinancialRepository) {}
@@ -81,26 +108,62 @@ export class ParcelasService {
 
   async listParcelasCompra(compraId: string, userId: string) {
     return runFinancialTransaction(this.repository, async (repository) => {
+      let operation = "getCompraCartao";
+      let compra: Awaited<ReturnType<FinancialRepository["getCompraCartao"]>> | undefined;
       try {
-        const compra = await repository.getCompraCartao(compraId, userId);
+        compra = await repository.getCompraCartao(compraId, userId);
         if (!compra) return { error: "COMPRA_NOT_FOUND" as const };
 
+        operation = "getParcelasCompra";
         let rows = await repository.getParcelasCompra(compraId, userId);
         if (rows.length === 0) {
+          operation = "materializeParcelasCompraIfMissing";
           await materializeParcelasCompraIfMissing(repository, compra);
+          operation = "recomputeCardPurchaseAggregate";
           await recomputeCardPurchaseAggregate(repository, compraId, userId);
+          operation = "getParcelasCompraAfterMaterialization";
           rows = await repository.getParcelasCompra(compraId, userId);
         }
 
         return { rows };
       } catch (error) {
+        if (compra && isMissingParcelasCompraRelationError(error)) {
+          writeTechnicalLog({
+            event: "parcelas_compra.get_by_compra.compat_mode",
+            source: "parcelas.service",
+            level: "warn",
+            data: {
+              userId,
+              compraId,
+              operation,
+              code: extractErrorCode(error),
+              messageSafe: extractSafeErrorMessage(error),
+              reason: "missing_relation_parcelas_compra",
+            },
+          });
+
+          const rows = buildParcelasCompraRows(compra).map((row) => ({
+            id: `compat-${compra!.id}-${row.numero}`,
+            ...row,
+            comprovantePath: null,
+            comprovanteNome: null,
+            comprovanteMimeType: null,
+            comprovanteTamanho: null,
+            comprovanteEnviadoEm: null,
+          }));
+          return { rows };
+        }
+
         writeTechnicalLog({
-          event: "parcelas_compra.list.error",
+          event: "parcelas_compra.get_by_compra.error",
           source: "parcelas.service",
           level: "error",
           data: {
             userId,
             compraId,
+            operation,
+            code: extractErrorCode(error),
+            messageSafe: extractSafeErrorMessage(error),
             error: toErrorLog(error),
           },
         });
