@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -20,6 +20,7 @@ import { CartaoCard } from "@/components/cartoes/CartaoCard";
 
 type CartoesComprasGridProps = {
   cartoes: Cartao[];
+  focusedCartaoId?: string | null;
   pessoas: Pessoa[];
   servicos: Servico[];
   formatCurrency: (value: number) => string;
@@ -45,6 +46,7 @@ type PageByCard = Record<string, number>;
 
 export function CartoesComprasGrid({
   cartoes,
+  focusedCartaoId,
   pessoas,
   servicos,
   formatCurrency,
@@ -63,12 +65,17 @@ export function CartoesComprasGrid({
   onMarcarReembolso,
 }: CartoesComprasGridProps) {
   const [pageByCard, setPageByCard] = useState<PageByCard>({});
+  const cartoesVisiveis = useMemo(() => {
+    if (!focusedCartaoId) return cartoes;
+    const focused = cartoes.find((cartao) => cartao.id === focusedCartaoId);
+    return focused ? [focused] : cartoes;
+  }, [cartoes, focusedCartaoId]);
 
   useEffect(() => {
     setPageByCard((prev) => {
       const next: PageByCard = {};
       let changed = false;
-      for (const cartao of cartoes) {
+      for (const cartao of cartoesVisiveis) {
         const total = getFilteredCardCompras(cartao.id).length;
         const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
         const nextValue = Math.min(prev[cartao.id] ?? 1, totalPages);
@@ -82,11 +89,11 @@ export function CartoesComprasGrid({
       }
       return changed ? next : prev;
     });
-  }, [cartoes, getFilteredCardCompras]);
+  }, [cartoesVisiveis, getFilteredCardCompras]);
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
-      {cartoes.map((cartao) => {
+      {cartoesVisiveis.map((cartao) => {
         const limite = Number(cartao.limite);
         const faturaAtual = getCardTotal(cartao.id);
         const limiteComprometido = getCardUsedLimit(cartao.id);

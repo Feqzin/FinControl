@@ -144,6 +144,7 @@ export default function CartoesPage() {
   const [importSourceType, setImportSourceType] = useState<"texto" | "csv" | "ofx" | "qfx" | "manual">("manual");
   const [importSourceName, setImportSourceName] = useState("");
   const [lastImportLogId, setLastImportLogId] = useState<string | null>(null);
+  const [comprasCartaoFocadoId, setComprasCartaoFocadoId] = useState<string | null>(null);
   const [cartoesTab, setCartoesTab] = useState<CartoesTab>(() => {
     if (typeof window === "undefined") return "resumo";
     const params = new URLSearchParams(window.location.search);
@@ -1289,6 +1290,10 @@ export default function CartoesPage() {
   };
 
   const showCompraSearch = activeCartoesTab === "compras" || activeCartoesTab === "fatura";
+  const handleCartoesTabChange = (tab: CartoesTab) => {
+    setCartoesTab(tab);
+    setComprasCartaoFocadoId(null);
+  };
   const cartoesInsightsItems = (() => {
     if (cartoes.length === 0) return [] as CartaoInsightItem[];
 
@@ -1436,7 +1441,7 @@ export default function CartoesPage() {
         filterBar={(
           <CartoesFilterBar
             cartoesTab={activeCartoesTab}
-            onTabChange={setCartoesTab}
+            onTabChange={handleCartoesTabChange}
             compraSearch={compraSearch}
             onCompraSearchChange={setCompraSearch}
             showSearch={showCompraSearch}
@@ -1714,6 +1719,7 @@ export default function CartoesPage() {
           onOpenCompras={(cartaoId) => {
             setCartoesTab("compras");
             setSelectedCartao(cartaoId);
+            setComprasCartaoFocadoId(cartaoId);
           }}
           onDeleteCompra={openDeleteCompraConfirm}
         />
@@ -1749,6 +1755,7 @@ export default function CartoesPage() {
           getFilteredCardCompras={getFilteredCardCompras}
           getDaysUntilInvoice={getDaysUntilInvoice}
           getNextInvoiceDate={getNextInvoiceDate}
+          focusedCartaoId={comprasCartaoFocadoId}
           onEditCartao={(cartao) => {
             setEditingCard(cartao);
             setEditCardForm({
