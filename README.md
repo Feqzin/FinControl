@@ -70,6 +70,9 @@ Arquivo base: `.env.example`
 
 ```env
 DATABASE_URL=postgres://<db_user>:<db_password>@<db_host>:5432/<db_name>
+# Opcional (TLS Postgres). Padrao seguro em producao: true.
+# Em Vercel + Supabase Pooler, pode ser necessario false.
+# DATABASE_SSL_REJECT_UNAUTHORIZED=false
 SESSION_SECRET=troque-por-um-segredo-forte
 PORT=5000
 ENABLE_DEMO_SEED=false
@@ -80,6 +83,10 @@ ENABLE_DEMO_SEED=false
 ```
 
 - `DATABASE_URL`: string de conexao PostgreSQL.
+- `DATABASE_SSL_REJECT_UNAUTHORIZED` (opcional): controla `rejectUnauthorized` do TLS do Postgres.
+  - Padrao recomendado em producao: `true`.
+  - Em alguns ambientes Vercel + Supabase Pooler pode ser necessario `false`.
+  - Nao exponha `DATABASE_URL` em logs, respostas de API ou UI.
 - `SESSION_SECRET`: segredo da sessao (minimo 16 caracteres).
 - `PORT`: porta HTTP local (padrao `5000`).
 - `ENABLE_DEMO_SEED`: habilita seed demo em desenvolvimento.
@@ -164,6 +171,13 @@ Protecao adicional:
 - Garanta que `.env` existe na raiz.
 - Garanta que `DATABASE_URL` esta preenchida.
 
+### `Login/Cadastro retorna 500 em producao`
+- Verifique conexao SSL do banco (Postgres/Supabase Pooler).
+- Se estiver usando Supabase Pooler na Vercel e houver falha de handshake/certificado, teste:
+  - `DATABASE_SSL_REJECT_UNAUTHORIZED=false`
+- Mantenha a resposta ao usuario generica e registre apenas diagnostico tecnico no servidor.
+- Nunca imprima `DATABASE_URL` completa em logs ou mensagens de erro.
+
 ### `SESSION_SECRET ainda esta com valor de exemplo`
 - Defina um valor proprio com pelo menos 16 caracteres.
 
@@ -189,6 +203,9 @@ Checklist minimo:
 2. Confirmar que `.env` de producao nao usa placeholders.
 3. Confirmar `SESSION_SECRET` forte (>=32 caracteres em producao).
 4. Confirmar `ENABLE_DEMO_SEED=false` em producao.
-5. Rodar `npm run check`, `npm run test` e `npm run build`.
-6. Garantir que pacote/artefato nao inclui `.env`, `.git`, `node_modules`, `dist`, `diagnostics`.
-7. Publicar somente build e configuracoes necessarias ao runtime.
+5. Validar configuracao SSL do Postgres:
+   - padrao: `DATABASE_SSL_REJECT_UNAUTHORIZED=true`
+   - fallback para Vercel + Supabase Pooler quando necessario: `false`
+6. Rodar `npm run check`, `npm run test` e `npm run build`.
+7. Garantir que pacote/artefato nao inclui `.env`, `.git`, `node_modules`, `dist`, `diagnostics`.
+8. Publicar somente build e configuracoes necessarias ao runtime.
