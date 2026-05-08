@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { CompraCartao, ParcelaCompra, Pessoa } from "@shared/schema";
-import { Check, ExternalLink, Paperclip, Pencil, RefreshCw, Wallet, X } from "lucide-react";
+import { Check, ExternalLink, Paperclip, Pencil, RefreshCw, Trash2, Wallet, X } from "lucide-react";
 import { formatBytes } from "@/pages/pessoas/payment-timeline.utils";
 
 type AbaterSaldoParcelaForm = {
@@ -61,6 +61,8 @@ type ParcelasTabProps = {
   getParcelaComprovante: (parcela: ParcelaCompra) => ParcelaComprovanteResumo | null;
   onUploadParcelaComprovante: (parcelaId: string, file: File) => Promise<void> | void;
   comprovanteUploadLoadingId: string | null;
+  onDeleteParcelaComprovante: (parcelaId: string) => Promise<void> | void;
+  comprovanteDeleteLoadingId: string | null;
 };
 
 export function ParcelasTab({
@@ -102,6 +104,8 @@ export function ParcelasTab({
   getParcelaComprovante,
   onUploadParcelaComprovante,
   comprovanteUploadLoadingId,
+  onDeleteParcelaComprovante,
+  comprovanteDeleteLoadingId,
 }: ParcelasTabProps) {
   const [comprovanteFiles, setComprovanteFiles] = useState<Record<string, File | null>>({});
 
@@ -184,6 +188,7 @@ export function ParcelasTab({
                 const comprovante = getParcelaComprovante(parcela);
                 const uploadFile = getComprovanteFile(parcela.id);
                 const isUploadingComprovante = comprovanteUploadLoadingId === parcela.id;
+                const isDeletingComprovante = comprovanteDeleteLoadingId === parcela.id;
 
                 return (
                   <div
@@ -352,11 +357,28 @@ export function ParcelasTab({
                             const input = document.getElementById(`input-comprovante-parcela-${parcela.id}`) as HTMLInputElement | null;
                             input?.click();
                           }}
-                          disabled={isUploadingComprovante}
+                          disabled={isUploadingComprovante || isDeletingComprovante}
                           data-testid={`button-comprovante-parcela-${parcela.id}`}
                         >
                           <Paperclip className="h-3 w-3 text-muted-foreground" />
                         </Button>
+                        {comprovante ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            title="Excluir comprovante"
+                            onClick={() => {
+                              const confirmed = window.confirm("Excluir este comprovante anexado?");
+                              if (!confirmed) return;
+                              void Promise.resolve(onDeleteParcelaComprovante(parcela.id));
+                            }}
+                            disabled={isDeletingComprovante || isUploadingComprovante}
+                            data-testid={`button-delete-comprovante-parcela-${parcela.id}`}
+                          >
+                            <Trash2 className="h-3 w-3 text-red-600" />
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
 
@@ -390,7 +412,7 @@ export function ParcelasTab({
                               variant="outline"
                               size="sm"
                               className="h-7 text-xs"
-                              disabled={!uploadFile || isUploadingComprovante}
+                              disabled={!uploadFile || isUploadingComprovante || isDeletingComprovante}
                               onClick={() => {
                                 if (!uploadFile) return;
                                 const maybePromise = onUploadParcelaComprovante(parcela.id, uploadFile);

@@ -193,5 +193,40 @@ export function createPagamentosTimelineController(service: PagamentosTimelineSe
       res.setHeader("Content-Disposition", `inline; filename="${safeFileName(result.fileName)}"`);
       return res.send(result.buffer);
     },
+
+    deleteComprovante: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const sourceType = getParam(req, "sourceType");
+      const sourceId = getParam(req, "sourceId");
+
+      const params = pagamentoSourceParams.safeParse({ sourceType, sourceId });
+      if (!params.success) {
+        return sendBadRequest(res, params.error.message);
+      }
+
+      const result = await service.deleteComprovante(
+        params.data.sourceType,
+        params.data.sourceId,
+        userId,
+      );
+
+      if ("error" in result) {
+        return sendNotFound(res, "Comprovante not found");
+      }
+
+      auditRequest(req, {
+        action: "update",
+        status: "success",
+        domain: "pagamentos_timeline",
+        userId,
+        targetId: params.data.sourceId,
+        details: {
+          sourceType: params.data.sourceType,
+          comprovanteRemoved: true,
+        },
+      });
+
+      return res.status(204).send();
+    },
   };
 }

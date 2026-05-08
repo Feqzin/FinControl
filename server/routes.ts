@@ -87,6 +87,7 @@ export function registerRoutes(app: Express): void {
   app.patch("/api/pagamentos/:sourceType/:sourceId/observacao", requireAuth, pagamentosTimelineController.updateObservacao);
   app.post("/api/pagamentos/:sourceType/:sourceId/comprovante", requireAuth, pagamentosTimelineController.uploadComprovante);
   app.get("/api/pagamentos/:sourceType/:sourceId/comprovante", requireAuth, pagamentosTimelineController.getComprovante);
+  app.delete("/api/pagamentos/:sourceType/:sourceId/comprovante", requireAuth, pagamentosTimelineController.deleteComprovante);
 
   app.get("/api/imports/logs", requireAuth, importsController.list);
   app.post("/api/imports/preview", requireAuth, importsController.preview);

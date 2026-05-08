@@ -34,6 +34,7 @@ import {
   deleteFaturaCartaoMes,
   deleteFaturasMes,
   deleteCompraCartaoComEscopo,
+  deleteParcelaComprovante,
   getParcelaComprovanteDownloadUrl,
   previewImportCompras,
   type ParcelaComprovanteResumo,
@@ -169,7 +170,8 @@ export default function CartoesPage() {
   const [deleteCompraSubmitting, setDeleteCompraSubmitting] = useState(false);
   const [parcelaSubmittingId, setParcelaSubmittingId] = useState<string | null>(null);
   const [comprovanteUploadParcelaId, setComprovanteUploadParcelaId] = useState<string | null>(null);
-  const [parcelaComprovantesById, setParcelaComprovantesById] = useState<Record<string, ParcelaComprovanteResumo>>({});
+  const [comprovanteDeleteParcelaId, setComprovanteDeleteParcelaId] = useState<string | null>(null);
+  const [parcelaComprovantesById, setParcelaComprovantesById] = useState<Record<string, ParcelaComprovanteResumo | null>>({});
 
   const {
     cartoes,
@@ -481,9 +483,57 @@ export default function CartoesPage() {
     },
   });
 
+  const deleteParcelaComprovanteMutation = useMutation({
+    mutationFn: async ({ parcelaId }: { parcelaId: string }) => {
+      await deleteParcelaComprovante(parcelaId);
+      return { parcelaId };
+    },
+    onMutate: ({ parcelaId }) => {
+      setComprovanteDeleteParcelaId(parcelaId);
+    },
+    onSuccess: async ({ parcelaId }) => {
+      setParcelaComprovantesById((prev) => ({
+        ...prev,
+        [parcelaId]: null,
+      }));
+      toast({ title: "Comprovante excluido" });
+
+      const keys: Array<ReadonlyArray<unknown>> = [
+        ["/api/parcelas-compra"],
+        ["/api/compras-cartao"],
+        ["/api/cartoes"],
+        ["/api/cartoes/resumo"],
+        ["/api/dashboard/overview"],
+        ["/api/financial/summary"],
+        ["/api/financial/score"],
+        ["/api/financial/insights"],
+      ];
+
+      if (viewingCompra?.id) {
+        keys.push(["/api/parcelas-compra", viewingCompra.id]);
+      }
+
+      await Promise.all(
+        keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+      );
+      await refetchParcelas();
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro ao excluir comprovante",
+        description: getErrorMessage(error),
+        variant: "destructive",
+      });
+    },
+    onSettled: () => {
+      setComprovanteDeleteParcelaId(null);
+    },
+  });
+
   const getParcelaComprovante = (parcela: ParcelaCompra): ParcelaComprovanteResumo | null => {
-    const override = parcelaComprovantesById[parcela.id];
-    if (override) return override;
+    if (Object.prototype.hasOwnProperty.call(parcelaComprovantesById, parcela.id)) {
+      return parcelaComprovantesById[parcela.id] ?? null;
+    }
 
     const raw = parcela as unknown as Record<string, unknown>;
     const nome = typeof raw.comprovanteNome === "string" ? raw.comprovanteNome : null;
@@ -1595,6 +1645,10 @@ export default function CartoesPage() {
           await parcelaComprovanteMutation.mutateAsync({ parcelaId, file });
         }}
         comprovanteUploadLoadingId={comprovanteUploadParcelaId}
+        onDeleteParcelaComprovante={async (parcelaId) => {
+          await deleteParcelaComprovanteMutation.mutateAsync({ parcelaId });
+        }}
+        comprovanteDeleteLoadingId={comprovanteDeleteParcelaId}
       />
 
       <ImportFaturaDialog

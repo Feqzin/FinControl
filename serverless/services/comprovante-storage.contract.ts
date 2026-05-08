@@ -22,4 +22,5 @@ export interface ComprovanteStorage {
   getAllowedComprovanteMimeTypes(): string[];
   persistComprovante(input: PersistComprovanteInput): Promise<PersistComprovanteOutput>;
   loadComprovanteFile(relativePath: string): Promise<Buffer | null>;
+  deleteComprovanteFile?(relativePath: string): Promise<void>;
 }

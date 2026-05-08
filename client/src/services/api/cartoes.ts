@@ -288,6 +288,10 @@ export async function uploadParcelaComprovante(
   return payload.comprovante;
 }
 
+export async function deleteParcelaComprovante(parcelaId: string): Promise<void> {
+  await apiRequest("DELETE", `/api/pagamentos/${PARCELA_CARTAO_SOURCE_TYPE}/${parcelaId}/comprovante`);
+}
+
 export async function updateParcelaCompraValores(id: string, payload: { valor?: string; dataVencimento?: string }): Promise<void> {
   await apiRequest("PATCH", `/api/parcelas-compra/${id}`, {
     ...(payload.valor !== undefined ? { valor: payload.valor } : {}),

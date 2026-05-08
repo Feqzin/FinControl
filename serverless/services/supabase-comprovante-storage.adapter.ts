@@ -115,6 +115,10 @@ export class SupabaseComprovanteStorageAdapter implements ComprovanteStorage {
     return result.data;
   }
 
+  async deleteComprovanteFile(relativePath: string): Promise<void> {
+    await this.deletePreviousIfPresent(relativePath);
+  }
+
   private async deletePreviousIfPresent(relativePath: string | null | undefined): Promise<PreviousDeleteResult> {
     if (!relativePath) return { status: "skipped" };
 

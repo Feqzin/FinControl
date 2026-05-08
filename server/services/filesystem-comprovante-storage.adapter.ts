@@ -68,6 +68,10 @@ export class FilesystemComprovanteStorageAdapter implements ComprovanteStorage {
     }
   }
 
+  async deleteComprovanteFile(relativePath: string): Promise<void> {
+    await this.deleteFileIfPresent(relativePath);
+  }
+
   private resolveInsideRoot(relativePath: string): string {
     const root = this.getComprovanteStorageRoot();
     const absolute = path.resolve(root, relativePath);

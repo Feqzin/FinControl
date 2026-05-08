@@ -409,6 +409,55 @@ export class PagamentosTimelineService {
     };
   }
 
+  async deleteComprovante(
+    sourceType: PagamentoSourceType,
+    sourceId: string,
+    userId: string,
+  ): Promise<{ ok: true } | { error: "NOT_FOUND" }> {
+    const source = await this.getSourceDetails(sourceType, sourceId, userId);
+    if (!source || !source.source.comprovantePath) {
+      return { error: "NOT_FOUND" };
+    }
+
+    if (this.storage.deleteComprovanteFile) {
+      await this.storage.deleteComprovanteFile(source.source.comprovantePath);
+    }
+
+    if (sourceType === "parcela") {
+      const updated = await this.repository.updateParcela(sourceId, userId, {
+        comprovantePath: null,
+        comprovanteNome: null,
+        comprovanteMimeType: null,
+        comprovanteTamanho: null,
+        comprovanteEnviadoEm: null,
+      });
+      if (!updated) return { error: "NOT_FOUND" };
+      return { ok: true };
+    }
+
+    if (sourceType === "parcela_compra") {
+      const updated = await this.repository.updateParcelaCompra(sourceId, userId, {
+        comprovantePath: null,
+        comprovanteNome: null,
+        comprovanteMimeType: null,
+        comprovanteTamanho: null,
+        comprovanteEnviadoEm: null,
+      });
+      if (!updated) return { error: "NOT_FOUND" };
+      return { ok: true };
+    }
+
+    const updated = await this.repository.updateDivida(sourceId, userId, {
+      comprovantePath: null,
+      comprovanteNome: null,
+      comprovanteMimeType: null,
+      comprovanteTamanho: null,
+      comprovanteEnviadoEm: null,
+    });
+    if (!updated) return { error: "NOT_FOUND" };
+    return { ok: true };
+  }
+
   async getComprovanteDownload(
     sourceType: PagamentoSourceType,
     sourceId: string,
