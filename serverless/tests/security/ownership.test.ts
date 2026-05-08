@@ -6,6 +6,7 @@ import express from "express";
 import { createCloudBackupsController } from "../../controllers/cloud-backups.controller";
 import { createPagamentosTimelineController } from "../../controllers/pagamentos-timeline.controller";
 import { shouldRunDbIntegrationTests } from "../../../server/tests/test-db-availability";
+import { createSecurityTestUser } from "./test-user-seed";
 
 const testOwnershipIntegration = (await shouldRunDbIntegrationTests()) ? test : test.skip;
 
@@ -166,6 +167,7 @@ async function withTestServer(
 }
 
 test("cloud backup download usa userId da sessao (nao confia em input externo)", async () => {
+  const testUser = await createSecurityTestUser("ownership_cloud_backup_download");
   let capturedUserId: string | null = null;
   let capturedBackupId: string | null = null;
 
@@ -180,22 +182,27 @@ test("cloud backup download usa userId da sessao (nao confia em input externo)",
     },
   } as any);
 
-  const app = express();
-  app.use((req, _res, next) => {
-    (req as any).user = { id: "user_a" };
-    next();
-  });
-  app.get("/api/backups/cloud/:id/download", controller.downloadById);
+  try {
+    const app = express();
+    app.use((req, _res, next) => {
+      (req as any).user = { id: testUser.id };
+      next();
+    });
+    app.get("/api/backups/cloud/:id/download", controller.downloadById);
 
-  await withTestServer(app, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/backups/cloud/backup_user_b/download`);
-    assert.equal(response.status, 200);
-    assert.equal(capturedUserId, "user_a");
-    assert.equal(capturedBackupId, "backup_user_b");
-  });
+    await withTestServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/backups/cloud/backup_user_b/download`);
+      assert.equal(response.status, 200);
+      assert.equal(capturedUserId, testUser.id);
+      assert.equal(capturedBackupId, "backup_user_b");
+    });
+  } finally {
+    await testUser.cleanup();
+  }
 });
 
 test("download de comprovante usa userId autenticado para checagem de ownership", async () => {
+  const testUser = await createSecurityTestUser("ownership_comprovante_divida_download");
   let capturedUserId: string | null = null;
   let capturedSourceType: string | null = null;
   let capturedSourceId: string | null = null;
@@ -209,23 +216,28 @@ test("download de comprovante usa userId autenticado para checagem de ownership"
     },
   } as any);
 
-  const app = express();
-  app.use((req, _res, next) => {
-    (req as any).user = { id: "user_a" };
-    next();
-  });
-  app.get("/api/pagamentos/:sourceType/:sourceId/comprovante", controller.getComprovante);
+  try {
+    const app = express();
+    app.use((req, _res, next) => {
+      (req as any).user = { id: testUser.id };
+      next();
+    });
+    app.get("/api/pagamentos/:sourceType/:sourceId/comprovante", controller.getComprovante);
 
-  await withTestServer(app, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/pagamentos/divida/divida_user_b/comprovante`);
-    assert.equal(response.status, 404);
-    assert.equal(capturedUserId, "user_a");
-    assert.equal(capturedSourceType, "divida");
-    assert.equal(capturedSourceId, "divida_user_b");
-  });
+    await withTestServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/pagamentos/divida/divida_user_b/comprovante`);
+      assert.equal(response.status, 404);
+      assert.equal(capturedUserId, testUser.id);
+      assert.equal(capturedSourceType, "divida");
+      assert.equal(capturedSourceId, "divida_user_b");
+    });
+  } finally {
+    await testUser.cleanup();
+  }
 });
 
 test("download de comprovante de parcela_compra usa userId autenticado", async () => {
+  const testUser = await createSecurityTestUser("ownership_comprovante_parcela_compra_download");
   let capturedUserId: string | null = null;
   let capturedSourceType: string | null = null;
   let capturedSourceId: string | null = null;
@@ -239,20 +251,24 @@ test("download de comprovante de parcela_compra usa userId autenticado", async (
     },
   } as any);
 
-  const app = express();
-  app.use((req, _res, next) => {
-    (req as any).user = { id: "user_a" };
-    next();
-  });
-  app.get("/api/pagamentos/:sourceType/:sourceId/comprovante", controller.getComprovante);
+  try {
+    const app = express();
+    app.use((req, _res, next) => {
+      (req as any).user = { id: testUser.id };
+      next();
+    });
+    app.get("/api/pagamentos/:sourceType/:sourceId/comprovante", controller.getComprovante);
 
-  await withTestServer(app, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/pagamentos/parcela_compra/parcela_compra_user_b/comprovante`);
-    assert.equal(response.status, 404);
-    assert.equal(capturedUserId, "user_a");
-    assert.equal(capturedSourceType, "parcela_compra");
-    assert.equal(capturedSourceId, "parcela_compra_user_b");
-  });
+    await withTestServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/pagamentos/parcela_compra/parcela_compra_user_b/comprovante`);
+      assert.equal(response.status, 404);
+      assert.equal(capturedUserId, testUser.id);
+      assert.equal(capturedSourceType, "parcela_compra");
+      assert.equal(capturedSourceId, "parcela_compra_user_b");
+    });
+  } finally {
+    await testUser.cleanup();
+  }
 });
 
 testOwnershipIntegration("IDOR integração: usuário A não acessa, edita ou exclui pessoa do usuário B", async () => {

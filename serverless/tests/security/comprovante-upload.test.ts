@@ -8,6 +8,7 @@ import {
   validateComprovanteBinarySignatureOrThrow,
 } from "../../services/comprovante-storage.shared";
 import { createPagamentosTimelineController } from "../../controllers/pagamentos-timeline.controller";
+import { createSecurityTestUser } from "./test-user-seed";
 
 async function withTestServer(
   app: ReturnType<typeof express>,
@@ -73,39 +74,44 @@ test("decode base64 de comprovante rejeita payload invalido", () => {
 });
 
 test("uploadComprovante retorna erro generico para arquivo invalido", async () => {
+  const testUser = await createSecurityTestUser("comprovante_upload");
   const controller = createPagamentosTimelineController({
     uploadComprovante: async () => ({ error: "INVALID_FILE_CONTENT" as const }),
   } as any);
 
-  const app = express();
-  app.use(express.json({ limit: "2mb" }));
-  app.use((req, _res, next) => {
-    (req as any).user = { id: "user_test_security" };
-    next();
-  });
-  app.post("/api/pagamentos/:sourceType/:sourceId/comprovante", controller.uploadComprovante);
-
-  await withTestServer(app, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/pagamentos/divida/divida_1/comprovante`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fileName: "falso.png",
-        mimeType: "image/png",
-        contentBase64: Buffer.from("arquivo-falso").toString("base64"),
-      }),
+  try {
+    const app = express();
+    app.use(express.json({ limit: "2mb" }));
+    app.use((req, _res, next) => {
+      (req as any).user = { id: testUser.id };
+      next();
     });
+    app.post("/api/pagamentos/:sourceType/:sourceId/comprovante", controller.uploadComprovante);
 
-    assert.equal(response.status, 400);
-    const body = await response.json();
-    assert.deepEqual(body, {
-      error: "Arquivo inválido ou não permitido.",
-      message: "Arquivo inválido ou não permitido.",
+    await withTestServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/pagamentos/divida/divida_1/comprovante`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: "falso.png",
+          mimeType: "image/png",
+          contentBase64: Buffer.from("arquivo-falso").toString("base64"),
+        }),
+      });
+
+      assert.equal(response.status, 400);
+      const body = await response.json();
+      assert.deepEqual(body, {
+        error: "Arquivo inválido ou não permitido.",
+        message: "Arquivo inválido ou não permitido.",
+      });
+
+      const serialized = JSON.stringify(body).toLowerCase();
+      assert.equal(serialized.includes("stack"), false);
+      assert.equal(serialized.includes("sql"), false);
+      assert.equal(serialized.includes("base64"), false);
     });
-
-    const serialized = JSON.stringify(body).toLowerCase();
-    assert.equal(serialized.includes("stack"), false);
-    assert.equal(serialized.includes("sql"), false);
-    assert.equal(serialized.includes("base64"), false);
-  });
+  } finally {
+    await testUser.cleanup();
+  }
 });
