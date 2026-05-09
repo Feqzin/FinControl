@@ -85,6 +85,20 @@ type ImportRollbackResult = {
   alreadyRolledBack?: boolean;
 };
 
+const IMPORT_LOG_SOURCE_TYPES = new Set(["texto", "csv", "ofx", "qfx", "manual"]);
+
+function normalizeImportLogSourceType(sourceType: string): "texto" | "csv" | "ofx" | "qfx" | "manual" {
+  if (sourceType === "pdf") {
+    // Compatibilidade com constraint legado do banco:
+    // o pipeline aceita PDF textual, mas source_type ainda nao inclui "pdf".
+    return "texto";
+  }
+  if (IMPORT_LOG_SOURCE_TYPES.has(sourceType)) {
+    return sourceType as "texto" | "csv" | "ofx" | "qfx" | "manual";
+  }
+  return "manual";
+}
+
 export class ImportPipelineError extends Error {
   readonly status: number;
   readonly details?: unknown;
@@ -605,7 +619,7 @@ export class ImportsService {
     const [log] = await db.insert(importLogs).values({
       userId,
       cartaoId: payload.cartaoId,
-      sourceType: payload.sourceType,
+      sourceType: normalizeImportLogSourceType(payload.sourceType),
       sourceName: payload.sourceName ?? null,
       status: "previewed",
       requestPayload: serializeJson(payload),
