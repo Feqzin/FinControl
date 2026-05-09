@@ -5,6 +5,11 @@ import { isOverdueDate } from "../src/pages/dividas/dividas.utils";
 import { getDaysUntilInvoice, getNextInvoiceDate, isParcelaVencida } from "../src/pages/cartoes/cartoes.utils";
 import { parseCsv } from "../src/pages/cartoes/import-parser";
 import {
+  extractTextFromPdfBuffer,
+  hasPdfMagicBytes,
+  isExtractedPdfTextUsable,
+} from "../src/pages/cartoes/import-pdf-utils";
+import {
   buildTimelineLayout,
   findSelectedTimelineEvent,
   formatBytes,
@@ -290,4 +295,29 @@ test("import parser: detecta parcelas em formatos comuns", () => {
   assert.equal(result.items[1]?.parcelas, 10);
   assert.equal(result.items[1]?.parcelaAtual, 1);
   assert.equal(result.items[1]?.reviewRequired, true);
+});
+
+test("import parser: valida assinatura magic bytes de PDF", () => {
+  const validPdf = Buffer.from("%PDF-1.7\n1 0 obj\n");
+  const invalidPdf = Buffer.from("NOTPDF");
+
+  assert.equal(hasPdfMagicBytes(validPdf.buffer.slice(validPdf.byteOffset, validPdf.byteOffset + validPdf.byteLength)), true);
+  assert.equal(hasPdfMagicBytes(invalidPdf.buffer.slice(invalidPdf.byteOffset, invalidPdf.byteOffset + invalidPdf.byteLength)), false);
+});
+
+test("import parser: detecta texto extraivel minimo de PDF", () => {
+  assert.equal(isExtractedPdfTextUsable(""), false);
+  assert.equal(isExtractedPdfTextUsable("    "), false);
+  assert.equal(isExtractedPdfTextUsable("R$ 90,00"), false);
+  assert.equal(isExtractedPdfTextUsable("06/05 Loja Central parcela 1/3 valor 120,00"), true);
+});
+
+test("import parser: extrai texto de PDF textual valido", async () => {
+  const minimalTextPdfBase64 =
+    "JVBERi0xLjIKCjkgMCBvYmoKPDwKPj4Kc3RyZWFtCkJULyA5IFRmKFRlc3QpJyBFVAplbmRzdHJlYW0KZW5kb2JqCjQgMCBvYmoKPDwKL1R5cGUgL1BhZ2UKL1BhcmVudCA1IDAgUgovQ29udGVudHMgOSAwIFIKPj4KZW5kb2JqCjUgMCBvYmoKPDwKL0tpZHNbNCAwIFIgXQovQ291bnQgMQovVHlwZSAvUGFnZXMKL01lZGlhQm94IFsgMCAwIDk5IDkgXQo+PgplbmRvYmoKMyAwIG9iago8PAovUGFnZXMgNSAwIFIKL1R5cGUgL0NhdGFsb2cKPj4KZW5kb2JqCnRyYWlsZXIKPDwKL1Jvb3QgMyAwIFIKPj4KJSVFT0Y=";
+  const buffer = Buffer.from(minimalTextPdfBase64, "base64");
+  const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+
+  const text = await extractTextFromPdfBuffer(arrayBuffer);
+  assert.match(text.toLowerCase(), /test/);
 });

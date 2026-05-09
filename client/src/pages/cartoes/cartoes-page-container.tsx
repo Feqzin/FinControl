@@ -15,6 +15,7 @@ import type { Cartao, CompraCartao, ParcelaCompra } from "@shared/schema";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { buildIgnoredDetails, countIgnoredRows, findVencimentoFatura, parseCsv, parseOfx, type ParseResult, type ParsedItem } from "@/pages/cartoes/import-parser";
+import { extractTextFromPdfBuffer, isExtractedPdfTextUsable } from "@/pages/cartoes/import-pdf-utils";
 import { ImportFaturaDialog } from "@/pages/cartoes/components/import-fatura-dialog";
 import { formatImportCardOptionLabel, suggestImportCardByText } from "@/pages/cartoes/import-card-matching";
 import { useCartoes } from "@/hooks/useCartoes";
@@ -221,7 +222,7 @@ export default function CartoesPage() {
   const [importVencimento, setImportVencimento] = useState("");
   const [importEditingId, setImportEditingId] = useState<string | null>(null);
   const [importPreviewLogId, setImportPreviewLogId] = useState<string | null>(null);
-  const [importSourceType, setImportSourceType] = useState<"texto" | "csv" | "ofx" | "qfx" | "manual">("manual");
+  const [importSourceType, setImportSourceType] = useState<"texto" | "csv" | "ofx" | "qfx" | "pdf" | "manual">("manual");
   const [importSourceName, setImportSourceName] = useState("");
   const [lastImportLogId, setLastImportLogId] = useState<string | null>(null);
   const [importConfirmResult, setImportConfirmResult] = useState<ImportConfirmResponse | null>(null);
@@ -1401,7 +1402,7 @@ export default function CartoesPage() {
     if (!extension || !IMPORT_ALLOWED_EXTENSIONS.has(extension)) {
       toast({
         title: "Arquivo não suportado",
-        description: "Use arquivos .csv, .ofx, .qfx ou .txt.",
+        description: "Use arquivos .csv, .ofx, .qfx, .txt ou .pdf (texto).",
         variant: "destructive",
       });
       return;
@@ -1434,18 +1435,27 @@ export default function CartoesPage() {
       return;
     }
 
-    if (extension === "pdf") {
-      toast({
-        title: "PDF ainda não suportado",
-        description: "A importação de PDF será liberada em uma próxima etapa.",
-      });
-      return;
-    }
-
     setImportLoading(true);
     setImportConfirmResult(null);
     try {
-      const content = await file.text();
+      let content = "";
+      if (extension === "pdf") {
+        const pdfBuffer = await file.arrayBuffer();
+        content = await extractTextFromPdfBuffer(pdfBuffer);
+        if (!isExtractedPdfTextUsable(content)) {
+          toast({
+            title: "PDF sem texto extraível",
+            description: "Este PDF parece ser imagem/escaneado. A importação por imagem será liberada em uma etapa futura.",
+            variant: "destructive",
+          });
+          setImportItems([]);
+          setImportPreviewLogId(null);
+          return;
+        }
+      } else {
+        content = await file.text();
+      }
+
       const cartaoId = resolveImportCartaoId(`${file.name}\n${content}`);
       if (!cartaoId) {
         toast({ title: "Selecione um cartao para importar", variant: "destructive" });
@@ -1453,7 +1463,7 @@ export default function CartoesPage() {
       }
       let result: ParseResult;
       const name = file.name.toLowerCase();
-      let sourceType: "csv" | "ofx" | "qfx" | "texto";
+      let sourceType: "csv" | "ofx" | "qfx" | "texto" | "pdf";
       if (name.endsWith(".ofx")) {
         result = parseOfx(content, compras, cartaoId, {
           referenceBillingDate: importVencimento || undefined,
@@ -1469,6 +1479,11 @@ export default function CartoesPage() {
           referenceBillingDate: importVencimento || undefined,
         });
         sourceType = "texto";
+      } else if (name.endsWith(".pdf")) {
+        result = parseCsv(content, compras, cartaoId, {
+          referenceBillingDate: importVencimento || undefined,
+        });
+        sourceType = "pdf";
       } else {
         result = parseCsv(content, compras, cartaoId, {
           referenceBillingDate: importVencimento || undefined,
@@ -1517,9 +1532,23 @@ export default function CartoesPage() {
           (hasIgnoredRows && ignoredDetails ? ` ${ignoredDetails}` : ""),
       });
     } catch (error) {
+      const errorMessage = getErrorMessage(error);
+      const normalizedMessage = errorMessage.toLowerCase();
+      const isPdfSignatureError = extension === "pdf" && error instanceof Error && error.message === "INVALID_PDF_SIGNATURE";
+      const isPdfParsingError = extension === "pdf" && (
+        normalizedMessage.includes("invalidpdf")
+        || normalizedMessage.includes("unexpectedresponse")
+        || normalizedMessage.includes("formaterror")
+        || normalizedMessage.includes("malformed")
+      );
+
       toast({
         title: "Erro ao ler arquivo",
-        description: getErrorMessage(error),
+        description: isPdfSignatureError
+          ? "Arquivo PDF inválido ou corrompido."
+          : isPdfParsingError
+            ? "Não foi possível ler este PDF. Envie um PDF textual válido."
+            : errorMessage,
         variant: "destructive",
       });
       setImportPreviewLogId(null);

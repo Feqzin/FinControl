@@ -320,7 +320,7 @@ export function ImportFaturaDialog({
                 <div>
                   <p className="text-sm font-medium">Arraste ou selecione o arquivo</p>
                   <p className="text-xs text-muted-foreground">
-                    Formatos suportados: CSV, OFX, QFX e TXT (PDF em breve)
+                    Formatos suportados: CSV, OFX, QFX, TXT e PDF textual (PDF escaneado ainda não)
                   </p>
                 </div>
                 <input

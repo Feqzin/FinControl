@@ -24,7 +24,7 @@ const isoDateNullableOptional = z.union([z.string(), z.date(), z.null(), z.undef
   return normalized;
 });
 
-export const importSourceType = z.enum(["texto", "csv", "ofx", "qfx", "manual"]);
+export const importSourceType = z.enum(["texto", "csv", "ofx", "qfx", "pdf", "manual"]);
 export const importAction = z.enum(["import", "skip"]);
 
 export const importPreviewItemBody = z.object({

@@ -303,7 +303,7 @@ export function useCartoes(viewingCompraId?: string) {
       items: ParsedItem[];
       cartaoId: string;
       previewLogId?: string;
-      sourceType?: "texto" | "csv" | "ofx" | "qfx" | "manual";
+      sourceType?: "texto" | "csv" | "ofx" | "qfx" | "pdf" | "manual";
       sourceName?: string;
     }) => importComprasLote(items, cartaoId, { previewLogId, sourceType, sourceName }),
     onSuccess: async () => {

@@ -2,7 +2,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { divide, formatMoneyFixed } from "@/lib/money";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
 
-type ImportSourceType = "texto" | "csv" | "ofx" | "qfx" | "manual";
+type ImportSourceType = "texto" | "csv" | "ofx" | "qfx" | "pdf" | "manual";
 type ImportLogStatus = "previewed" | "confirmed" | "rolled_back";
 
 export type ImportPreviewResponse = {
