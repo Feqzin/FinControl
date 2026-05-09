@@ -12,6 +12,16 @@ import type {
 } from "../validators/import.validators.js";
 
 type ConfidenceLevel = "alta" | "media" | "baixa";
+type CanonicalImportItemStatus = "novo" | "duplicata_exata" | "possivel_duplicata" | "invalido";
+type DuplicateProbeRow = {
+  id: string;
+  descricao: string;
+  valorParcela: string;
+  parcelas: number;
+  parcelaAtual: number;
+  dataCompra: string;
+  cartaoId: string;
+};
 
 export type ImportPreviewItem = {
   id: string;
@@ -31,6 +41,9 @@ export type ImportPreviewItem = {
   validationIssues: string[];
   canImport: boolean;
   reviewRequired: boolean;
+  status: CanonicalImportItemStatus;
+  forceImport: boolean;
+  requiresForceImport: boolean;
 };
 
 type ImportPreviewSummary = {
@@ -92,6 +105,78 @@ function parseDuplicateId(input: ImportPreviewItemInput): string | null {
   return null;
 }
 
+function parseForceImport(input: ImportPreviewItemInput): boolean {
+  return input.forceImport === true;
+}
+
+function normalizeComparableText(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function toNumericMoney(value: number | string | null | undefined): number | null {
+  const parsed = parseMoney(value ?? null);
+  return parsed == null ? null : parsed;
+}
+
+function valuesAreEqualWithinTolerance(a: number | null, b: number | null, tolerance = 0.01): boolean {
+  if (a == null || b == null) return false;
+  return Math.abs(a - b) <= tolerance;
+}
+
+function isExactDuplicateMatch(item: {
+  descricao: string;
+  valorParcela: number | null;
+  parcelas: number;
+  parcelaAtual: number;
+  dataCompra: string;
+}, duplicateRow: DuplicateProbeRow | null): boolean {
+  if (!duplicateRow) return false;
+
+  const descricaoMatch = normalizeComparableText(item.descricao) === normalizeComparableText(duplicateRow.descricao);
+  const valorParcelaMatch = valuesAreEqualWithinTolerance(item.valorParcela, toNumericMoney(duplicateRow.valorParcela));
+  const parcelasMatch = item.parcelas === duplicateRow.parcelas;
+  const parcelaAtualMatch = item.parcelaAtual === duplicateRow.parcelaAtual;
+  const dataCompraMatch = item.dataCompra === duplicateRow.dataCompra;
+
+  return descricaoMatch && valorParcelaMatch && parcelasMatch && parcelaAtualMatch && dataCompraMatch;
+}
+
+function computeCanonicalStatus(input: {
+  canImport: boolean;
+  duplicateId: string | null;
+  duplicateRow: DuplicateProbeRow | null;
+  descricao: string;
+  valorParcela: number | null;
+  parcelas: number;
+  parcelaAtual: number;
+  dataCompra: string;
+}): CanonicalImportItemStatus {
+  if (!input.canImport) return "invalido";
+  if (!input.duplicateId) return "novo";
+
+  if (
+    isExactDuplicateMatch(
+      {
+        descricao: input.descricao,
+        valorParcela: input.valorParcela,
+        parcelas: input.parcelas,
+        parcelaAtual: input.parcelaAtual,
+        dataCompra: input.dataCompra,
+      },
+      input.duplicateRow,
+    )
+  ) {
+    return "duplicata_exata";
+  }
+
+  return "possivel_duplicata";
+}
+
 function confidenceLevel(score: number): ConfidenceLevel {
   if (score >= 85) return "alta";
   if (score >= 65) return "media";
@@ -111,12 +196,19 @@ function deserializeJson<T>(value: string | null | undefined, fallback: T): T {
   }
 }
 
-function normalizeImportItem(input: ImportPreviewItemInput, index: number): ImportPreviewItem {
+function normalizeImportItem(
+  input: ImportPreviewItemInput,
+  index: number,
+  options?: {
+    duplicateRowsById?: Map<string, DuplicateProbeRow>;
+    mode?: "preview" | "confirm";
+  },
+): ImportPreviewItem {
   const issues: string[] = [];
   let score = 100;
   let canImport = true;
 
-  const id = input.id ? String(input.id) : String(index);
+  const id = input.id ? String(input.id) : input.itemId ? String(input.itemId) : String(index);
   const descricao = input.descricao.trim();
   const valor = parseMoney(input.valor);
   const valorParcela = parseMoney(input.valorParcela);
@@ -126,7 +218,8 @@ function normalizeImportItem(input: ImportPreviewItemInput, index: number): Impo
   const vencimentoFatura = input.vencimentoFatura ?? null;
   const tipo = input.tipo ?? "compra";
   const duplicateId = parseDuplicateId(input);
-  const requestedAction: ImportAction = input.action ?? "import";
+  const duplicateRow = duplicateId ? (options?.duplicateRowsById?.get(duplicateId) ?? null) : null;
+  const forceImport = parseForceImport(input);
 
   if (descricao.length < 3) {
     issues.push("Descricao curta");
@@ -163,11 +256,6 @@ function normalizeImportItem(input: ImportPreviewItemInput, index: number): Impo
     canImport = false;
   }
 
-  if (duplicateId) {
-    issues.push("Possivel duplicata");
-    score -= 30;
-  }
-
   if (valor != null && valorParcela != null && parcelas >= 1) {
     const expectedTotal = parseMoney(multiply(valorParcela, parcelas)) ?? 0;
     const diff = Math.abs(expectedTotal - valor);
@@ -177,9 +265,40 @@ function normalizeImportItem(input: ImportPreviewItemInput, index: number): Impo
     }
   }
 
+  const status = computeCanonicalStatus({
+    canImport,
+    duplicateId,
+    duplicateRow,
+    descricao,
+    valorParcela,
+    parcelas,
+    parcelaAtual,
+    dataCompra,
+  });
+
+  if (status === "duplicata_exata") {
+    issues.push("Duplicata exata detectada");
+    score -= 40;
+  } else if (status === "possivel_duplicata") {
+    issues.push("Possivel duplicata");
+    score -= 30;
+  }
+
   score = clamp(score, 0, 100);
-  const reviewRequired = issues.length > 0 || score < 75;
-  const action: ImportAction = canImport ? requestedAction : "skip";
+  const reviewRequired = status !== "novo" || issues.length > 0 || score < 75;
+  const requestedAction: ImportAction =
+    typeof input.shouldImport === "boolean"
+      ? (input.shouldImport ? "import" : "skip")
+      : (input.action ?? (status === "novo" ? "import" : "skip"));
+
+  let action: ImportAction = requestedAction;
+  if (options?.mode !== "confirm") {
+    if (status === "invalido") {
+      action = "skip";
+    } else if (status === "duplicata_exata" && !forceImport) {
+      action = "skip";
+    }
+  }
 
   return {
     id,
@@ -200,6 +319,9 @@ function normalizeImportItem(input: ImportPreviewItemInput, index: number): Impo
     validationIssues: issues,
     canImport,
     reviewRequired,
+    status,
+    forceImport,
+    requiresForceImport: status === "duplicata_exata",
   };
 }
 
@@ -261,7 +383,33 @@ export class ImportsService {
       throw new ImportPipelineError(400, "Cartao not found");
     }
 
-    const previewItems = payload.items.map((item, index) => normalizeImportItem(item, index));
+    const duplicateIds = Array.from(
+      new Set(
+        payload.items
+          .map((item) => parseDuplicateId(item))
+          .filter((value): value is string => typeof value === "string" && value.trim().length > 0),
+      ),
+    );
+    const duplicateRows = duplicateIds.length > 0
+      ? await db.select({
+        id: comprasCartao.id,
+        descricao: comprasCartao.descricao,
+        valorParcela: comprasCartao.valorParcela,
+        parcelas: comprasCartao.parcelas,
+        parcelaAtual: comprasCartao.parcelaAtual,
+        dataCompra: comprasCartao.dataCompra,
+        cartaoId: comprasCartao.cartaoId,
+      }).from(comprasCartao).where(and(
+        eq(comprasCartao.userId, userId),
+        inArray(comprasCartao.id, duplicateIds),
+      ))
+      : [];
+    const duplicateRowsById = new Map(duplicateRows.map((row) => [row.id, row] as const));
+
+    const previewItems = payload.items.map((item, index) => normalizeImportItem(item, index, {
+      duplicateRowsById,
+      mode: "preview",
+    }));
     const summary = summarizePreview(previewItems);
     const snapshot: ImportPreviewPayloadSnapshot = { items: previewItems, summary };
 
@@ -308,29 +456,70 @@ export class ImportsService {
     }
 
     const snapshot = deserializeJson<ImportPreviewPayloadSnapshot>(log.previewPayload, { items: [], summary: summarizePreview([]) });
-    const candidateItems = payload.items
-      ? payload.items.map((item, index) => normalizeImportItem(item, index))
-      : snapshot.items;
+    const sourceItems = payload.items ?? snapshot.items;
+    const duplicateIds = Array.from(
+      new Set(
+        sourceItems
+          .map((item) => parseDuplicateId(item))
+          .filter((value): value is string => typeof value === "string" && value.trim().length > 0),
+      ),
+    );
+    const duplicateRows = duplicateIds.length > 0
+      ? await db.select({
+        id: comprasCartao.id,
+        descricao: comprasCartao.descricao,
+        valorParcela: comprasCartao.valorParcela,
+        parcelas: comprasCartao.parcelas,
+        parcelaAtual: comprasCartao.parcelaAtual,
+        dataCompra: comprasCartao.dataCompra,
+        cartaoId: comprasCartao.cartaoId,
+      }).from(comprasCartao).where(and(
+        eq(comprasCartao.userId, userId),
+        inArray(comprasCartao.id, duplicateIds),
+      ))
+      : [];
+    const duplicateRowsById = new Map(duplicateRows.map((row) => [row.id, row] as const));
+
+    const candidateItems = sourceItems.map((item, index) => normalizeImportItem(item, index, {
+      duplicateRowsById,
+      mode: "confirm",
+    }));
 
     if (candidateItems.length === 0) {
       throw new ImportPipelineError(400, "Nenhum item para confirmar");
     }
 
-    const blockingItems = candidateItems.filter((item) => item.action === "import" && !item.canImport);
-    if (blockingItems.length > 0) {
+    const importItems = candidateItems.filter((item) => item.action === "import");
+    if (importItems.length > 0 && payload.userConfirmed !== true) {
+      throw new ImportPipelineError(400, "Confirmacao explicita do usuario e obrigatoria.");
+    }
+
+    const invalidImportItems = importItems.filter((item) => item.status === "invalido");
+    if (invalidImportItems.length > 0) {
       throw new ImportPipelineError(
         400,
         "Existem itens com erro de validacao. Corrija antes de confirmar.",
         {
-          blockedIds: blockingItems.map((item) => item.id),
-          issues: blockingItems.map((item) => ({ id: item.id, validationIssues: item.validationIssues })),
+          blockedIds: invalidImportItems.map((item) => item.id),
+          issues: invalidImportItems.map((item) => ({ id: item.id, validationIssues: item.validationIssues })),
         },
       );
     }
 
-    const rowsToInsert = candidateItems
-      .filter((item) => item.action === "import")
-      .map((item) => toCompraInsert(userId, log.cartaoId, item));
+    const exactDuplicatesWithoutForce = importItems.filter((item) => (
+      item.status === "duplicata_exata" && item.forceImport !== true
+    ));
+    if (exactDuplicatesWithoutForce.length > 0) {
+      throw new ImportPipelineError(
+        400,
+        "Duplicatas exatas exigem confirmacao explicita para forcar importacao.",
+        {
+          blockedIds: exactDuplicatesWithoutForce.map((item) => item.id),
+        },
+      );
+    }
+
+    const rowsToInsert = importItems.map((item) => toCompraInsert(userId, log.cartaoId, item));
 
     const summary = summarizePreview(candidateItems);
     const createdCompraIds = await db.transaction(async (tx) => {

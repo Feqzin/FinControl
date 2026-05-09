@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { normalizeIsoDate } from "../../utils/date.js";
+import { importFaturaExtratoItemStatusSchema } from "./import-fatura-extrato.validators.js";
 
 const moneyField = z.union([z.string(), z.number()]);
 
@@ -27,6 +28,7 @@ export const importSourceType = z.enum(["texto", "csv", "ofx", "qfx", "manual"])
 export const importAction = z.enum(["import", "skip"]);
 
 export const importPreviewItemBody = z.object({
+  itemId: z.string().optional(),
   id: z.string().optional(),
   descricao: z.string().min(1),
   valor: moneyField,
@@ -40,6 +42,9 @@ export const importPreviewItemBody = z.object({
   vencimentoFatura: isoDateNullableOptional,
   tipo: z.enum(["compra", "taxa"]).optional(),
   action: importAction.optional(),
+  shouldImport: z.boolean().optional(),
+  status: importFaturaExtratoItemStatusSchema.optional(),
+  forceImport: z.boolean().optional(),
   duplicateId: z.string().optional().nullable(),
   duplicata: z.any().optional(),
 });
@@ -53,6 +58,7 @@ export const importPreviewBody = z.object({
 
 export const importConfirmBody = z.object({
   importLogId: z.string().min(1),
+  userConfirmed: z.boolean().optional(),
   items: z.array(importPreviewItemBody).min(1).max(1200).optional(),
 });
 

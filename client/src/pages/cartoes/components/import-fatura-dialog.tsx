@@ -2,7 +2,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { Cartao } from "@shared/schema";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
-import { AlertTriangle, FileText, Pencil, Upload, X } from "lucide-react";
+import { FileText, Pencil, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 
 type ImportTab = "texto" | "arquivo";
+type CanonicalImportStatus = "novo" | "duplicata_exata" | "possivel_duplicata" | "invalido";
 
 interface ImportEditForm {
   descricao: string;
@@ -22,6 +23,45 @@ interface ImportEditForm {
   parcelas: string;
   parcelaAtual: string;
   vencimentoFatura: string;
+}
+
+function isStructurallyInvalid(item: ParsedItem): boolean {
+  if (!item.descricao?.trim()) return true;
+  if (!Number.isFinite(item.valor) || item.valor <= 0) return true;
+  if (!Number.isFinite(item.valorParcela) || item.valorParcela <= 0) return true;
+  if (!Number.isInteger(item.parcelas) || item.parcelas < 1 || item.parcelas > 360) return true;
+  if (!Number.isInteger(item.parcelaAtual) || item.parcelaAtual < 1 || item.parcelaAtual > item.parcelas) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(item.dataCompra)) return true;
+  return false;
+}
+
+function getEffectiveStatus(item: ParsedItem): CanonicalImportStatus {
+  const hasDuplicate = Boolean(item.duplicateId || item.duplicata);
+  const isInvalid = isStructurallyInvalid(item);
+  if (isInvalid) return "invalido";
+
+  if (item.status === "duplicata_exata" || item.status === "possivel_duplicata" || item.status === "novo") {
+    return item.status;
+  }
+  if (item.status === "invalido") {
+    return hasDuplicate ? "possivel_duplicata" : "novo";
+  }
+  return hasDuplicate ? "possivel_duplicata" : "novo";
+}
+
+function getStatusBadge(status: CanonicalImportStatus): { label: string; className: string } {
+  switch (status) {
+    case "novo":
+      return { label: "Novo", className: "bg-emerald-500/10 text-emerald-700" };
+    case "duplicata_exata":
+      return { label: "Duplicata exata", className: "bg-orange-500/10 text-orange-700" };
+    case "possivel_duplicata":
+      return { label: "Duplicata possível", className: "bg-amber-500/10 text-amber-700" };
+    case "invalido":
+      return { label: "Inválido", className: "bg-red-500/10 text-red-700" };
+    default:
+      return { label: "Revisar", className: "bg-muted text-muted-foreground" };
+  }
 }
 
 interface ImportFaturaDialogProps {
@@ -84,10 +124,30 @@ export function ImportFaturaDialog({
   onConfirmImport,
 }: ImportFaturaDialogProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const totalImportar = importItems.filter((item) => item.action === "import").length;
+  const totalImportar = importItems.filter((item) => {
+    const status = getEffectiveStatus(item);
+    if (item.action !== "import") return false;
+    if (status === "invalido") return false;
+    if (status === "duplicata_exata" && item.forceImport !== true) return false;
+    return true;
+  }).length;
   const totalMensalImportar = importItems
-    .filter((item) => item.action === "import")
+    .filter((item) => {
+      const status = getEffectiveStatus(item);
+      if (item.action !== "import") return false;
+      if (status === "invalido") return false;
+      if (status === "duplicata_exata" && item.forceImport !== true) return false;
+      return true;
+    })
     .reduce((sum, item) => sum + item.valorParcela, 0);
+  const hasInvalidImportAttempt = importItems.some((item) => (
+    item.action === "import" && getEffectiveStatus(item) === "invalido"
+  ));
+  const hasDuplicateExactWithoutForce = importItems.some((item) => (
+    item.action === "import" &&
+    getEffectiveStatus(item) === "duplicata_exata" &&
+    item.forceImport !== true
+  ));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -181,7 +241,16 @@ export function ImportFaturaDialog({
                     variant="ghost"
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => setImportItems((items) => items.map((item) => ({ ...item, action: "import" })))}
+                    onClick={() => setImportItems((items) => items.map((item) => {
+                      const status = getEffectiveStatus(item);
+                      if (status === "invalido") {
+                        return { ...item, action: "skip", forceImport: false };
+                      }
+                      if (status === "duplicata_exata") {
+                        return { ...item, action: "skip", forceImport: false };
+                      }
+                      return { ...item, action: "import", forceImport: false };
+                    }))}
                   >
                     Marcar todas
                   </Button>
@@ -189,7 +258,7 @@ export function ImportFaturaDialog({
                     variant="ghost"
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => setImportItems((items) => items.map((item) => ({ ...item, action: "skip" })))}
+                    onClick={() => setImportItems((items) => items.map((item) => ({ ...item, action: "skip", forceImport: false })))}
                   >
                     Ignorar todas
                   </Button>
@@ -218,12 +287,27 @@ export function ImportFaturaDialog({
               <div className="border rounded-md overflow-hidden divide-y divide-border/40">
                 {importItems.map((item, idx) => {
                   const isEditingRow = importEditingId === item.id;
+                  const status = getEffectiveStatus(item);
+                  const statusBadge = getStatusBadge(status);
+                  const selectValue = status === "duplicata_exata"
+                    ? (item.action === "import" && item.forceImport === true ? "force" : "skip")
+                    : item.action;
+                  const rowClassName =
+                    status === "invalido"
+                      ? "bg-red-500/5"
+                      : status === "duplicata_exata"
+                        ? "bg-orange-500/5"
+                        : status === "possivel_duplicata"
+                          ? "bg-amber-500/5"
+                          : item.action === "skip"
+                            ? "bg-muted/20 opacity-60"
+                            : "";
 
                   return (
                     <div
                       key={item.id}
                       data-testid={`row-import-${idx}`}
-                      className={`text-sm ${item.duplicata ? "bg-amber-500/5" : item.action === "skip" ? "bg-muted/20 opacity-60" : ""}`}
+                      className={`text-sm ${rowClassName}`}
                     >
                       {isEditingRow ? (
                         <div className="p-3 space-y-2">
@@ -296,18 +380,35 @@ export function ImportFaturaDialog({
                       ) : (
                         <div className="px-3 py-2 flex items-start gap-2">
                           <Select
-                            value={item.action}
-                            onValueChange={(value) =>
-                              setImportItems((items) => items.map((current, index) => (
-                                index === idx ? { ...current, action: value as "import" | "skip" } : current
-                              )))
-                            }
+                            value={selectValue}
+                            onValueChange={(value) => setImportItems((items) => items.map((current, index) => {
+                              if (index !== idx) return current;
+                              const currentStatus = getEffectiveStatus(current);
+                              if (currentStatus === "invalido") {
+                                return { ...current, action: "skip", forceImport: false };
+                              }
+                              if (currentStatus === "duplicata_exata") {
+                                if (value === "force") {
+                                  return { ...current, action: "import", forceImport: true };
+                                }
+                                return { ...current, action: "skip", forceImport: false };
+                              }
+                              return {
+                                ...current,
+                                action: value as "import" | "skip",
+                                forceImport: false,
+                              };
+                            }))}
                           >
                             <SelectTrigger className="h-7 w-20 text-xs flex-shrink-0 mt-0.5">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="import">Importar</SelectItem>
+                              {status === "duplicata_exata" ? (
+                                <SelectItem value="force">Forçar</SelectItem>
+                              ) : (
+                                <SelectItem value="import">Importar</SelectItem>
+                              )}
                               <SelectItem value="skip">Ignorar</SelectItem>
                             </SelectContent>
                           </Select>
@@ -315,14 +416,17 @@ export function ImportFaturaDialog({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1 flex-wrap">
                               <p className="font-medium truncate">{item.descricao}</p>
+                              <span className={`inline-flex items-center text-xs px-1.5 py-0.5 rounded ${statusBadge.className}`}>
+                                {statusBadge.label}
+                              </span>
+                              {item.reviewRequired && (
+                                <span className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-700">
+                                  Revisar
+                                </span>
+                              )}
                               {item.tipo === "taxa" && (
                                 <span className="inline-flex items-center text-xs px-1 py-0.5 rounded bg-blue-500/10 text-blue-600 flex-shrink-0">
                                   Taxa
-                                </span>
-                              )}
-                              {item.duplicata && (
-                                <span className="inline-flex items-center gap-0.5 text-xs px-1 py-0.5 rounded bg-amber-500/10 text-amber-600 flex-shrink-0">
-                                  <AlertTriangle className="w-2.5 h-2.5" /> Duplicata?
                                 </span>
                               )}
                             </div>
@@ -348,7 +452,9 @@ export function ImportFaturaDialog({
                                   Confianca: {Math.round(item.confidenceScore)}%
                                 </span>
                               )}
-                              {item.reviewRequired && <span className="text-amber-600">Revisao recomendada</span>}
+                              {status === "duplicata_exata" && item.forceImport !== true && (
+                                <span className="text-orange-700">Marque "Forçar" para importar esta duplicata exata</span>
+                              )}
                             </div>
                             {item.validationIssues && item.validationIssues.length > 0 && (
                               <p className="text-xs text-red-600 mt-0.5">
@@ -368,16 +474,16 @@ export function ImportFaturaDialog({
                             className="h-7 w-7 flex-shrink-0 mt-0.5"
                             onClick={() => {
                               setImportEditingId(item.id);
-                              setImportEditForm({
-                                descricao: item.descricao,
-                                valor: String(item.valorParcela),
-                                dataCompra: item.dataCompra,
-                                parcelas: String(item.parcelas),
-                                parcelaAtual: String(item.parcelaAtual),
-                                vencimentoFatura: item.vencimentoFatura ?? "",
-                              });
-                            }}
-                            data-testid={`button-edit-import-item-${idx}`}
+                                setImportEditForm({
+                                  descricao: item.descricao,
+                                  valor: String(item.valorParcela),
+                                  dataCompra: item.dataCompra,
+                                  parcelas: String(item.parcelas),
+                                  parcelaAtual: String(item.parcelaAtual),
+                                  vencimentoFatura: item.vencimentoFatura ?? "",
+                                });
+                              }}
+                              data-testid={`button-edit-import-item-${idx}`}
                           >
                             <Pencil className="w-3 h-3 text-muted-foreground" />
                           </Button>
@@ -398,13 +504,27 @@ export function ImportFaturaDialog({
               </div>
 
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm text-muted-foreground">
-                  {totalImportar} de {importItems.length} serao importadas
-                  {" · "}Total: {formatCurrency(totalMensalImportar)}/mes
-                </p>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">
+                    {totalImportar} de {importItems.length} serao importadas
+                    {" · "}Total: {formatCurrency(totalMensalImportar)}/mes
+                  </p>
+                  {hasInvalidImportAttempt ? (
+                    <p className="text-xs text-red-600">Itens inválidos não podem ser confirmados para importação.</p>
+                  ) : null}
+                  {hasDuplicateExactWithoutForce ? (
+                    <p className="text-xs text-orange-700">Duplicatas exatas exigem ação de "Forçar" para confirmar.</p>
+                  ) : null}
+                </div>
                 <Button
                   data-testid="button-confirmar-importacao"
-                  disabled={totalImportar === 0 || isBatchImportPending || !importCartaoId}
+                  disabled={
+                    totalImportar === 0
+                    || isBatchImportPending
+                    || !importCartaoId
+                    || hasInvalidImportAttempt
+                    || hasDuplicateExactWithoutForce
+                  }
                   onClick={onConfirmImport}
                 >
                   {isBatchImportPending ? "Importando..." : "Confirmar importacao"}

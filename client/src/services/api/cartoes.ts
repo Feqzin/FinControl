@@ -333,6 +333,7 @@ function toImportItemPayload(item: ParsedItem) {
       : null);
 
   return {
+    itemId: item.id,
     id: item.id,
     descricao: item.descricao,
     valor: item.valor,
@@ -345,6 +346,9 @@ function toImportItemPayload(item: ParsedItem) {
     vencimentoFatura: item.vencimentoFatura ?? null,
     tipo: item.tipo,
     action: item.action,
+    shouldImport: item.action === "import",
+    status: item.status,
+    forceImport: item.forceImport === true,
     duplicateId: duplicateId || null,
   };
 }
@@ -370,6 +374,7 @@ export async function confirmImportCompras(params: {
 }): Promise<ImportConfirmResponse> {
   const response = await apiRequest("POST", "/api/imports/confirm", {
     importLogId: params.importLogId,
+    userConfirmed: true,
     items: params.items ? params.items.map(toImportItemPayload) : undefined,
   });
   return response.json();

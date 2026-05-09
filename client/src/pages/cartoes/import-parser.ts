@@ -15,6 +15,8 @@ export interface ParsedItem {
   tipo: "compra" | "taxa";
   duplicata: any;
   action: "import" | "skip";
+  status?: "novo" | "duplicata_exata" | "possivel_duplicata" | "invalido";
+  forceImport?: boolean;
   confidenceScore?: number;
   confidenceLevel?: "alta" | "media" | "baixa";
   validationIssues?: string[];

@@ -66,6 +66,7 @@ const IconPicker = lazy(() =>
 const DELETE_MODAL_TIMEOUT_MS = 20_000;
 const IS_DEV = import.meta.env.DEV;
 type CartoesTab = "resumo" | "fatura" | "compras";
+type CanonicalImportStatus = "novo" | "duplicata_exata" | "possivel_duplicata" | "invalido";
 
 function normalizeCartoesTab(value: string | null | undefined): CartoesTab {
   if (value === "fatura" || value === "compras" || value === "resumo") {
@@ -78,6 +79,29 @@ function normalizeCartoesTab(value: string | null | undefined): CartoesTab {
     return "resumo";
   }
   return "resumo";
+}
+
+function isImportItemStructurallyInvalid(item: ParsedItem): boolean {
+  if (!item.descricao?.trim()) return true;
+  if (!Number.isFinite(item.valor) || item.valor <= 0) return true;
+  if (!Number.isFinite(item.valorParcela) || item.valorParcela <= 0) return true;
+  if (!Number.isInteger(item.parcelas) || item.parcelas < 1 || item.parcelas > 360) return true;
+  if (!Number.isInteger(item.parcelaAtual) || item.parcelaAtual < 1 || item.parcelaAtual > item.parcelas) return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(item.dataCompra)) return true;
+  return false;
+}
+
+function getImportItemEffectiveStatus(item: ParsedItem): CanonicalImportStatus {
+  const hasDuplicate = Boolean(item.duplicateId || item.duplicata);
+  if (isImportItemStructurallyInvalid(item)) return "invalido";
+
+  if (item.status === "duplicata_exata" || item.status === "possivel_duplicata" || item.status === "novo") {
+    return item.status;
+  }
+  if (item.status === "invalido") {
+    return hasDuplicate ? "possivel_duplicata" : "novo";
+  }
+  return hasDuplicate ? "possivel_duplicata" : "novo";
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
@@ -1086,6 +1110,32 @@ export default function CartoesPage() {
       return;
     }
 
+    const invalidSelectedItems = importItems.filter((item) => (
+      item.action === "import" && getImportItemEffectiveStatus(item) === "invalido"
+    ));
+    if (invalidSelectedItems.length > 0) {
+      toast({
+        title: "Itens inválidos não podem ser importados",
+        description: "Revise os itens marcados como inválidos antes de confirmar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const duplicateExactWithoutForce = importItems.filter((item) => (
+      item.action === "import"
+      && getImportItemEffectiveStatus(item) === "duplicata_exata"
+      && item.forceImport !== true
+    ));
+    if (duplicateExactWithoutForce.length > 0) {
+      toast({
+        title: "Duplicata exata exige confirmação explícita",
+        description: "Marque a opção de forçar importação nos itens de duplicata exata.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     batchImportMutation.mutate(
       {
         items: importItems,
@@ -1216,17 +1266,36 @@ export default function CartoesPage() {
     const pa = Math.min(Math.max(1, parseInt(importEditForm.parcelaAtual) || 1), p);
     const vp = parseFloat(importEditForm.valor) || 0; // valor da parcela
     const vt = Number((vp * p).toFixed(2)); // valorTotal = parcela × total
-    setImportItems(importItems.map((item) => item.id === importEditingId ? {
-      ...item,
-      descricao: importEditForm.descricao || item.descricao,
-      valor: vp > 0 ? vt : item.valor,
-      valorParcela: vp > 0 ? vp : item.valorParcela,
-      parcelas: p,
-      parcelaAtual: pa,
-      parcelasRestantes: Math.max(p - pa + 1, 0),
-      dataCompra: importEditForm.dataCompra || item.dataCompra,
-      vencimentoFatura: importEditForm.vencimentoFatura || null,
-    } : item));
+    setImportItems(importItems.map((item) => {
+      if (item.id !== importEditingId) return item;
+
+      const nextItem: ParsedItem = {
+        ...item,
+        descricao: importEditForm.descricao || item.descricao,
+        valor: vp > 0 ? vt : item.valor,
+        valorParcela: vp > 0 ? vp : item.valorParcela,
+        parcelas: p,
+        parcelaAtual: pa,
+        parcelasRestantes: Math.max(p - pa + 1, 0),
+        dataCompra: importEditForm.dataCompra || item.dataCompra,
+        vencimentoFatura: importEditForm.vencimentoFatura || null,
+      };
+      const nextStatus = getImportItemEffectiveStatus(nextItem);
+      const validationIssues = isImportItemStructurallyInvalid(nextItem)
+        ? ["Item requer revisão após edição."]
+        : [];
+      const canImport = nextStatus !== "invalido";
+
+      return {
+        ...nextItem,
+        status: nextStatus,
+        canImport,
+        reviewRequired: nextStatus !== "novo",
+        validationIssues,
+        forceImport: nextStatus === "duplicata_exata" ? (nextItem.forceImport === true) : false,
+        action: canImport ? nextItem.action : "skip",
+      };
+    }));
     setImportEditingId(null);
   };
 

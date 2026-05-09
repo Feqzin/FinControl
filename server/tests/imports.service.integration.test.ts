@@ -83,16 +83,23 @@ testImports("pipeline de importacao: preview, confirmacao e rollback", async () 
 
     const duplicate = preview.items.find((item) => item.id === "dup-1");
     assert.ok(duplicate);
+    assert.equal(duplicate.status, "possivel_duplicata");
     assert.equal(duplicate.duplicateId, "compra-existente");
     assert.equal(duplicate.reviewRequired, true);
     assert.ok(duplicate.confidenceScore < 100);
 
+    const novo = preview.items.find((item) => item.id === "ok-1");
+    assert.ok(novo);
+    assert.equal(novo.status, "novo");
+    assert.equal(novo.canImport, true);
+
     const invalid = preview.items.find((item) => item.id === "bad-1");
     assert.ok(invalid);
+    assert.equal(invalid.status, "invalido");
     assert.equal(invalid.action, "skip");
     assert.equal(invalid.canImport, false);
 
-    const confirmed = await service.confirm(user.id, { importLogId: preview.importLogId });
+    const confirmed = await service.confirm(user.id, { importLogId: preview.importLogId, userConfirmed: true });
     assert.equal(confirmed.createdCount, 2);
     assert.equal(confirmed.skippedCount, 1);
     assert.equal(confirmed.createdCompraIds.length, 2);
@@ -110,7 +117,7 @@ testImports("pipeline de importacao: preview, confirmacao e rollback", async () 
       .sort((a, b) => a - b);
     assert.deepEqual(countsByCompra, [1, 2]);
 
-    const confirmAgain = await service.confirm(user.id, { importLogId: preview.importLogId });
+    const confirmAgain = await service.confirm(user.id, { importLogId: preview.importLogId, userConfirmed: true });
     assert.equal(confirmAgain.alreadyConfirmed, true);
     assert.equal(confirmAgain.createdCount, 2);
 
@@ -180,28 +187,139 @@ testImports("confirmacao ignora item invalido sem criar compras inconsistentes",
       ],
     });
 
-    const confirmed = await service.confirm(user.id, {
-      importLogId: preview.importLogId,
+    await assert.rejects(
+      service.confirm(user.id, {
+        importLogId: preview.importLogId,
+        userConfirmed: true,
+        items: [
+          {
+            id: "forced-invalid",
+            descricao: "forcado",
+            valor: "0",
+            valorParcela: "0",
+            parcelas: 1,
+            parcelaAtual: 1,
+            dataCompra: "2026-04-01",
+            vencimentoFatura: null,
+            tipo: "compra",
+            action: "import",
+          },
+        ],
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message.includes("erro de validacao"), true);
+        return true;
+      },
+    );
+
+    const compras = await db.select().from(comprasCartao).where(eq(comprasCartao.userId, user.id));
+    assert.equal(compras.length, 0);
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testImports("duplicata exata exige forceImport explicito para confirmar", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, comprasCartao } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_exact_dup_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Exact Duplicate",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Exact Duplicate",
+    limite: "5000.00",
+    melhorDiaCompra: 9,
+    diaVencimento: 15,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const [existingCompra] = await db.insert(comprasCartao).values({
+      userId: user.id,
+      cartaoId: cartao.id,
+      descricao: "Supermercado Central",
+      valorTotal: "90.00",
+      valorParcela: "90.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      dataCompra: "2026-04-11",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    }).returning();
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-duplicata-exata",
       items: [
         {
-          id: "forced-invalid",
-          descricao: "forcado",
-          valor: "0",
-          valorParcela: "0",
+          id: "dup-exact-1",
+          descricao: "Supermercado Central",
+          valor: "90.00",
+          valorParcela: "90.00",
           parcelas: 1,
           parcelaAtual: 1,
-          dataCompra: "2026-04-01",
+          dataCompra: "2026-04-11",
           vencimentoFatura: null,
           tipo: "compra",
-          action: "import",
+          action: "skip",
+          duplicateId: existingCompra.id,
         },
       ],
     });
 
-    assert.equal(confirmed.createdCount, 0);
-    assert.equal(confirmed.skippedCount, 1);
-    const compras = await db.select().from(comprasCartao).where(eq(comprasCartao.userId, user.id));
-    assert.equal(compras.length, 0);
+    const exactItem = preview.items[0];
+    assert.equal(exactItem.status, "duplicata_exata");
+
+    await assert.rejects(
+      service.confirm(user.id, {
+        importLogId: preview.importLogId,
+        userConfirmed: true,
+        items: [
+          {
+            ...exactItem,
+            action: "import",
+            forceImport: false,
+          },
+        ],
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message.includes("Duplicatas exatas"), true);
+        return true;
+      },
+    );
+
+    const confirmed = await service.confirm(user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+      items: [
+        {
+          ...exactItem,
+          action: "import",
+          forceImport: true,
+        },
+      ],
+    });
+
+    assert.equal(confirmed.createdCount, 1);
+    const compras = await db.select().from(comprasCartao).where(and(
+      eq(comprasCartao.userId, user.id),
+      eq(comprasCartao.cartaoId, cartao.id),
+    ));
+    assert.equal(compras.length, 2);
   } finally {
     await db.delete(users).where(eq(users.id, user.id));
   }
@@ -256,7 +374,7 @@ testImports("confirmacao faz rollback se falhar apos criar compras e antes de pe
       ],
     });
 
-    await assert.rejects(async () => service.confirm(user.id, { importLogId: preview.importLogId }));
+    await assert.rejects(async () => service.confirm(user.id, { importLogId: preview.importLogId, userConfirmed: true }));
 
     const comprasRows = await db.select().from(comprasCartao).where(and(
       eq(comprasCartao.userId, user.id),
