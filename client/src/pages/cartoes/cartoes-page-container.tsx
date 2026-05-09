@@ -1290,7 +1290,9 @@ export default function CartoesPage() {
       setImportLoading(true);
       setImportConfirmResult(null);
       try {
-      const result = parseCsv(importTexto, compras, cartaoId);
+      const result = parseCsv(importTexto, compras, cartaoId, {
+        referenceBillingDate: importVencimento || undefined,
+      });
       const venc = findVencimentoFatura(importTexto);
       if (venc) setImportVencimento(venc);
 
@@ -1453,16 +1455,24 @@ export default function CartoesPage() {
       const name = file.name.toLowerCase();
       let sourceType: "csv" | "ofx" | "qfx" | "texto";
       if (name.endsWith(".ofx")) {
-        result = parseOfx(content, compras, cartaoId);
+        result = parseOfx(content, compras, cartaoId, {
+          referenceBillingDate: importVencimento || undefined,
+        });
         sourceType = "ofx";
       } else if (name.endsWith(".qfx")) {
-        result = parseOfx(content, compras, cartaoId);
+        result = parseOfx(content, compras, cartaoId, {
+          referenceBillingDate: importVencimento || undefined,
+        });
         sourceType = "qfx";
       } else if (name.endsWith(".txt")) {
-        result = parseCsv(content, compras, cartaoId);
+        result = parseCsv(content, compras, cartaoId, {
+          referenceBillingDate: importVencimento || undefined,
+        });
         sourceType = "texto";
       } else {
-        result = parseCsv(content, compras, cartaoId);
+        result = parseCsv(content, compras, cartaoId, {
+          referenceBillingDate: importVencimento || undefined,
+        });
         sourceType = "csv";
       }
       const venc = findVencimentoFatura(content);

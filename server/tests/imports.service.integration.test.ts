@@ -423,6 +423,141 @@ testImports("confirmacao contabiliza duplicata exata bloqueada quando item fica 
   }
 });
 
+testImports("preview detecta duplicata exata automaticamente sem duplicateId", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, comprasCartao } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_auto_exact_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Auto Exact",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Auto Exact",
+    limite: "5000.00",
+    melhorDiaCompra: 10,
+    diaVencimento: 20,
+    iconeId: null,
+  }).returning();
+
+  try {
+    await db.insert(comprasCartao).values({
+      userId: user.id,
+      cartaoId: cartao.id,
+      descricao: "Loja Exata",
+      valorTotal: "120.00",
+      valorParcela: "40.00",
+      parcelas: 3,
+      parcelaAtual: 1,
+      dataCompra: "2026-04-05",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    });
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-auto-exata",
+      items: [
+        {
+          id: "auto-exata-1",
+          descricao: "Loja Exata",
+          valor: "120.00",
+          valorParcela: "40.00",
+          parcelas: 3,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-05",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+        },
+      ],
+    });
+
+    assert.equal(preview.items.length, 1);
+    assert.equal(preview.items[0]?.status, "duplicata_exata");
+    assert.ok(preview.items[0]?.duplicateId);
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testImports("preview detecta possivel duplicata automaticamente em caso semelhante", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, comprasCartao } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_auto_possible_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Auto Possible",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Auto Possible",
+    limite: "5000.00",
+    melhorDiaCompra: 10,
+    diaVencimento: 20,
+    iconeId: null,
+  }).returning();
+
+  try {
+    await db.insert(comprasCartao).values({
+      userId: user.id,
+      cartaoId: cartao.id,
+      descricao: "Mercado Bairro",
+      valorTotal: "100.00",
+      valorParcela: "100.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      dataCompra: "2026-04-05",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    });
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-auto-possivel",
+      items: [
+        {
+          id: "auto-possivel-1",
+          descricao: "Mercado do Bairro",
+          valor: "100.00",
+          valorParcela: "100.00",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-06",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+        },
+      ],
+    });
+
+    assert.equal(preview.items.length, 1);
+    assert.equal(preview.items[0]?.status, "possivel_duplicata");
+    assert.equal(preview.items[0]?.reviewRequired, true);
+    assert.ok(preview.items[0]?.duplicateId);
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
 testImports("listagem de logs retorna apenas importacoes do usuario autenticado", async () => {
   const { db } = await import("../db");
   const { ImportsService } = await import("../services/imports.service");

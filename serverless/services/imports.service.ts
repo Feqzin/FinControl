@@ -16,6 +16,7 @@ type CanonicalImportItemStatus = "novo" | "duplicata_exata" | "possivel_duplicat
 type DuplicateProbeRow = {
   id: string;
   descricao: string;
+  valorTotal: string;
   valorParcela: string;
   parcelas: number;
   parcelaAtual: number;
@@ -127,6 +128,44 @@ function normalizeComparableText(value: string): string {
     .replace(/\s+/g, " ");
 }
 
+function parseComparableDate(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function dayDiff(a: string, b: string): number | null {
+  const dateA = parseComparableDate(a);
+  const dateB = parseComparableDate(b);
+  if (!dateA || !dateB) return null;
+  return Math.floor(Math.abs(dateA.getTime() - dateB.getTime()) / 86_400_000);
+}
+
+function extractComparableMerchant(descricao: string): string {
+  const normalized = normalizeComparableText(descricao)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "";
+  return normalized
+    .split(" ")
+    .filter((token) => token.length >= 3)
+    .slice(0, 4)
+    .join(" ");
+}
+
+function similarityByTokenOverlap(a: string, b: string): number {
+  if (!a || !b) return 0;
+  const tokensA = new Set(a.split(" ").filter((token) => token.length >= 3));
+  const tokensB = new Set(b.split(" ").filter((token) => token.length >= 3));
+  if (tokensA.size === 0 || tokensB.size === 0) return 0;
+  let intersection = 0;
+  for (const token of Array.from(tokensA)) {
+    if (tokensB.has(token)) intersection += 1;
+  }
+  return intersection / Math.max(tokensA.size, tokensB.size);
+}
+
 function toNumericMoney(value: number | string | null | undefined): number | null {
   const parsed = parseMoney(value ?? null);
   return parsed == null ? null : parsed;
@@ -139,6 +178,8 @@ function valuesAreEqualWithinTolerance(a: number | null, b: number | null, toler
 
 function isExactDuplicateMatch(item: {
   descricao: string;
+  estabelecimento?: string | null;
+  valor: number | null;
   valorParcela: number | null;
   parcelas: number;
   parcelaAtual: number;
@@ -147,31 +188,110 @@ function isExactDuplicateMatch(item: {
   if (!duplicateRow) return false;
 
   const descricaoMatch = normalizeComparableText(item.descricao) === normalizeComparableText(duplicateRow.descricao);
+  const estabelecimentoMatch = !item.estabelecimento
+    || normalizeComparableText(item.estabelecimento) === extractComparableMerchant(duplicateRow.descricao);
+  const valorTotalMatch = item.valor == null
+    || valuesAreEqualWithinTolerance(item.valor, toNumericMoney(duplicateRow.valorTotal));
   const valorParcelaMatch = valuesAreEqualWithinTolerance(item.valorParcela, toNumericMoney(duplicateRow.valorParcela));
   const parcelasMatch = item.parcelas === duplicateRow.parcelas;
   const parcelaAtualMatch = item.parcelaAtual === duplicateRow.parcelaAtual;
   const dataCompraMatch = item.dataCompra === duplicateRow.dataCompra;
 
-  return descricaoMatch && valorParcelaMatch && parcelasMatch && parcelaAtualMatch && dataCompraMatch;
+  return descricaoMatch && estabelecimentoMatch && valorParcelaMatch && valorTotalMatch && parcelasMatch && parcelaAtualMatch && dataCompraMatch;
+}
+
+function findPotentialDuplicateCandidate(
+  item: {
+    descricao: string;
+    estabelecimento?: string | null;
+    valor: number | null;
+    valorParcela: number | null;
+    parcelas: number;
+    parcelaAtual: number;
+    dataCompra: string;
+    cartaoId: string;
+  },
+  duplicateRows: DuplicateProbeRow[],
+): { row: DuplicateProbeRow; kind: "exact" | "possible" } | null {
+  const normalizedDescricao = normalizeComparableText(item.descricao);
+  const normalizedEstabelecimento = normalizeComparableText(item.estabelecimento ?? extractComparableMerchant(item.descricao));
+  let best: { row: DuplicateProbeRow; score: number; kind: "exact" | "possible" } | null = null;
+
+  for (const row of duplicateRows) {
+    if (row.cartaoId !== item.cartaoId) continue;
+
+    const rowValorParcela = toNumericMoney(row.valorParcela);
+    const rowValorTotal = toNumericMoney(row.valorTotal);
+    const rowDescricao = normalizeComparableText(row.descricao);
+    const rowEstabelecimento = extractComparableMerchant(row.descricao);
+
+    const diffParcela = item.valorParcela == null || rowValorParcela == null
+      ? Number.POSITIVE_INFINITY
+      : Math.abs(item.valorParcela - rowValorParcela);
+    const diffTotal = item.valor == null || rowValorTotal == null
+      ? Number.POSITIVE_INFINITY
+      : Math.abs(item.valor - rowValorTotal);
+    const dateDistance = dayDiff(item.dataCompra, row.dataCompra);
+    const descricaoSimilarity = similarityByTokenOverlap(normalizedDescricao, rowDescricao);
+    const estabelecimentoSimilarity = similarityByTokenOverlap(normalizedEstabelecimento, rowEstabelecimento);
+
+    let score = 0;
+    if (diffParcela <= 0.01) score += 4;
+    else if (diffParcela <= 0.1) score += 2;
+    if (diffTotal <= 0.05) score += 2;
+    if (dateDistance === 0) score += 2;
+    else if (dateDistance != null && dateDistance <= 3) score += 1;
+    if (item.parcelas === row.parcelas) score += 1;
+    if (item.parcelaAtual === row.parcelaAtual) score += 1;
+    if (normalizedDescricao === rowDescricao) score += 3;
+    else if (descricaoSimilarity >= 0.6) score += 2;
+    else if (descricaoSimilarity >= 0.4) score += 1;
+    if (normalizedEstabelecimento && estabelecimentoSimilarity >= 0.75) score += 1;
+
+    const kind: "exact" | "possible" =
+      diffParcela <= 0.01
+      && diffTotal <= 0.05
+      && dateDistance === 0
+      && item.parcelas === row.parcelas
+      && item.parcelaAtual === row.parcelaAtual
+      && normalizedDescricao === rowDescricao
+        ? "exact"
+        : "possible";
+
+    if (!best || score > best.score || (score === best.score && kind === "exact" && best.kind !== "exact")) {
+      best = { row, score, kind };
+    }
+  }
+
+  if (!best) return null;
+  if (best.kind === "exact") return { row: best.row, kind: "exact" };
+  if (best.score >= 6) return { row: best.row, kind: "possible" };
+  return null;
 }
 
 function computeCanonicalStatus(input: {
   canImport: boolean;
-  duplicateId: string | null;
+  duplicateKind: "exact" | "possible" | null;
   duplicateRow: DuplicateProbeRow | null;
   descricao: string;
+  estabelecimento?: string | null;
+  valor: number | null;
   valorParcela: number | null;
   parcelas: number;
   parcelaAtual: number;
   dataCompra: string;
 }): CanonicalImportItemStatus {
   if (!input.canImport) return "invalido";
-  if (!input.duplicateId) return "novo";
+  if (!input.duplicateRow && !input.duplicateKind) return "novo";
+  if (input.duplicateKind === "exact") return "duplicata_exata";
+  if (input.duplicateKind === "possible") return "possivel_duplicata";
 
   if (
     isExactDuplicateMatch(
       {
         descricao: input.descricao,
+        estabelecimento: input.estabelecimento,
+        valor: input.valor,
         valorParcela: input.valorParcela,
         parcelas: input.parcelas,
         parcelaAtual: input.parcelaAtual,
@@ -210,6 +330,8 @@ function normalizeImportItem(
   index: number,
   options?: {
     duplicateRowsById?: Map<string, DuplicateProbeRow>;
+    duplicateRows?: DuplicateProbeRow[];
+    cartaoId?: string;
     mode?: "preview" | "confirm";
   },
 ): ImportPreviewItem {
@@ -226,8 +348,34 @@ function normalizeImportItem(
   const dataCompra = input.dataCompra;
   const vencimentoFatura = input.vencimentoFatura ?? null;
   const tipo = input.tipo ?? "compra";
-  const duplicateId = parseDuplicateId(input);
-  const duplicateRow = duplicateId ? (options?.duplicateRowsById?.get(duplicateId) ?? null) : null;
+  const estabelecimento = input.estabelecimento?.trim() || null;
+  const duplicateIdFromInput = parseDuplicateId(input);
+  const duplicateRowFromInput = duplicateIdFromInput ? (options?.duplicateRowsById?.get(duplicateIdFromInput) ?? null) : null;
+  const candidateMatch = findPotentialDuplicateCandidate({
+    descricao,
+    estabelecimento,
+    valor,
+    valorParcela,
+    parcelas,
+    parcelaAtual,
+    dataCompra,
+    cartaoId: options?.cartaoId ?? "",
+  }, options?.duplicateRows ?? []);
+  const duplicateRow = duplicateRowFromInput ?? candidateMatch?.row ?? null;
+  const duplicateId = duplicateRow?.id ?? duplicateIdFromInput;
+  const duplicateKind: "exact" | "possible" | null =
+    candidateMatch?.kind
+    ?? (duplicateRowFromInput
+      ? (isExactDuplicateMatch({
+        descricao,
+        estabelecimento,
+        valor,
+        valorParcela,
+        parcelas,
+        parcelaAtual,
+        dataCompra,
+      }, duplicateRowFromInput) ? "exact" : "possible")
+      : null);
   const forceImport = parseForceImport(input);
 
   if (descricao.length < 3) {
@@ -274,11 +422,33 @@ function normalizeImportItem(
     }
   }
 
+  const parserIssues = Array.isArray(input.validationIssues)
+    ? input.validationIssues
+      .filter((issue) => typeof issue === "string")
+      .map((issue) => issue.trim())
+      .filter((issue) => issue.length > 0)
+      .slice(0, 10)
+    : [];
+  if (parserIssues.length > 0) {
+    for (const issue of parserIssues) {
+      if (!issues.includes(issue)) issues.push(issue);
+    }
+    score -= Math.min(30, parserIssues.length * 6);
+  }
+  if (input.reviewRequired === true) {
+    score -= 8;
+  }
+  if (typeof input.confidenceScore === "number" && Number.isFinite(input.confidenceScore)) {
+    score = Math.min(score, clamp(input.confidenceScore, 0, 100));
+  }
+
   const status = computeCanonicalStatus({
     canImport,
-    duplicateId,
+    duplicateKind,
     duplicateRow,
     descricao,
+    estabelecimento,
+    valor,
     valorParcela,
     parcelas,
     parcelaAtual,
@@ -414,31 +584,25 @@ export class ImportsService {
       throw new ImportPipelineError(400, "Cartao not found");
     }
 
-    const duplicateIds = Array.from(
-      new Set(
-        payload.items
-          .map((item) => parseDuplicateId(item))
-          .filter((value): value is string => typeof value === "string" && value.trim().length > 0),
-      ),
-    );
-    const duplicateRows = duplicateIds.length > 0
-      ? await db.select({
-        id: comprasCartao.id,
-        descricao: comprasCartao.descricao,
-        valorParcela: comprasCartao.valorParcela,
-        parcelas: comprasCartao.parcelas,
-        parcelaAtual: comprasCartao.parcelaAtual,
-        dataCompra: comprasCartao.dataCompra,
-        cartaoId: comprasCartao.cartaoId,
-      }).from(comprasCartao).where(and(
-        eq(comprasCartao.userId, userId),
-        inArray(comprasCartao.id, duplicateIds),
-      ))
-      : [];
+    const duplicateRows = await db.select({
+      id: comprasCartao.id,
+      descricao: comprasCartao.descricao,
+      valorTotal: comprasCartao.valorTotal,
+      valorParcela: comprasCartao.valorParcela,
+      parcelas: comprasCartao.parcelas,
+      parcelaAtual: comprasCartao.parcelaAtual,
+      dataCompra: comprasCartao.dataCompra,
+      cartaoId: comprasCartao.cartaoId,
+    }).from(comprasCartao).where(and(
+      eq(comprasCartao.userId, userId),
+      eq(comprasCartao.cartaoId, payload.cartaoId),
+    ));
     const duplicateRowsById = new Map(duplicateRows.map((row) => [row.id, row] as const));
 
     const previewItems = payload.items.map((item, index) => normalizeImportItem(item, index, {
       duplicateRowsById,
+      duplicateRows,
+      cartaoId: payload.cartaoId,
       mode: "preview",
     }));
     const summary = summarizePreview(previewItems);
@@ -501,31 +665,25 @@ export class ImportsService {
 
     const snapshot = deserializeJson<ImportPreviewPayloadSnapshot>(log.previewPayload, { items: [], summary: summarizePreview([]) });
     const sourceItems = payload.items ?? snapshot.items;
-    const duplicateIds = Array.from(
-      new Set(
-        sourceItems
-          .map((item) => parseDuplicateId(item))
-          .filter((value): value is string => typeof value === "string" && value.trim().length > 0),
-      ),
-    );
-    const duplicateRows = duplicateIds.length > 0
-      ? await db.select({
-        id: comprasCartao.id,
-        descricao: comprasCartao.descricao,
-        valorParcela: comprasCartao.valorParcela,
-        parcelas: comprasCartao.parcelas,
-        parcelaAtual: comprasCartao.parcelaAtual,
-        dataCompra: comprasCartao.dataCompra,
-        cartaoId: comprasCartao.cartaoId,
-      }).from(comprasCartao).where(and(
-        eq(comprasCartao.userId, userId),
-        inArray(comprasCartao.id, duplicateIds),
-      ))
-      : [];
+    const duplicateRows = await db.select({
+      id: comprasCartao.id,
+      descricao: comprasCartao.descricao,
+      valorTotal: comprasCartao.valorTotal,
+      valorParcela: comprasCartao.valorParcela,
+      parcelas: comprasCartao.parcelas,
+      parcelaAtual: comprasCartao.parcelaAtual,
+      dataCompra: comprasCartao.dataCompra,
+      cartaoId: comprasCartao.cartaoId,
+    }).from(comprasCartao).where(and(
+      eq(comprasCartao.userId, userId),
+      eq(comprasCartao.cartaoId, log.cartaoId),
+    ));
     const duplicateRowsById = new Map(duplicateRows.map((row) => [row.id, row] as const));
 
     const candidateItems = sourceItems.map((item, index) => normalizeImportItem(item, index, {
       duplicateRowsById,
+      duplicateRows,
+      cartaoId: log.cartaoId,
       mode: "confirm",
     }));
 

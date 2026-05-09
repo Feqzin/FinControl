@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { formatCurrencyBRL, formatIsoDateToBR } from "../src/utils/formatters";
 import { isOverdueDate } from "../src/pages/dividas/dividas.utils";
 import { getDaysUntilInvoice, getNextInvoiceDate, isParcelaVencida } from "../src/pages/cartoes/cartoes.utils";
+import { parseCsv } from "../src/pages/cartoes/import-parser";
 import {
   buildTimelineLayout,
   findSelectedTimelineEvent,
@@ -245,4 +246,48 @@ test("timeline utils: chave selecionada encontra evento correto para abrir detal
   const selectedKey = getTimelineEventKey(events[1]);
   const selected = findSelectedTimelineEvent([...events], selectedKey);
   assert.equal(selected?.id, "evt-2");
+});
+
+test("import parser: data dd/mm usa ano da fatura quando informado", () => {
+  const input = [
+    "Vencimento 20/05/2026",
+    "06/05 MERCADO CENTRAL 90,00 1/1",
+  ].join("\n");
+
+  const result = parseCsv(input, [], "cartao-1", { referenceBillingDate: "2026-05-20" });
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0]?.dataCompra, "2026-05-06");
+});
+
+test("import parser: valor pt-BR e en-US sao reconhecidos", () => {
+  const csvBr = [
+    "Data;Descricao;Valor",
+    "06/05/2026;Padaria;1.234,56",
+  ].join("\n");
+  const csvUs = [
+    "Date,Title,Amount",
+    "2026-05-06,Store,\"1,234.56\"",
+  ].join("\n");
+
+  const parsedBr = parseCsv(csvBr, [], "cartao-1");
+  const parsedUs = parseCsv(csvUs, [], "cartao-1");
+
+  assert.equal(parsedBr.items[0]?.valorParcela, 1234.56);
+  assert.equal(parsedUs.items[0]?.valorParcela, 1234.56);
+});
+
+test("import parser: detecta parcelas em formatos comuns", () => {
+  const input = [
+    "Vencimento 20/05/2026",
+    "06/05 Loja Tech parcela 3 de 10 120,00",
+    "07/05 Fone bluetooth 10x 80,00",
+  ].join("\n");
+
+  const result = parseCsv(input, [], "cartao-1", { referenceBillingDate: "2026-05-20" });
+  assert.equal(result.items.length, 2);
+  assert.equal(result.items[0]?.parcelaAtual, 3);
+  assert.equal(result.items[0]?.parcelas, 10);
+  assert.equal(result.items[1]?.parcelas, 10);
+  assert.equal(result.items[1]?.parcelaAtual, 1);
+  assert.equal(result.items[1]?.reviewRequired, true);
 });
