@@ -68,6 +68,17 @@ const IconPicker = lazy(() =>
 
 const DELETE_MODAL_TIMEOUT_MS = 20_000;
 const IS_DEV = import.meta.env.DEV;
+const IMPORT_FILE_MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
+const IMPORT_ALLOWED_EXTENSIONS = new Set(["csv", "ofx", "qfx", "txt", "pdf"]);
+
+const IMPORT_ALLOWED_MIME_BY_EXTENSION: Record<string, string[]> = {
+  csv: ["text/csv", "application/csv", "application/vnd.ms-excel", "text/plain"],
+  txt: ["text/plain"],
+  ofx: ["application/ofx", "application/x-ofx", "application/octet-stream", "text/plain"],
+  qfx: ["application/ofx", "application/x-ofx", "application/octet-stream", "text/plain"],
+  pdf: ["application/pdf"],
+};
+
 type CartoesTab = "resumo" | "fatura" | "compras";
 type CanonicalImportStatus = "novo" | "duplicata_exata" | "possivel_duplicata" | "invalido";
 
@@ -143,6 +154,27 @@ function tryParseApiErrorMessage(rawMessage: string): string | null {
   } catch {
     return null;
   }
+}
+
+function formatImportFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getImportFileExtension(fileName: string): string {
+  const normalized = fileName.trim().toLowerCase();
+  const dotIndex = normalized.lastIndexOf(".");
+  if (dotIndex < 0 || dotIndex === normalized.length - 1) return "";
+  return normalized.slice(dotIndex + 1);
+}
+
+function isImportMimeAllowed(extension: string, mimeType: string): boolean {
+  const normalizedMime = mimeType.trim().toLowerCase();
+  if (!normalizedMime) return true;
+  const allowed = IMPORT_ALLOWED_MIME_BY_EXTENSION[extension];
+  if (!allowed || allowed.length === 0) return true;
+  return allowed.includes(normalizedMime);
 }
 
 export default function CartoesPage() {
@@ -1363,6 +1395,51 @@ export default function CartoesPage() {
       return;
     }
 
+    const extension = getImportFileExtension(file.name);
+    if (!extension || !IMPORT_ALLOWED_EXTENSIONS.has(extension)) {
+      toast({
+        title: "Arquivo não suportado",
+        description: "Use arquivos .csv, .ofx, .qfx ou .txt.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (file.size <= 0) {
+      toast({
+        title: "Arquivo vazio",
+        description: "Selecione um arquivo com conteúdo para continuar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (file.size > IMPORT_FILE_MAX_SIZE_BYTES) {
+      toast({
+        title: "Arquivo muito grande",
+        description: `Limite de ${formatImportFileSize(IMPORT_FILE_MAX_SIZE_BYTES)} por arquivo.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isImportMimeAllowed(extension, file.type ?? "")) {
+      toast({
+        title: "Tipo de arquivo inválido",
+        description: "O tipo do arquivo não corresponde à extensão informada.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (extension === "pdf") {
+      toast({
+        title: "PDF ainda não suportado",
+        description: "A importação de PDF será liberada em uma próxima etapa.",
+      });
+      return;
+    }
+
     setImportLoading(true);
     setImportConfirmResult(null);
     try {
@@ -1374,13 +1451,16 @@ export default function CartoesPage() {
       }
       let result: ParseResult;
       const name = file.name.toLowerCase();
-      let sourceType: "csv" | "ofx" | "qfx";
+      let sourceType: "csv" | "ofx" | "qfx" | "texto";
       if (name.endsWith(".ofx")) {
         result = parseOfx(content, compras, cartaoId);
         sourceType = "ofx";
       } else if (name.endsWith(".qfx")) {
         result = parseOfx(content, compras, cartaoId);
         sourceType = "qfx";
+      } else if (name.endsWith(".txt")) {
+        result = parseCsv(content, compras, cartaoId);
+        sourceType = "texto";
       } else {
         result = parseCsv(content, compras, cartaoId);
         sourceType = "csv";

@@ -319,15 +319,19 @@ export function ImportFaturaDialog({
                 <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
                 <div>
                   <p className="text-sm font-medium">Arraste ou selecione o arquivo</p>
-                  <p className="text-xs text-muted-foreground">Formatos suportados: CSV, OFX, QFX</p>
+                  <p className="text-xs text-muted-foreground">
+                    Formatos suportados: CSV, OFX, QFX e TXT (PDF em breve)
+                  </p>
                 </div>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".csv,.ofx,.qfx,.txt"
+                  accept=".csv,.ofx,.qfx,.txt,.pdf"
                   className="hidden"
                   onChange={(event) => {
-                    if (event.target.files?.[0]) onFileUpload(event.target.files[0]);
+                    const selected = event.target.files?.[0];
+                    if (selected) onFileUpload(selected);
+                    event.currentTarget.value = "";
                   }}
                 />
                 <Button
