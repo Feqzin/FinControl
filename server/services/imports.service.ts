@@ -65,6 +65,15 @@ type ImportConfirmResult = {
   createdCount: number;
   skippedCount: number;
   createdCompraIds: string[];
+  summary: {
+    totalProcessed: number;
+    createdCount: number;
+    ignoredCount: number;
+    blockedExactDuplicates: number;
+    forcedExactDuplicates: number;
+    invalidCount: number;
+    errorCount: number;
+  };
   alreadyConfirmed?: boolean;
 };
 
@@ -344,6 +353,28 @@ function summarizePreview(items: ImportPreviewItem[]): ImportPreviewSummary {
   };
 }
 
+function summarizeConfirmResult(items: ImportPreviewItem[], createdCount: number) {
+  const totalProcessed = items.length;
+  const invalidCount = items.filter((item) => item.status === "invalido").length;
+  const forcedExactDuplicates = items.filter((item) => (
+    item.status === "duplicata_exata" && item.action === "import" && item.forceImport === true
+  )).length;
+  const blockedExactDuplicates = items.filter((item) => (
+    item.status === "duplicata_exata" && (item.action !== "import" || item.forceImport !== true)
+  )).length;
+  const ignoredCount = items.filter((item) => item.action !== "import").length;
+
+  return {
+    totalProcessed,
+    createdCount,
+    ignoredCount,
+    blockedExactDuplicates,
+    forcedExactDuplicates,
+    invalidCount,
+    errorCount: 0,
+  };
+}
+
 function toCompraInsert(userId: string, cartaoId: string, item: ImportPreviewItem): InsertCompraCartao {
   return {
     userId,
@@ -440,11 +471,24 @@ export class ImportsService {
 
     if (log.status === "confirmed") {
       const existingIds = deserializeJson<string[]>(log.createdCompraIds, []);
+      const confirmedPayload = deserializeJson<ImportPreviewItem[]>(log.confirmedPayload, []);
+      const summary = confirmedPayload.length > 0
+        ? summarizeConfirmResult(confirmedPayload, existingIds.length)
+        : {
+          totalProcessed: Math.max(log.totalItems, existingIds.length + log.skippedItems),
+          createdCount: existingIds.length,
+          ignoredCount: log.skippedItems,
+          blockedExactDuplicates: 0,
+          forcedExactDuplicates: 0,
+          invalidCount: 0,
+          errorCount: 0,
+        };
       return {
         importLogId: log.id,
         createdCount: existingIds.length,
         skippedCount: log.skippedItems,
         createdCompraIds: existingIds,
+        summary,
         alreadyConfirmed: true,
       };
     }
@@ -556,6 +600,7 @@ export class ImportsService {
       createdCount: createdCompraIds.length,
       skippedCount: summary.skipItems,
       createdCompraIds,
+      summary: summarizeConfirmResult(candidateItems, createdCompraIds.length),
     };
   }
 

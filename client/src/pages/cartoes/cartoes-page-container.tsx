@@ -34,6 +34,7 @@ import {
   deleteFaturaCartaoMes,
   deleteFaturasMes,
   deleteCompraCartaoComEscopo,
+  type ImportConfirmResponse,
   deleteParcelaComprovante,
   getParcelaComprovanteDownloadUrl,
   previewImportCompras,
@@ -189,6 +190,7 @@ export default function CartoesPage() {
   const [importSourceType, setImportSourceType] = useState<"texto" | "csv" | "ofx" | "qfx" | "manual">("manual");
   const [importSourceName, setImportSourceName] = useState("");
   const [lastImportLogId, setLastImportLogId] = useState<string | null>(null);
+  const [importConfirmResult, setImportConfirmResult] = useState<ImportConfirmResponse | null>(null);
   const [comprasCartaoFocadoId, setComprasCartaoFocadoId] = useState<string | null>(null);
   const [cartoesTab, setCartoesTab] = useState<CartoesTab>(() => {
     if (typeof window === "undefined") return "resumo";
@@ -778,6 +780,7 @@ export default function CartoesPage() {
     setImportPreviewLogId(null);
     setImportSourceType("manual");
     setImportSourceName("");
+    setImportConfirmResult(null);
   };
 
   const handleImportCartaoChange = (value: string) => {
@@ -791,6 +794,7 @@ export default function CartoesPage() {
       setImportEditingId(null);
       setImportSourceType("manual");
       setImportSourceName("");
+      setImportConfirmResult(null);
       toast({
         title: "Cartao de destino alterado",
         description: "Gere o preview novamente para importar no cartao selecionado.",
@@ -1147,11 +1151,15 @@ export default function CartoesPage() {
       {
         onSuccess: (result) => {
           setLastImportLogId(result.importLogId);
-          resetImportState();
-          toast({
-            title: "Compras importadas com sucesso",
-            description: `Lote ${result.importLogId.slice(0, 8)} confirmado (${result.createdCount} item(ns))`,
-          });
+          setImportConfirmResult(result);
+          setImportPreviewLogId(null);
+          setImportItems([]);
+          setImportTexto("");
+          setImportVencimento("");
+          setImportEditingId(null);
+          setImportSourceType("manual");
+          setImportSourceName("");
+          setImportCartaoHint("");
         },
         onError: (error) => {
           toast({ title: "Erro na importacao", description: getErrorMessage(error), variant: "destructive" });
@@ -1160,17 +1168,20 @@ export default function CartoesPage() {
     );
   };
 
-  const handleRollbackLastImport = () => {
+  const handleRollbackImportById = (importLogId: string) => {
     if (!smartImportLiberado) {
       showSmartImportPremiumToast();
       return;
     }
 
-    if (!lastImportLogId) return;
-
-    rollbackImportMutation.mutate(lastImportLogId, {
+    rollbackImportMutation.mutate(importLogId, {
       onSuccess: (result) => {
-        setLastImportLogId(null);
+        if (lastImportLogId === importLogId) {
+          setLastImportLogId(null);
+        }
+        setImportConfirmResult((current) => (
+          current?.importLogId === importLogId ? null : current
+        ));
         toast({
           title: "Importacao revertida",
           description: `${result.deletedCount} compra(s) removida(s) do lote ${result.importLogId.slice(0, 8)}.`,
@@ -1184,6 +1195,17 @@ export default function CartoesPage() {
         });
       },
     });
+  };
+
+  const handleRollbackLastImport = () => {
+    if (!smartImportLiberado) {
+      showSmartImportPremiumToast();
+      return;
+    }
+
+    if (!lastImportLogId) return;
+
+    handleRollbackImportById(lastImportLogId);
   };
 
   const handleParseTexto = async () => {
@@ -1203,8 +1225,9 @@ export default function CartoesPage() {
       return;
     }
 
-    setImportLoading(true);
-    try {
+      setImportLoading(true);
+      setImportConfirmResult(null);
+      try {
       const result = parseCsv(importTexto, compras, cartaoId);
       const venc = findVencimentoFatura(importTexto);
       if (venc) setImportVencimento(venc);
@@ -1311,6 +1334,7 @@ export default function CartoesPage() {
     }
 
     setImportLoading(true);
+    setImportConfirmResult(null);
     try {
       const content = await file.text();
       const cartaoId = resolveImportCartaoId(`${file.name}\n${content}`);
@@ -1763,6 +1787,7 @@ export default function CartoesPage() {
             setImportPreviewLogId(null);
             setImportSourceType("manual");
             setImportSourceName("");
+            setImportConfirmResult(null);
             return;
           }
           if (!smartImportLiberado) {
@@ -1797,6 +1822,24 @@ export default function CartoesPage() {
         formatCurrency={formatCartaoCurrency}
         isBatchImportPending={batchImportMutation.isPending}
         onConfirmImport={handleConfirmImport}
+        confirmResult={importConfirmResult}
+        onRollbackImport={
+          importConfirmResult
+            ? () => handleRollbackImportById(importConfirmResult.importLogId)
+            : undefined
+        }
+        isRollbackPending={rollbackImportMutation.isPending}
+        onStartNewImport={() => {
+          setImportConfirmResult(null);
+          setImportItems([]);
+          setImportPreviewLogId(null);
+          setImportTexto("");
+          setImportVencimento("");
+          setImportEditingId(null);
+          setImportSourceType("manual");
+          setImportSourceName("");
+          setImportCartaoHint("");
+        }}
       />
 
       <div data-testid={`cartoes-tab-${activeCartoesTab}`}>

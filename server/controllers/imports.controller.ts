@@ -92,6 +92,9 @@ export function createImportsController(service: ImportsService) {
           details: {
             createdCount: result.createdCount,
             skippedCount: result.skippedCount,
+            blockedExactDuplicates: result.summary.blockedExactDuplicates,
+            forcedExactDuplicates: result.summary.forcedExactDuplicates,
+            invalidCount: result.summary.invalidCount,
             alreadyConfirmed: result.alreadyConfirmed ?? false,
           },
         });

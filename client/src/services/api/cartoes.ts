@@ -22,6 +22,15 @@ export type ImportConfirmResponse = {
   createdCount: number;
   skippedCount: number;
   createdCompraIds: string[];
+  summary?: {
+    totalProcessed: number;
+    createdCount: number;
+    ignoredCount: number;
+    blockedExactDuplicates: number;
+    forcedExactDuplicates: number;
+    invalidCount: number;
+    errorCount: number;
+  };
   alreadyConfirmed?: boolean;
 };
 

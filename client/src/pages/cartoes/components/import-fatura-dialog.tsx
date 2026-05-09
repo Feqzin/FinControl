@@ -1,7 +1,8 @@
-﻿import { useRef } from "react";
+import { useRef } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Cartao } from "@shared/schema";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
+import type { ImportConfirmResponse } from "@/services/api/cartoes";
 import { FileText, Pencil, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -92,6 +93,10 @@ interface ImportFaturaDialogProps {
   formatCurrency: (value: number) => string;
   isBatchImportPending: boolean;
   onConfirmImport: () => void;
+  confirmResult?: ImportConfirmResponse | null;
+  onRollbackImport?: () => void;
+  isRollbackPending?: boolean;
+  onStartNewImport?: () => void;
 }
 
 export function ImportFaturaDialog({
@@ -122,6 +127,10 @@ export function ImportFaturaDialog({
   formatCurrency,
   isBatchImportPending,
   onConfirmImport,
+  confirmResult,
+  onRollbackImport,
+  isRollbackPending = false,
+  onStartNewImport,
 }: ImportFaturaDialogProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const totalImportar = importItems.filter((item) => {
@@ -148,6 +157,16 @@ export function ImportFaturaDialog({
     getEffectiveStatus(item) === "duplicata_exata" &&
     item.forceImport !== true
   ));
+  const confirmSummary = confirmResult?.summary ?? {
+    totalProcessed: (confirmResult?.createdCount ?? 0) + (confirmResult?.skippedCount ?? 0),
+    createdCount: confirmResult?.createdCount ?? 0,
+    ignoredCount: confirmResult?.skippedCount ?? 0,
+    blockedExactDuplicates: 0,
+    forcedExactDuplicates: 0,
+    invalidCount: 0,
+    errorCount: 0,
+  };
+  const hasConfirmSummary = Boolean(confirmResult);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -179,6 +198,7 @@ export function ImportFaturaDialog({
             )}
           </div>
 
+          <div className={hasConfirmSummary ? "hidden" : "space-y-4"}>
           <Tabs value={importTab} onValueChange={(value) => setImportTab(value as ImportTab)}>
             <TabsList className="w-full">
               <TabsTrigger value="texto" className="flex-1">Colar texto / CSV</TabsTrigger>
@@ -532,8 +552,92 @@ export function ImportFaturaDialog({
               </div>
             </div>
           )}
+          </div>
+
+          {hasConfirmSummary ? (
+            <div className="space-y-4" data-testid="import-confirm-summary">
+              <div className="rounded-lg border border-emerald-200 bg-emerald-500/5 px-4 py-3">
+                <p className="text-base font-semibold text-emerald-700">Importação concluída</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Lote {confirmResult?.importLogId.slice(0, 8)} processado.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                <div className="rounded-md border p-3">
+                  <p className="text-muted-foreground">Compras criadas</p>
+                  <p className="text-lg font-semibold">{confirmSummary.createdCount}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-muted-foreground">Itens ignorados</p>
+                  <p className="text-lg font-semibold">{confirmSummary.ignoredCount}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-muted-foreground">Duplicatas bloqueadas</p>
+                  <p className="text-lg font-semibold">{confirmSummary.blockedExactDuplicates}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-muted-foreground">Duplicatas forçadas</p>
+                  <p className="text-lg font-semibold">{confirmSummary.forcedExactDuplicates}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-muted-foreground">Itens inválidos</p>
+                  <p className="text-lg font-semibold">{confirmSummary.invalidCount}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-muted-foreground">Itens com erro</p>
+                  <p className="text-lg font-semibold">{confirmSummary.errorCount}</p>
+                </div>
+              </div>
+
+              <div className="rounded-md border px-4 py-3">
+                <p className="text-sm">
+                  <span className="text-muted-foreground">Total processado:</span>{" "}
+                  <span className="font-semibold">{confirmSummary.totalProcessed}</span>
+                </p>
+                {confirmSummary.createdCount === 0 ? (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Nenhuma compra foi criada. Revise itens ignorados, inválidos ou duplicatas exatas bloqueadas.
+                  </p>
+                ) : null}
+                {confirmSummary.blockedExactDuplicates > 0 ? (
+                  <p className="text-xs text-amber-700 mt-1">
+                    Há duplicatas exatas bloqueadas. Use "Forçar" no preview apenas quando necessário.
+                  </p>
+                ) : null}
+                {confirmSummary.invalidCount > 0 ? (
+                  <p className="text-xs text-red-600 mt-1">
+                    Há itens inválidos que precisam de revisão antes de nova confirmação.
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-2">
+                {onStartNewImport ? (
+                  <Button variant="outline" onClick={onStartNewImport}>
+                    Nova importação
+                  </Button>
+                ) : null}
+                {onRollbackImport ? (
+                  <Button
+                    variant="outline"
+                    onClick={onRollbackImport}
+                    disabled={isRollbackPending}
+                    data-testid="button-rollback-import-summary"
+                  >
+                    {isRollbackPending ? "Desfazendo..." : "Desfazer importação"}
+                  </Button>
+                ) : null}
+                <Button onClick={() => onOpenChange(false)}>
+                  Fechar
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>
   );
 }
+
+

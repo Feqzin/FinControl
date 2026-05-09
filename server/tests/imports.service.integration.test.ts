@@ -103,6 +103,13 @@ testImports("pipeline de importacao: preview, confirmacao e rollback", async () 
     assert.equal(confirmed.createdCount, 2);
     assert.equal(confirmed.skippedCount, 1);
     assert.equal(confirmed.createdCompraIds.length, 2);
+    assert.equal(confirmed.summary.totalProcessed, 3);
+    assert.equal(confirmed.summary.createdCount, 2);
+    assert.equal(confirmed.summary.ignoredCount, 1);
+    assert.equal(confirmed.summary.blockedExactDuplicates, 0);
+    assert.equal(confirmed.summary.forcedExactDuplicates, 0);
+    assert.equal(confirmed.summary.invalidCount, 1);
+    assert.equal(confirmed.summary.errorCount, 0);
 
     const createdRows = await db.select().from(comprasCartao).where(and(
       eq(comprasCartao.userId, user.id),
@@ -120,6 +127,8 @@ testImports("pipeline de importacao: preview, confirmacao e rollback", async () 
     const confirmAgain = await service.confirm(user.id, { importLogId: preview.importLogId, userConfirmed: true });
     assert.equal(confirmAgain.alreadyConfirmed, true);
     assert.equal(confirmAgain.createdCount, 2);
+    assert.equal(confirmAgain.summary.totalProcessed, 3);
+    assert.equal(confirmAgain.summary.invalidCount, 1);
 
     const rollback = await service.rollback(user.id, preview.importLogId);
     assert.equal(rollback.deletedCount, 2);
@@ -315,11 +324,100 @@ testImports("duplicata exata exige forceImport explicito para confirmar", async 
     });
 
     assert.equal(confirmed.createdCount, 1);
+    assert.equal(confirmed.summary.totalProcessed, 1);
+    assert.equal(confirmed.summary.createdCount, 1);
+    assert.equal(confirmed.summary.ignoredCount, 0);
+    assert.equal(confirmed.summary.blockedExactDuplicates, 0);
+    assert.equal(confirmed.summary.forcedExactDuplicates, 1);
+    assert.equal(confirmed.summary.invalidCount, 0);
+    assert.equal(confirmed.summary.errorCount, 0);
     const compras = await db.select().from(comprasCartao).where(and(
       eq(comprasCartao.userId, user.id),
       eq(comprasCartao.cartaoId, cartao.id),
     ));
     assert.equal(compras.length, 2);
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testImports("confirmacao contabiliza duplicata exata bloqueada quando item fica ignorado", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, comprasCartao } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_exact_dup_skip_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Exact Duplicate Skip",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Exact Duplicate Skip",
+    limite: "5000.00",
+    melhorDiaCompra: 10,
+    diaVencimento: 20,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const [existingCompra] = await db.insert(comprasCartao).values({
+      userId: user.id,
+      cartaoId: cartao.id,
+      descricao: "Posto Central",
+      valorTotal: "50.00",
+      valorParcela: "50.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      dataCompra: "2026-04-15",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    }).returning();
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-duplicata-exata-skip",
+      items: [
+        {
+          id: "dup-exact-skip-1",
+          descricao: "Posto Central",
+          valor: "50.00",
+          valorParcela: "50.00",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-15",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "skip",
+          duplicateId: existingCompra.id,
+        },
+      ],
+    });
+
+    const confirmed = await service.confirm(user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+    });
+
+    assert.equal(confirmed.createdCount, 0);
+    assert.equal(confirmed.summary.totalProcessed, 1);
+    assert.equal(confirmed.summary.ignoredCount, 1);
+    assert.equal(confirmed.summary.blockedExactDuplicates, 1);
+    assert.equal(confirmed.summary.forcedExactDuplicates, 0);
+    assert.equal(confirmed.summary.invalidCount, 0);
+
+    const compras = await db.select().from(comprasCartao).where(and(
+      eq(comprasCartao.userId, user.id),
+      eq(comprasCartao.cartaoId, cartao.id),
+    ));
+    assert.equal(compras.length, 1);
   } finally {
     await db.delete(users).where(eq(users.id, user.id));
   }
