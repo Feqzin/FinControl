@@ -24,10 +24,11 @@ export async function extractTextFromPdfBuffer(buffer: ArrayBuffer): Promise<str
     throw new Error("INVALID_PDF_SIGNATURE");
   }
 
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  // Usa o entrypoint webpack do pdfjs-dist, que configura worker dedicado
+  // automaticamente no navegador sem inflar o bundle inicial (import dinâmico).
+  const pdfjs = await import("pdfjs-dist/webpack.mjs");
   const loadingTask = pdfjs.getDocument(({
     data: new Uint8Array(buffer),
-    disableWorker: true,
     isEvalSupported: false,
     stopAtErrors: false,
   }) as any);
@@ -40,7 +41,7 @@ export async function extractTextFromPdfBuffer(buffer: ArrayBuffer): Promise<str
       const page = await pdfDocument.getPage(pageNumber);
       const textContent = await page.getTextContent({ includeMarkedContent: false });
       const pageText = textContent.items
-        .map((item) => (typeof item === "object" && item !== null && "str" in item ? String(item.str ?? "") : ""))
+        .map((item: { str?: string } | unknown) => (typeof item === "object" && item !== null && "str" in item ? String((item as { str?: string }).str ?? "") : ""))
         .join(" ")
         .replace(/\s+/g, " ")
         .trim();
