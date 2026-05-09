@@ -1,8 +1,8 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Cartao } from "@shared/schema";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
-import type { ImportConfirmResponse } from "@/services/api/cartoes";
+import type { ImportConfirmResponse, ImportLogEntry } from "@/services/api/cartoes";
 import { FileText, Pencil, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -65,6 +65,25 @@ function getStatusBadge(status: CanonicalImportStatus): { label: string; classNa
   }
 }
 
+function formatHistoryDateTime(value: string | null): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("pt-BR");
+}
+
+function getHistoryStatusMeta(status: ImportLogEntry["status"]): { label: string; className: string } {
+  switch (status) {
+    case "confirmed":
+      return { label: "Confirmado", className: "bg-emerald-500/10 text-emerald-700" };
+    case "rolled_back":
+      return { label: "Desfeito", className: "bg-muted text-muted-foreground" };
+    case "previewed":
+    default:
+      return { label: "Prévia", className: "bg-blue-500/10 text-blue-700" };
+  }
+}
+
 interface ImportFaturaDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -97,6 +116,10 @@ interface ImportFaturaDialogProps {
   onRollbackImport?: () => void;
   isRollbackPending?: boolean;
   onStartNewImport?: () => void;
+  importLogs?: ImportLogEntry[];
+  isImportLogsLoading?: boolean;
+  rollbackImportLogLoadingId?: string | null;
+  onRollbackImportLog?: (importLogId: string) => void;
 }
 
 export function ImportFaturaDialog({
@@ -131,8 +154,13 @@ export function ImportFaturaDialog({
   onRollbackImport,
   isRollbackPending = false,
   onStartNewImport,
+  importLogs = [],
+  isImportLogsLoading = false,
+  rollbackImportLogLoadingId = null,
+  onRollbackImportLog,
 }: ImportFaturaDialogProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const totalImportar = importItems.filter((item) => {
     const status = getEffectiveStatus(item);
     if (item.action !== "import") return false;
@@ -196,6 +224,68 @@ export function ImportFaturaDialog({
                 O cartao e obrigatorio. O sistema nao usa mais o primeiro cartao automaticamente.
               </p>
             )}
+          </div>
+
+          <div className="rounded-md border px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium">Histórico</p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setShowHistory((current) => !current)}
+                data-testid="button-toggle-import-history"
+              >
+                {showHistory ? "Ocultar" : "Ver importações anteriores"}
+              </Button>
+            </div>
+            {showHistory ? (
+              <div className="mt-2 space-y-2 max-h-52 overflow-y-auto">
+                {isImportLogsLoading ? (
+                  <p className="text-xs text-muted-foreground">Carregando histórico...</p>
+                ) : importLogs.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Nenhuma importação anterior encontrada.</p>
+                ) : (
+                  importLogs.map((log) => {
+                    const status = getHistoryStatusMeta(log.status);
+                    return (
+                      <div key={log.id} className="rounded-md border px-3 py-2 space-y-1">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground">
+                              {formatHistoryDateTime(log.createdAt)} · Lote {log.id.slice(0, 8)}
+                            </p>
+                            <p className="text-sm font-medium truncate">
+                              {cartoes.find((cartao) => cartao.id === log.cartaoId)?.nome ?? `Cartão ${log.cartaoId.slice(0, 8)}`}
+                            </p>
+                          </div>
+                          <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs ${status.className}`}>
+                            {status.label}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <p className="text-xs text-muted-foreground">
+                            Criadas: {log.importedItems} · Ignoradas: {log.skippedItems}
+                          </p>
+                          {log.status === "confirmed" ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              disabled={rollbackImportLogLoadingId === log.id}
+                              onClick={() => onRollbackImportLog?.(log.id)}
+                              data-testid={`button-rollback-log-${log.id}`}
+                            >
+                              {rollbackImportLogLoadingId === log.id ? "Desfazendo..." : "Desfazer"}
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            ) : null}
           </div>
 
           <div className={hasConfirmSummary ? "hidden" : "space-y-4"}>

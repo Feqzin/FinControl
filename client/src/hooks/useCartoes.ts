@@ -73,7 +73,7 @@ export function useCartoes(viewingCompraId?: string) {
     );
   };
 
-  const refreshCartoesQueries = async (options?: { includePessoas?: boolean; includeUsage?: boolean }) => {
+  const refreshCartoesQueries = async (options?: { includePessoas?: boolean; includeUsage?: boolean; includeImportLogs?: boolean }) => {
     const keys: QueryKey[] = [
       ["/api/cartoes"],
       ["/api/cartoes/resumo"],
@@ -95,6 +95,9 @@ export function useCartoes(viewingCompraId?: string) {
     }
     if (options?.includeUsage) {
       keys.push(["/api/subscription/usage"]);
+    }
+    if (options?.includeImportLogs) {
+      keys.push(["/api/imports/logs"]);
     }
 
     await invalidateAndRefetch(keys);
@@ -304,14 +307,14 @@ export function useCartoes(viewingCompraId?: string) {
       sourceName?: string;
     }) => importComprasLote(items, cartaoId, { previewLogId, sourceType, sourceName }),
     onSuccess: async () => {
-      await refreshCartoesQueries({ includePessoas: true });
+      await refreshCartoesQueries({ includePessoas: true, includeImportLogs: true });
     },
   });
 
   const rollbackImportMutation = useMutation({
     mutationFn: (importLogId: string) => rollbackImportCompras(importLogId),
     onSuccess: async () => {
-      await refreshCartoesQueries({ includePessoas: true });
+      await refreshCartoesQueries({ includePessoas: true, includeImportLogs: true });
     },
   });
 

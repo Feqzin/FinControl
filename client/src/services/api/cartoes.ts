@@ -3,6 +3,7 @@ import { divide, formatMoneyFixed } from "@/lib/money";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
 
 type ImportSourceType = "texto" | "csv" | "ofx" | "qfx" | "manual";
+type ImportLogStatus = "previewed" | "confirmed" | "rolled_back";
 
 export type ImportPreviewResponse = {
   importLogId: string;
@@ -39,6 +40,21 @@ export type ImportRollbackResponse = {
   deletedCount: number;
   deletedCompraIds: string[];
   alreadyRolledBack?: boolean;
+};
+
+export type ImportLogEntry = {
+  id: string;
+  cartaoId: string;
+  sourceType: ImportSourceType;
+  sourceName: string | null;
+  status: ImportLogStatus;
+  totalItems: number;
+  importedItems: number;
+  skippedItems: number;
+  averageConfidence: number;
+  createdAt: string;
+  confirmedAt: string | null;
+  rolledBackAt: string | null;
 };
 
 export type CartaoPayload = {
@@ -391,6 +407,13 @@ export async function confirmImportCompras(params: {
 
 export async function rollbackImportCompras(importLogId: string): Promise<ImportRollbackResponse> {
   const response = await apiRequest("POST", `/api/imports/${importLogId}/rollback`);
+  return response.json();
+}
+
+export async function fetchImportLogs(limit = 20): Promise<ImportLogEntry[]> {
+  const query = new URLSearchParams();
+  query.set("limit", String(limit));
+  const response = await apiRequest("GET", `/api/imports/logs?${query.toString()}`);
   return response.json();
 }
 

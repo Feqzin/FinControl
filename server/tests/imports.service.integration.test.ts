@@ -423,6 +423,265 @@ testImports("confirmacao contabiliza duplicata exata bloqueada quando item fica 
   }
 });
 
+testImports("listagem de logs retorna apenas importacoes do usuario autenticado", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const usernameA = `it_imports_logs_a_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const usernameB = `it_imports_logs_b_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [userA] = await db.insert(users).values({
+    username: usernameA,
+    password: "hash_fake",
+    nomeCompleto: "Import Logs A",
+  }).returning();
+  const [userB] = await db.insert(users).values({
+    username: usernameB,
+    password: "hash_fake",
+    nomeCompleto: "Import Logs B",
+  }).returning();
+
+  const [cartaoA] = await db.insert(cartoes).values({
+    userId: userA.id,
+    nome: "Cartao Logs A",
+    limite: "5000.00",
+    melhorDiaCompra: 10,
+    diaVencimento: 20,
+    iconeId: null,
+  }).returning();
+  const [cartaoB] = await db.insert(cartoes).values({
+    userId: userB.id,
+    nome: "Cartao Logs B",
+    limite: "5000.00",
+    melhorDiaCompra: 10,
+    diaVencimento: 20,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const previewA = await service.preview(userA.id, {
+      cartaoId: cartaoA.id,
+      sourceType: "manual",
+      sourceName: "teste-logs-a",
+      items: [
+        {
+          id: "log-a-1",
+          descricao: "Compra A",
+          valor: "10.00",
+          valorParcela: "10.00",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-01",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+        },
+      ],
+    });
+    const previewB = await service.preview(userB.id, {
+      cartaoId: cartaoB.id,
+      sourceType: "manual",
+      sourceName: "teste-logs-b",
+      items: [
+        {
+          id: "log-b-1",
+          descricao: "Compra B",
+          valor: "20.00",
+          valorParcela: "20.00",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-01",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+        },
+      ],
+    });
+
+    const logsA = await service.list(userA.id, 50);
+    assert.ok(logsA.some((row) => row.id === previewA.importLogId));
+    assert.equal(logsA.some((row) => row.id === previewB.importLogId), false);
+  } finally {
+    await db.delete(users).where(eq(users.id, userA.id));
+    await db.delete(users).where(eq(users.id, userB.id));
+  }
+});
+
+testImports("rollback bloqueia lote de outro usuario e preserva compras do dono", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, comprasCartao } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const usernameA = `it_imports_rb_owner_a_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const usernameB = `it_imports_rb_owner_b_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [userA] = await db.insert(users).values({
+    username: usernameA,
+    password: "hash_fake",
+    nomeCompleto: "Import Rollback Owner A",
+  }).returning();
+  const [userB] = await db.insert(users).values({
+    username: usernameB,
+    password: "hash_fake",
+    nomeCompleto: "Import Rollback Owner B",
+  }).returning();
+
+  const [cartaoA] = await db.insert(cartoes).values({
+    userId: userA.id,
+    nome: "Cartao Owner A",
+    limite: "5000.00",
+    melhorDiaCompra: 10,
+    diaVencimento: 20,
+    iconeId: null,
+  }).returning();
+  const [cartaoB] = await db.insert(cartoes).values({
+    userId: userB.id,
+    nome: "Cartao Owner B",
+    limite: "5000.00",
+    melhorDiaCompra: 10,
+    diaVencimento: 20,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const previewB = await service.preview(userB.id, {
+      cartaoId: cartaoB.id,
+      sourceType: "manual",
+      sourceName: "teste-owner-b",
+      items: [
+        {
+          id: "owner-b-1",
+          descricao: "Compra do B",
+          valor: "30.00",
+          valorParcela: "30.00",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-12",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+        },
+      ],
+    });
+
+    await service.confirm(userB.id, {
+      importLogId: previewB.importLogId,
+      userConfirmed: true,
+    });
+
+    await assert.rejects(
+      service.rollback(userA.id, previewB.importLogId),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message.includes("not found"), true);
+        return true;
+      },
+    );
+
+    const comprasB = await db.select().from(comprasCartao).where(and(
+      eq(comprasCartao.userId, userB.id),
+      eq(comprasCartao.cartaoId, cartaoB.id),
+    ));
+    assert.equal(comprasB.length, 1);
+
+    const comprasA = await db.select().from(comprasCartao).where(and(
+      eq(comprasCartao.userId, userA.id),
+      eq(comprasCartao.cartaoId, cartaoA.id),
+    ));
+    assert.equal(comprasA.length, 0);
+  } finally {
+    await db.delete(users).where(eq(users.id, userA.id));
+    await db.delete(users).where(eq(users.id, userB.id));
+  }
+});
+
+testImports("rollback nao remove compras manuais fora do lote importado e bloqueia rollback duplicado", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, comprasCartao } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_rb_manual_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Rollback Manual",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Manual + Import",
+    limite: "5000.00",
+    melhorDiaCompra: 10,
+    diaVencimento: 20,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const [manualCompra] = await db.insert(comprasCartao).values({
+      userId: user.id,
+      cartaoId: cartao.id,
+      descricao: "Compra manual preservada",
+      valorTotal: "70.00",
+      valorParcela: "70.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      dataCompra: "2026-04-05",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    }).returning();
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-rollback-manual",
+      items: [
+        {
+          id: "imp-1",
+          descricao: "Compra importada",
+          valor: "15.00",
+          valorParcela: "15.00",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-15",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+        },
+      ],
+    });
+
+    await service.confirm(user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+    });
+
+    const rollback = await service.rollback(user.id, preview.importLogId);
+    assert.equal(rollback.deletedCount, 1);
+
+    const rollbackAgain = await service.rollback(user.id, preview.importLogId);
+    assert.equal(rollbackAgain.alreadyRolledBack, true);
+    assert.equal(rollbackAgain.deletedCount, 0);
+
+    const compras = await db.select().from(comprasCartao).where(and(
+      eq(comprasCartao.userId, user.id),
+      eq(comprasCartao.cartaoId, cartao.id),
+    ));
+    assert.equal(compras.length, 1);
+    assert.equal(compras[0]?.id, manualCompra.id);
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
 testImports("confirmacao faz rollback se falhar apos criar compras e antes de persistir parcelas", async () => {
   const { db } = await import("../db");
   const { ImportsService } = await import("../services/imports.service");

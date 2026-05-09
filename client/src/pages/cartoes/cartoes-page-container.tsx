@@ -1,5 +1,5 @@
 import { useState, lazy, Suspense, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,7 +34,9 @@ import {
   deleteFaturaCartaoMes,
   deleteFaturasMes,
   deleteCompraCartaoComEscopo,
+  fetchImportLogs,
   type ImportConfirmResponse,
+  type ImportLogEntry,
   deleteParcelaComprovante,
   getParcelaComprovanteDownloadUrl,
   previewImportCompras,
@@ -191,6 +193,7 @@ export default function CartoesPage() {
   const [importSourceName, setImportSourceName] = useState("");
   const [lastImportLogId, setLastImportLogId] = useState<string | null>(null);
   const [importConfirmResult, setImportConfirmResult] = useState<ImportConfirmResponse | null>(null);
+  const [historyRollbackLogId, setHistoryRollbackLogId] = useState<string | null>(null);
   const [comprasCartaoFocadoId, setComprasCartaoFocadoId] = useState<string | null>(null);
   const [cartoesTab, setCartoesTab] = useState<CartoesTab>(() => {
     if (typeof window === "undefined") return "resumo";
@@ -256,6 +259,16 @@ export default function CartoesPage() {
     batchImportMutation,
     rollbackImportMutation,
   } = useCartoes(viewingCompra?.id);
+
+  const {
+    data: importLogs = [],
+    isLoading: isImportLogsLoading,
+  } = useQuery<ImportLogEntry[]>({
+    queryKey: ["/api/imports/logs", "modal", 20],
+    queryFn: () => fetchImportLogs(20),
+    enabled: smartImportLiberado && openImport,
+    staleTime: 30_000,
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -781,6 +794,7 @@ export default function CartoesPage() {
     setImportSourceType("manual");
     setImportSourceName("");
     setImportConfirmResult(null);
+    setHistoryRollbackLogId(null);
   };
 
   const handleImportCartaoChange = (value: string) => {
@@ -1168,11 +1182,24 @@ export default function CartoesPage() {
     );
   };
 
-  const handleRollbackImportById = (importLogId: string) => {
+  const requestRollbackConfirmation = (): boolean => {
+    if (typeof window === "undefined") return true;
+    return window.confirm(
+      "Deseja desfazer esta importação? Apenas compras criadas por este lote serão removidas.",
+    );
+  };
+
+  const handleRollbackImportById = (importLogId: string, options?: { requireConfirm?: boolean }) => {
     if (!smartImportLiberado) {
       showSmartImportPremiumToast();
       return;
     }
+    const shouldConfirm = options?.requireConfirm !== false;
+    if (shouldConfirm && !requestRollbackConfirmation()) {
+      return;
+    }
+
+    setHistoryRollbackLogId(importLogId);
 
     rollbackImportMutation.mutate(importLogId, {
       onSuccess: (result) => {
@@ -1183,16 +1210,19 @@ export default function CartoesPage() {
           current?.importLogId === importLogId ? null : current
         ));
         toast({
-          title: "Importacao revertida",
+          title: "Importação desfeita com sucesso.",
           description: `${result.deletedCount} compra(s) removida(s) do lote ${result.importLogId.slice(0, 8)}.`,
         });
       },
       onError: (error) => {
         toast({
-          title: "Falha ao reverter importacao",
+          title: "Não foi possível desfazer a importação",
           description: getErrorMessage(error),
           variant: "destructive",
         });
+      },
+      onSettled: () => {
+        setHistoryRollbackLogId((current) => (current === importLogId ? null : current));
       },
     });
   };
@@ -1828,7 +1858,11 @@ export default function CartoesPage() {
             ? () => handleRollbackImportById(importConfirmResult.importLogId)
             : undefined
         }
-        isRollbackPending={rollbackImportMutation.isPending}
+        isRollbackPending={rollbackImportMutation.isPending && !!historyRollbackLogId}
+        importLogs={importLogs}
+        isImportLogsLoading={isImportLogsLoading}
+        rollbackImportLogLoadingId={historyRollbackLogId}
+        onRollbackImportLog={(importLogId) => handleRollbackImportById(importLogId)}
         onStartNewImport={() => {
           setImportConfirmResult(null);
           setImportItems([]);
