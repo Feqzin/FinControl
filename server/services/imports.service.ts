@@ -951,6 +951,10 @@ export class ImportsService {
         }
 
         const serviceAction = item.serviceAction;
+        // Regra de negócio: cobrança no cartão NÃO equivale a recebimento da pessoa.
+        // Este fluxo de importação só pode criar/vincular servico.compraCartaoId.
+        // Nunca cria servico_pagamentos, não marca mês pago automaticamente
+        // e não abate saldo de pessoa aqui.
         if (serviceAction.type === "create_new") {
           if (hasSimilarService(existingServices, serviceAction)) {
             throw new ImportPipelineError(

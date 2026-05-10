@@ -1,7 +1,8 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Cartao } from "@shared/schema";
 import type { Servico } from "@shared/schema";
+import type { ServicoPessoa } from "@shared/schema";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
 import type { ImportConfirmResponse, ImportLogEntry } from "@/services/api/cartoes";
 import { FileText, Pencil, Upload, X } from "lucide-react";
@@ -107,6 +108,7 @@ interface ImportFaturaDialogProps {
   importCartaoId: string;
   setImportCartaoId: (value: string) => void;
   servicos: Servico[];
+  servicoPessoas: ServicoPessoa[];
   importCartaoHint: string;
   formatCartaoOptionLabel: (cartao: Cartao) => string;
   importTab: ImportTab;
@@ -150,6 +152,7 @@ export function ImportFaturaDialog({
   importCartaoId,
   setImportCartaoId,
   servicos,
+  servicoPessoas,
   importCartaoHint,
   formatCartaoOptionLabel,
   importTab,
@@ -225,6 +228,13 @@ export function ImportFaturaDialog({
     servicesLinkSkippedCount: 0,
   };
   const hasConfirmSummary = Boolean(confirmResult);
+  const servicoPessoasCountByServicoId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const vinculo of servicoPessoas) {
+      map.set(vinculo.servicoId, (map.get(vinculo.servicoId) ?? 0) + 1);
+    }
+    return map;
+  }, [servicoPessoas]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -437,6 +447,9 @@ export function ImportFaturaDialog({
                   const isServiceCandidate = Boolean(serviceCandidate?.isServiceCandidate);
                   const serviceAction = item.serviceSuggestionAction ?? "ignore";
                   const selectedLinkedService = servicos.find((servico) => servico.id === item.linkedServiceId) ?? null;
+                  const selectedLinkedServiceSharedPeopleCount = selectedLinkedService
+                    ? (servicoPessoasCountByServicoId.get(selectedLinkedService.id) ?? 0)
+                    : 0;
                   const selectValue = status === "duplicata_exata"
                     ? (item.action === "import" && item.forceImport === true ? "force" : "skip")
                     : item.action;
@@ -709,6 +722,15 @@ export function ImportFaturaDialog({
                                       />
                                       <span>Estou ciente e quero substituir o vínculo existente.</span>
                                     </label>
+                                  </div>
+                                ) : null}
+
+                                {serviceAction === "link_existing" && selectedLinkedService && selectedLinkedServiceSharedPeopleCount > 0 ? (
+                                  <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-2">
+                                    <p className="text-xs text-blue-800">
+                                      Este serviço é compartilhado. A cobrança foi vinculada, mas o mês só será marcado
+                                      como pago quando a pessoa pagar a parte dela.
+                                    </p>
                                   </div>
                                 ) : null}
 

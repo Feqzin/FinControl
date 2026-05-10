@@ -384,6 +384,7 @@ export default function CartoesPage() {
     cartoes,
     compras,
     servicos,
+    servicoPessoas,
     pessoas,
     pessoaSaldoMovimentacoes,
     parcelasCompraByUser,
@@ -2198,6 +2199,7 @@ export default function CartoesPage() {
         importCartaoId={importCartaoId}
         setImportCartaoId={handleImportCartaoChange}
         servicos={servicos}
+        servicoPessoas={servicoPessoas}
         importCartaoHint={importCartaoHint}
         formatCartaoOptionLabel={formatImportCardOptionLabel}
         importTab={importTab}

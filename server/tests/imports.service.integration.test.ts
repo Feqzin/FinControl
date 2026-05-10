@@ -1756,3 +1756,237 @@ testImports("confirmacao bloqueia link_existing em duplicata_exata sem forceImpo
     await db.delete(users).where(eq(users.id, user.id));
   }
 });
+
+testImports("importacao de servico compartilhado nao cria servico_pagamentos nem baixa pendencias automaticamente", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const {
+    users,
+    cartoes,
+    pessoas,
+    servicos,
+    servicoPessoas,
+    servicoPagamentos,
+    pessoaSaldoMovimentacoes,
+  } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_shared_service_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Shared Service",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Shared Service",
+    limite: "5000.00",
+    melhorDiaCompra: 15,
+    diaVencimento: 5,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const [pessoa] = await db.insert(pessoas).values({
+      userId: user.id,
+      nome: "Pessoa Compartilhada",
+      tipo: "me_deve",
+      telefone: null,
+      observacao: null,
+    }).returning();
+
+    const [servico] = await db.insert(servicos).values({
+      userId: user.id,
+      nome: "Spotify Family",
+      categoria: "streaming",
+      valorMensal: "39.90",
+      dataCobranca: 20,
+      formaPagamento: "cartao",
+      compraCartaoId: null,
+      status: "ativo",
+      iconeId: null,
+    }).returning();
+
+    const [vinculoServicoPessoa] = await db.insert(servicoPessoas).values({
+      userId: user.id,
+      servicoId: servico.id,
+      pessoaId: pessoa.id,
+      valorDevido: "19.95",
+    }).returning();
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-shared-service-no-auto-payment",
+      items: [
+        {
+          id: "srv-shared-link-1",
+          descricao: "Spotify Family",
+          valor: "39.90",
+          valorParcela: "39.90",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-25",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+          serviceAction: {
+            type: "link_existing",
+            serviceId: servico.id,
+            replaceExistingLink: false,
+          },
+        },
+      ],
+    });
+
+    const confirmed = await service.confirm(user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+    });
+
+    assert.equal(confirmed.createdCount, 1);
+    assert.equal(confirmed.summary.servicesLinkedCount, 1);
+    assert.equal(confirmed.summary.servicesCreatedCount, 0);
+
+    const createdCompraId = confirmed.createdCompraIds[0];
+    assert.ok(createdCompraId);
+
+    const [servicoAtualizado] = await db.select().from(servicos).where(and(
+      eq(servicos.id, servico.id),
+      eq(servicos.userId, user.id),
+    ));
+    assert.ok(servicoAtualizado);
+    assert.equal(servicoAtualizado?.compraCartaoId, createdCompraId);
+
+    // Regra de negócio: cobrança na fatura não significa que a pessoa compartilhou o pagamento.
+    // Portanto, não deve existir baixa automática em servico_pagamentos.
+    const pagamentosDoServico = await db.select().from(servicoPagamentos).where(eq(servicoPagamentos.userId, user.id));
+    assert.equal(pagamentosDoServico.length, 0);
+
+    // E também não deve existir abatimento automático de saldo da pessoa.
+    const abatimentosSaldo = await db.select().from(pessoaSaldoMovimentacoes).where(and(
+      eq(pessoaSaldoMovimentacoes.userId, user.id),
+      eq(pessoaSaldoMovimentacoes.servicoPessoaId, vinculoServicoPessoa.id),
+    ));
+    assert.equal(abatimentosSaldo.length, 0);
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testImports("marcar mes pago de servico compartilhado continua sendo acao manual apos importacao", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { ServicosService } = await import("../services/servicos.service");
+  const { storage } = await import("../storage");
+  const {
+    users,
+    cartoes,
+    pessoas,
+    servicos,
+    servicoPessoas,
+    servicoPagamentos,
+  } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const importService = new ImportsService();
+  const servicosService = new ServicosService(storage);
+  const username = `it_imports_shared_service_manual_pay_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Shared Service Manual Pay",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Shared Manual",
+    limite: "5000.00",
+    melhorDiaCompra: 16,
+    diaVencimento: 6,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const [pessoa] = await db.insert(pessoas).values({
+      userId: user.id,
+      nome: "Pessoa Compartilhada 2",
+      tipo: "me_deve",
+      telefone: null,
+      observacao: null,
+    }).returning();
+
+    const [servico] = await db.insert(servicos).values({
+      userId: user.id,
+      nome: "Netflix",
+      categoria: "streaming",
+      valorMensal: "44.90",
+      dataCobranca: 21,
+      formaPagamento: "cartao",
+      compraCartaoId: null,
+      status: "ativo",
+      iconeId: null,
+    }).returning();
+
+    const [vinculoServicoPessoa] = await db.insert(servicoPessoas).values({
+      userId: user.id,
+      servicoId: servico.id,
+      pessoaId: pessoa.id,
+      valorDevido: "22.45",
+    }).returning();
+
+    const preview = await importService.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-shared-service-manual-payment",
+      items: [
+        {
+          id: "srv-shared-manual-1",
+          descricao: "Netflix",
+          valor: "44.90",
+          valorParcela: "44.90",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-26",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+          serviceAction: {
+            type: "link_existing",
+            serviceId: servico.id,
+            replaceExistingLink: false,
+          },
+        },
+      ],
+    });
+
+    await importService.confirm(user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+    });
+
+    const pagamentosAntes = await db.select().from(servicoPagamentos).where(eq(servicoPagamentos.userId, user.id));
+    assert.equal(pagamentosAntes.length, 0);
+
+    const manualResult = await servicosService.createServicoPagamento(user.id, {
+      servicoPessoaId: vinculoServicoPessoa.id,
+      mes: "2026-04",
+      status: "pago",
+      dataPagamento: "2026-04-26",
+    });
+    assert.ok("created" in manualResult);
+
+    const pagamentosDepois = await db.select().from(servicoPagamentos).where(and(
+      eq(servicoPagamentos.userId, user.id),
+      eq(servicoPagamentos.servicoPessoaId, vinculoServicoPessoa.id),
+      eq(servicoPagamentos.mes, "2026-04"),
+    ));
+    assert.equal(pagamentosDepois.length, 1);
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
