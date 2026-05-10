@@ -26,7 +26,7 @@ export interface ParsedItem {
   duplicateId?: string | null;
 }
 
-type ParseSource = "csv" | "ofx" | "texto";
+type ParseSource = "csv" | "ofx" | "texto" | "pdf";
 
 interface ParseStats {
   source: ParseSource;
@@ -42,8 +42,15 @@ export interface ParseResult {
   stats: ParseStats;
 }
 
-interface ParseOptions {
+export interface ParseOptions {
   referenceBillingDate?: string | null;
+  selectedCardName?: string | null;
+  selectedCardIssuer?: string | null;
+}
+
+interface ParseNubankOptions extends ParseOptions {
+  existentes?: CompraCartao[];
+  cartaoId?: string;
 }
 
 interface ParsedDateMetadata {
@@ -84,10 +91,164 @@ function isValidDateParts(day: number, month: number, year: number): boolean {
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 }
 
+const MONTH_TOKEN_TO_NUMBER: Record<string, number> = {
+  JAN: 1,
+  FEV: 2,
+  MAR: 3,
+  ABR: 4,
+  MAI: 5,
+  JUN: 6,
+  JUL: 7,
+  AGO: 8,
+  SET: 9,
+  OUT: 10,
+  NOV: 11,
+  DEZ: 12,
+};
+
+const MONTH_TOKEN_PATTERN = "(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)";
+
+const NUBANK_SECTION_START_REGEX = new RegExp(`TRANSA(?:COES|ÇÕES)\\s+DE\\s+\\d{1,2}\\s+${MONTH_TOKEN_PATTERN}\\s+A\\s+\\d{1,2}\\s+${MONTH_TOKEN_PATTERN}`, "gi");
+
+const NUBANK_SECTION_END_MARKERS = [
+  "TOTAL A PAGAR",
+  "OUTROS LANCAMENTOS",
+  "PROXIMAS FATURAS",
+  "SALDO EM ABERTO",
+  "LIMITE TOTAL",
+  "VALOR MAXIMO",
+  "SAQUE NO CREDITO",
+  "PIX NO CREDITO",
+  "PAGAMENTOS DE BOLETO",
+  "O NUBANK DECLARA",
+  "BANCO CENTRAL",
+  "RESOLUCAO",
+  "REGISTRATO",
+] as const;
+
+const NUBANK_EXCLUDED_DESCRIPTION_MARKERS = [
+  "PAGAMENTO EM",
+  "PAGAMENTO RECEBIDO",
+  "SALDO RESTANTE",
+  "FATURA ANTERIOR",
+  "TOTAL A PAGAR",
+  "TOTAL DE COMPRAS DE TODOS OS CARTOES",
+  "OUTROS LANCAMENTOS",
+  "PROXIMAS FATURAS",
+  "FECHAMENTO DA PROXIMA FATURA",
+  "SALDO EM ABERTO",
+  "LIMITE TOTAL",
+  "VALOR MAXIMO",
+  "SAQUE NO CREDITO",
+  "PIX NO CREDITO",
+  "PAGAMENTOS DE BOLETO",
+  "O NUBANK DECLARA",
+  "BANCO CENTRAL",
+  "RESOLUCAO",
+  "REGISTRATO",
+] as const;
+
+const NUBANK_DETECTION_SIGNALS = [
+  "NUBANK",
+  "FATURA",
+  "TRANSACOES DE",
+  "RESUMO DA FATURA ATUAL",
+  "LIMITE TOTAL DO CARTAO DE CREDITO",
+] as const;
+
+const NUBANK_LEGAL_SECTION_MARKERS = [
+  "EM CUMPRIMENTO A REGULACAO",
+  "SISTEMA DE INFORMACOES DE CREDITOS",
+  "MEU BC",
+  "O NUBANK DECLARA",
+  "BANCO CENTRAL",
+  "REGISTRATO",
+  "RESOLUCAO",
+] as const;
+
+const NUBANK_CARD_KEYWORDS = [
+  "NUBANK",
+  "NU MASTERCARD",
+  "MASTERCARD NUBANK",
+] as const;
+
+const NUBANK_COMMON_NOISE_MARKERS = [
+  "OLA,",
+  "ESTA E A SUA FATURA",
+  "FATURA ANTERIOR",
+  "TOTAL A PAGAR",
+  "PAGAMENTO EM",
+  "PAGAMENTO RECEBIDO",
+  "SALDO RESTANTE DA FATURA ANTERIOR",
+  "TOTAL DE COMPRAS DE TODOS OS CARTOES",
+  "OUTROS LANCAMENTOS",
+  "SALDO EM ABERTO",
+  "LIMITE TOTAL",
+  "VALOR MAXIMO",
+  "DATA DE VENCIMENTO",
+  "PERIODO VIGENTE",
+  "EMISSAO E ENVIO",
+  "SAQUE NO CREDITO",
+  "PIX NO CREDITO",
+  "PAGAMENTOS DE BOLETO",
+] as const;
+
+const NUBANK_PAGINATION_LINE_REGEX = /^\d+\s+DE\s+\d+$/;
+
 function parseIsoDateString(value: string | null | undefined): Date | null {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const parsed = new Date(`${value}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function normalizePortableText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\u00A0/g, " ")
+    .toUpperCase();
+}
+
+function looksLikeNubankCardName(value: string | null | undefined): boolean {
+  const normalized = normalizePortableText(value ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  if (NUBANK_CARD_KEYWORDS.some((keyword) => normalized.includes(keyword))) return true;
+  if (/\bNUBANK\b/.test(normalized)) return true;
+  return /\bNU\b/.test(normalized) && /\b(MASTERCARD|CREDITO|CARTAO)\b/.test(normalized);
+}
+
+export function detectNubankInvoiceText(text: string): boolean {
+  const normalized = normalizePortableText(text);
+  const hasTransactionsSection = /TRANSACOES\s+DE\s+\d{1,2}\s+(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\s+A\s+\d{1,2}\s+(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)/.test(normalized);
+  const hasNubankBrand = /\bNUBANK\b/.test(normalized);
+  const hasSignal = NUBANK_DETECTION_SIGNALS.filter((signal) => normalized.includes(signal)).length;
+
+  if (hasTransactionsSection && hasNubankBrand) return true;
+  if (hasTransactionsSection && hasSignal >= 3) return true;
+  return hasNubankBrand && hasSignal >= 4;
+}
+
+export function extractNubankInvoiceYear(text: string): number | null {
+  const normalized = normalizePortableText(text);
+  const yearPatterns = [
+    new RegExp(`\\bFATURA\\s+\\d{1,2}\\s+${MONTH_TOKEN_PATTERN}\\s+(20\\d{2})\\b`),
+    new RegExp(`\\bDATA\\s+DE\\s+VENCIMENTO\\s*:?\\s*\\d{1,2}\\s+${MONTH_TOKEN_PATTERN}\\s+(20\\d{2})\\b`),
+    new RegExp(`\\bEMISSAO\\s+E\\s+ENVIO\\s*:?\\s*\\d{1,2}\\s+${MONTH_TOKEN_PATTERN}\\s+(20\\d{2})\\b`),
+    /\b(?:FATURA|VENCIMENTO|DATA DE VENCIMENTO)[^0-9]*(\d{2})\/(\d{2})\/(20\d{2})\b/,
+    /\b\d{1,2}\s+(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\s+(20\d{2})\b/,
+  ];
+
+  for (const pattern of yearPatterns) {
+    const match = normalized.match(pattern);
+    if (!match) continue;
+    const candidate = match[3] ?? match[2] ?? match[1];
+    const year = Number.parseInt(candidate ?? "", 10);
+    if (Number.isInteger(year) && year >= 2000 && year <= 2100) {
+      return year;
+    }
+  }
+
+  return null;
 }
 
 function resolveYearForDayMonth(month: number, referenceDate: Date | null): number {
@@ -99,6 +260,28 @@ function resolveYearForDayMonth(month: number, referenceDate: Date | null): numb
   if (refMonth === 1 && month === 12) return refYear - 1;
   if (refMonth === 12 && month === 1) return refYear + 1;
   return refYear;
+}
+
+function parseDayMonthWithToken(
+  dayRaw: string,
+  monthTokenRaw: string,
+  options?: ParseOptions,
+  fallbackReferenceDate?: Date | null,
+): ParsedDateMetadata | null {
+  const day = Number.parseInt(dayRaw, 10);
+  const month = MONTH_TOKEN_TO_NUMBER[monthTokenRaw.toUpperCase()];
+  if (!month || !Number.isInteger(day)) return null;
+
+  const referenceDate = fallbackReferenceDate ?? parseIsoDateString(options?.referenceBillingDate ?? null);
+  const year = resolveYearForDayMonth(month, referenceDate);
+  if (!isValidDateParts(day, month, year)) return null;
+
+  return {
+    iso: `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+    estimatedYear: true,
+    confidencePenalty: 10,
+    issue: "Ano inferido a partir da fatura",
+  };
 }
 
 function parseDateFromToken(
@@ -435,6 +618,245 @@ function checkDuplicata(item: {
 
   if (!bestMatch) return null;
   return bestMatch.score >= 6 ? bestMatch.row : null;
+}
+
+function extractReferenceDateFromMonthTokenText(text: string): Date | null {
+  const normalized = normalizePortableText(text);
+  const explicitInvoiceDate = normalized.match(new RegExp(`\\bFATURA\\s+(\\d{1,2})\\s+${MONTH_TOKEN_PATTERN}\\s+(20\\d{2})\\b`));
+  if (explicitInvoiceDate?.[1] && explicitInvoiceDate?.[2] && explicitInvoiceDate?.[3]) {
+    const day = Number.parseInt(explicitInvoiceDate[1], 10);
+    const month = MONTH_TOKEN_TO_NUMBER[explicitInvoiceDate[2] ?? ""];
+    const year = Number.parseInt(explicitInvoiceDate[3], 10);
+    if (month && isValidDateParts(day, month, year)) {
+      return new Date(`${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T00:00:00`);
+    }
+  }
+
+  const year = extractNubankInvoiceYear(text);
+  if (!year) return null;
+  return new Date(`${String(year).padStart(4, "0")}-01-01T00:00:00`);
+}
+
+function isNubankNoiseLine(rawLine: string): boolean {
+  const normalized = normalizePortableText(rawLine).replace(/\s+/g, " ").trim();
+  if (!normalized) return true;
+  if (NUBANK_PAGINATION_LINE_REGEX.test(normalized)) return true;
+  return NUBANK_COMMON_NOISE_MARKERS.some((marker) => normalized.includes(marker));
+}
+
+function extractNubankTransactionSections(text: string): string[] {
+  const sections: string[] = [];
+  NUBANK_SECTION_START_REGEX.lastIndex = 0;
+  const matches = Array.from(text.matchAll(NUBANK_SECTION_START_REGEX));
+  if (matches.length === 0) return sections;
+
+  for (let index = 0; index < matches.length; index += 1) {
+    const start = matches[index];
+    if (!start || typeof start.index !== "number") continue;
+    const sectionStart = start.index + start[0].length;
+    const sectionEnd = matches[index + 1]?.index ?? text.length;
+    const rawSlice = text.slice(sectionStart, sectionEnd).trim();
+    if (!rawSlice) continue;
+
+    const normalizedSlice = normalizePortableText(rawSlice);
+    const markerIndex = NUBANK_SECTION_END_MARKERS
+      .map((marker) => normalizedSlice.indexOf(marker))
+      .filter((value) => value >= 0)
+      .sort((a, b) => a - b)[0];
+
+    const trimmedSlice = markerIndex != null
+      ? rawSlice.slice(0, markerIndex).trim()
+      : rawSlice;
+
+    if (trimmedSlice) sections.push(trimmedSlice);
+  }
+
+  return sections;
+}
+
+function shouldIgnoreNubankDescription(rawDescription: string): boolean {
+  const normalizedDescription = normalizePortableText(rawDescription);
+  if (!normalizedDescription) return true;
+  if (NUBANK_PAGINATION_LINE_REGEX.test(normalizedDescription)) return true;
+  if (NUBANK_LEGAL_SECTION_MARKERS.some((marker) => normalizedDescription.includes(marker))) return true;
+  return NUBANK_EXCLUDED_DESCRIPTION_MARKERS.some((marker) => normalizedDescription.includes(marker));
+}
+
+function splitNubankCandidates(section: string): string[] {
+  return section
+    .replace(/\r/g, "\n")
+    .replace(/\u00A0/g, " ")
+    .replace(new RegExp(`([^\\n])\\s+(\\d{1,2}\\s+${MONTH_TOKEN_PATTERN}\\b)`, "gi"), "$1\n$2")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !isNubankNoiseLine(line));
+}
+
+function resolveNubankCardMismatchWarning(options?: ParseNubankOptions): string | null {
+  const selectedCardSignal = `${options?.selectedCardName ?? ""} ${options?.selectedCardIssuer ?? ""}`.trim();
+  if (!selectedCardSignal) return null;
+  if (looksLikeNubankCardName(selectedCardSignal)) return null;
+  return "Esta fatura parece ser Nubank, mas o cartão selecionado não parece ser Nubank. Revise antes de confirmar.";
+}
+
+function parseNubankInvoiceTextInternal(
+  content: string,
+  source: ParseSource,
+  options?: ParseNubankOptions,
+): ParseResult {
+  const sections = extractNubankTransactionSections(content);
+  const flattened = sections.flatMap(splitNubankCandidates);
+  const stats = createParseStats(source, flattened.length);
+  const items: ParsedItem[] = [];
+  let idx = 0;
+
+  const referenceFromOptions = parseIsoDateString(options?.referenceBillingDate ?? null);
+  const inferredYear = extractNubankInvoiceYear(content);
+  const referenceFromStatement = extractReferenceDateFromMonthTokenText(content);
+  const referenceFromYear = inferredYear != null ? new Date(`${String(inferredYear).padStart(4, "0")}-01-01T00:00:00`) : null;
+  const mismatchWarning = resolveNubankCardMismatchWarning(options);
+  const referenceDate = referenceFromOptions ?? referenceFromStatement ?? new Date();
+
+  const lineRegex = new RegExp(`^(\\d{1,2})\\s+${MONTH_TOKEN_PATTERN}\\s+(.+?)\\s+([\\-−]?R\\$\\s*\\d[\\d.]*,\\d{2})\\s*$`, "i");
+
+  for (const rawLine of flattened) {
+    const match = rawLine.match(lineRegex);
+    if (!match) {
+      stats.skippedUnrecognized += 1;
+      continue;
+    }
+
+    const dayRaw = match[1] ?? "";
+    const monthTokenRaw = match[2] ?? "";
+    const rawDescription = (match[3] ?? "").trim();
+    const rawAmount = (match[4] ?? "").replace("−", "-");
+
+    if (!rawDescription) {
+      stats.skippedUnrecognized += 1;
+      continue;
+    }
+
+    if (shouldIgnoreNubankDescription(rawDescription)) {
+      stats.skippedPaymentOrCredit += 1;
+      continue;
+    }
+
+    const valorParcelaRaw = parseMoney(rawAmount);
+    if (valorParcelaRaw == null || !Number.isFinite(valorParcelaRaw) || valorParcelaRaw <= 0) {
+      if (valorParcelaRaw != null && valorParcelaRaw < 0) {
+        stats.skippedNegativeValue += 1;
+      } else {
+        stats.skippedInvalidValue += 1;
+      }
+      continue;
+    }
+
+    const parsedDate = parseDayMonthWithToken(dayRaw, monthTokenRaw, options, referenceDate);
+    if (!parsedDate) {
+      stats.skippedUnrecognized += 1;
+      continue;
+    }
+
+    const installment = extractInstallment(rawDescription);
+    const parcelaAtual = installment?.parcelaAtual ?? 1;
+    const totalParcelas = installment?.totalParcelas ?? 1;
+    const valorParcela = toMoneyNumber(formatMoneyFixed(valorParcelaRaw));
+    const valor = toMoneyNumber(multiply(valorParcela, totalParcelas));
+    const parcelasRestantes = calculateParcelasRestantes(totalParcelas, parcelaAtual);
+
+    const descricao = normalizarDescricao(rawDescription);
+    const estabelecimento = extractEstabelecimento(descricao);
+    const confidenceIssues: string[] = [];
+    let confidenceScore = 96 - parsedDate.confidencePenalty;
+
+    if (installment?.ambiguous) {
+      confidenceIssues.push("Parcela atual inferida como 1");
+      confidenceScore -= 10;
+    }
+
+    if (mismatchWarning) {
+      confidenceIssues.push(mismatchWarning);
+      confidenceScore -= 8;
+    }
+
+    if (inferredYear == null && !referenceFromOptions && !referenceFromYear) {
+      confidenceIssues.push("Ano da fatura não identificado com confiança");
+      confidenceScore -= 10;
+    }
+
+    if (parsedDate.issue) confidenceIssues.push(parsedDate.issue);
+    const finalConfidence = Math.max(0, Math.min(100, confidenceScore));
+    const shouldReview = confidenceIssues.length > 0 || finalConfidence < 75;
+
+    const duplicata = options?.existentes && options?.cartaoId
+      ? checkDuplicata({
+        valorParcela,
+        valor,
+        descricao,
+        estabelecimento,
+        dataCompra: parsedDate.iso,
+        parcelas: totalParcelas,
+        parcelaAtual,
+      }, options.existentes, options.cartaoId)
+      : null;
+
+    items.push({
+      id: String(idx++),
+      descricao,
+      estabelecimento,
+      valor,
+      valorParcela,
+      parcelas: totalParcelas,
+      parcelaAtual,
+      parcelasRestantes,
+      dataCompra: parsedDate.iso,
+      vencimentoFatura: options?.referenceBillingDate ?? null,
+      tipo: detectarTipo(rawDescription),
+      duplicata,
+      action: duplicata ? "skip" : "import",
+      confidenceScore: finalConfidence,
+      confidenceLevel: finalConfidence >= 85 ? "alta" : finalConfidence >= 65 ? "media" : "baixa",
+      reviewRequired: shouldReview,
+      validationIssues: confidenceIssues,
+    });
+  }
+
+  return { items, stats };
+}
+
+export function parseNubankInvoiceText(
+  text: string,
+  options?: ParseNubankOptions,
+): ParsedItem[] {
+  return parseNubankInvoiceTextInternal(text, "pdf", options).items;
+}
+
+function parseNubankPdfTransactions(
+  content: string,
+  existentes: CompraCartao[],
+  cartaoId: string,
+  options?: ParseOptions,
+): ParseResult {
+  return parseNubankInvoiceTextInternal(content, "pdf", {
+    ...options,
+    existentes,
+    cartaoId,
+  });
+}
+
+export function parsePdf(
+  content: string,
+  existentes: CompraCartao[],
+  cartaoId: string,
+  options?: ParseOptions,
+): ParseResult {
+  if (detectNubankInvoiceText(content)) {
+    // Ao detectar fatura Nubank textual, usamos parsing estrito por secao de transacoes.
+    // Isso evita importar cabecalho, totais, limites e textos legais como compras.
+    return parseNubankPdfTransactions(content, existentes, cartaoId, options);
+  }
+
+  return parseTexto(content, existentes, cartaoId, options);
 }
 
 function parseTexto(

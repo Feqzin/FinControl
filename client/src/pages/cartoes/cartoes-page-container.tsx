@@ -14,7 +14,7 @@ import { queryClient } from "@/lib/queryClient";
 import type { Cartao, CompraCartao, ParcelaCompra } from "@shared/schema";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { buildIgnoredDetails, countIgnoredRows, findVencimentoFatura, parseCsv, parseOfx, type ParseResult, type ParsedItem } from "@/pages/cartoes/import-parser";
+import { buildIgnoredDetails, countIgnoredRows, detectNubankInvoiceText, findVencimentoFatura, parseCsv, parseOfx, parsePdf, type ParseResult, type ParsedItem } from "@/pages/cartoes/import-parser";
 import { extractTextFromPdfBuffer, isExtractedPdfTextUsable } from "@/pages/cartoes/import-pdf-utils";
 import { ImportFaturaDialog } from "@/pages/cartoes/components/import-fatura-dialog";
 import { formatImportCardOptionLabel, suggestImportCardByText } from "@/pages/cartoes/import-card-matching";
@@ -178,6 +178,19 @@ function isImportMimeAllowed(extension: string, mimeType: string): boolean {
   return allowed.includes(normalizedMime);
 }
 
+function isNubankCardLikeName(cardName: string): boolean {
+  const normalized = cardName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) return false;
+  if (normalized.includes("NUBANK")) return true;
+  return /\bNU\b/.test(normalized) && /\b(MASTERCARD|CREDITO|CARTAO)\b/.test(normalized);
+}
+
 export default function CartoesPage() {
   const { toast } = useToast();
   const premiumAccess = usePremiumAccess();
@@ -224,6 +237,9 @@ export default function CartoesPage() {
   const [importPreviewLogId, setImportPreviewLogId] = useState<string | null>(null);
   const [importSourceType, setImportSourceType] = useState<"texto" | "csv" | "ofx" | "qfx" | "pdf" | "manual">("manual");
   const [importSourceName, setImportSourceName] = useState("");
+  const [importIssuerMismatchWarning, setImportIssuerMismatchWarning] = useState("");
+  const [importIssuerMismatchMustAcknowledge, setImportIssuerMismatchMustAcknowledge] = useState(false);
+  const [importIssuerMismatchAcknowledged, setImportIssuerMismatchAcknowledged] = useState(false);
   const [lastImportLogId, setLastImportLogId] = useState<string | null>(null);
   const [importConfirmResult, setImportConfirmResult] = useState<ImportConfirmResponse | null>(null);
   const [historyRollbackLogId, setHistoryRollbackLogId] = useState<string | null>(null);
@@ -826,6 +842,9 @@ export default function CartoesPage() {
     setImportPreviewLogId(null);
     setImportSourceType("manual");
     setImportSourceName("");
+    setImportIssuerMismatchWarning("");
+    setImportIssuerMismatchMustAcknowledge(false);
+    setImportIssuerMismatchAcknowledged(false);
     setImportConfirmResult(null);
     setHistoryRollbackLogId(null);
   };
@@ -834,6 +853,9 @@ export default function CartoesPage() {
     const changed = value !== importCartaoId;
     setImportCartaoId(value);
     setImportCartaoHint("");
+    setImportIssuerMismatchWarning("");
+    setImportIssuerMismatchMustAcknowledge(false);
+    setImportIssuerMismatchAcknowledged(false);
 
     if (changed && (importItems.length > 0 || importPreviewLogId)) {
       setImportItems([]);
@@ -841,6 +863,9 @@ export default function CartoesPage() {
       setImportEditingId(null);
       setImportSourceType("manual");
       setImportSourceName("");
+      setImportIssuerMismatchWarning("");
+      setImportIssuerMismatchMustAcknowledge(false);
+      setImportIssuerMismatchAcknowledged(false);
       setImportConfirmResult(null);
       toast({
         title: "Cartao de destino alterado",
@@ -884,6 +909,51 @@ export default function CartoesPage() {
 
     setImportCartaoHint("Nao foi possivel detectar o emissor. Selecione manualmente o cartao de destino.");
     return null;
+  };
+
+  const applyPdfIssuerMismatchGuard = (sourceText: string, selectedCartaoId: string) => {
+    setImportIssuerMismatchWarning("");
+    setImportIssuerMismatchMustAcknowledge(false);
+    setImportIssuerMismatchAcknowledged(false);
+
+    const selectedCartao = cartoes.find((item) => item.id === selectedCartaoId);
+    if (!selectedCartao) return;
+
+    const isNubankInvoice = detectNubankInvoiceText(sourceText);
+    if (isNubankInvoice && !isNubankCardLikeName(selectedCartao.nome)) {
+      setImportIssuerMismatchWarning(
+        `Esta fatura parece ser Nubank, mas o cartão selecionado é ${selectedCartao.nome}. Revise antes de confirmar.`,
+      );
+      setImportIssuerMismatchMustAcknowledge(true);
+      return;
+    }
+
+    const suggestion = suggestImportCardByText(sourceText, cartoes);
+
+    if (suggestion.kind === "single_match" && suggestion.card.id !== selectedCartaoId) {
+      setImportIssuerMismatchWarning(
+        `Esta fatura parece ser ${suggestion.issuerLabel}, mas o cartão selecionado é ${selectedCartao.nome}. Revise antes de confirmar.`,
+      );
+      setImportIssuerMismatchMustAcknowledge(true);
+      return;
+    }
+
+    if (
+      suggestion.kind === "multiple_cards" &&
+      !suggestion.cards.some((card) => card.id === selectedCartaoId)
+    ) {
+      setImportIssuerMismatchWarning(
+        `Detectamos ${suggestion.issuerLabel} no PDF, mas o cartão selecionado é ${selectedCartao.nome}. Revise antes de confirmar.`,
+      );
+      setImportIssuerMismatchMustAcknowledge(true);
+      return;
+    }
+
+    if (suggestion.kind === "issuer_without_card") {
+      setImportIssuerMismatchWarning(
+        `Detectamos emissor ${suggestion.issuerLabel} no PDF. Confirme se o cartão selecionado (${selectedCartao.nome}) é o destino correto.`,
+      );
+    }
   };
 
   const handleCreateCard = () => {
@@ -1161,6 +1231,15 @@ export default function CartoesPage() {
       return;
     }
 
+    if (importIssuerMismatchMustAcknowledge && !importIssuerMismatchAcknowledged) {
+      toast({
+        title: "Confirme o alerta de emissor antes de importar",
+        description: "Marque que está ciente do cartão de destino para continuar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const invalidSelectedItems = importItems.filter((item) => (
       item.action === "import" && getImportItemEffectiveStatus(item) === "invalido"
     ));
@@ -1328,6 +1407,9 @@ export default function CartoesPage() {
       setImportPreviewLogId(preview.importLogId);
       setImportSourceType("texto");
       setImportSourceName("texto-livre");
+      setImportIssuerMismatchWarning("");
+      setImportIssuerMismatchMustAcknowledge(false);
+      setImportIssuerMismatchAcknowledged(false);
 
       toast({
         title: `${preview.summary.importItems} item(ns) pronto(s) para importar`,
@@ -1480,8 +1562,10 @@ export default function CartoesPage() {
         });
         sourceType = "texto";
       } else if (name.endsWith(".pdf")) {
-        result = parseCsv(content, compras, cartaoId, {
+        const selectedCard = cartoes.find((item) => item.id === cartaoId);
+        result = parsePdf(content, compras, cartaoId, {
           referenceBillingDate: importVencimento || undefined,
+          selectedCardName: selectedCard?.nome ?? "",
         });
         sourceType = "pdf";
       } else {
@@ -1523,6 +1607,13 @@ export default function CartoesPage() {
       setImportPreviewLogId(preview.importLogId);
       setImportSourceType(sourceType);
       setImportSourceName(file.name);
+      if (sourceType === "pdf") {
+        applyPdfIssuerMismatchGuard(`${file.name}\n${content}`, cartaoId);
+      } else {
+        setImportIssuerMismatchWarning("");
+        setImportIssuerMismatchMustAcknowledge(false);
+        setImportIssuerMismatchAcknowledged(false);
+      }
 
       toast({
         title: `${preview.summary.importItems} item(ns) pronto(s) para importar`,
@@ -1552,6 +1643,9 @@ export default function CartoesPage() {
         variant: "destructive",
       });
       setImportPreviewLogId(null);
+      setImportIssuerMismatchWarning("");
+      setImportIssuerMismatchMustAcknowledge(false);
+      setImportIssuerMismatchAcknowledged(false);
     } finally { setImportLoading(false); }
   };
 
@@ -1936,6 +2030,9 @@ export default function CartoesPage() {
             setImportPreviewLogId(null);
             setImportSourceType("manual");
             setImportSourceName("");
+            setImportIssuerMismatchWarning("");
+            setImportIssuerMismatchMustAcknowledge(false);
+            setImportIssuerMismatchAcknowledged(false);
             setImportConfirmResult(null);
             return;
           }
@@ -1970,6 +2067,10 @@ export default function CartoesPage() {
         onApplyImportEdit={applyImportEdit}
         formatCurrency={formatCartaoCurrency}
         isBatchImportPending={batchImportMutation.isPending}
+        issuerMismatchWarning={importIssuerMismatchWarning}
+        issuerMismatchRequiresAcknowledgement={importIssuerMismatchMustAcknowledge}
+        issuerMismatchAcknowledged={importIssuerMismatchAcknowledged}
+        onIssuerMismatchAcknowledgedChange={setImportIssuerMismatchAcknowledged}
         onConfirmImport={handleConfirmImport}
         confirmResult={importConfirmResult}
         onRollbackImport={
@@ -1992,6 +2093,9 @@ export default function CartoesPage() {
           setImportSourceType("manual");
           setImportSourceName("");
           setImportCartaoHint("");
+          setImportIssuerMismatchWarning("");
+          setImportIssuerMismatchMustAcknowledge(false);
+          setImportIssuerMismatchAcknowledged(false);
         }}
       />
 

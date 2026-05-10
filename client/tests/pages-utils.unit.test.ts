@@ -3,7 +3,15 @@ import assert from "node:assert/strict";
 import { formatCurrencyBRL, formatIsoDateToBR } from "../src/utils/formatters";
 import { isOverdueDate } from "../src/pages/dividas/dividas.utils";
 import { getDaysUntilInvoice, getNextInvoiceDate, isParcelaVencida } from "../src/pages/cartoes/cartoes.utils";
-import { parseCsv } from "../src/pages/cartoes/import-parser";
+import {
+  detectNubankInvoiceText,
+  extractNubankInvoiceYear,
+  parseCsv,
+  parseNubankInvoiceText,
+  parsePdf,
+} from "../src/pages/cartoes/import-parser";
+import { suggestImportCardByText } from "../src/pages/cartoes/import-card-matching";
+import type { Cartao } from "@shared/schema";
 import {
   extractTextFromPdfBuffer,
   hasPdfMagicBytes,
@@ -295,6 +303,125 @@ test("import parser: detecta parcelas em formatos comuns", () => {
   assert.equal(result.items[1]?.parcelas, 10);
   assert.equal(result.items[1]?.parcelaAtual, 1);
   assert.equal(result.items[1]?.reviewRequired, true);
+});
+
+test("import parser: detecta assinatura textual da fatura Nubank e ano de referencia", () => {
+  const pdfText = [
+    "Olá, Fernando. Esta é a sua fatura de abril, no valor de R$ 1.756,32",
+    "FATURA 24 ABR 2026",
+    "RESUMO DA FATURA ATUAL",
+    "TRANSAÇÕES DE 17 MAR A 17 ABR",
+  ].join("\n");
+
+  assert.equal(detectNubankInvoiceText(pdfText), true);
+  assert.equal(extractNubankInvoiceYear(pdfText), 2026);
+});
+
+test("import parser: PDF Nubank importa apenas linhas reais da seção de transações", () => {
+  const pdfText = [
+    "Olá, Fernando. Esta é a sua fatura de abril, no valor de R$ 1.756,32",
+    "FATURA 24 ABR 2026",
+    "Fatura anterior R$ 1.423,13",
+    "Pagamento recebido −R$ 1.623,13",
+    "Total a pagar R$ 1.756,32",
+    "Limite total R$ 3.291,33 R$ 4.050,00",
+    "FERNANDO QUINTELA BANDEIRA",
+    "TRANSAÇÕES DE 17 MAR A 17 ABR",
+    "17 MAR Mad Vestuario - Parcela 2/2 R$ 163,42",
+    "17 MAR Amazonmktplc*Ikaraindu - Parcela 5/10 R$ 53,01",
+    "Pagamento em 20 MAR −R$ 1.300,00",
+    "01 ABR Mp *Hasag - Parcela 1/2 R$ 229,68",
+    "12 ABR Dl*Uberrides R$ 37,94",
+    "Em cumprimento à regulação vigente, consulte o Registrato.",
+    "O Nubank declara que...",
+  ].join("\n");
+
+  const result = parsePdf(pdfText, [], "cartao-1");
+  assert.equal(result.items.length, 4);
+
+  const descriptions = result.items.map((item) => item.descricao.toLowerCase());
+  assert.equal(descriptions.some((value) => value.includes("ola, fernando")), false);
+  assert.equal(descriptions.some((value) => value.includes("total a pagar")), false);
+  assert.equal(descriptions.some((value) => value.includes("fatura anterior")), false);
+  assert.equal(descriptions.some((value) => value.includes("pagamento em")), false);
+  assert.equal(descriptions.some((value) => value.includes("limite total")), false);
+  assert.equal(descriptions.some((value) => value.includes("pagamento recebido")), false);
+
+  const parcela2de2 = result.items.find((item) => item.descricao.toLowerCase().includes("mad vestuario"));
+  assert.ok(parcela2de2);
+  assert.equal(parcela2de2?.parcelaAtual, 2);
+  assert.equal(parcela2de2?.parcelas, 2);
+  assert.equal(parcela2de2?.dataCompra, "2026-03-17");
+  assert.equal(parcela2de2?.valorParcela, 163.42);
+
+  const parcela5de10 = result.items.find((item) => item.descricao.toLowerCase().includes("amazonmktplc"));
+  assert.ok(parcela5de10);
+  assert.equal(parcela5de10?.parcelaAtual, 5);
+  assert.equal(parcela5de10?.parcelas, 10);
+  assert.equal(parcela5de10?.dataCompra, "2026-03-17");
+  assert.equal(parcela5de10?.valorParcela, 53.01);
+
+  const parcela1de2 = result.items.find((item) => item.descricao.toLowerCase().includes("mp hasag"));
+  assert.ok(parcela1de2);
+  assert.equal(parcela1de2?.parcelaAtual, 1);
+  assert.equal(parcela1de2?.parcelas, 2);
+  assert.equal(parcela1de2?.dataCompra, "2026-04-01");
+
+  const compraAvista = result.items.find((item) => item.descricao.toLowerCase().includes("dl uberrides"));
+  assert.ok(compraAvista);
+  assert.equal(compraAvista?.parcelaAtual, 1);
+  assert.equal(compraAvista?.parcelas, 1);
+  assert.equal(compraAvista?.valorParcela, 37.94);
+});
+
+test("import parser: mismatch Nubank x Inter pode ser detectado pelo sugestor de emissor", () => {
+  const cards = [
+    {
+      id: "cartao-inter",
+      userId: "user-1",
+      nome: "Inter",
+      limite: "800.00",
+      melhorDiaCompra: 5,
+      diaVencimento: 10,
+      iconeId: null,
+    },
+    {
+      id: "cartao-nubank",
+      userId: "user-1",
+      nome: "Nubank Mastercard",
+      limite: "3000.00",
+      melhorDiaCompra: 10,
+      diaVencimento: 20,
+      iconeId: null,
+    },
+  ] as Cartao[];
+
+  const suggestion = suggestImportCardByText("Nubank fatura de abril", cards);
+  assert.equal(suggestion.kind, "single_match");
+  if (suggestion.kind === "single_match") {
+    assert.equal(suggestion.card.id, "cartao-nubank");
+  }
+});
+
+test("import parser: texto Nubank com cartao Inter marca revisão forte", () => {
+  const pdfText = [
+    "FATURA 24 ABR 2026",
+    "NUBANK",
+    "TRANSAÇÕES DE 17 MAR A 17 ABR",
+    "12 ABR Dl*Uberrides R$ 37,94",
+  ].join("\n");
+
+  const parsed = parseNubankInvoiceText(pdfText, {
+    selectedCardName: "Inter",
+    referenceBillingDate: "2026-04-24",
+  });
+
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0]?.reviewRequired, true);
+  assert.equal(
+    parsed[0]?.validationIssues?.some((issue) => issue.toLowerCase().includes("parece ser nubank")),
+    true,
+  );
 });
 
 test("import parser: valida assinatura magic bytes de PDF", () => {
