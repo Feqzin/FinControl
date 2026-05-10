@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { format } from "date-fns";
 import { db } from "../db.js";
-import { cartoes, comprasCartao, importLogs, parcelasCompra, type InsertCompraCartao } from "../../shared/schema.js";
+import { cartoes, comprasCartao, importLogs, parcelasCompra, servicos, type InsertCompraCartao } from "../../shared/schema.js";
 import { formatMoneyFixed, multiply, parseMoney } from "../../utils/money.js";
 import { buildParcelasCompraRows } from "./parcelas-compra-materialization.js";
 import type {
@@ -13,6 +13,16 @@ import type {
 
 type ConfidenceLevel = "alta" | "media" | "baixa";
 type CanonicalImportItemStatus = "novo" | "duplicata_exata" | "possivel_duplicata" | "invalido";
+type ServiceCategory = "streaming" | "software" | "lazer" | "assinatura" | "utilidades" | "outros";
+type ImportServiceAction =
+  | { type: "none" }
+  | {
+    type: "create_new";
+    name: string;
+    category: ServiceCategory;
+    monthlyValue: number;
+    billingDay: number;
+  };
 type DuplicateProbeRow = {
   id: string;
   descricao: string;
@@ -45,6 +55,7 @@ export type ImportPreviewItem = {
   status: CanonicalImportItemStatus;
   forceImport: boolean;
   requiresForceImport: boolean;
+  serviceAction: ImportServiceAction;
 };
 
 type ImportPreviewSummary = {
@@ -74,6 +85,8 @@ type ImportConfirmResult = {
     forcedExactDuplicates: number;
     invalidCount: number;
     errorCount: number;
+    servicesCreatedCount: number;
+    servicesSkippedCount: number;
   };
   alreadyConfirmed?: boolean;
 };
@@ -131,6 +144,44 @@ function parseDuplicateId(input: ImportPreviewItemInput): string | null {
 
 function parseForceImport(input: ImportPreviewItemInput): boolean {
   return input.forceImport === true;
+}
+
+function normalizeServiceCategory(rawCategory: string | null | undefined): ServiceCategory {
+  const normalized = (rawCategory ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (normalized === "streaming") return "streaming";
+  if (normalized === "software") return "software";
+  if (normalized === "lazer") return "lazer";
+  if (normalized === "assinatura") return "assinatura";
+  if (normalized === "utilidades") return "utilidades";
+  if (normalized === "outros") return "outros";
+  if (normalized === "seguro") return "utilidades";
+  if (normalized === "outro") return "outros";
+  return "outros";
+}
+
+function normalizeServiceAction(input: ImportPreviewItemInput): ImportServiceAction {
+  const raw = input.serviceAction;
+  if (!raw || raw.type !== "create_new") {
+    return { type: "none" };
+  }
+
+  const name = String(raw.name ?? "").trim();
+  const monthlyValue = Number(raw.monthlyValue ?? Number.NaN);
+  const billingDay = Number(raw.billingDay ?? Number.NaN);
+  if (!name || !Number.isFinite(monthlyValue) || monthlyValue <= 0 || !Number.isInteger(billingDay) || billingDay < 1 || billingDay > 31) {
+    throw new ImportPipelineError(400, "Dados inválidos para criar serviço.");
+  }
+
+  return {
+    type: "create_new",
+    name: name.slice(0, 120),
+    category: normalizeServiceCategory(raw.category),
+    monthlyValue,
+    billingDay,
+  };
 }
 
 function normalizeComparableText(value: string): string {
@@ -364,6 +415,7 @@ function normalizeImportItem(
   const tipo = input.tipo ?? "compra";
   const estabelecimento = input.estabelecimento?.trim() || null;
   const duplicateIdFromInput = parseDuplicateId(input);
+  const serviceAction = normalizeServiceAction(input);
   const duplicateRowFromInput = duplicateIdFromInput ? (options?.duplicateRowsById?.get(duplicateIdFromInput) ?? null) : null;
   const candidateMatch = findPotentialDuplicateCandidate({
     descricao,
@@ -515,6 +567,7 @@ function normalizeImportItem(
     status,
     forceImport,
     requiresForceImport: status === "duplicata_exata",
+    serviceAction,
   };
 }
 
@@ -542,7 +595,7 @@ function summarizePreview(items: ImportPreviewItem[]): ImportPreviewSummary {
   };
 }
 
-function summarizeConfirmResult(items: ImportPreviewItem[], createdCount: number) {
+function summarizeConfirmResult(items: ImportPreviewItem[], createdCount: number, servicesCreatedCount = 0) {
   const totalProcessed = items.length;
   const invalidCount = items.filter((item) => item.status === "invalido").length;
   const forcedExactDuplicates = items.filter((item) => (
@@ -561,7 +614,41 @@ function summarizeConfirmResult(items: ImportPreviewItem[], createdCount: number
     forcedExactDuplicates,
     invalidCount,
     errorCount: 0,
+    servicesCreatedCount,
+    servicesSkippedCount: 0,
   };
+}
+
+function normalizeServiceName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function hasSimilarService(
+  existingServices: Array<{ nome: string; valorMensal: string }>,
+  candidate: { name: string; monthlyValue: number },
+): boolean {
+  const candidateName = normalizeServiceName(candidate.name);
+  if (!candidateName) return false;
+
+  return existingServices.some((service) => {
+    const existingName = normalizeServiceName(service.nome);
+    if (!existingName) return false;
+
+    const exactName = existingName === candidateName;
+    const similarName = similarityByTokenOverlap(existingName, candidateName) >= 0.75;
+    if (!exactName && !similarName) return false;
+
+    const existingValue = parseMoney(service.valorMensal) ?? 0;
+    const diff = Math.abs(existingValue - candidate.monthlyValue);
+    const valueTolerance = Math.max(2, candidate.monthlyValue * 0.1);
+    return diff <= valueTolerance;
+  });
 }
 
 function toCompraInsert(userId: string, cartaoId: string, item: ImportPreviewItem): InsertCompraCartao {
@@ -656,8 +743,11 @@ export class ImportsService {
     if (log.status === "confirmed") {
       const existingIds = deserializeJson<string[]>(log.createdCompraIds, []);
       const confirmedPayload = deserializeJson<ImportPreviewItem[]>(log.confirmedPayload, []);
+      const servicesCreatedCount = confirmedPayload.filter((item) => (
+        item.action === "import" && item.serviceAction?.type === "create_new"
+      )).length;
       const summary = confirmedPayload.length > 0
-        ? summarizeConfirmResult(confirmedPayload, existingIds.length)
+        ? summarizeConfirmResult(confirmedPayload, existingIds.length, servicesCreatedCount)
         : {
           totalProcessed: Math.max(log.totalItems, existingIds.length + log.skippedItems),
           createdCount: existingIds.length,
@@ -666,6 +756,8 @@ export class ImportsService {
           forcedExactDuplicates: 0,
           invalidCount: 0,
           errorCount: 0,
+          servicesCreatedCount: 0,
+          servicesSkippedCount: 0,
         };
       return {
         importLogId: log.id,
@@ -735,10 +827,40 @@ export class ImportsService {
       );
     }
 
+    const createServiceItems = candidateItems.filter((item) => item.serviceAction.type === "create_new");
+    const createServiceIgnoredItems = createServiceItems.filter((item) => item.action !== "import");
+    if (createServiceIgnoredItems.length > 0) {
+      throw new ImportPipelineError(
+        400,
+        "Ação de criar serviço só é permitida para itens marcados para importação.",
+        { blockedIds: createServiceIgnoredItems.map((item) => item.id) },
+      );
+    }
+
+    const createServiceInvalidItems = createServiceItems.filter((item) => item.status === "invalido");
+    if (createServiceInvalidItems.length > 0) {
+      throw new ImportPipelineError(
+        400,
+        "Não é possível criar serviço para itens inválidos.",
+        { blockedIds: createServiceInvalidItems.map((item) => item.id) },
+      );
+    }
+
+    const createServiceExactDupWithoutForce = createServiceItems.filter((item) => (
+      item.status === "duplicata_exata" && item.forceImport !== true
+    ));
+    if (createServiceExactDupWithoutForce.length > 0) {
+      throw new ImportPipelineError(
+        400,
+        "Duplicatas exatas exigem forçar importação antes de criar serviço.",
+        { blockedIds: createServiceExactDupWithoutForce.map((item) => item.id) },
+      );
+    }
+
     const rowsToInsert = importItems.map((item) => toCompraInsert(userId, log.cartaoId, item));
 
     const summary = summarizePreview(candidateItems);
-    const createdCompraIds = await db.transaction(async (tx) => {
+    const transactionResult = await db.transaction(async (tx) => {
       const createdRows = rowsToInsert.length > 0
         ? await tx.insert(comprasCartao).values(rowsToInsert).returning()
         : [];
@@ -749,6 +871,54 @@ export class ImportsService {
         if (parcelasRows.length > 0) {
           await tx.insert(parcelasCompra).values(parcelasRows);
         }
+      }
+
+      const existingServices = await tx.select({
+        nome: servicos.nome,
+        valorMensal: servicos.valorMensal,
+      }).from(servicos).where(eq(servicos.userId, userId));
+
+      let servicesCreatedCount = 0;
+      for (let index = 0; index < importItems.length; index += 1) {
+        const item = importItems[index];
+        if (item?.serviceAction.type !== "create_new") continue;
+
+        const createdCompra = createdRows[index];
+        if (!createdCompra) {
+          throw new ImportPipelineError(409, "Não foi possível vincular serviço à compra criada.");
+        }
+
+        const serviceAction = item.serviceAction;
+        if (hasSimilarService(existingServices, serviceAction)) {
+          throw new ImportPipelineError(
+            409,
+            "Já existe um serviço parecido. Vincule ao serviço existente ou altere a escolha.",
+            { itemId: item.id },
+          );
+        }
+
+        const valorMensal = formatMoneyFixed(serviceAction.monthlyValue);
+        if (!valorMensal) {
+          throw new ImportPipelineError(400, "Valor mensal inválido para criação de serviço.");
+        }
+
+        await tx.insert(servicos).values({
+          userId,
+          nome: serviceAction.name,
+          categoria: serviceAction.category,
+          valorMensal,
+          dataCobranca: serviceAction.billingDay,
+          formaPagamento: "cartao",
+          compraCartaoId: createdCompra.id,
+          status: "ativo",
+          iconeId: null,
+        });
+
+        existingServices.push({
+          nome: serviceAction.name,
+          valorMensal,
+        });
+        servicesCreatedCount += 1;
       }
 
       const ids = createdRows.map((row) => row.id);
@@ -770,15 +940,18 @@ export class ImportsService {
         throw new ImportPipelineError(409, "Import log nao encontrado durante a confirmacao");
       }
 
-      return ids;
+      return {
+        ids,
+        servicesCreatedCount,
+      };
     });
 
     return {
       importLogId: log.id,
-      createdCount: createdCompraIds.length,
+      createdCount: transactionResult.ids.length,
       skippedCount: summary.skipItems,
-      createdCompraIds,
-      summary: summarizeConfirmResult(candidateItems, createdCompraIds.length),
+      createdCompraIds: transactionResult.ids,
+      summary: summarizeConfirmResult(candidateItems, transactionResult.ids.length, transactionResult.servicesCreatedCount),
     };
   }
 

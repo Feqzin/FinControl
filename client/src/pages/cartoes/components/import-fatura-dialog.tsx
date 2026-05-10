@@ -219,6 +219,8 @@ export function ImportFaturaDialog({
     forcedExactDuplicates: 0,
     invalidCount: 0,
     errorCount: 0,
+    servicesCreatedCount: 0,
+    servicesSkippedCount: 0,
   };
   const hasConfirmSummary = Boolean(confirmResult);
 
@@ -686,7 +688,7 @@ export function ImportFaturaDialog({
                                     ({formatCurrency(item.createServiceSuggestion.valorMensal)}/mês, cobrança dia{" "}
                                     {item.createServiceSuggestion.dataCobranca}, categoria{" "}
                                     {formatServiceCategoryLabel(item.createServiceSuggestion.categoria)}).
-                                    A criação não é automática nesta etapa.
+                                    O serviço será criado ao confirmar a importação deste item.
                                   </p>
                                 ) : null}
 
@@ -828,6 +830,10 @@ export function ImportFaturaDialog({
                 <div className="rounded-md border p-3">
                   <p className="text-muted-foreground">Itens com erro</p>
                   <p className="text-lg font-semibold">{confirmSummary.errorCount}</p>
+                </div>
+                <div className="rounded-md border p-3 sm:col-span-2">
+                  <p className="text-muted-foreground">Serviços criados</p>
+                  <p className="text-lg font-semibold">{confirmSummary.servicesCreatedCount ?? 0}</p>
                 </div>
               </div>
 

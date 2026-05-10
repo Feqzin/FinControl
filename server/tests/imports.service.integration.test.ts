@@ -885,3 +885,239 @@ testImports("confirmacao faz rollback se falhar apos criar compras e antes de pe
     await db.delete(users).where(eq(users.id, user.id));
   }
 });
+
+testImports("confirmacao cria servico novo vinculado a compra importada quando serviceAction=create_new", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, servicos } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_create_service_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Create Service",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Service Link",
+    limite: "5000.00",
+    melhorDiaCompra: 5,
+    diaVencimento: 20,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-create-service",
+      items: [
+        {
+          id: "srv-1",
+          descricao: "Spotify Premium",
+          valor: "21.90",
+          valorParcela: "21.90",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-11",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+          serviceAction: {
+            type: "create_new",
+            name: "Spotify",
+            category: "streaming",
+            monthlyValue: 21.9,
+            billingDay: 11,
+          },
+        },
+      ],
+    });
+
+    const confirmed = await service.confirm(user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+      items: preview.items.map((item) => ({
+        ...item,
+        action: "import",
+        serviceAction: {
+          type: "create_new",
+          name: "Spotify",
+          category: "streaming",
+          monthlyValue: 21.9,
+          billingDay: 11,
+        },
+      })),
+    });
+
+    assert.equal(confirmed.createdCount, 1);
+    assert.equal(confirmed.summary.servicesCreatedCount, 1);
+
+    const createdCompraId = confirmed.createdCompraIds[0];
+    assert.ok(createdCompraId);
+
+    const servicosRows = await db.select().from(servicos).where(and(
+      eq(servicos.userId, user.id),
+      eq(servicos.compraCartaoId, createdCompraId!),
+    ));
+    assert.equal(servicosRows.length, 1);
+    assert.equal(servicosRows[0]?.nome, "Spotify");
+    assert.equal(servicosRows[0]?.formaPagamento, "cartao");
+    assert.equal(servicosRows[0]?.categoria, "streaming");
+    assert.equal(servicosRows[0]?.status, "ativo");
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testImports("confirmacao bloqueia create_new em item ignorado", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_create_service_skip_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Create Service Skip",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Skip Service",
+    limite: "5000.00",
+    melhorDiaCompra: 6,
+    diaVencimento: 21,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-service-skip",
+      items: [
+        {
+          id: "srv-skip-1",
+          descricao: "Netflix",
+          valor: "39.90",
+          valorParcela: "39.90",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-12",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "skip",
+          serviceAction: {
+            type: "create_new",
+            name: "Netflix",
+            category: "streaming",
+            monthlyValue: 39.9,
+            billingDay: 12,
+          },
+        },
+      ],
+    });
+
+    await assert.rejects(
+      service.confirm(user.id, {
+        importLogId: preview.importLogId,
+        userConfirmed: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message.includes("criar serviço"), true);
+        return true;
+      },
+    );
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testImports("confirmacao bloqueia create_new quando ja existe servico parecido", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, servicos } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_create_service_dup_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Create Service Dup",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Dup Service",
+    limite: "5000.00",
+    melhorDiaCompra: 7,
+    diaVencimento: 22,
+    iconeId: null,
+  }).returning();
+
+  try {
+    await db.insert(servicos).values({
+      userId: user.id,
+      nome: "Spotify Premium",
+      categoria: "streaming",
+      valorMensal: "21.90",
+      dataCobranca: 10,
+      formaPagamento: "cartao",
+      compraCartaoId: null,
+      status: "ativo",
+      iconeId: null,
+    });
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-service-dup",
+      items: [
+        {
+          id: "srv-dup-1",
+          descricao: "Spotify",
+          valor: "21.90",
+          valorParcela: "21.90",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-20",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+          serviceAction: {
+            type: "create_new",
+            name: "Spotify",
+            category: "streaming",
+            monthlyValue: 21.9,
+            billingDay: 20,
+          },
+        },
+      ],
+    });
+
+    await assert.rejects(
+      service.confirm(user.id, {
+        importLogId: preview.importLogId,
+        userConfirmed: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message.includes("serviço parecido"), true);
+        return true;
+      },
+    );
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});

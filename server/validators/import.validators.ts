@@ -26,6 +26,51 @@ const isoDateNullableOptional = z.union([z.string(), z.date(), z.null(), z.undef
 
 export const importSourceType = z.enum(["texto", "csv", "ofx", "qfx", "pdf", "manual"]);
 export const importAction = z.enum(["import", "skip"]);
+const importServiceActionType = z.enum(["none", "create_new"]);
+const importServiceActionCategory = z.enum([
+  "streaming",
+  "seguro",
+  "software",
+  "assinatura",
+  "outro",
+  "lazer",
+  "utilidades",
+  "outros",
+]);
+
+const importServiceAction = z.object({
+  type: importServiceActionType.default("none"),
+  name: z.string().trim().max(120).optional(),
+  category: importServiceActionCategory.optional(),
+  monthlyValue: z.coerce.number().positive().optional(),
+  billingDay: z.coerce.number().int().min(1).max(31).optional(),
+}).superRefine((value, ctx) => {
+  if (value.type !== "create_new") return;
+
+  if (!value.name || value.name.trim().length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["name"],
+      message: "Nome do servico obrigatorio para create_new.",
+    });
+  }
+
+  if (!Number.isFinite(value.monthlyValue ?? Number.NaN) || (value.monthlyValue ?? 0) <= 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["monthlyValue"],
+      message: "Valor mensal obrigatorio para create_new.",
+    });
+  }
+
+  if (!Number.isInteger(value.billingDay ?? Number.NaN) || (value.billingDay ?? 0) < 1 || (value.billingDay ?? 0) > 31) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["billingDay"],
+      message: "Dia de cobranca obrigatorio para create_new.",
+    });
+  }
+});
 
 export const importPreviewItemBody = z.object({
   itemId: z.string().optional(),
@@ -49,6 +94,7 @@ export const importPreviewItemBody = z.object({
   forceImport: z.boolean().optional(),
   duplicateId: z.string().optional().nullable(),
   duplicata: z.any().optional(),
+  serviceAction: importServiceAction.optional(),
 });
 
 export const importPreviewBody = z.object({

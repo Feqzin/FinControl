@@ -31,6 +31,8 @@ export type ImportConfirmResponse = {
     forcedExactDuplicates: number;
     invalidCount: number;
     errorCount: number;
+    servicesCreatedCount?: number;
+    servicesSkippedCount?: number;
   };
   alreadyConfirmed?: boolean;
 };
@@ -357,6 +359,32 @@ function toImportItemPayload(item: ParsedItem) {
       ? String((item.duplicata as Record<string, unknown>).id ?? "")
       : null);
 
+  const serviceAction = (() => {
+    const suggested = item.serviceAction;
+    if (suggested?.type === "create_new") {
+      const fallbackBillingDay = Number(item.dataCompra.slice(-2)) || 1;
+      return {
+        type: "create_new" as const,
+        name: suggested.name ?? item.createServiceSuggestion?.nome ?? item.descricao,
+        category: suggested.category ?? item.createServiceSuggestion?.categoria ?? "outro",
+        monthlyValue: suggested.monthlyValue ?? item.createServiceSuggestion?.valorMensal ?? item.valorParcela,
+        billingDay: suggested.billingDay ?? item.createServiceSuggestion?.dataCobranca ?? fallbackBillingDay,
+      };
+    }
+
+    if (item.serviceSuggestionAction === "create_new" && item.createServiceSuggestion) {
+      return {
+        type: "create_new" as const,
+        name: item.createServiceSuggestion.nome,
+        category: item.createServiceSuggestion.categoria,
+        monthlyValue: item.createServiceSuggestion.valorMensal,
+        billingDay: item.createServiceSuggestion.dataCobranca,
+      };
+    }
+
+    return { type: "none" as const };
+  })();
+
   return {
     itemId: item.id,
     id: item.id,
@@ -375,6 +403,7 @@ function toImportItemPayload(item: ParsedItem) {
     status: item.status,
     forceImport: item.forceImport === true,
     duplicateId: duplicateId || null,
+    serviceAction,
   };
 }
 
