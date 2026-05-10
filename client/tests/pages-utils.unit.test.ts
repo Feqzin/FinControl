@@ -4,6 +4,7 @@ import { formatCurrencyBRL, formatIsoDateToBR } from "../src/utils/formatters";
 import { isOverdueDate } from "../src/pages/dividas/dividas.utils";
 import { getDaysUntilInvoice, getNextInvoiceDate, isParcelaVencida } from "../src/pages/cartoes/cartoes.utils";
 import {
+  detectRecurringServiceCandidate,
   detectNubankInvoiceText,
   extractNubankInvoiceYear,
   parseCsv,
@@ -422,6 +423,42 @@ test("import parser: texto Nubank com cartao Inter marca revisão forte", () => 
     parsed[0]?.validationIssues?.some((issue) => issue.toLowerCase().includes("parece ser nubank")),
     true,
   );
+});
+
+test("import parser: detecta candidatos recorrentes de serviço com match forte", () => {
+  const spotify = detectRecurringServiceCandidate("Dm*Spotify");
+  const netflix = detectRecurringServiceCandidate("NETFLIX.COM");
+  const seguro = detectRecurringServiceCandidate("Nu Seguro Vida");
+
+  assert.equal(spotify.isServiceCandidate, true);
+  assert.equal(spotify.matchedProvider, "Spotify");
+  assert.equal(netflix.isServiceCandidate, true);
+  assert.equal(netflix.matchedProvider, "Netflix");
+  assert.equal(seguro.isServiceCandidate, true);
+  assert.equal(seguro.categorySuggestion, "seguro");
+});
+
+test("import parser: nao marca compras comuns como serviço recorrente", () => {
+  const uber = detectRecurringServiceCandidate("Uber Uber *Trip Help.U");
+  const cinemark = detectRecurringServiceCandidate("Cinemark Brasil S.A Ec");
+  const amazonCompra = detectRecurringServiceCandidate("Amazonmktplc*Ikaraindu");
+
+  assert.equal(uber.isServiceCandidate, false);
+  assert.equal(cinemark.isServiceCandidate, false);
+  assert.equal(amazonCompra.isServiceCandidate, false);
+});
+
+test("import parser: candidato de serviço não cria vínculo automático", () => {
+  const csv = [
+    "Data;Descricao;Valor",
+    "06/05/2026;DM*Spotify;21,90",
+  ].join("\n");
+
+  const parsed = parseCsv(csv, [], "cartao-1");
+  assert.equal(parsed.items.length, 1);
+  assert.equal(parsed.items[0]?.recurringServiceCandidate?.isServiceCandidate, true);
+  assert.equal(parsed.items[0]?.serviceSuggestionAction, "ignore");
+  assert.equal(parsed.items[0]?.linkedServiceId, null);
 });
 
 test("import parser: valida assinatura magic bytes de PDF", () => {

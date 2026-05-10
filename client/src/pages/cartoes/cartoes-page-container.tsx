@@ -11,10 +11,21 @@ import {
 } from "lucide-react";
 import { useUIPreferences } from "@/context/ui-preferences";
 import { queryClient } from "@/lib/queryClient";
-import type { Cartao, CompraCartao, ParcelaCompra } from "@shared/schema";
+import type { Cartao, CompraCartao, ParcelaCompra, Servico } from "@shared/schema";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { buildIgnoredDetails, countIgnoredRows, detectNubankInvoiceText, findVencimentoFatura, parseCsv, parseOfx, parsePdf, type ParseResult, type ParsedItem } from "@/pages/cartoes/import-parser";
+import {
+  buildIgnoredDetails,
+  countIgnoredRows,
+  detectNubankInvoiceText,
+  detectRecurringServiceCandidate,
+  findVencimentoFatura,
+  parseCsv,
+  parseOfx,
+  parsePdf,
+  type ParseResult,
+  type ParsedItem,
+} from "@/pages/cartoes/import-parser";
 import { extractTextFromPdfBuffer, isExtractedPdfTextUsable } from "@/pages/cartoes/import-pdf-utils";
 import { ImportFaturaDialog } from "@/pages/cartoes/components/import-fatura-dialog";
 import { formatImportCardOptionLabel, suggestImportCardByText } from "@/pages/cartoes/import-card-matching";
@@ -189,6 +200,99 @@ function isNubankCardLikeName(cardName: string): boolean {
   if (!normalized) return false;
   if (normalized.includes("NUBANK")) return true;
   return /\bNU\b/.test(normalized) && /\b(MASTERCARD|CREDITO|CARTAO)\b/.test(normalized);
+}
+
+function normalizeServiceText(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findMatchingServiceForImportItem(item: ParsedItem, servicos: Servico[]): Servico | null {
+  const provider = normalizeServiceText(item.recurringServiceCandidate?.matchedProvider);
+  const descricao = normalizeServiceText(item.descricao);
+  if (!provider && !descricao) return null;
+
+  const expectedValue = Number(item.valorParcela) || 0;
+  let best: { servico: Servico; score: number } | null = null;
+
+  for (const servico of servicos) {
+    const nome = normalizeServiceText(servico.nome);
+    if (!nome) continue;
+
+    const valueDiff = Math.abs((Number(servico.valorMensal) || 0) - expectedValue);
+    const providerMatch = provider.length > 0 && (nome.includes(provider) || provider.includes(nome));
+    const descricaoMatch = descricao.length > 0 && (nome.includes(descricao) || descricao.includes(nome));
+
+    let score = 0;
+    if (providerMatch) score += 4;
+    if (descricaoMatch) score += 2;
+    if (valueDiff <= 0.05) score += 2;
+    else if (valueDiff <= 3) score += 1;
+
+    if (score < 3) continue;
+    if (!best || score > best.score) {
+      best = { servico, score };
+    }
+  }
+
+  return best?.servico ?? null;
+}
+
+function applyServiceSuggestionMetadata(items: ParsedItem[], servicos: Servico[]): ParsedItem[] {
+  return items.map((item) => {
+    const candidate = item.recurringServiceCandidate ?? detectRecurringServiceCandidate(item.descricao);
+    if (!candidate.isServiceCandidate) {
+      return {
+        ...item,
+        recurringServiceCandidate: candidate,
+        serviceSuggestionAction: item.serviceSuggestionAction ?? "ignore",
+        linkedServiceId: null,
+        serviceSuggestionWarning: null,
+      };
+    }
+
+    const matchedService = findMatchingServiceForImportItem(item, servicos);
+    const hasPotentialDuplicate = Boolean(matchedService);
+    const action = item.serviceSuggestionAction ?? (matchedService ? "link_existing" : "ignore");
+    const linkedServiceId = action === "link_existing"
+      ? (item.linkedServiceId ?? matchedService?.id ?? null)
+      : null;
+
+    return {
+      ...item,
+      recurringServiceCandidate: candidate,
+      serviceSuggestionAction: action,
+      linkedServiceId,
+      serviceSuggestionWarning: hasPotentialDuplicate
+        ? `Serviço parecido encontrado: ${matchedService?.nome}. Prefira vincular ao existente para evitar duplicidade.`
+        : null,
+    };
+  });
+}
+
+function mergePreviewItemsWithLocalSignals(previewItems: ParsedItem[], parsedItems: ParsedItem[], servicos: Servico[]): ParsedItem[] {
+  const parsedById = new Map(parsedItems.map((item) => [item.id, item]));
+  const merged = previewItems.map((item) => {
+    const local = parsedById.get(item.id);
+    if (!local) return item;
+
+    return {
+      ...item,
+      recurringServiceCandidate: local.recurringServiceCandidate ?? item.recurringServiceCandidate,
+      serviceSuggestionAction: local.serviceSuggestionAction ?? item.serviceSuggestionAction ?? "ignore",
+      linkedServiceId: local.linkedServiceId ?? item.linkedServiceId ?? null,
+      createServiceSuggestion: local.createServiceSuggestion ?? item.createServiceSuggestion ?? null,
+      serviceSuggestionWarning: local.serviceSuggestionWarning ?? item.serviceSuggestionWarning ?? null,
+      duplicata: local.duplicata ?? item.duplicata,
+    };
+  });
+
+  return applyServiceSuggestionMetadata(merged, servicos);
 }
 
 export default function CartoesPage() {
@@ -1396,11 +1500,7 @@ export default function CartoesPage() {
         items: result.items,
       });
 
-      const rawById = new Map(result.items.map((item) => [item.id, item]));
-      const mergedItems = preview.items.map((item) => ({
-        ...item,
-        duplicata: rawById.get(item.id)?.duplicata ?? null,
-      }));
+      const mergedItems = mergePreviewItemsWithLocalSignals(preview.items, result.items, servicos);
 
       setImportItems(mergedItems);
       setImportEditingId(null);
@@ -1436,7 +1536,7 @@ export default function CartoesPage() {
     const pa = Math.min(Math.max(1, parseInt(importEditForm.parcelaAtual) || 1), p);
     const vp = parseFloat(importEditForm.valor) || 0; // valor da parcela
     const vt = Number((vp * p).toFixed(2)); // valorTotal = parcela × total
-    setImportItems(importItems.map((item) => {
+    const nextItems = importItems.map((item) => {
       if (item.id !== importEditingId) return item;
 
       const nextItem: ParsedItem = {
@@ -1456,6 +1556,16 @@ export default function CartoesPage() {
         : [];
       const canImport = nextStatus !== "invalido";
 
+      const recurringServiceCandidate = detectRecurringServiceCandidate(nextItem.descricao);
+      const createServiceSuggestion = recurringServiceCandidate.isServiceCandidate
+        ? {
+          nome: recurringServiceCandidate.matchedProvider ?? nextItem.descricao,
+          valorMensal: nextItem.valorParcela,
+          dataCobranca: Number((nextItem.vencimentoFatura ?? nextItem.dataCompra).slice(-2)) || 1,
+          categoria: recurringServiceCandidate.categorySuggestion ?? "outro",
+        }
+        : null;
+
       return {
         ...nextItem,
         status: nextStatus,
@@ -1464,8 +1574,16 @@ export default function CartoesPage() {
         validationIssues,
         forceImport: nextStatus === "duplicata_exata" ? (nextItem.forceImport === true) : false,
         action: canImport ? nextItem.action : "skip",
+        recurringServiceCandidate,
+        createServiceSuggestion,
+        serviceSuggestionAction: recurringServiceCandidate.isServiceCandidate
+          ? (item.serviceSuggestionAction ?? "ignore")
+          : "ignore",
+        linkedServiceId: recurringServiceCandidate.isServiceCandidate ? item.linkedServiceId ?? null : null,
+        serviceSuggestionWarning: null,
       };
-    }));
+    });
+    setImportItems(applyServiceSuggestionMetadata(nextItems, servicos));
     setImportEditingId(null);
   };
 
@@ -1596,11 +1714,7 @@ export default function CartoesPage() {
         items: result.items,
       });
 
-      const rawById = new Map(result.items.map((item) => [item.id, item]));
-      const mergedItems = preview.items.map((item) => ({
-        ...item,
-        duplicata: rawById.get(item.id)?.duplicata ?? null,
-      }));
+      const mergedItems = mergePreviewItemsWithLocalSignals(preview.items, result.items, servicos);
 
       setImportItems(mergedItems);
       setImportEditingId(null);
@@ -2046,6 +2160,7 @@ export default function CartoesPage() {
         cartoes={cartoes}
         importCartaoId={importCartaoId}
         setImportCartaoId={handleImportCartaoChange}
+        servicos={servicos}
         importCartaoHint={importCartaoHint}
         formatCartaoOptionLabel={formatImportCardOptionLabel}
         importTab={importTab}

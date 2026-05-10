@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Cartao } from "@shared/schema";
+import type { Servico } from "@shared/schema";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
 import type { ImportConfirmResponse, ImportLogEntry } from "@/services/api/cartoes";
 import { FileText, Pencil, Upload, X } from "lucide-react";
@@ -84,12 +85,28 @@ function getHistoryStatusMeta(status: ImportLogEntry["status"]): { label: string
   }
 }
 
+function formatServiceCategoryLabel(category?: string): string {
+  switch (category) {
+    case "streaming":
+      return "Streaming";
+    case "seguro":
+      return "Seguro";
+    case "software":
+      return "Software";
+    case "assinatura":
+      return "Assinatura";
+    default:
+      return "Outro";
+  }
+}
+
 interface ImportFaturaDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cartoes: Cartao[];
   importCartaoId: string;
   setImportCartaoId: (value: string) => void;
+  servicos: Servico[];
   importCartaoHint: string;
   formatCartaoOptionLabel: (cartao: Cartao) => string;
   importTab: ImportTab;
@@ -132,6 +149,7 @@ export function ImportFaturaDialog({
   cartoes,
   importCartaoId,
   setImportCartaoId,
+  servicos,
   importCartaoHint,
   formatCartaoOptionLabel,
   importTab,
@@ -411,6 +429,10 @@ export function ImportFaturaDialog({
                   const isEditingRow = importEditingId === item.id;
                   const status = getEffectiveStatus(item);
                   const statusBadge = getStatusBadge(status);
+                  const serviceCandidate = item.recurringServiceCandidate;
+                  const isServiceCandidate = Boolean(serviceCandidate?.isServiceCandidate);
+                  const serviceAction = item.serviceSuggestionAction ?? "ignore";
+                  const selectedLinkedService = servicos.find((servico) => servico.id === item.linkedServiceId) ?? null;
                   const selectValue = status === "duplicata_exata"
                     ? (item.action === "import" && item.forceImport === true ? "force" : "skip")
                     : item.action;
@@ -551,6 +573,11 @@ export function ImportFaturaDialog({
                                   Taxa
                                 </span>
                               )}
+                              {isServiceCandidate ? (
+                                <span className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-700">
+                                  Possível serviço
+                                </span>
+                              ) : null}
                             </div>
                             <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5 flex-wrap">
                               <span className="font-semibold text-foreground">{formatCurrency(item.valorParcela)}/parc</span>
@@ -578,6 +605,101 @@ export function ImportFaturaDialog({
                                 <span className="text-orange-700">Marque "Forçar" para importar esta duplicata exata</span>
                               )}
                             </div>
+                            {isServiceCandidate ? (
+                              <div className="mt-2 rounded-md border border-indigo-200 bg-indigo-50/60 px-2 py-2 space-y-2">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <p className="text-xs text-indigo-800">
+                                    {serviceCandidate?.matchedProvider
+                                      ? `Parece ${serviceCandidate.matchedProvider}`
+                                      : "Possível serviço recorrente"}{" "}
+                                    · {formatServiceCategoryLabel(serviceCandidate?.categorySuggestion)}
+                                  </p>
+                                  <span className="text-[11px] text-indigo-700">
+                                    Confianca {serviceCandidate?.confidence ?? "baixa"}
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                  <Select
+                                    value={serviceAction}
+                                    onValueChange={(value) => {
+                                      const nextAction = value as "ignore" | "link_existing" | "create_new";
+                                      setImportItems((items) => items.map((current, index) => {
+                                        if (index !== idx) return current;
+                                        return {
+                                          ...current,
+                                          serviceSuggestionAction: nextAction,
+                                          linkedServiceId: nextAction === "link_existing"
+                                            ? (current.linkedServiceId ?? null)
+                                            : null,
+                                        };
+                                      }));
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs">
+                                      <SelectValue placeholder="Ação do serviço" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="ignore">Ignorar sugestão</SelectItem>
+                                      <SelectItem value="link_existing">Vincular serviço existente</SelectItem>
+                                      <SelectItem value="create_new">Criar novo serviço</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+
+                                  {serviceAction === "link_existing" ? (
+                                    <Select
+                                      value={item.linkedServiceId ?? "__none"}
+                                      onValueChange={(value) => {
+                                        setImportItems((items) => items.map((current, index) => {
+                                          if (index !== idx) return current;
+                                          return {
+                                            ...current,
+                                            linkedServiceId: value === "__none" ? null : value,
+                                          };
+                                        }));
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-8 text-xs">
+                                        <SelectValue placeholder="Selecione o serviço" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="__none">Sem vínculo</SelectItem>
+                                        {servicos.length === 0 ? (
+                                          <SelectItem value="__empty" disabled>
+                                            Nenhum serviço cadastrado
+                                          </SelectItem>
+                                        ) : (
+                                          servicos.map((servico) => (
+                                            <SelectItem key={servico.id} value={servico.id}>
+                                              {servico.nome} · {formatCurrency(Number(servico.valorMensal) || 0)}
+                                            </SelectItem>
+                                          ))
+                                        )}
+                                      </SelectContent>
+                                    </Select>
+                                  ) : null}
+                                </div>
+
+                                {serviceAction === "create_new" && item.createServiceSuggestion ? (
+                                  <p className="text-xs text-indigo-900">
+                                    Sugestão: criar serviço <strong>{item.createServiceSuggestion.nome}</strong>{" "}
+                                    ({formatCurrency(item.createServiceSuggestion.valorMensal)}/mês, cobrança dia{" "}
+                                    {item.createServiceSuggestion.dataCobranca}, categoria{" "}
+                                    {formatServiceCategoryLabel(item.createServiceSuggestion.categoria)}).
+                                    A criação não é automática nesta etapa.
+                                  </p>
+                                ) : null}
+
+                                {item.serviceSuggestionWarning ? (
+                                  <p className="text-xs text-amber-700">{item.serviceSuggestionWarning}</p>
+                                ) : null}
+                                {serviceAction === "link_existing" && selectedLinkedService == null ? (
+                                  <p className="text-xs text-amber-700">
+                                    Selecione um serviço para concluir o vínculo sugerido.
+                                  </p>
+                                ) : null}
+                              </div>
+                            ) : null}
                             {item.validationIssues && item.validationIssues.length > 0 && (
                               <p className="text-xs text-red-600 mt-0.5">
                                 {item.validationIssues.join(" · ")}

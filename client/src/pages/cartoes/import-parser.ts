@@ -24,6 +24,26 @@ export interface ParsedItem {
   canImport?: boolean;
   reviewRequired?: boolean;
   duplicateId?: string | null;
+  recurringServiceCandidate?: RecurringServiceCandidate;
+  serviceSuggestionAction?: ServiceSuggestionAction;
+  linkedServiceId?: string | null;
+  createServiceSuggestion?: {
+    nome: string;
+    valorMensal: number;
+    dataCobranca: number;
+    categoria: "streaming" | "seguro" | "software" | "assinatura" | "outro";
+  } | null;
+  serviceSuggestionWarning?: string | null;
+}
+
+export type RecurringServiceCategory = "streaming" | "seguro" | "software" | "assinatura" | "outro";
+export type ServiceSuggestionAction = "ignore" | "link_existing" | "create_new";
+
+export interface RecurringServiceCandidate {
+  isServiceCandidate: boolean;
+  matchedProvider?: string;
+  confidence: "alta" | "media" | "baixa";
+  categorySuggestion?: RecurringServiceCategory;
 }
 
 type ParseSource = "csv" | "ofx" | "texto" | "pdf";
@@ -207,6 +227,60 @@ function normalizePortableText(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\u00A0/g, " ")
     .toUpperCase();
+}
+
+function normalizeRecurringServiceText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+type RecurringServiceRule = {
+  provider: string;
+  category: RecurringServiceCategory;
+  confidence: "alta" | "media";
+  anyOf?: string[];
+  allOf?: string[];
+  exclude?: string[];
+};
+
+const RECURRING_SERVICE_RULES: RecurringServiceRule[] = [
+  { provider: "Spotify", category: "streaming", confidence: "alta", anyOf: ["spotify", "dm spotify"] },
+  { provider: "Netflix", category: "streaming", confidence: "alta", anyOf: ["netflix"] },
+  { provider: "YouTube", category: "streaming", confidence: "media", anyOf: ["youtube premium", "youtube music"], allOf: ["youtube"] },
+  { provider: "Apple iCloud", category: "assinatura", confidence: "alta", anyOf: ["icloud", "applecombill", "apple com bill", "apple bill"] },
+  { provider: "ChatGPT / OpenAI", category: "software", confidence: "alta", anyOf: ["openai", "chatgpt"] },
+  { provider: "Nu Seguro Vida", category: "seguro", confidence: "alta", anyOf: ["nu seguro vida", "seguro vida"] },
+  { provider: "Amazon Prime", category: "streaming", confidence: "alta", anyOf: ["amazon prime", "prime video", "primevideo"] },
+  { provider: "Disney", category: "streaming", confidence: "alta", anyOf: ["disney", "disney plus", "disney+"] },
+  { provider: "HBO Max", category: "streaming", confidence: "media", anyOf: ["hbo", "hbo max", "max assinatura", "max.com"] },
+  { provider: "Mercado Pago Assinatura", category: "assinatura", confidence: "media", allOf: ["mercado pago", "assinatura"] },
+];
+
+export function detectRecurringServiceCandidate(description: string): RecurringServiceCandidate {
+  const normalized = normalizeRecurringServiceText(description);
+  if (!normalized) {
+    return { isServiceCandidate: false, confidence: "baixa" };
+  }
+
+  for (const rule of RECURRING_SERVICE_RULES) {
+    if (rule.exclude?.some((token) => normalized.includes(token))) continue;
+    if (rule.anyOf && !rule.anyOf.some((token) => normalized.includes(token))) continue;
+    if (rule.allOf && !rule.allOf.every((token) => normalized.includes(token))) continue;
+
+    return {
+      isServiceCandidate: true,
+      matchedProvider: rule.provider,
+      confidence: rule.confidence,
+      categorySuggestion: rule.category,
+    };
+  }
+
+  return { isServiceCandidate: false, confidence: "baixa" };
 }
 
 function looksLikeNubankCardName(value: string | null | undefined): boolean {
@@ -470,6 +544,60 @@ function extractEstabelecimento(descricao: string): string | null {
   return words.join(" ");
 }
 
+function toRecurringServiceCreateSuggestion(
+  candidate: RecurringServiceCandidate,
+  item: {
+    descricao: string;
+    valorParcela: number;
+    dataCompra: string;
+    vencimentoFatura: string | null;
+  },
+): ParsedItem["createServiceSuggestion"] {
+  if (!candidate.isServiceCandidate) return null;
+
+  const providerName = candidate.matchedProvider?.trim() || item.descricao;
+  const referenceDate = item.vencimentoFatura ?? item.dataCompra;
+  const parsedDate = parseIsoDateString(referenceDate);
+  const dataCobranca = parsedDate ? parsedDate.getDate() : 1;
+
+  return {
+    nome: providerName,
+    valorMensal: item.valorParcela,
+    dataCobranca: Math.min(Math.max(dataCobranca, 1), 31),
+    categoria: candidate.categorySuggestion ?? "outro",
+  };
+}
+
+function attachRecurringServiceSuggestion(
+  item: Omit<ParsedItem, "id" | "duplicata" | "action">,
+): Omit<ParsedItem, "id" | "duplicata" | "action"> {
+  const candidate = detectRecurringServiceCandidate(item.descricao);
+  if (!candidate.isServiceCandidate) {
+    return {
+      ...item,
+      recurringServiceCandidate: candidate,
+      serviceSuggestionAction: "ignore",
+      linkedServiceId: null,
+      createServiceSuggestion: null,
+      serviceSuggestionWarning: null,
+    };
+  }
+
+  return {
+    ...item,
+    recurringServiceCandidate: candidate,
+    serviceSuggestionAction: "ignore",
+    linkedServiceId: null,
+    createServiceSuggestion: toRecurringServiceCreateSuggestion(candidate, {
+      descricao: item.descricao,
+      valorParcela: item.valorParcela,
+      dataCompra: item.dataCompra,
+      vencimentoFatura: item.vencimentoFatura,
+    }),
+    serviceSuggestionWarning: null,
+  };
+}
+
 function parseLinha(
   linha: string,
   vencimentoFatura: string | null,
@@ -527,7 +655,7 @@ function parseLinha(
   const tipo = detectarTipo(linha);
   const finalConfidence = Math.max(0, Math.min(100, confidenceScore));
 
-  return {
+  return attachRecurringServiceSuggestion({
     descricao,
     estabelecimento,
     valor,
@@ -542,7 +670,7 @@ function parseLinha(
     confidenceLevel: finalConfidence >= 85 ? "alta" : finalConfidence >= 65 ? "media" : "baixa",
     reviewRequired: inferredDateIssues.length > 0 || finalConfidence < 75,
     validationIssues: inferredDateIssues,
-  };
+  });
 }
 
 function normalizeForDuplicateCompare(value: string | null | undefined): string {
@@ -800,8 +928,7 @@ function parseNubankInvoiceTextInternal(
       }, options.existentes, options.cartaoId)
       : null;
 
-    items.push({
-      id: String(idx++),
+    const parsedItem = attachRecurringServiceSuggestion({
       descricao,
       estabelecimento,
       valor,
@@ -812,12 +939,17 @@ function parseNubankInvoiceTextInternal(
       dataCompra: parsedDate.iso,
       vencimentoFatura: options?.referenceBillingDate ?? null,
       tipo: detectarTipo(rawDescription),
-      duplicata,
-      action: duplicata ? "skip" : "import",
       confidenceScore: finalConfidence,
       confidenceLevel: finalConfidence >= 85 ? "alta" : finalConfidence >= 65 ? "media" : "baixa",
       reviewRequired: shouldReview,
       validationIssues: confidenceIssues,
+    });
+
+    items.push({
+      ...parsedItem,
+      id: String(idx++),
+      duplicata,
+      action: duplicata ? "skip" : "import",
     });
   }
 
@@ -1030,8 +1162,7 @@ export function parseCsv(
       parcelas: totalParcelas,
       parcelaAtual,
     }, existentes, cartaoId);
-    items.push({
-      id: String(idx++),
+    const parsedItem = attachRecurringServiceSuggestion({
       descricao,
       estabelecimento,
       valor: valorTotal,
@@ -1042,12 +1173,17 @@ export function parseCsv(
       dataCompra,
       vencimentoFatura,
       tipo,
-      duplicata,
-      action: duplicata ? "skip" : "import",
       confidenceScore: finalConfidence,
       confidenceLevel: finalConfidence >= 85 ? "alta" : finalConfidence >= 65 ? "media" : "baixa",
       reviewRequired: issues.length > 0 || finalConfidence < 75,
       validationIssues: issues,
+    });
+
+    items.push({
+      ...parsedItem,
+      id: String(idx++),
+      duplicata,
+      action: duplicata ? "skip" : "import",
     });
   }
 
@@ -1148,8 +1284,7 @@ export function parseOfx(
       parcelaAtual,
     }, existentes, cartaoId);
     const finalConfidence = Math.max(0, Math.min(100, confidenceScore));
-    items.push({
-      id: String(idx++),
+    const parsedItem = attachRecurringServiceSuggestion({
       descricao,
       estabelecimento,
       valor,
@@ -1160,12 +1295,17 @@ export function parseOfx(
       dataCompra,
       vencimentoFatura,
       tipo,
-      duplicata,
-      action: duplicata ? "skip" : "import",
       confidenceScore: finalConfidence,
       confidenceLevel: finalConfidence >= 85 ? "alta" : finalConfidence >= 65 ? "media" : "baixa",
       reviewRequired: issues.length > 0 || finalConfidence < 75,
       validationIssues: issues,
+    });
+
+    items.push({
+      ...parsedItem,
+      id: String(idx++),
+      duplicata,
+      action: duplicata ? "skip" : "import",
     });
   }
   return { items, stats };
