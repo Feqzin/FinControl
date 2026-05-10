@@ -1,7 +1,16 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { format } from "date-fns";
 import { db } from "../db.js";
-import { cartoes, comprasCartao, importLogs, parcelasCompra, servicos, type InsertCompraCartao } from "../../shared/schema.js";
+import {
+  cartoes,
+  comprasCartao,
+  importLogs,
+  parcelasCompra,
+  servicos,
+  servicoPagamentos,
+  servicoPessoas,
+  type InsertCompraCartao,
+} from "../../shared/schema.js";
 import { formatMoneyFixed, multiply, parseMoney } from "../../utils/money.js";
 import { buildParcelasCompraRows } from "./parcelas-compra-materialization.js";
 import type {
@@ -77,6 +86,28 @@ type ImportPreviewPayloadSnapshot = {
   summary: ImportPreviewSummary;
 };
 
+type ServiceRollbackActionSnapshot = {
+  itemId: string;
+  action: "create_new" | "link_existing";
+  serviceId: string;
+  compraCartaoId: string;
+  previousCompraCartaoId: string | null;
+  serviceCreatedByImport: boolean;
+  createdServiceSnapshot?: {
+    nome: string;
+    categoria: string;
+    valorMensal: string;
+    dataCobranca: number;
+    formaPagamento: string;
+  };
+  recordedAt: string;
+};
+
+type ImportConfirmedPayloadSnapshot = {
+  items: ImportPreviewItem[];
+  serviceActions: ServiceRollbackActionSnapshot[];
+};
+
 type ImportConfirmResult = {
   importLogId: string;
   createdCount: number;
@@ -102,6 +133,10 @@ type ImportRollbackResult = {
   importLogId: string;
   deletedCount: number;
   deletedCompraIds: string[];
+  servicesRemovedCount: number;
+  servicesUnlinkedCount: number;
+  servicesRestoredCount: number;
+  serviceRollbackWarnings: string[];
   alreadyRolledBack?: boolean;
 };
 
@@ -407,6 +442,37 @@ function deserializeJson<T>(value: string | null | undefined, fallback: T): T {
     return JSON.parse(value) as T;
   } catch {
     return fallback;
+  }
+}
+
+function parseConfirmedPayloadSnapshot(value: string | null | undefined): ImportConfirmedPayloadSnapshot {
+  if (!value) return { items: [], serviceActions: [] };
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (Array.isArray(parsed)) {
+      return {
+        items: parsed as ImportPreviewItem[],
+        serviceActions: [],
+      };
+    }
+
+    if (!parsed || typeof parsed !== "object") {
+      return { items: [], serviceActions: [] };
+    }
+
+    const objectValue = parsed as Record<string, unknown>;
+    const rawItems = objectValue.items;
+    const rawServiceActions = objectValue.serviceActions;
+
+    return {
+      items: Array.isArray(rawItems) ? (rawItems as ImportPreviewItem[]) : [],
+      serviceActions: Array.isArray(rawServiceActions)
+        ? (rawServiceActions as ServiceRollbackActionSnapshot[])
+        : [],
+    };
+  } catch {
+    return { items: [], serviceActions: [] };
   }
 }
 
@@ -769,15 +835,16 @@ export class ImportsService {
 
     if (log.status === "confirmed") {
       const existingIds = deserializeJson<string[]>(log.createdCompraIds, []);
-      const confirmedPayload = deserializeJson<ImportPreviewItem[]>(log.confirmedPayload, []);
-      const servicesCreatedCount = confirmedPayload.filter((item) => (
+      const confirmedSnapshot = parseConfirmedPayloadSnapshot(log.confirmedPayload);
+      const confirmedItems = confirmedSnapshot.items;
+      const servicesCreatedCount = confirmedItems.filter((item) => (
         item.action === "import" && item.serviceAction?.type === "create_new"
       )).length;
-      const servicesLinkedCount = confirmedPayload.filter((item) => (
+      const servicesLinkedCount = confirmedItems.filter((item) => (
         item.action === "import" && item.serviceAction?.type === "link_existing"
       )).length;
-      const summary = confirmedPayload.length > 0
-        ? summarizeConfirmResult(confirmedPayload, existingIds.length, servicesCreatedCount, servicesLinkedCount)
+      const summary = confirmedItems.length > 0
+        ? summarizeConfirmResult(confirmedItems, existingIds.length, servicesCreatedCount, servicesLinkedCount)
         : {
           totalProcessed: Math.max(log.totalItems, existingIds.length + log.skippedItems),
           createdCount: existingIds.length,
@@ -947,6 +1014,7 @@ export class ImportsService {
 
       let servicesCreatedCount = 0;
       let servicesLinkedCount = 0;
+      const serviceRollbackActions: ServiceRollbackActionSnapshot[] = [];
       for (let index = 0; index < importItems.length; index += 1) {
         const item = importItems[index];
         if (!item || item.serviceAction.type === "none") continue;
@@ -997,6 +1065,22 @@ export class ImportsService {
           if (createdService) {
             existingServices.push(createdService);
             serviceById.set(createdService.id, createdService);
+            serviceRollbackActions.push({
+              itemId: item.id,
+              action: "create_new",
+              serviceId: createdService.id,
+              compraCartaoId: createdCompra.id,
+              previousCompraCartaoId: null,
+              serviceCreatedByImport: true,
+              createdServiceSnapshot: {
+                nome: createdService.nome,
+                categoria: createdService.categoria,
+                valorMensal: createdService.valorMensal,
+                dataCobranca: serviceAction.billingDay,
+                formaPagamento: createdService.formaPagamento,
+              },
+              recordedAt: new Date().toISOString(),
+            });
           }
           servicesCreatedCount += 1;
           continue;
@@ -1039,15 +1123,28 @@ export class ImportsService {
           }
 
           serviceById.set(updatedService.id, updatedService);
+          serviceRollbackActions.push({
+            itemId: item.id,
+            action: "link_existing",
+            serviceId: updatedService.id,
+            compraCartaoId: createdCompra.id,
+            previousCompraCartaoId: targetService.compraCartaoId ?? null,
+            serviceCreatedByImport: false,
+            recordedAt: new Date().toISOString(),
+          });
           servicesLinkedCount += 1;
         }
       }
 
       const ids = createdRows.map((row) => row.id);
+      const confirmedPayloadSnapshot: ImportConfirmedPayloadSnapshot = {
+        items: candidateItems,
+        serviceActions: serviceRollbackActions,
+      };
 
       const [updatedLog] = await tx.update(importLogs).set({
         status: "confirmed",
-        confirmedPayload: serializeJson(candidateItems),
+        confirmedPayload: serializeJson(confirmedPayloadSnapshot),
         createdCompraIds: serializeJson(ids),
         importedItems: summary.importItems,
         skippedItems: summary.skipItems,
@@ -1094,6 +1191,10 @@ export class ImportsService {
         importLogId: log.id,
         deletedCount: 0,
         deletedCompraIds: [],
+        servicesRemovedCount: 0,
+        servicesUnlinkedCount: 0,
+        servicesRestoredCount: 0,
+        serviceRollbackWarnings: [],
         alreadyRolledBack: true,
       };
     }
@@ -1103,7 +1204,160 @@ export class ImportsService {
     }
 
     const requestedIds = deserializeJson<string[]>(log.createdCompraIds, []);
-    const deletedCompraIds = await db.transaction(async (tx) => {
+    const confirmedSnapshot = parseConfirmedPayloadSnapshot(log.confirmedPayload);
+    const serviceActions = confirmedSnapshot.serviceActions;
+    const rollbackResult = await db.transaction(async (tx) => {
+      let servicesRemovedCount = 0;
+      let servicesUnlinkedCount = 0;
+      let servicesRestoredCount = 0;
+      const serviceRollbackWarnings: string[] = [];
+
+      const pushWarning = (message: string) => {
+        if (!serviceRollbackWarnings.includes(message)) {
+          serviceRollbackWarnings.push(message);
+        }
+      };
+
+      for (const action of serviceActions) {
+        const [targetService] = await tx.select({
+          id: servicos.id,
+          nome: servicos.nome,
+          categoria: servicos.categoria,
+          valorMensal: servicos.valorMensal,
+          dataCobranca: servicos.dataCobranca,
+          formaPagamento: servicos.formaPagamento,
+          compraCartaoId: servicos.compraCartaoId,
+        }).from(servicos).where(and(
+          eq(servicos.id, action.serviceId),
+          eq(servicos.userId, userId),
+        ));
+
+        if (!targetService) {
+          pushWarning("Um vínculo de serviço não foi restaurado automaticamente por segurança.");
+          continue;
+        }
+
+        if (targetService.compraCartaoId !== action.compraCartaoId) {
+          pushWarning("Um vínculo de serviço não foi restaurado automaticamente porque o serviço foi alterado depois da importação.");
+          continue;
+        }
+
+        if (action.action === "link_existing") {
+          if (action.previousCompraCartaoId) {
+            const [previousCompra] = await tx.select({
+              id: comprasCartao.id,
+            }).from(comprasCartao).where(and(
+              eq(comprasCartao.id, action.previousCompraCartaoId),
+              eq(comprasCartao.userId, userId),
+            ));
+
+            if (!previousCompra) {
+              pushWarning("Um vínculo de serviço não foi restaurado automaticamente por segurança.");
+              continue;
+            }
+          }
+
+          const [updatedService] = await tx.update(servicos).set({
+            compraCartaoId: action.previousCompraCartaoId,
+          }).where(and(
+            eq(servicos.id, action.serviceId),
+            eq(servicos.userId, userId),
+            eq(servicos.compraCartaoId, action.compraCartaoId),
+          )).returning({
+            id: servicos.id,
+          });
+
+          if (!updatedService) {
+            pushWarning("Um vínculo de serviço não foi restaurado automaticamente por segurança.");
+            continue;
+          }
+
+          if (action.previousCompraCartaoId) {
+            servicesRestoredCount += 1;
+          } else {
+            servicesUnlinkedCount += 1;
+          }
+          continue;
+        }
+
+        const servicePeopleRows = await tx.select({
+          id: servicoPessoas.id,
+        }).from(servicoPessoas).where(and(
+          eq(servicoPessoas.userId, userId),
+          eq(servicoPessoas.servicoId, action.serviceId),
+        ));
+
+        const servicoPessoaIds = servicePeopleRows.map((row) => row.id);
+        const hasServicoPessoas = servicoPessoaIds.length > 0;
+        const hasServicoPagamentos = servicoPessoaIds.length > 0
+          ? (await tx.select({
+            id: servicoPagamentos.id,
+          }).from(servicoPagamentos).where(and(
+            eq(servicoPagamentos.userId, userId),
+            inArray(servicoPagamentos.servicoPessoaId, servicoPessoaIds),
+          )).limit(1)).length > 0
+          : false;
+
+        const createdSnapshot = action.createdServiceSnapshot;
+        const wasEditedAfterImport = createdSnapshot == null
+          || targetService.nome !== createdSnapshot.nome
+          || targetService.categoria !== createdSnapshot.categoria
+          || targetService.valorMensal !== createdSnapshot.valorMensal
+          || targetService.dataCobranca !== createdSnapshot.dataCobranca
+          || targetService.formaPagamento !== createdSnapshot.formaPagamento;
+
+        const canSafelyRemove =
+          action.serviceCreatedByImport === true
+          && !hasServicoPessoas
+          && !hasServicoPagamentos
+          && !wasEditedAfterImport;
+
+        if (canSafelyRemove) {
+          const [deletedService] = await tx.delete(servicos).where(and(
+            eq(servicos.id, action.serviceId),
+            eq(servicos.userId, userId),
+            eq(servicos.compraCartaoId, action.compraCartaoId),
+          )).returning({
+            id: servicos.id,
+          });
+
+          if (!deletedService) {
+            pushWarning("Um serviço criado pela importação não foi removido automaticamente por segurança.");
+            continue;
+          }
+
+          servicesRemovedCount += 1;
+          continue;
+        }
+
+        const [unlinkedService] = await tx.update(servicos).set({
+          compraCartaoId: null,
+        }).where(and(
+          eq(servicos.id, action.serviceId),
+          eq(servicos.userId, userId),
+          eq(servicos.compraCartaoId, action.compraCartaoId),
+        )).returning({
+          id: servicos.id,
+        });
+
+        if (unlinkedService) {
+          servicesUnlinkedCount += 1;
+        } else {
+          pushWarning("Um serviço criado pela importação não foi removido automaticamente por segurança.");
+          continue;
+        }
+
+        if (hasServicoPagamentos) {
+          pushWarning("Um serviço criado pela importação não foi removido automaticamente por segurança.");
+        } else if (hasServicoPessoas) {
+          pushWarning("Um serviço criado pela importação não foi removido automaticamente por segurança.");
+        } else if (wasEditedAfterImport) {
+          pushWarning("Um serviço criado pela importação não foi removido automaticamente porque foi alterado depois da importação.");
+        } else {
+          pushWarning("Um serviço criado pela importação não foi removido automaticamente por segurança.");
+        }
+      }
+
       const deletedRows = requestedIds.length > 0
         ? await tx.delete(comprasCartao)
           .where(and(eq(comprasCartao.userId, userId), inArray(comprasCartao.id, requestedIds)))
@@ -1117,6 +1371,10 @@ export class ImportsService {
         rollbackPayload: serializeJson({
           requestedIds,
           deletedIds: ids,
+          servicesRemovedCount,
+          servicesUnlinkedCount,
+          servicesRestoredCount,
+          serviceRollbackWarnings,
           rolledBackAt: format(new Date(), "yyyy-MM-dd'T'HH:mm:ssXXX"),
         }),
         rolledBackAt: new Date(),
@@ -1128,13 +1386,23 @@ export class ImportsService {
         throw new ImportPipelineError(409, "Import log nao encontrado durante o rollback");
       }
 
-      return ids;
+      return {
+        ids,
+        servicesRemovedCount,
+        servicesUnlinkedCount,
+        servicesRestoredCount,
+        serviceRollbackWarnings,
+      };
     });
 
     return {
       importLogId: log.id,
-      deletedCount: deletedCompraIds.length,
-      deletedCompraIds,
+      deletedCount: rollbackResult.ids.length,
+      deletedCompraIds: rollbackResult.ids,
+      servicesRemovedCount: rollbackResult.servicesRemovedCount,
+      servicesUnlinkedCount: rollbackResult.servicesUnlinkedCount,
+      servicesRestoredCount: rollbackResult.servicesRestoredCount,
+      serviceRollbackWarnings: rollbackResult.serviceRollbackWarnings,
     };
   }
 
@@ -1145,19 +1413,34 @@ export class ImportsService {
       .orderBy(desc(importLogs.createdAt))
       .limit(safeLimit);
 
-    return rows.map((row) => ({
-      id: row.id,
-      cartaoId: row.cartaoId,
-      sourceType: row.sourceType,
-      sourceName: row.sourceName,
-      status: row.status,
-      totalItems: row.totalItems,
-      importedItems: row.importedItems,
-      skippedItems: row.skippedItems,
-      averageConfidence: parseMoney(row.averageConfidence) ?? 0,
-      createdAt: row.createdAt,
-      confirmedAt: row.confirmedAt,
-      rolledBackAt: row.rolledBackAt,
-    }));
+    return rows.map((row) => {
+      const rollbackPayload = deserializeJson<{
+        servicesRemovedCount?: number;
+        servicesUnlinkedCount?: number;
+        servicesRestoredCount?: number;
+        serviceRollbackWarnings?: string[];
+      }>(row.rollbackPayload, {});
+
+      return {
+        id: row.id,
+        cartaoId: row.cartaoId,
+        sourceType: row.sourceType,
+        sourceName: row.sourceName,
+        status: row.status,
+        totalItems: row.totalItems,
+        importedItems: row.importedItems,
+        skippedItems: row.skippedItems,
+        averageConfidence: parseMoney(row.averageConfidence) ?? 0,
+        createdAt: row.createdAt,
+        confirmedAt: row.confirmedAt,
+        rolledBackAt: row.rolledBackAt,
+        rollbackServicesRemovedCount: rollbackPayload.servicesRemovedCount ?? 0,
+        rollbackServicesUnlinkedCount: rollbackPayload.servicesUnlinkedCount ?? 0,
+        rollbackServicesRestoredCount: rollbackPayload.servicesRestoredCount ?? 0,
+        rollbackWarningsCount: Array.isArray(rollbackPayload.serviceRollbackWarnings)
+          ? rollbackPayload.serviceRollbackWarnings.length
+          : 0,
+      };
+    });
   }
 }

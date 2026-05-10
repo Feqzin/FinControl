@@ -1436,7 +1436,7 @@ export default function CartoesPage() {
   const requestRollbackConfirmation = (): boolean => {
     if (typeof window === "undefined") return true;
     return window.confirm(
-      "Deseja desfazer esta importação? Apenas compras criadas por este lote serão removidas.",
+      "Deseja desfazer esta importação? Compras do lote e vínculos de serviço associados poderão ser revertidos com segurança.",
     );
   };
 
@@ -1460,10 +1460,26 @@ export default function CartoesPage() {
         setImportConfirmResult((current) => (
           current?.importLogId === importLogId ? null : current
         ));
+        const servicesRemoved = result.servicesRemovedCount ?? 0;
+        const servicesUnlinked = result.servicesUnlinkedCount ?? 0;
+        const servicesRestored = result.servicesRestoredCount ?? 0;
+        const warnings = result.serviceRollbackWarnings ?? [];
         toast({
           title: "Importação desfeita com sucesso.",
-          description: `${result.deletedCount} compra(s) removida(s) do lote ${result.importLogId.slice(0, 8)}.`,
+          description: [
+            `${result.deletedCount} compra(s) removida(s) do lote ${result.importLogId.slice(0, 8)}.`,
+            `Serviços removidos: ${servicesRemoved}.`,
+            `Serviços desvinculados: ${servicesUnlinked}.`,
+            `Vínculos restaurados: ${servicesRestored}.`,
+          ].join(" "),
         });
+        if (warnings.length > 0) {
+          toast({
+            title: "Rollback concluído com avisos",
+            description: "Alguns vínculos de serviço não foram alterados automaticamente por segurança.",
+            variant: "default",
+          });
+        }
       },
       onError: (error) => {
         toast({

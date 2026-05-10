@@ -43,6 +43,10 @@ export type ImportRollbackResponse = {
   importLogId: string;
   deletedCount: number;
   deletedCompraIds: string[];
+  servicesRemovedCount?: number;
+  servicesUnlinkedCount?: number;
+  servicesRestoredCount?: number;
+  serviceRollbackWarnings?: string[];
   alreadyRolledBack?: boolean;
 };
 
@@ -59,6 +63,10 @@ export type ImportLogEntry = {
   createdAt: string;
   confirmedAt: string | null;
   rolledBackAt: string | null;
+  rollbackServicesRemovedCount?: number;
+  rollbackServicesUnlinkedCount?: number;
+  rollbackServicesRestoredCount?: number;
+  rollbackWarningsCount?: number;
 };
 
 export type CartaoPayload = {

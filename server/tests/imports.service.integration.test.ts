@@ -1990,3 +1990,431 @@ testImports("marcar mes pago de servico compartilhado continua sendo acao manual
     await db.delete(users).where(eq(users.id, user.id));
   }
 });
+
+testImports("rollback remove servico criado pela importacao quando for seguro", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, servicos, comprasCartao } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_rb_service_remove_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Rollback Service Remove",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao RB Remove",
+    limite: "5000.00",
+    melhorDiaCompra: 18,
+    diaVencimento: 8,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-rb-remove-service",
+      items: [
+        {
+          id: "rb-create-1",
+          descricao: "Spotify Premium",
+          valor: "21.90",
+          valorParcela: "21.90",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-05-02",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+          serviceAction: {
+            type: "create_new",
+            name: "Spotify Premium",
+            category: "streaming",
+            monthlyValue: 21.9,
+            billingDay: 2,
+          },
+        },
+      ],
+    });
+
+    const confirmed = await service.confirm(user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+    });
+
+    const createdCompraId = confirmed.createdCompraIds[0];
+    assert.ok(createdCompraId);
+
+    const [servicoCriado] = await db.select().from(servicos).where(and(
+      eq(servicos.userId, user.id),
+      eq(servicos.compraCartaoId, createdCompraId),
+    ));
+    assert.ok(servicoCriado);
+
+    const rollback = await service.rollback(user.id, preview.importLogId);
+    assert.equal(rollback.deletedCount, 1);
+    assert.equal(rollback.servicesRemovedCount, 1);
+    assert.equal(rollback.servicesUnlinkedCount, 0);
+    assert.equal(rollback.servicesRestoredCount, 0);
+    assert.equal(rollback.serviceRollbackWarnings.length, 0);
+
+    const servicoAposRollback = await db.select().from(servicos).where(eq(servicos.userId, user.id));
+    assert.equal(servicoAposRollback.length, 0);
+
+    const comprasAposRollback = await db.select().from(comprasCartao).where(and(
+      eq(comprasCartao.userId, user.id),
+      eq(comprasCartao.cartaoId, cartao.id),
+    ));
+    assert.equal(comprasAposRollback.length, 0);
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testImports("rollback nao remove servico criado pela importacao quando houver compartilhamento/pagamento, apenas desvincula", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const {
+    users,
+    cartoes,
+    pessoas,
+    servicos,
+    servicoPessoas,
+    servicoPagamentos,
+  } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_rb_service_unlink_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Rollback Service Unlink",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao RB Unlink",
+    limite: "5000.00",
+    melhorDiaCompra: 19,
+    diaVencimento: 9,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-rb-unlink-service",
+      items: [
+        {
+          id: "rb-create-2",
+          descricao: "Netflix",
+          valor: "44.90",
+          valorParcela: "44.90",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-05-03",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+          serviceAction: {
+            type: "create_new",
+            name: "Netflix",
+            category: "streaming",
+            monthlyValue: 44.9,
+            billingDay: 3,
+          },
+        },
+      ],
+    });
+
+    const confirmed = await service.confirm(user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+    });
+    const createdCompraId = confirmed.createdCompraIds[0];
+    assert.ok(createdCompraId);
+
+    const [servicoCriado] = await db.select().from(servicos).where(and(
+      eq(servicos.userId, user.id),
+      eq(servicos.compraCartaoId, createdCompraId),
+    ));
+    assert.ok(servicoCriado);
+
+    const [pessoa] = await db.insert(pessoas).values({
+      userId: user.id,
+      nome: "Pessoa Compartilhada RB",
+      tipo: "me_deve",
+      telefone: null,
+      observacao: null,
+    }).returning();
+
+    const [vinculo] = await db.insert(servicoPessoas).values({
+      userId: user.id,
+      servicoId: servicoCriado!.id,
+      pessoaId: pessoa.id,
+      valorDevido: "22.45",
+    }).returning();
+
+    await db.insert(servicoPagamentos).values({
+      userId: user.id,
+      servicoPessoaId: vinculo.id,
+      mes: "2026-05",
+      status: "pago",
+      dataPagamento: "2026-05-03",
+    });
+
+    const rollback = await service.rollback(user.id, preview.importLogId);
+    assert.equal(rollback.deletedCount, 1);
+    assert.equal(rollback.servicesRemovedCount, 0);
+    assert.equal(rollback.servicesUnlinkedCount, 1);
+    assert.equal(rollback.servicesRestoredCount, 0);
+    assert.equal(rollback.serviceRollbackWarnings.length > 0, true);
+
+    const [servicoAposRollback] = await db.select().from(servicos).where(and(
+      eq(servicos.id, servicoCriado!.id),
+      eq(servicos.userId, user.id),
+    ));
+    assert.ok(servicoAposRollback);
+    assert.equal(servicoAposRollback?.compraCartaoId, null);
+
+    const pagamentos = await db.select().from(servicoPagamentos).where(eq(servicoPagamentos.userId, user.id));
+    assert.equal(pagamentos.length, 1);
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testImports("rollback restaura previousCompraCartaoId em link_existing quando seguro", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, comprasCartao, servicos } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_rb_link_restore_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Rollback Link Restore",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao RB Link Restore",
+    limite: "5000.00",
+    melhorDiaCompra: 20,
+    diaVencimento: 10,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const [compraAnterior] = await db.insert(comprasCartao).values({
+      userId: user.id,
+      cartaoId: cartao.id,
+      descricao: "Compra anterior do servico",
+      valorTotal: "10.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "10.00",
+      dataCompra: "2026-04-10",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    }).returning();
+
+    const [servico] = await db.insert(servicos).values({
+      userId: user.id,
+      nome: "iCloud",
+      categoria: "software",
+      valorMensal: "9.90",
+      dataCobranca: 10,
+      formaPagamento: "cartao",
+      compraCartaoId: compraAnterior.id,
+      status: "ativo",
+      iconeId: null,
+    }).returning();
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-rb-link-restore",
+      items: [
+        {
+          id: "rb-link-restore-1",
+          descricao: "iCloud",
+          valor: "9.90",
+          valorParcela: "9.90",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-05-04",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+          serviceAction: {
+            type: "link_existing",
+            serviceId: servico.id,
+            replaceExistingLink: true,
+          },
+        },
+      ],
+    });
+
+    const confirmed = await service.confirm(user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+    });
+    const createdCompraId = confirmed.createdCompraIds[0];
+    assert.ok(createdCompraId);
+
+    const [servicoAposConfirm] = await db.select().from(servicos).where(and(
+      eq(servicos.id, servico.id),
+      eq(servicos.userId, user.id),
+    ));
+    assert.equal(servicoAposConfirm?.compraCartaoId, createdCompraId);
+
+    const rollback = await service.rollback(user.id, preview.importLogId);
+    assert.equal(rollback.deletedCount, 1);
+    assert.equal(rollback.servicesRemovedCount, 0);
+    assert.equal(rollback.servicesUnlinkedCount, 0);
+    assert.equal(rollback.servicesRestoredCount, 1);
+    assert.equal(rollback.serviceRollbackWarnings.length, 0);
+
+    const [servicoAposRollback] = await db.select().from(servicos).where(and(
+      eq(servicos.id, servico.id),
+      eq(servicos.userId, user.id),
+    ));
+    assert.equal(servicoAposRollback?.compraCartaoId, compraAnterior.id);
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testImports("rollback nao sobrescreve vinculo de servico se foi alterado depois da importacao", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, comprasCartao, servicos } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_rb_link_changed_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Rollback Link Changed",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao RB Link Changed",
+    limite: "5000.00",
+    melhorDiaCompra: 21,
+    diaVencimento: 11,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const [compraAnterior] = await db.insert(comprasCartao).values({
+      userId: user.id,
+      cartaoId: cartao.id,
+      descricao: "Compra anterior serviço",
+      valorTotal: "15.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "15.00",
+      dataCompra: "2026-04-11",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    }).returning();
+
+    const [servico] = await db.insert(servicos).values({
+      userId: user.id,
+      nome: "Apple One",
+      categoria: "software",
+      valorMensal: "34.90",
+      dataCobranca: 11,
+      formaPagamento: "cartao",
+      compraCartaoId: compraAnterior.id,
+      status: "ativo",
+      iconeId: null,
+    }).returning();
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-rb-link-changed",
+      items: [
+        {
+          id: "rb-link-changed-1",
+          descricao: "Apple One",
+          valor: "34.90",
+          valorParcela: "34.90",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-05-05",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+          serviceAction: {
+            type: "link_existing",
+            serviceId: servico.id,
+            replaceExistingLink: true,
+          },
+        },
+      ],
+    });
+
+    const confirmed = await service.confirm(user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+    });
+    const createdCompraId = confirmed.createdCompraIds[0];
+    assert.ok(createdCompraId);
+
+    const [compraNovaManual] = await db.insert(comprasCartao).values({
+      userId: user.id,
+      cartaoId: cartao.id,
+      descricao: "Compra manual posterior",
+      valorTotal: "50.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "50.00",
+      dataCompra: "2026-05-06",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    }).returning();
+
+    await db.update(servicos).set({
+      compraCartaoId: compraNovaManual.id,
+    }).where(and(
+      eq(servicos.id, servico.id),
+      eq(servicos.userId, user.id),
+    ));
+
+    const rollback = await service.rollback(user.id, preview.importLogId);
+    assert.equal(rollback.deletedCount, 1);
+    assert.equal(rollback.servicesRemovedCount, 0);
+    assert.equal(rollback.servicesRestoredCount, 0);
+    assert.equal(rollback.serviceRollbackWarnings.length > 0, true);
+
+    const [servicoAposRollback] = await db.select().from(servicos).where(and(
+      eq(servicos.id, servico.id),
+      eq(servicos.userId, user.id),
+    ));
+    assert.equal(servicoAposRollback?.compraCartaoId, compraNovaManual.id);
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});

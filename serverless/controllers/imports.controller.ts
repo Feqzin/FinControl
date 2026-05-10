@@ -121,6 +121,10 @@ export function createImportsController(service: ImportsService) {
           targetId: result.importLogId,
           details: {
             deletedCount: result.deletedCount,
+            servicesRemovedCount: result.servicesRemovedCount,
+            servicesUnlinkedCount: result.servicesUnlinkedCount,
+            servicesRestoredCount: result.servicesRestoredCount,
+            serviceRollbackWarningsCount: result.serviceRollbackWarnings.length,
             alreadyRolledBack: result.alreadyRolledBack ?? false,
           },
         });

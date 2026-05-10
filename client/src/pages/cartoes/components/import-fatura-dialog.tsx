@@ -320,6 +320,22 @@ export function ImportFaturaDialog({
                             </Button>
                           ) : null}
                         </div>
+                        {log.status === "rolled_back" ? (
+                          <div className="text-[11px] text-muted-foreground space-y-0.5">
+                            <p>
+                              Serviços removidos: {log.rollbackServicesRemovedCount ?? 0}
+                              {" · "}
+                              Desvinculados: {log.rollbackServicesUnlinkedCount ?? 0}
+                              {" · "}
+                              Restaurados: {log.rollbackServicesRestoredCount ?? 0}
+                            </p>
+                            {(log.rollbackWarningsCount ?? 0) > 0 ? (
+                              <p className="text-amber-700">
+                                Avisos de segurança: {log.rollbackWarningsCount}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })
