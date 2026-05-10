@@ -33,6 +33,8 @@ export type ImportConfirmResponse = {
     errorCount: number;
     servicesCreatedCount?: number;
     servicesSkippedCount?: number;
+    servicesLinkedCount?: number;
+    servicesLinkSkippedCount?: number;
   };
   alreadyConfirmed?: boolean;
 };
@@ -372,6 +374,14 @@ function toImportItemPayload(item: ParsedItem) {
       };
     }
 
+    if (suggested?.type === "link_existing") {
+      return {
+        type: "link_existing" as const,
+        serviceId: suggested.serviceId ?? item.linkedServiceId ?? null,
+        replaceExistingLink: suggested.replaceExistingLink ?? item.replaceExistingServiceLink === true,
+      };
+    }
+
     if (item.serviceSuggestionAction === "create_new" && item.createServiceSuggestion) {
       return {
         type: "create_new" as const,
@@ -379,6 +389,14 @@ function toImportItemPayload(item: ParsedItem) {
         category: item.createServiceSuggestion.categoria,
         monthlyValue: item.createServiceSuggestion.valorMensal,
         billingDay: item.createServiceSuggestion.dataCobranca,
+      };
+    }
+
+    if (item.serviceSuggestionAction === "link_existing") {
+      return {
+        type: "link_existing" as const,
+        serviceId: item.linkedServiceId ?? null,
+        replaceExistingLink: item.replaceExistingServiceLink === true,
       };
     }
 

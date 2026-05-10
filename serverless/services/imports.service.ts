@@ -22,6 +22,11 @@ type ImportServiceAction =
     category: ServiceCategory;
     monthlyValue: number;
     billingDay: number;
+  }
+  | {
+    type: "link_existing";
+    serviceId: string;
+    replaceExistingLink: boolean;
   };
 type DuplicateProbeRow = {
   id: string;
@@ -87,6 +92,8 @@ type ImportConfirmResult = {
     errorCount: number;
     servicesCreatedCount: number;
     servicesSkippedCount: number;
+    servicesLinkedCount: number;
+    servicesLinkSkippedCount: number;
   };
   alreadyConfirmed?: boolean;
 };
@@ -164,8 +171,21 @@ function normalizeServiceCategory(rawCategory: string | null | undefined): Servi
 
 function normalizeServiceAction(input: ImportPreviewItemInput): ImportServiceAction {
   const raw = input.serviceAction;
-  if (!raw || raw.type !== "create_new") {
+  if (!raw || raw.type === "none") {
     return { type: "none" };
+  }
+
+  if (raw.type === "link_existing") {
+    const serviceId = String(raw.serviceId ?? "").trim();
+    if (!serviceId) {
+      throw new ImportPipelineError(400, "Serviço inválido para vínculo.");
+    }
+
+    return {
+      type: "link_existing",
+      serviceId,
+      replaceExistingLink: raw.replaceExistingLink === true,
+    };
   }
 
   const name = String(raw.name ?? "").trim();
@@ -595,7 +615,12 @@ function summarizePreview(items: ImportPreviewItem[]): ImportPreviewSummary {
   };
 }
 
-function summarizeConfirmResult(items: ImportPreviewItem[], createdCount: number, servicesCreatedCount = 0) {
+function summarizeConfirmResult(
+  items: ImportPreviewItem[],
+  createdCount: number,
+  servicesCreatedCount = 0,
+  servicesLinkedCount = 0,
+) {
   const totalProcessed = items.length;
   const invalidCount = items.filter((item) => item.status === "invalido").length;
   const forcedExactDuplicates = items.filter((item) => (
@@ -616,6 +641,8 @@ function summarizeConfirmResult(items: ImportPreviewItem[], createdCount: number
     errorCount: 0,
     servicesCreatedCount,
     servicesSkippedCount: 0,
+    servicesLinkedCount,
+    servicesLinkSkippedCount: 0,
   };
 }
 
@@ -746,8 +773,11 @@ export class ImportsService {
       const servicesCreatedCount = confirmedPayload.filter((item) => (
         item.action === "import" && item.serviceAction?.type === "create_new"
       )).length;
+      const servicesLinkedCount = confirmedPayload.filter((item) => (
+        item.action === "import" && item.serviceAction?.type === "link_existing"
+      )).length;
       const summary = confirmedPayload.length > 0
-        ? summarizeConfirmResult(confirmedPayload, existingIds.length, servicesCreatedCount)
+        ? summarizeConfirmResult(confirmedPayload, existingIds.length, servicesCreatedCount, servicesLinkedCount)
         : {
           totalProcessed: Math.max(log.totalItems, existingIds.length + log.skippedItems),
           createdCount: existingIds.length,
@@ -758,6 +788,8 @@ export class ImportsService {
           errorCount: 0,
           servicesCreatedCount: 0,
           servicesSkippedCount: 0,
+          servicesLinkedCount: 0,
+          servicesLinkSkippedCount: 0,
         };
       return {
         importLogId: log.id,
@@ -857,6 +889,36 @@ export class ImportsService {
       );
     }
 
+    const linkServiceItems = candidateItems.filter((item) => item.serviceAction.type === "link_existing");
+    const linkServiceIgnoredItems = linkServiceItems.filter((item) => item.action !== "import");
+    if (linkServiceIgnoredItems.length > 0) {
+      throw new ImportPipelineError(
+        400,
+        "Ação de vincular serviço só é permitida para itens marcados para importação.",
+        { blockedIds: linkServiceIgnoredItems.map((item) => item.id) },
+      );
+    }
+
+    const linkServiceInvalidItems = linkServiceItems.filter((item) => item.status === "invalido");
+    if (linkServiceInvalidItems.length > 0) {
+      throw new ImportPipelineError(
+        400,
+        "Não é possível vincular serviço para itens inválidos.",
+        { blockedIds: linkServiceInvalidItems.map((item) => item.id) },
+      );
+    }
+
+    const linkServiceExactDupWithoutForce = linkServiceItems.filter((item) => (
+      item.status === "duplicata_exata" && item.forceImport !== true
+    ));
+    if (linkServiceExactDupWithoutForce.length > 0) {
+      throw new ImportPipelineError(
+        400,
+        "Duplicatas exatas exigem forçar importação antes de vincular serviço.",
+        { blockedIds: linkServiceExactDupWithoutForce.map((item) => item.id) },
+      );
+    }
+
     const rowsToInsert = importItems.map((item) => toCompraInsert(userId, log.cartaoId, item));
 
     const summary = summarizePreview(candidateItems);
@@ -874,14 +936,20 @@ export class ImportsService {
       }
 
       const existingServices = await tx.select({
+        id: servicos.id,
         nome: servicos.nome,
         valorMensal: servicos.valorMensal,
+        categoria: servicos.categoria,
+        formaPagamento: servicos.formaPagamento,
+        compraCartaoId: servicos.compraCartaoId,
       }).from(servicos).where(eq(servicos.userId, userId));
+      const serviceById = new Map(existingServices.map((service) => [service.id, service] as const));
 
       let servicesCreatedCount = 0;
+      let servicesLinkedCount = 0;
       for (let index = 0; index < importItems.length; index += 1) {
         const item = importItems[index];
-        if (item?.serviceAction.type !== "create_new") continue;
+        if (!item || item.serviceAction.type === "none") continue;
 
         const createdCompra = createdRows[index];
         if (!createdCompra) {
@@ -889,36 +957,86 @@ export class ImportsService {
         }
 
         const serviceAction = item.serviceAction;
-        if (hasSimilarService(existingServices, serviceAction)) {
-          throw new ImportPipelineError(
-            409,
-            "Já existe um serviço parecido. Vincule ao serviço existente ou altere a escolha.",
-            { itemId: item.id },
-          );
+        if (serviceAction.type === "create_new") {
+          if (hasSimilarService(existingServices, serviceAction)) {
+            throw new ImportPipelineError(
+              409,
+              "Já existe um serviço parecido. Vincule ao serviço existente ou altere a escolha.",
+              { itemId: item.id },
+            );
+          }
+
+          const valorMensal = formatMoneyFixed(serviceAction.monthlyValue);
+          if (!valorMensal) {
+            throw new ImportPipelineError(400, "Valor mensal inválido para criação de serviço.");
+          }
+
+          const [createdService] = await tx.insert(servicos).values({
+            userId,
+            nome: serviceAction.name,
+            categoria: serviceAction.category,
+            valorMensal,
+            dataCobranca: serviceAction.billingDay,
+            formaPagamento: "cartao",
+            compraCartaoId: createdCompra.id,
+            status: "ativo",
+            iconeId: null,
+          }).returning({
+            id: servicos.id,
+            nome: servicos.nome,
+            valorMensal: servicos.valorMensal,
+            categoria: servicos.categoria,
+            formaPagamento: servicos.formaPagamento,
+            compraCartaoId: servicos.compraCartaoId,
+          });
+
+          if (createdService) {
+            existingServices.push(createdService);
+            serviceById.set(createdService.id, createdService);
+          }
+          servicesCreatedCount += 1;
+          continue;
         }
 
-        const valorMensal = formatMoneyFixed(serviceAction.monthlyValue);
-        if (!valorMensal) {
-          throw new ImportPipelineError(400, "Valor mensal inválido para criação de serviço.");
+        if (serviceAction.type === "link_existing") {
+          const targetService = serviceById.get(serviceAction.serviceId);
+          if (!targetService) {
+            throw new ImportPipelineError(404, "Serviço não encontrado para vínculo.");
+          }
+
+          if (
+            targetService.compraCartaoId
+            && targetService.compraCartaoId !== createdCompra.id
+            && serviceAction.replaceExistingLink !== true
+          ) {
+            throw new ImportPipelineError(
+              409,
+              "Este serviço já está vinculado a outra compra. Confirme a substituição do vínculo.",
+              { itemId: item.id, serviceId: serviceAction.serviceId },
+            );
+          }
+
+          const [updatedService] = await tx.update(servicos).set({
+            compraCartaoId: createdCompra.id,
+          }).where(and(
+            eq(servicos.id, serviceAction.serviceId),
+            eq(servicos.userId, userId),
+          )).returning({
+            id: servicos.id,
+            nome: servicos.nome,
+            valorMensal: servicos.valorMensal,
+            categoria: servicos.categoria,
+            formaPagamento: servicos.formaPagamento,
+            compraCartaoId: servicos.compraCartaoId,
+          });
+
+          if (!updatedService) {
+            throw new ImportPipelineError(404, "Serviço não encontrado para vínculo.");
+          }
+
+          serviceById.set(updatedService.id, updatedService);
+          servicesLinkedCount += 1;
         }
-
-        await tx.insert(servicos).values({
-          userId,
-          nome: serviceAction.name,
-          categoria: serviceAction.category,
-          valorMensal,
-          dataCobranca: serviceAction.billingDay,
-          formaPagamento: "cartao",
-          compraCartaoId: createdCompra.id,
-          status: "ativo",
-          iconeId: null,
-        });
-
-        existingServices.push({
-          nome: serviceAction.name,
-          valorMensal,
-        });
-        servicesCreatedCount += 1;
       }
 
       const ids = createdRows.map((row) => row.id);
@@ -943,6 +1061,7 @@ export class ImportsService {
       return {
         ids,
         servicesCreatedCount,
+        servicesLinkedCount,
       };
     });
 
@@ -951,7 +1070,12 @@ export class ImportsService {
       createdCount: transactionResult.ids.length,
       skippedCount: summary.skipItems,
       createdCompraIds: transactionResult.ids,
-      summary: summarizeConfirmResult(candidateItems, transactionResult.ids.length, transactionResult.servicesCreatedCount),
+      summary: summarizeConfirmResult(
+        candidateItems,
+        transactionResult.ids.length,
+        transactionResult.servicesCreatedCount,
+        transactionResult.servicesLinkedCount,
+      ),
     };
   }
 

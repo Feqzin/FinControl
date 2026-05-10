@@ -221,6 +221,8 @@ export function ImportFaturaDialog({
     errorCount: 0,
     servicesCreatedCount: 0,
     servicesSkippedCount: 0,
+    servicesLinkedCount: 0,
+    servicesLinkSkippedCount: 0,
   };
   const hasConfirmSummary = Boolean(confirmResult);
 
@@ -634,6 +636,9 @@ export function ImportFaturaDialog({
                                           linkedServiceId: nextAction === "link_existing"
                                             ? (current.linkedServiceId ?? null)
                                             : null,
+                                          replaceExistingServiceLink: nextAction === "link_existing"
+                                            ? current.replaceExistingServiceLink === true
+                                            : false,
                                         };
                                       }));
                                     }}
@@ -657,6 +662,7 @@ export function ImportFaturaDialog({
                                           return {
                                             ...current,
                                             linkedServiceId: value === "__none" ? null : value,
+                                            replaceExistingServiceLink: false,
                                           };
                                         }));
                                       }}
@@ -681,6 +687,30 @@ export function ImportFaturaDialog({
                                     </Select>
                                   ) : null}
                                 </div>
+
+                                {serviceAction === "link_existing" && selectedLinkedService?.compraCartaoId ? (
+                                  <div className="rounded-md border border-amber-300 bg-amber-50 px-2 py-2">
+                                    <p className="text-xs text-amber-800">
+                                      Este serviço já está vinculado a outra compra. Deseja substituir o vínculo?
+                                    </p>
+                                    <label className="mt-1 inline-flex items-center gap-2 text-xs text-amber-900">
+                                      <input
+                                        type="checkbox"
+                                        className="h-3.5 w-3.5"
+                                        checked={item.replaceExistingServiceLink === true}
+                                        onChange={(event) => {
+                                          const checked = event.target.checked;
+                                          setImportItems((items) => items.map((current, index) => (
+                                            index === idx
+                                              ? { ...current, replaceExistingServiceLink: checked }
+                                              : current
+                                          )));
+                                        }}
+                                      />
+                                      <span>Estou ciente e quero substituir o vínculo existente.</span>
+                                    </label>
+                                  </div>
+                                ) : null}
 
                                 {serviceAction === "create_new" && item.createServiceSuggestion ? (
                                   <p className="text-xs text-indigo-900">
@@ -834,6 +864,10 @@ export function ImportFaturaDialog({
                 <div className="rounded-md border p-3 sm:col-span-2">
                   <p className="text-muted-foreground">Serviços criados</p>
                   <p className="text-lg font-semibold">{confirmSummary.servicesCreatedCount ?? 0}</p>
+                </div>
+                <div className="rounded-md border p-3 sm:col-span-2">
+                  <p className="text-muted-foreground">Serviços vinculados</p>
+                  <p className="text-lg font-semibold">{confirmSummary.servicesLinkedCount ?? 0}</p>
                 </div>
               </div>
 

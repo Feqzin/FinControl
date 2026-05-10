@@ -26,7 +26,7 @@ const isoDateNullableOptional = z.union([z.string(), z.date(), z.null(), z.undef
 
 export const importSourceType = z.enum(["texto", "csv", "ofx", "qfx", "pdf", "manual"]);
 export const importAction = z.enum(["import", "skip"]);
-const importServiceActionType = z.enum(["none", "create_new"]);
+const importServiceActionType = z.enum(["none", "create_new", "link_existing"]);
 const importServiceActionCategory = z.enum([
   "streaming",
   "seguro",
@@ -44,8 +44,21 @@ const importServiceAction = z.object({
   category: importServiceActionCategory.optional(),
   monthlyValue: z.coerce.number().positive().optional(),
   billingDay: z.coerce.number().int().min(1).max(31).optional(),
+  serviceId: z.string().trim().optional().nullable(),
+  replaceExistingLink: z.boolean().optional(),
 }).superRefine((value, ctx) => {
-  if (value.type !== "create_new") return;
+  if (value.type === "none") return;
+
+  if (value.type === "link_existing") {
+    if (!value.serviceId || value.serviceId.trim().length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["serviceId"],
+        message: "serviceId obrigatorio para link_existing.",
+      });
+    }
+    return;
+  }
 
   if (!value.name || value.name.trim().length === 0) {
     ctx.addIssue({

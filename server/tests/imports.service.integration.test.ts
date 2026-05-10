@@ -1121,3 +1121,638 @@ testImports("confirmacao bloqueia create_new quando ja existe servico parecido",
     await db.delete(users).where(eq(users.id, user.id));
   }
 });
+
+testImports("confirmacao vincula servico existente do mesmo usuario quando serviceAction=link_existing", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, servicos } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_link_service_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Link Service",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Link Service",
+    limite: "5000.00",
+    melhorDiaCompra: 8,
+    diaVencimento: 23,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const [servico] = await db.insert(servicos).values({
+      userId: user.id,
+      nome: "Spotify Premium",
+      categoria: "streaming",
+      valorMensal: "21.90",
+      dataCobranca: 12,
+      formaPagamento: "cartao",
+      compraCartaoId: null,
+      status: "ativo",
+      iconeId: null,
+    }).returning();
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-link-service",
+      items: [
+        {
+          id: "srv-link-1",
+          descricao: "Spotify",
+          valor: "21.90",
+          valorParcela: "21.90",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-18",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+          serviceAction: {
+            type: "link_existing",
+            serviceId: servico.id,
+            replaceExistingLink: false,
+          },
+        },
+      ],
+    });
+
+    const confirmed = await service.confirm(user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+    });
+
+    assert.equal(confirmed.createdCount, 1);
+    assert.equal(confirmed.summary.servicesCreatedCount, 0);
+    assert.equal(confirmed.summary.servicesLinkedCount, 1);
+
+    const createdCompraId = confirmed.createdCompraIds[0];
+    assert.ok(createdCompraId);
+
+    const [servicoAtualizado] = await db.select().from(servicos).where(and(
+      eq(servicos.id, servico.id),
+      eq(servicos.userId, user.id),
+    ));
+    assert.ok(servicoAtualizado);
+    assert.equal(servicoAtualizado?.compraCartaoId, createdCompraId);
+    assert.equal(servicoAtualizado?.nome, "Spotify Premium");
+    assert.equal(servicoAtualizado?.valorMensal, "21.90");
+    assert.equal(servicoAtualizado?.categoria, "streaming");
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testImports("confirmacao bloqueia link_existing para servico de outro usuario", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, servicos } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const ownerUsername = `it_imports_link_owner_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const attackerUsername = `it_imports_link_attacker_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [owner] = await db.insert(users).values({
+    username: ownerUsername,
+    password: "hash_fake",
+    nomeCompleto: "Owner",
+  }).returning();
+
+  const [attacker] = await db.insert(users).values({
+    username: attackerUsername,
+    password: "hash_fake",
+    nomeCompleto: "Attacker",
+  }).returning();
+
+  const [cartaoAttacker] = await db.insert(cartoes).values({
+    userId: attacker.id,
+    nome: "Cartao Attacker",
+    limite: "5000.00",
+    melhorDiaCompra: 9,
+    diaVencimento: 24,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const [servicoOwner] = await db.insert(servicos).values({
+      userId: owner.id,
+      nome: "Netflix",
+      categoria: "streaming",
+      valorMensal: "44.90",
+      dataCobranca: 10,
+      formaPagamento: "cartao",
+      compraCartaoId: null,
+      status: "ativo",
+      iconeId: null,
+    }).returning();
+
+    const preview = await service.preview(attacker.id, {
+      cartaoId: cartaoAttacker.id,
+      sourceType: "manual",
+      sourceName: "teste-link-other-user",
+      items: [
+        {
+          id: "srv-link-other-1",
+          descricao: "Netflix",
+          valor: "44.90",
+          valorParcela: "44.90",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-19",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+          serviceAction: {
+            type: "link_existing",
+            serviceId: servicoOwner.id,
+            replaceExistingLink: false,
+          },
+        },
+      ],
+    });
+
+    await assert.rejects(
+      service.confirm(attacker.id, {
+        importLogId: preview.importLogId,
+        userConfirmed: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message.includes("Serviço não encontrado"), true);
+        return true;
+      },
+    );
+  } finally {
+    await db.delete(users).where(eq(users.id, attacker.id));
+    await db.delete(users).where(eq(users.id, owner.id));
+  }
+});
+
+testImports("confirmacao bloqueia link_existing quando servico ja possui vinculo e replaceExistingLink=false", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, servicos, comprasCartao } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_link_replace_block_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Link Replace Block",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Replace Block",
+    limite: "5000.00",
+    melhorDiaCompra: 10,
+    diaVencimento: 25,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const [compraAnterior] = await db.insert(comprasCartao).values({
+      userId: user.id,
+      cartaoId: cartao.id,
+      descricao: "Compra antiga vinculada",
+      valorTotal: "99.90",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "99.90",
+      dataCompra: "2026-03-10",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    }).returning();
+
+    const [servico] = await db.insert(servicos).values({
+      userId: user.id,
+      nome: "iCloud Apple",
+      categoria: "software",
+      valorMensal: "9.90",
+      dataCobranca: 10,
+      formaPagamento: "cartao",
+      compraCartaoId: compraAnterior.id,
+      status: "ativo",
+      iconeId: null,
+    }).returning();
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-link-replace-block",
+      items: [
+        {
+          id: "srv-link-replace-block-1",
+          descricao: "iCloud",
+          valor: "9.90",
+          valorParcela: "9.90",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-20",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+          serviceAction: {
+            type: "link_existing",
+            serviceId: servico.id,
+            replaceExistingLink: false,
+          },
+        },
+      ],
+    });
+
+    await assert.rejects(
+      service.confirm(user.id, {
+        importLogId: preview.importLogId,
+        userConfirmed: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message.includes("já está vinculado"), true);
+        return true;
+      },
+    );
+
+    const [servicoSemMudanca] = await db.select().from(servicos).where(and(
+      eq(servicos.id, servico.id),
+      eq(servicos.userId, user.id),
+    ));
+    assert.ok(servicoSemMudanca);
+    assert.equal(servicoSemMudanca?.compraCartaoId, compraAnterior.id);
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testImports("confirmacao permite link_existing com replaceExistingLink=true sem alterar dados do servico", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, servicos, comprasCartao } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_link_replace_ok_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Link Replace Ok",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Replace OK",
+    limite: "5000.00",
+    melhorDiaCompra: 11,
+    diaVencimento: 26,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const [compraAnterior] = await db.insert(comprasCartao).values({
+      userId: user.id,
+      cartaoId: cartao.id,
+      descricao: "Compra antiga link",
+      valorTotal: "10.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "10.00",
+      dataCompra: "2026-03-11",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    }).returning();
+
+    const [servico] = await db.insert(servicos).values({
+      userId: user.id,
+      nome: "Nu Seguro Vida",
+      categoria: "utilidades",
+      valorMensal: "7.27",
+      dataCobranca: 20,
+      formaPagamento: "cartao",
+      compraCartaoId: compraAnterior.id,
+      status: "ativo",
+      iconeId: null,
+    }).returning();
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-link-replace-ok",
+      items: [
+        {
+          id: "srv-link-replace-ok-1",
+          descricao: "Nu Seguro Vida",
+          valor: "7.27",
+          valorParcela: "7.27",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-21",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+          serviceAction: {
+            type: "link_existing",
+            serviceId: servico.id,
+            replaceExistingLink: true,
+          },
+        },
+      ],
+    });
+
+    const confirmed = await service.confirm(user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+    });
+
+    assert.equal(confirmed.createdCount, 1);
+    assert.equal(confirmed.summary.servicesCreatedCount, 0);
+    assert.equal(confirmed.summary.servicesLinkedCount, 1);
+
+    const novoCompraId = confirmed.createdCompraIds[0];
+    assert.ok(novoCompraId);
+
+    const [servicoAtualizado] = await db.select().from(servicos).where(and(
+      eq(servicos.id, servico.id),
+      eq(servicos.userId, user.id),
+    ));
+    assert.ok(servicoAtualizado);
+    assert.equal(servicoAtualizado?.compraCartaoId, novoCompraId);
+    assert.equal(servicoAtualizado?.nome, "Nu Seguro Vida");
+    assert.equal(servicoAtualizado?.categoria, "utilidades");
+    assert.equal(servicoAtualizado?.valorMensal, "7.27");
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testImports("confirmacao bloqueia link_existing em item ignorado", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, servicos } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_link_skip_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Link Skip",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Link Skip",
+    limite: "5000.00",
+    melhorDiaCompra: 12,
+    diaVencimento: 27,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const [servico] = await db.insert(servicos).values({
+      userId: user.id,
+      nome: "Disney+",
+      categoria: "streaming",
+      valorMensal: "33.90",
+      dataCobranca: 12,
+      formaPagamento: "cartao",
+      compraCartaoId: null,
+      status: "ativo",
+      iconeId: null,
+    }).returning();
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-link-skip",
+      items: [
+        {
+          id: "srv-link-skip-1",
+          descricao: "Disney+",
+          valor: "33.90",
+          valorParcela: "33.90",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-22",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "skip",
+          serviceAction: {
+            type: "link_existing",
+            serviceId: servico.id,
+            replaceExistingLink: false,
+          },
+        },
+      ],
+    });
+
+    await assert.rejects(
+      service.confirm(user.id, {
+        importLogId: preview.importLogId,
+        userConfirmed: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message.includes("vincular serviço"), true);
+        return true;
+      },
+    );
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testImports("confirmacao bloqueia link_existing em item invalido", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, servicos } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_link_invalid_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Link Invalid",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Link Invalid",
+    limite: "5000.00",
+    melhorDiaCompra: 13,
+    diaVencimento: 28,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const [servico] = await db.insert(servicos).values({
+      userId: user.id,
+      nome: "Max",
+      categoria: "streaming",
+      valorMensal: "19.90",
+      dataCobranca: 13,
+      formaPagamento: "cartao",
+      compraCartaoId: null,
+      status: "ativo",
+      iconeId: null,
+    }).returning();
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-link-invalid",
+      items: [
+        {
+          id: "srv-link-invalid-1",
+          descricao: "Max",
+          valor: "0.00",
+          valorParcela: "0.00",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-23",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+          serviceAction: {
+            type: "link_existing",
+            serviceId: servico.id,
+            replaceExistingLink: false,
+          },
+        },
+      ],
+    });
+
+    await assert.rejects(
+      service.confirm(user.id, {
+        importLogId: preview.importLogId,
+        userConfirmed: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message.includes("erro de validacao"), true);
+        return true;
+      },
+    );
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testImports("confirmacao bloqueia link_existing em duplicata_exata sem forceImport", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, comprasCartao, servicos } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_link_exact_dup_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Link Exact Duplicate",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Link Exact Duplicate",
+    limite: "5000.00",
+    melhorDiaCompra: 14,
+    diaVencimento: 29,
+    iconeId: null,
+  }).returning();
+
+  try {
+    await db.insert(comprasCartao).values({
+      userId: user.id,
+      cartaoId: cartao.id,
+      descricao: "OpenAI ChatGPT",
+      valorTotal: "20.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "20.00",
+      dataCompra: "2026-04-24",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    });
+
+    const [servico] = await db.insert(servicos).values({
+      userId: user.id,
+      nome: "ChatGPT Plus",
+      categoria: "software",
+      valorMensal: "20.00",
+      dataCobranca: 24,
+      formaPagamento: "cartao",
+      compraCartaoId: null,
+      status: "ativo",
+      iconeId: null,
+    }).returning();
+
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-link-exact-dup",
+      items: [
+        {
+          id: "srv-link-exact-dup-1",
+          descricao: "OpenAI ChatGPT",
+          valor: "20.00",
+          valorParcela: "20.00",
+          parcelas: 1,
+          parcelaAtual: 1,
+          dataCompra: "2026-04-24",
+          vencimentoFatura: null,
+          tipo: "compra",
+          action: "import",
+          serviceAction: {
+            type: "link_existing",
+            serviceId: servico.id,
+            replaceExistingLink: false,
+          },
+        },
+      ],
+    });
+
+    const [item] = preview.items;
+    assert.ok(item);
+    assert.equal(item.status, "duplicata_exata");
+    assert.equal(item.forceImport, false);
+
+    await assert.rejects(
+      service.confirm(user.id, {
+        importLogId: preview.importLogId,
+        userConfirmed: true,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message.includes("Duplicatas exatas exigem"), true);
+        return true;
+      },
+    );
+
+    const [servicoSemVinculo] = await db.select().from(servicos).where(and(
+      eq(servicos.id, servico.id),
+      eq(servicos.userId, user.id),
+    ));
+    assert.ok(servicoSemVinculo);
+    assert.equal(servicoSemVinculo?.compraCartaoId, null);
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});

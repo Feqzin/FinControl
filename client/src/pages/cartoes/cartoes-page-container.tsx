@@ -252,6 +252,7 @@ function applyServiceSuggestionMetadata(items: ParsedItem[], servicos: Servico[]
         recurringServiceCandidate: candidate,
         serviceSuggestionAction: item.serviceSuggestionAction ?? "ignore",
         linkedServiceId: null,
+        replaceExistingServiceLink: false,
         serviceSuggestionWarning: null,
       };
     }
@@ -268,6 +269,7 @@ function applyServiceSuggestionMetadata(items: ParsedItem[], servicos: Servico[]
       recurringServiceCandidate: candidate,
       serviceSuggestionAction: action,
       linkedServiceId,
+      replaceExistingServiceLink: action === "link_existing" ? item.replaceExistingServiceLink === true : false,
       serviceSuggestionWarning: hasPotentialDuplicate
         ? `Serviço parecido encontrado: ${matchedService?.nome}. Prefira vincular ao existente para evitar duplicidade.`
         : null,
@@ -286,6 +288,7 @@ function mergePreviewItemsWithLocalSignals(previewItems: ParsedItem[], parsedIte
       recurringServiceCandidate: local.recurringServiceCandidate ?? item.recurringServiceCandidate,
       serviceSuggestionAction: local.serviceSuggestionAction ?? item.serviceSuggestionAction ?? "ignore",
       linkedServiceId: local.linkedServiceId ?? item.linkedServiceId ?? null,
+      replaceExistingServiceLink: local.replaceExistingServiceLink ?? item.replaceExistingServiceLink ?? false,
       createServiceSuggestion: local.createServiceSuggestion ?? item.createServiceSuggestion ?? null,
       serviceSuggestionWarning: local.serviceSuggestionWarning ?? item.serviceSuggestionWarning ?? null,
       duplicata: local.duplicata ?? item.duplicata,
@@ -1370,6 +1373,37 @@ export default function CartoesPage() {
       return;
     }
 
+    const missingLinkedServiceItems = importItems.filter((item) => (
+      item.action === "import"
+      && item.serviceSuggestionAction === "link_existing"
+      && !item.linkedServiceId
+    ));
+    if (missingLinkedServiceItems.length > 0) {
+      toast({
+        title: "Selecione o serviço para concluir o vínculo",
+        description: "Há itens marcados para vincular serviço existente sem serviço selecionado.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const replaceNotConfirmedItems = importItems.filter((item) => {
+      if (item.action !== "import" || item.serviceSuggestionAction !== "link_existing" || !item.linkedServiceId) {
+        return false;
+      }
+      const selectedService = servicos.find((servico) => servico.id === item.linkedServiceId);
+      if (!selectedService?.compraCartaoId) return false;
+      return item.replaceExistingServiceLink !== true;
+    });
+    if (replaceNotConfirmedItems.length > 0) {
+      toast({
+        title: "Confirme a substituição do vínculo",
+        description: "Há serviços já vinculados a outra compra. Marque que deseja substituir o vínculo para continuar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     batchImportMutation.mutate(
       {
         items: importItems,
@@ -1580,6 +1614,9 @@ export default function CartoesPage() {
           ? (item.serviceSuggestionAction ?? "ignore")
           : "ignore",
         linkedServiceId: recurringServiceCandidate.isServiceCandidate ? item.linkedServiceId ?? null : null,
+        replaceExistingServiceLink: recurringServiceCandidate.isServiceCandidate
+          ? item.replaceExistingServiceLink === true
+          : false,
         serviceSuggestionWarning: null,
       };
     });

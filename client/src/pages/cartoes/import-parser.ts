@@ -33,7 +33,17 @@ export interface ParsedItem {
     dataCobranca: number;
     categoria: "streaming" | "seguro" | "software" | "assinatura" | "outro";
   } | null;
+  serviceAction?: {
+    type: "none" | "create_new" | "link_existing";
+    name?: string;
+    category?: string;
+    monthlyValue?: number;
+    billingDay?: number;
+    serviceId?: string;
+    replaceExistingLink?: boolean;
+  };
   serviceSuggestionWarning?: string | null;
+  replaceExistingServiceLink?: boolean;
 }
 
 export type RecurringServiceCategory = "streaming" | "seguro" | "software" | "assinatura" | "outro";
