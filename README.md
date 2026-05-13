@@ -79,7 +79,10 @@ ENABLE_DEMO_SEED=false
 # DEMO_SEED_USERNAME=dev_demo_local
 # DEMO_SEED_PASSWORD=TroquePorSenhaForte!123
 # PAYMENT_PROOF_STORAGE_DIR=./uploads/comprovantes
-# PAYMENT_PROOF_MAX_BYTES=5242880
+# PAYMENT_PROOF_MAX_BYTES=3145728
+# DEBUG_DB_CHECK_ENABLED=false
+# DEBUG_DB_CHECK_TOKEN=
+# BILLING_STATUS_DIAGNOSTIC=0
 ```
 
 - `DATABASE_URL`: string de conexao PostgreSQL.
@@ -93,7 +96,9 @@ ENABLE_DEMO_SEED=false
 - `DEMO_SEED_USERNAME`: usuario demo quando seed estiver ativa.
 - `DEMO_SEED_PASSWORD`: senha demo quando seed estiver ativa.
 - `PAYMENT_PROOF_STORAGE_DIR` (opcional): diretorio local para comprovantes de pagamento.
-- `PAYMENT_PROOF_MAX_BYTES` (opcional): tamanho maximo de upload em bytes (padrao `5242880`, 5 MB).
+- `PAYMENT_PROOF_MAX_BYTES` (opcional): tamanho maximo de upload em bytes (padrao `3145728`, 3 MB).
+- `DEBUG_DB_CHECK_ENABLED` / `DEBUG_DB_CHECK_TOKEN` (opcional): habilita diagnostico `/api/debug/*` com token forte; em producao, sem isso, endpoints de debug ficam bloqueados (404).
+- `BILLING_STATUS_DIAGNOSTIC` (opcional): log tecnico temporario do status de billing para investigacao.
 
 ## Scripts principais
 - `npm run dev`: inicia ambiente de desenvolvimento.
@@ -207,5 +212,9 @@ Checklist minimo:
    - padrao: `DATABASE_SSL_REJECT_UNAUTHORIZED=true`
    - fallback para Vercel + Supabase Pooler quando necessario: `false`
 6. Rodar `npm run check`, `npm run test` e `npm run build`.
+   - Para hardening antes de release, rode tambem:
+     - `npm run test:security`
+     - `npm run test:frontend-unit`
+     - `npm run test:security:db` (com Docker ativo + `.env.test`)
 7. Garantir que pacote/artefato nao inclui `.env`, `.git`, `node_modules`, `dist`, `diagnostics`.
 8. Publicar somente build e configuracoes necessarias ao runtime.
