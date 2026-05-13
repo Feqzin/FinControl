@@ -79,6 +79,7 @@ export interface ParseOptions {
   referenceBillingDate?: string | null;
   selectedCardName?: string | null;
   selectedCardIssuer?: string | null;
+  issuerHint?: InvoiceIssuer;
 }
 
 interface ParseNubankOptions extends ParseOptions {
@@ -1566,7 +1567,7 @@ export function parsePdf(
   cartaoId: string,
   options?: ParseOptions,
 ): ParseResult {
-  const itauDetected = detectItauInvoiceText(content);
+  const itauDetected = options?.issuerHint === "itau" || detectItauInvoiceText(content);
   if (itauDetected) {
     const strictItau = parseItauPdfTransactions(content, existentes, cartaoId, options);
     if (strictItau.items.length === 0) {

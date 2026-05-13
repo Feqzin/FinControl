@@ -23,6 +23,7 @@ import {
   extractTextFromPdfBuffer,
   hasPdfMagicBytes,
   isExtractedPdfTextUsable,
+  reconstructPdfLinesByPosition,
 } from "../src/pages/cartoes/import-pdf-utils";
 import {
   buildTimelineLayout,
@@ -735,6 +736,77 @@ test("import parser: detecta texto extraivel minimo de PDF", () => {
   assert.equal(isExtractedPdfTextUsable("    "), false);
   assert.equal(isExtractedPdfTextUsable("R$ 90,00"), false);
   assert.equal(isExtractedPdfTextUsable("06/05 Loja Central parcela 1/3 valor 120,00"), true);
+});
+
+test("import parser: reconstrói linhas posicionais por coordenada Y/X", () => {
+  const items = [
+    { str: "04", transform: [1, 0, 0, 1, 12, 700], width: 8, height: 10 },
+    { str: "/", transform: [1, 0, 0, 1, 20.5, 700], width: 3, height: 10 },
+    { str: "09", transform: [1, 0, 0, 1, 24, 700], width: 8, height: 10 },
+    { str: "Shopee*SHOPEE*", transform: [1, 0, 0, 1, 40, 700], width: 78, height: 10 },
+    { str: "08", transform: [1, 0, 0, 1, 122, 700], width: 8, height: 10 },
+    { str: "/", transform: [1, 0, 0, 1, 130.5, 700], width: 3, height: 10 },
+    { str: "12", transform: [1, 0, 0, 1, 134, 700], width: 8, height: 10 },
+    { str: "224", transform: [1, 0, 0, 1, 148, 700], width: 14, height: 10 },
+    { str: ",", transform: [1, 0, 0, 1, 162.5, 700], width: 3, height: 10 },
+    { str: "91", transform: [1, 0, 0, 1, 166, 700], width: 8, height: 10 },
+    { str: "18/09", transform: [1, 0, 0, 1, 12, 684], width: 20, height: 10 },
+    { str: "EC", transform: [1, 0, 0, 1, 38, 684], width: 10, height: 10 },
+    { str: "*LGELECTRON", transform: [1, 0, 0, 1, 52, 684], width: 64, height: 10 },
+    { str: "07/12", transform: [1, 0, 0, 1, 122, 684], width: 20, height: 10 },
+    { str: "410,67", transform: [1, 0, 0, 1, 148, 684], width: 24, height: 10 },
+  ] as const;
+
+  const lines = reconstructPdfLinesByPosition(items);
+  assert.equal(lines.length >= 2, true);
+  assert.equal(lines.some((line) => line.includes("04/09 Shopee*SHOPEE* 08/12 224,91")), true);
+  assert.equal(lines.some((line) => line.includes("18/09 EC *LGELECTRON 07/12 410,67")), true);
+});
+
+test("import parser: texto reconstruído posicional do Itau gera compras reais", () => {
+  const lines = [
+    "Itaúcard",
+    "Resumo da fatura em R$",
+    "Vencimento 22/04/2026",
+    "Lançamentos: compras e saques",
+    "DATA ESTABELECIMENTO VALOR EM R$",
+    "04/09 Shopee*SHOPEE* 08/12 224,91",
+    "18/09 EC *LGELECTRON 07/12 410,67",
+    "11/12 PG *WEBFONES W 05/06 108,16",
+    "25/03 NETFLIX ENTRETENIMENTOB 59,90",
+    "25/03 EBN *PLAYST 01/02 99,59",
+    "02/04 EBN *PLAYST 01/04 21,62",
+    "Total dos lançamentos atuais 0,00",
+    "Compras parceladas - próximas faturas",
+  ];
+
+  const positionalItems: Array<{ str: string; transform: number[]; width: number; height: number }> = [];
+  let y = 760;
+  for (const line of lines) {
+    let x = 10;
+    for (const token of line.split(/\s+/)) {
+      positionalItems.push({
+        str: token,
+        transform: [1, 0, 0, 1, x, y],
+        width: Math.max(token.length * 4.6, 4),
+        height: 10,
+      });
+      x += Math.max(token.length * 4.6, 4) + 2.2;
+    }
+    y -= 14;
+  }
+
+  const reconstructedText = reconstructPdfLinesByPosition(positionalItems).join("\n");
+  const parsed = parsePdf(reconstructedText, [], "cartao-itau", {
+    referenceBillingDate: "2026-04-22",
+    issuerHint: "itau",
+  });
+
+  assert.equal(parsed.issuerDetected, "itau");
+  assert.equal(parsed.items.length, 6);
+  assert.equal(parsed.items.some((item) => item.descricao.toLowerCase().includes("shopee")), true);
+  assert.equal(parsed.items.some((item) => item.descricao.toLowerCase().includes("netflix")), true);
+  assert.equal(parsed.items.some((item) => item.valorParcela === 1910.79), false);
 });
 
 test("import parser: extrai texto de PDF textual valido", async () => {

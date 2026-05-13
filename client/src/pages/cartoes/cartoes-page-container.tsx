@@ -27,7 +27,7 @@ import {
   type ParseResult,
   type ParsedItem,
 } from "@/pages/cartoes/import-parser";
-import { extractTextFromPdfBuffer, isExtractedPdfTextUsable } from "@/pages/cartoes/import-pdf-utils";
+import { extractPdfTextVariantsFromPdfBuffer, isExtractedPdfTextUsable } from "@/pages/cartoes/import-pdf-utils";
 import { ImportFaturaDialog } from "@/pages/cartoes/components/import-fatura-dialog";
 import { formatImportCardOptionLabel, suggestImportCardByText } from "@/pages/cartoes/import-card-matching";
 import { useCartoes } from "@/hooks/useCartoes";
@@ -1715,10 +1715,17 @@ export default function CartoesPage() {
     setImportConfirmResult(null);
     try {
       let content = "";
+      let pdfSignalText = "";
+      let pdfIssuerHint: "itau" | undefined;
       if (extension === "pdf") {
         const pdfBuffer = await file.arrayBuffer();
-        content = await extractTextFromPdfBuffer(pdfBuffer);
-        if (!isExtractedPdfTextUsable(content)) {
+        const extractedPdf = await extractPdfTextVariantsFromPdfBuffer(pdfBuffer);
+        const combinedPdfText = [extractedPdf.plainText, extractedPdf.positionalText]
+          .map((part) => part.trim())
+          .filter((part) => part.length > 0)
+          .join("\n");
+
+        if (!isExtractedPdfTextUsable(combinedPdfText)) {
           toast({
             title: "PDF sem texto extraível",
             description: "Este PDF parece ser imagem/escaneado. A importação por imagem será liberada em uma etapa futura.",
@@ -1728,11 +1735,21 @@ export default function CartoesPage() {
           setImportPreviewLogId(null);
           return;
         }
+
+        pdfSignalText = combinedPdfText;
+        const itauDetectedFromSignals = detectItauInvoiceText(combinedPdfText);
+        if (itauDetectedFromSignals) {
+          pdfIssuerHint = "itau";
+          content = extractedPdf.positionalText || extractedPdf.plainText;
+        } else {
+          content = extractedPdf.plainText || extractedPdf.positionalText;
+        }
       } else {
         content = await file.text();
       }
 
-      const cartaoId = resolveImportCartaoId(`${file.name}\n${content}`);
+      const detectionContent = extension === "pdf" && pdfSignalText ? pdfSignalText : content;
+      const cartaoId = resolveImportCartaoId(`${file.name}\n${detectionContent}`);
       if (!cartaoId) {
         toast({ title: "Selecione um cartao para importar", variant: "destructive" });
         return;
@@ -1760,6 +1777,7 @@ export default function CartoesPage() {
         result = parsePdf(content, compras, cartaoId, {
           referenceBillingDate: importVencimento || undefined,
           selectedCardName: selectedCard?.nome ?? "",
+          issuerHint: pdfIssuerHint,
         });
         sourceType = "pdf";
       } else {
@@ -1768,7 +1786,7 @@ export default function CartoesPage() {
         });
         sourceType = "csv";
       }
-      const venc = findVencimentoFatura(content);
+      const venc = findVencimentoFatura(detectionContent);
       if (venc) setImportVencimento(venc);
       const ignoredDetails = buildIgnoredDetails(result.stats);
       const hasIgnoredRows = countIgnoredRows(result.stats) > 0;
@@ -1801,7 +1819,7 @@ export default function CartoesPage() {
       setImportSourceType(sourceType);
       setImportSourceName(file.name);
       if (sourceType === "pdf") {
-        applyPdfIssuerMismatchGuard(`${file.name}\n${content}`, cartaoId);
+        applyPdfIssuerMismatchGuard(`${file.name}\n${detectionContent}`, cartaoId);
       } else {
         setImportIssuerMismatchWarning("");
         setImportIssuerMismatchMustAcknowledge(false);
