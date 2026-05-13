@@ -72,6 +72,7 @@ export interface ParseResult {
   stats: ParseStats;
   issuerDetected?: InvoiceIssuer;
   parserUsed?: string;
+  parserWarnings?: string[];
 }
 
 export interface ParseOptions {
@@ -335,6 +336,15 @@ function normalizePortableText(value: string): string {
     .toUpperCase();
 }
 
+function normalizePortableTextCompact(value: string): string {
+  return normalizePortableText(value).replace(/[^A-Z0-9]/g, "");
+}
+
+const ITAU_DETECTION_SIGNALS_COMPACT = ITAU_DETECTION_SIGNALS.map((signal) => normalizePortableTextCompact(signal));
+const ITAU_START_SECTION_MARKERS_COMPACT = ITAU_START_SECTION_MARKERS.map((marker) => normalizePortableTextCompact(marker));
+const ITAU_SECTION_HEADER_MARKERS_COMPACT = ITAU_SECTION_HEADER_MARKERS.map((marker) => normalizePortableTextCompact(marker));
+const ITAU_END_SECTION_MARKERS_COMPACT = ITAU_END_SECTION_MARKERS.map((marker) => normalizePortableTextCompact(marker));
+
 function normalizeRecurringServiceText(value: string): string {
   return value
     .toLowerCase()
@@ -438,14 +448,18 @@ function looksLikeItauCardName(value: string | null | undefined): boolean {
 }
 
 export function detectItauInvoiceText(text: string): boolean {
-  const normalized = normalizePortableText(text);
-  const hasBrand = /\bITAU\b|\bITAUCARD\b/.test(normalized);
-  const hasLaunchSection = ITAU_START_SECTION_MARKERS.some((marker) => normalized.includes(marker));
-  const signalCount = ITAU_DETECTION_SIGNALS.filter((signal) => normalized.includes(signal)).length;
+  const normalized = normalizePortableText(text).replace(/\s+/g, " ").trim();
+  const compact = normalizePortableTextCompact(text);
+  const hasBrand = compact.includes("ITAU") || compact.includes("ITAUCARD");
+  const hasLaunchSection = ITAU_START_SECTION_MARKERS_COMPACT.some((marker) => compact.includes(marker));
+  const signalCount = ITAU_DETECTION_SIGNALS_COMPACT.filter((signal) => compact.includes(signal)).length;
+  const hasCallCenterSignal = compact.includes("40044828") && compact.includes("08009704828");
 
   if (hasBrand && hasLaunchSection) return true;
+  if (hasBrand && hasCallCenterSignal && signalCount >= 2) return true;
   if (hasLaunchSection && signalCount >= 3) return true;
-  return hasBrand && signalCount >= 4;
+  if (hasBrand && signalCount >= 4) return true;
+  return /\bPAGAMENTO VIA CONTA\b/.test(normalized) && hasBrand && signalCount >= 3;
 }
 
 function extractItauReferenceDate(text: string, options?: ParseItauOptions): Date | null {
@@ -1157,9 +1171,10 @@ function extractItauTransactionSections(content: string): string[][] {
 
   for (const line of lines) {
     const normalized = normalizePortableText(line).replace(/\s+/g, " ").trim();
-    if (!normalized) continue;
+    const compactLine = normalizePortableTextCompact(line);
+    if (!normalized && !compactLine) continue;
 
-    const hasStartMarker = ITAU_START_SECTION_MARKERS.some((marker) => normalized.includes(marker));
+    const hasStartMarker = ITAU_START_SECTION_MARKERS_COMPACT.some((marker) => compactLine.includes(marker));
     if (hasStartMarker) {
       if (collecting && current.length > 0) sections.push(current);
       collecting = true;
@@ -1170,7 +1185,7 @@ function extractItauTransactionSections(content: string): string[][] {
 
     if (!collecting) continue;
 
-    const hasEndMarker = ITAU_END_SECTION_MARKERS.some((marker) => normalized.includes(marker));
+    const hasEndMarker = ITAU_END_SECTION_MARKERS_COMPACT.some((marker) => compactLine.includes(marker));
     if (hasEndMarker) {
       if (current.length > 0) sections.push(current);
       collecting = false;
@@ -1180,7 +1195,7 @@ function extractItauTransactionSections(content: string): string[][] {
     }
 
     if (!headerFound) {
-      const hasHeaderMarker = ITAU_SECTION_HEADER_MARKERS.some((marker) => normalized.includes(marker));
+      const hasHeaderMarker = ITAU_SECTION_HEADER_MARKERS_COMPACT.some((marker) => compactLine.includes(marker));
       if (hasHeaderMarker || /^\d{2}\/\d{2}\b/.test(line)) {
         headerFound = true;
       }
@@ -1202,9 +1217,9 @@ function buildItauTransactionCandidates(sectionLines: string[]): string[] {
   for (const line of sectionLines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    const normalized = normalizePortableText(trimmed).replace(/\s+/g, " ").trim();
+    const compactLine = normalizePortableTextCompact(trimmed);
     if (shouldIgnoreItauDescription(trimmed)) continue;
-    if (ITAU_END_SECTION_MARKERS.some((marker) => normalized.includes(marker))) continue;
+    if (ITAU_END_SECTION_MARKERS_COMPACT.some((marker) => compactLine.includes(marker))) continue;
 
     const startsWithDate = /^\d{2}\/\d{2}\b/.test(trimmed);
     const hasTailValue = /(?:-|\u2212)?\d[\d.]*,\d{2}\s*$/.test(trimmed);
@@ -1432,6 +1447,8 @@ function parseNubankPdfTransactions(
 
 const INVOICE_PARSER_UNKNOWN_WARNING =
   "Emissor da fatura nao identificado com seguranca. Revise as compras antes de confirmar.";
+const ITAU_STRICT_EMPTY_WARNING =
+  "Esta fatura parece ser Itau, mas nao foi possivel localizar compras reais na secao de lancamentos.";
 
 const REGISTERED_INVOICE_PARSERS: readonly InvoiceParserRegistration[] = [
   {
@@ -1518,12 +1535,51 @@ function applyUnknownIssuerReviewFallback(result: ParseResult): ParseResult {
   };
 }
 
+const GENERIC_NOISE_BLOCKED_KEYWORDS = [
+  "RESUMO",
+  "FATURA",
+  "PAGAMENTO",
+  "LIMITE",
+  "JUROS",
+  "SIMULACAO",
+  "CREDIARIO",
+  "TELEFONE",
+  "4004",
+  "0800",
+  "ENCARGOS",
+  "PROXIMASFATURAS",
+] as const;
+
+function shouldIgnoreGenericLargeNoiseLine(
+  rawLine: string,
+  parsedItem: Omit<ParsedItem, "id" | "duplicata" | "action">,
+): boolean {
+  if ((parsedItem.descricao ?? "").length <= 180) return false;
+  const compact = normalizePortableTextCompact(rawLine);
+  if (!compact) return false;
+  return GENERIC_NOISE_BLOCKED_KEYWORDS.some((keyword) => compact.includes(keyword));
+}
+
 export function parsePdf(
   content: string,
   existentes: CompraCartao[],
   cartaoId: string,
   options?: ParseOptions,
 ): ParseResult {
+  const itauDetected = detectItauInvoiceText(content);
+  if (itauDetected) {
+    const strictItau = parseItauPdfTransactions(content, existentes, cartaoId, options);
+    if (strictItau.items.length === 0) {
+      return {
+        ...strictItau,
+        parserWarnings: [ITAU_STRICT_EMPTY_WARNING],
+        issuerDetected: "itau",
+        parserUsed: "itau_textual_pdf",
+      };
+    }
+    return strictItau;
+  }
+
   const matchedParser = REGISTERED_INVOICE_PARSERS.find((candidate) => candidate.detect(content));
   if (matchedParser) {
     // Ao detectar parser especifico, usamos parsing estrito do emissor correspondente.
@@ -1552,6 +1608,10 @@ function parseTexto(
     });
     if (!parsed) {
       stats.skippedUnrecognized += 1;
+      continue;
+    }
+    if (shouldIgnoreGenericLargeNoiseLine(linha, parsed)) {
+      stats.skippedPaymentOrCredit += 1;
       continue;
     }
     const duplicata = checkDuplicata(parsed, existentes, cartaoId);

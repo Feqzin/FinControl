@@ -337,6 +337,20 @@ test("import parser: detecta assinatura textual da fatura Itau", () => {
   assert.equal(detectInvoiceIssuerForPdfText(pdfText), "itau");
 });
 
+test("import parser: detecta Itau mesmo com texto quebrado por acentos/espacos", () => {
+  const pdfText = [
+    "Itaúcard",
+    "Lan ç amentos: compras e saques",
+    "Compras parceladas - pr ó ximas faturas",
+    "Limite de cr é dito",
+    "4004 4828",
+    "0800 970 4828",
+  ].join("\n");
+
+  assert.equal(detectItauInvoiceText(pdfText), true);
+  assert.equal(detectInvoiceIssuerForPdfText(pdfText), "itau");
+});
+
 test("import parser: registry lista parser Nubank e prepara emissores futuros", () => {
   const registered = getRegisteredInvoiceParsers();
   assert.equal(registered.length >= 2, true);
@@ -481,6 +495,49 @@ test("import parser: PDF Itau importa apenas lancamentos reais da secao de compr
   assert.ok(playstAbr);
 });
 
+test("import parser: PDF Itau com texto quebrado importa compras reais e ignora blocos de resumo", () => {
+  const pdfText = [
+    "Estamos lhe enviando esta para simples confer ê ncia...",
+    "Limite de cr é dito R$ 2.900,00",
+    "Itaúcard",
+    "Lan ç amentos: compras e saques",
+    "DATA ESTABELECIMENTO VALOR EM R$",
+    "25/03 NETFLIX ENTRETENIMENTOB 59,90",
+    "02/04 EBN *PLAYST 01/04 21,62",
+    "4004 4828 0800 970 4828 P L Pagamentos efetuados EM Pagamento via conta -924,85",
+    "Compras parceladas - pr ó ximas faturas",
+    "Demais faturas 1.910,79",
+    "Simula çã o de Compras parc. c/ juros e Credi á rio",
+  ].join("\n");
+
+  const result = parsePdf(pdfText, [], "cartao-itau", { referenceBillingDate: "2026-04-22" });
+  assert.equal(result.issuerDetected, "itau");
+  assert.equal(result.parserUsed, "itau_textual_pdf");
+  assert.equal(result.items.length, 2);
+  assert.equal(result.items.some((item) => item.valorParcela === 2900), false);
+  assert.equal(result.items.some((item) => item.valorParcela === 1910.79), false);
+  assert.equal(result.items.some((item) => item.descricao.toLowerCase().includes("estamos lhe enviando")), false);
+  assert.equal(result.items.some((item) => item.descricao.toLowerCase().includes("simulacao")), false);
+});
+
+test("import parser: PDF Itau sem datas nao cai no generico e retorna warning seguro", () => {
+  const pdfText = [
+    "Itaúcard",
+    "Lan ç amentos: compras e saques",
+    "NETFLIX ENTRETENIMENTOB 59,90",
+    "EBN *PLAYST 01/04 21,62",
+    "Compras parceladas - pr ó ximas faturas",
+    "Demais faturas 1.910,79",
+    "Limite de cr é dito R$ 2.900,00",
+  ].join("\n");
+
+  const result = parsePdf(pdfText, [], "cartao-itau", { referenceBillingDate: "2026-04-22" });
+  assert.equal(result.issuerDetected, "itau");
+  assert.equal(result.parserUsed, "itau_textual_pdf");
+  assert.equal(result.items.length, 0);
+  assert.equal(result.parserWarnings?.some((warning) => warning.toLowerCase().includes("parece ser itau")), true);
+});
+
 test("import parser: PDF desconhecido usa parser generico com revisão obrigatoria", () => {
   const pdfText = [
     "Fatura do Cartao XPTO",
@@ -504,6 +561,20 @@ test("import parser: PDF desconhecido usa parser generico com revisão obrigator
     ),
     true,
   );
+});
+
+test("import parser: parser generico ignora bloco gigante de resumo com palavras sensiveis", () => {
+  const hugeNoise = `Resumo da fatura em R$ Total desta fatura Limite total de credito Simulacao de crediario Telefone 4004 4828 0800 970 4828 ${
+    "x".repeat(220)
+  } 2.900,00`;
+  const pdfText = [
+    "Fatura banco desconhecido",
+    hugeNoise,
+  ].join("\n");
+
+  const result = parsePdf(pdfText, [], "cartao-unknown", { referenceBillingDate: "2026-04-22" });
+  assert.equal(result.issuerDetected, "unknown");
+  assert.equal(result.items.length, 0);
 });
 
 test("import parser: OFX e QFX continuam funcionando via parseOfx", () => {

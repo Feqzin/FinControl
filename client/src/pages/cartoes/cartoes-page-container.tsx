@@ -1772,10 +1772,13 @@ export default function CartoesPage() {
       if (venc) setImportVencimento(venc);
       const ignoredDetails = buildIgnoredDetails(result.stats);
       const hasIgnoredRows = countIgnoredRows(result.stats) > 0;
+      const parserWarning = result.parserWarnings?.[0] ?? "";
       if (result.items.length === 0) {
         toast({
           title: "Nenhuma compra detectada no arquivo.",
-          description: ignoredDetails,
+          description: parserWarning
+            ? `${parserWarning}${ignoredDetails ? ` ${ignoredDetails}` : ""}`
+            : ignoredDetails,
           variant: "destructive",
         });
         setImportItems([]);
