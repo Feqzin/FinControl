@@ -15,6 +15,7 @@ import type { Cartao, CompraCartao, ParcelaCompra, Servico } from "@shared/schem
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
+  detectItauInvoiceText,
   buildIgnoredDetails,
   countIgnoredRows,
   detectNubankInvoiceText,
@@ -200,6 +201,18 @@ function isNubankCardLikeName(cardName: string): boolean {
   if (!normalized) return false;
   if (normalized.includes("NUBANK")) return true;
   return /\bNU\b/.test(normalized) && /\b(MASTERCARD|CREDITO|CARTAO)\b/.test(normalized);
+}
+
+function isItauCardLikeName(cardName: string): boolean {
+  const normalized = cardName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) return false;
+  return normalized.includes("ITAU") || normalized.includes("ITAUCARD");
 }
 
 function normalizeServiceText(value: string | null | undefined): string {
@@ -1031,6 +1044,15 @@ export default function CartoesPage() {
     if (isNubankInvoice && !isNubankCardLikeName(selectedCartao.nome)) {
       setImportIssuerMismatchWarning(
         `Esta fatura parece ser Nubank, mas o cartão selecionado é ${selectedCartao.nome}. Revise antes de confirmar.`,
+      );
+      setImportIssuerMismatchMustAcknowledge(true);
+      return;
+    }
+
+    const isItauInvoice = detectItauInvoiceText(sourceText);
+    if (isItauInvoice && !isItauCardLikeName(selectedCartao.nome)) {
+      setImportIssuerMismatchWarning(
+        `Esta fatura parece ser Itaú, mas o cartão selecionado é ${selectedCartao.nome}. Revise antes de confirmar.`,
       );
       setImportIssuerMismatchMustAcknowledge(true);
       return;

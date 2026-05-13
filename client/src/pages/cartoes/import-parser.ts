@@ -70,6 +70,8 @@ interface ParseStats {
 export interface ParseResult {
   items: ParsedItem[];
   stats: ParseStats;
+  issuerDetected?: InvoiceIssuer;
+  parserUsed?: string;
 }
 
 export interface ParseOptions {
@@ -81,6 +83,33 @@ export interface ParseOptions {
 interface ParseNubankOptions extends ParseOptions {
   existentes?: CompraCartao[];
   cartaoId?: string;
+}
+
+interface ParseItauOptions extends ParseOptions {
+  existentes?: CompraCartao[];
+  cartaoId?: string;
+}
+
+export type InvoiceIssuer =
+  | "nubank"
+  | "itau"
+  | "mercado_pago"
+  | "c6"
+  | "santander"
+  | "bradesco"
+  | "banco_do_brasil"
+  | "unknown";
+
+export interface InvoiceParserRegistration {
+  issuer: Exclude<InvoiceIssuer, "unknown">;
+  parserName: string;
+  detect: (text: string) => boolean;
+  parse: (
+    text: string,
+    existentes: CompraCartao[],
+    cartaoId: string,
+    options?: ParseOptions,
+  ) => ParseResult;
 }
 
 interface ParsedDateMetadata {
@@ -225,6 +254,73 @@ const NUBANK_COMMON_NOISE_MARKERS = [
 
 const NUBANK_PAGINATION_LINE_REGEX = /^\d+\s+DE\s+\d+$/;
 
+const ITAU_DETECTION_SIGNALS = [
+  "ITAU",
+  "ITAUCARD",
+  "LANCAMENTOS: COMPRAS E SAQUES",
+  "COMPRAS PARCELADAS - PROXIMAS FATURAS",
+  "LIMITE TOTAL DE CREDITO",
+  "PAGAMENTO VIA CONTA",
+] as const;
+
+const ITAU_START_SECTION_MARKERS = [
+  "LANCAMENTOS: COMPRAS E SAQUES",
+  "LANCAMENTOS COMPRAS E SAQUES",
+] as const;
+
+const ITAU_SECTION_HEADER_MARKERS = [
+  "DATA ESTABELECIMENTO VALOR EM R$",
+  "DATA ESTABELECIMENTO VALOR EM R",
+] as const;
+
+const ITAU_END_SECTION_MARKERS = [
+  "LANCAMENTOS NO CARTAO",
+  "TOTAL DOS LANCAMENTOS ATUAIS",
+  "COMPRAS PARCELADAS - PROXIMAS FATURAS",
+  "COMPRAS PARCELADAS PROXIMAS FATURAS",
+  "LIMITES DE CREDITO",
+  "ENCARGOS COBRADOS NESTA FATURA",
+] as const;
+
+const ITAU_EXCLUDED_DESCRIPTION_MARKERS = [
+  "PAGAMENTO VIA CONTA",
+  "TOTAL DOS PAGAMENTOS",
+  "TOTAL DA FATURA ANTERIOR",
+  "PAGAMENTO EFETUADO",
+  "SALDO FINANCIADO",
+  "LANCAMENTOS ATUAIS",
+  "TOTAL DESTA FATURA",
+  "COMPRAS PARCELADAS - PROXIMAS FATURAS",
+  "PROXIMA FATURA",
+  "DEMAIS FATURAS",
+  "TOTAL PARA PROXIMAS FATURAS",
+  "LIMITE TOTAL DE CREDITO",
+  "LIMITE DISPONIVEL",
+  "ENCARGOS COBRADOS NESTA FATURA",
+  "JUROS",
+  "IOF",
+  "MULTA",
+  "RESUMO DA FATURA EM R$",
+] as const;
+
+const ITAU_LEGAL_SECTION_MARKERS = [
+  "BANCO CENTRAL",
+  "RESOLUCAO",
+  "REGISTRATO",
+  "SISTEMA DE INFORMACOES DE CREDITOS",
+] as const;
+
+const ITAU_CARD_KEYWORDS = [
+  "ITAU",
+  "ITAUCARD",
+  "ITAUCARD",
+  "ITAU UNICLASS",
+  "ITAU VISA",
+  "ITAU MASTERCARD",
+] as const;
+
+const ITAU_PAGINATION_LINE_REGEX = /^\d+\s+DE\s+\d+$/;
+
 function parseIsoDateString(value: string | null | undefined): Date | null {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const parsed = new Date(`${value}T00:00:00`);
@@ -333,6 +429,55 @@ export function extractNubankInvoiceYear(text: string): number | null {
   }
 
   return null;
+}
+
+function looksLikeItauCardName(value: string | null | undefined): boolean {
+  const normalized = normalizePortableText(value ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  return ITAU_CARD_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
+
+export function detectItauInvoiceText(text: string): boolean {
+  const normalized = normalizePortableText(text);
+  const hasBrand = /\bITAU\b|\bITAUCARD\b/.test(normalized);
+  const hasLaunchSection = ITAU_START_SECTION_MARKERS.some((marker) => normalized.includes(marker));
+  const signalCount = ITAU_DETECTION_SIGNALS.filter((signal) => normalized.includes(signal)).length;
+
+  if (hasBrand && hasLaunchSection) return true;
+  if (hasLaunchSection && signalCount >= 3) return true;
+  return hasBrand && signalCount >= 4;
+}
+
+function extractItauReferenceDate(text: string, options?: ParseItauOptions): Date | null {
+  const fromOptions = parseIsoDateString(options?.referenceBillingDate ?? null);
+  if (fromOptions) return fromOptions;
+
+  const normalized = normalizePortableText(text);
+  const patterns = [
+    /VENCIMENTO\s*:?\s*(\d{2})\/(\d{2})\/(20\d{2})/,
+    /EMISSAO\s*:?\s*(\d{2})\/(\d{2})\/(20\d{2})/,
+    /PREVISAO\s+PROX\.?\s*FECHAMENTO\s*:?\s*(\d{2})\/(\d{2})\/(20\d{2})/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (!match) continue;
+    const day = Number.parseInt(match[1] ?? "", 10);
+    const month = Number.parseInt(match[2] ?? "", 10);
+    const year = Number.parseInt(match[3] ?? "", 10);
+    if (!isValidDateParts(day, month, year)) continue;
+    return new Date(`${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T00:00:00`);
+  }
+
+  return null;
+}
+
+function resolveYearForItauDayMonth(month: number, referenceDate: Date | null): number {
+  const now = new Date();
+  if (!referenceDate) return now.getFullYear();
+  const refYear = referenceDate.getFullYear();
+  const refMonth = referenceDate.getMonth() + 1;
+  return month > refMonth ? refYear - 1 : refYear;
 }
 
 function resolveYearForDayMonth(month: number, referenceDate: Date | null): number {
@@ -966,6 +1111,300 @@ function parseNubankInvoiceTextInternal(
   return { items, stats };
 }
 
+function shouldIgnoreItauDescription(rawDescription: string): boolean {
+  const normalized = normalizePortableText(rawDescription).replace(/\s+/g, " ").trim();
+  if (!normalized) return true;
+  if (ITAU_PAGINATION_LINE_REGEX.test(normalized)) return true;
+  if (ITAU_LEGAL_SECTION_MARKERS.some((marker) => normalized.includes(marker))) return true;
+  if (ITAU_EXCLUDED_DESCRIPTION_MARKERS.some((marker) => normalized.includes(marker))) return true;
+  return /^(PAGAMENTO|TOTAL|RESUMO|LIMITE|ENCARGOS|JUROS|IOF|MULTA)\b/.test(normalized);
+}
+
+function parseItauDateToken(token: string, referenceDate: Date | null): ParsedDateMetadata | null {
+  const match = token.match(/^(\d{2})\/(\d{2})$/);
+  if (!match) return null;
+  const day = Number.parseInt(match[1] ?? "", 10);
+  const month = Number.parseInt(match[2] ?? "", 10);
+  const year = resolveYearForItauDayMonth(month, referenceDate);
+  if (!isValidDateParts(day, month, year)) return null;
+  return {
+    iso: `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+    estimatedYear: true,
+    confidencePenalty: 8,
+    issue: "Ano inferido a partir da fatura",
+  };
+}
+
+function resolveItauCardMismatchWarning(options?: ParseItauOptions): string | null {
+  const selectedCardSignal = `${options?.selectedCardName ?? ""} ${options?.selectedCardIssuer ?? ""}`.trim();
+  if (!selectedCardSignal) return null;
+  if (looksLikeItauCardName(selectedCardSignal)) return null;
+  return "Esta fatura parece ser Itau, mas o cartao selecionado nao parece ser Itau. Revise antes de confirmar.";
+}
+
+function extractItauTransactionSections(content: string): string[][] {
+  const lines = content
+    .replace(/\r/g, "\n")
+    .replace(/\u00A0/g, " ")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const sections: string[][] = [];
+  let collecting = false;
+  let headerFound = false;
+  let current: string[] = [];
+
+  for (const line of lines) {
+    const normalized = normalizePortableText(line).replace(/\s+/g, " ").trim();
+    if (!normalized) continue;
+
+    const hasStartMarker = ITAU_START_SECTION_MARKERS.some((marker) => normalized.includes(marker));
+    if (hasStartMarker) {
+      if (collecting && current.length > 0) sections.push(current);
+      collecting = true;
+      headerFound = false;
+      current = [];
+      continue;
+    }
+
+    if (!collecting) continue;
+
+    const hasEndMarker = ITAU_END_SECTION_MARKERS.some((marker) => normalized.includes(marker));
+    if (hasEndMarker) {
+      if (current.length > 0) sections.push(current);
+      collecting = false;
+      headerFound = false;
+      current = [];
+      continue;
+    }
+
+    if (!headerFound) {
+      const hasHeaderMarker = ITAU_SECTION_HEADER_MARKERS.some((marker) => normalized.includes(marker));
+      if (hasHeaderMarker || /^\d{2}\/\d{2}\b/.test(line)) {
+        headerFound = true;
+      }
+      if (hasHeaderMarker) continue;
+      if (!headerFound) continue;
+    }
+
+    current.push(line);
+  }
+
+  if (collecting && current.length > 0) sections.push(current);
+  return sections;
+}
+
+function buildItauTransactionCandidates(sectionLines: string[]): string[] {
+  const candidates: string[] = [];
+  let pending = "";
+
+  for (const line of sectionLines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const normalized = normalizePortableText(trimmed).replace(/\s+/g, " ").trim();
+    if (shouldIgnoreItauDescription(trimmed)) continue;
+    if (ITAU_END_SECTION_MARKERS.some((marker) => normalized.includes(marker))) continue;
+
+    const startsWithDate = /^\d{2}\/\d{2}\b/.test(trimmed);
+    const hasTailValue = /(?:-|\u2212)?\d[\d.]*,\d{2}\s*$/.test(trimmed);
+
+    if (startsWithDate) {
+      if (pending) {
+        candidates.push(pending.trim());
+        pending = "";
+      }
+      pending = trimmed;
+      if (hasTailValue) {
+        candidates.push(pending.trim());
+        pending = "";
+      }
+      continue;
+    }
+
+    if (!pending) continue;
+    pending = `${pending} ${trimmed}`.trim();
+    if (hasTailValue) {
+      candidates.push(pending.trim());
+      pending = "";
+    }
+  }
+
+  if (pending) candidates.push(pending.trim());
+  return candidates;
+}
+
+function extractItauInstallmentToken(input: string): { parcelaAtual: number; totalParcelas: number; raw: string } | null {
+  const matches = Array.from(input.matchAll(/\b(\d{1,3})\/(\d{1,3})\b/g));
+  for (let index = matches.length - 1; index >= 0; index -= 1) {
+    const match = matches[index];
+    const parcelaAtual = Number.parseInt(match?.[1] ?? "", 10);
+    const totalParcelas = Number.parseInt(match?.[2] ?? "", 10);
+    if (
+      Number.isInteger(parcelaAtual)
+      && Number.isInteger(totalParcelas)
+      && parcelaAtual >= 1
+      && totalParcelas >= 2
+      && parcelaAtual <= totalParcelas
+      && totalParcelas <= 360
+      && typeof match?.[0] === "string"
+    ) {
+      return { parcelaAtual, totalParcelas, raw: match[0] };
+    }
+  }
+  return null;
+}
+
+function parseItauInvoiceTextInternal(
+  content: string,
+  source: ParseSource,
+  options?: ParseItauOptions,
+): ParseResult {
+  const sections = extractItauTransactionSections(content);
+  const candidates = sections.flatMap(buildItauTransactionCandidates);
+  const stats = createParseStats(source, candidates.length);
+  const items: ParsedItem[] = [];
+  let idx = 0;
+
+  const referenceDate = extractItauReferenceDate(content, options) ?? new Date();
+  const mismatchWarning = resolveItauCardMismatchWarning(options);
+
+  for (const candidate of candidates) {
+    const lineMatch = candidate.match(/^(\d{2}\/\d{2})\s+(.+)$/);
+    if (!lineMatch) {
+      stats.skippedUnrecognized += 1;
+      continue;
+    }
+
+    const dateToken = lineMatch[1] ?? "";
+    const trailing = (lineMatch[2] ?? "").trim();
+    if (!trailing || shouldIgnoreItauDescription(trailing)) {
+      stats.skippedPaymentOrCredit += 1;
+      continue;
+    }
+
+    const valueMatch = trailing.match(/([\-−]?\d[\d.]*,\d{2})\s*$/);
+    if (!valueMatch || typeof valueMatch.index !== "number") {
+      stats.skippedUnrecognized += 1;
+      continue;
+    }
+
+    const rawAmount = valueMatch[1].replace("−", "-");
+    const valorParcelaRaw = parseMoney(rawAmount);
+    if (valorParcelaRaw == null || !Number.isFinite(valorParcelaRaw) || valorParcelaRaw <= 0) {
+      if (valorParcelaRaw != null && valorParcelaRaw < 0) {
+        stats.skippedNegativeValue += 1;
+      } else {
+        stats.skippedInvalidValue += 1;
+      }
+      continue;
+    }
+
+    const parsedDate = parseItauDateToken(dateToken, referenceDate);
+    if (!parsedDate) {
+      stats.skippedUnrecognized += 1;
+      continue;
+    }
+
+    const descriptionWithInstallment = trailing.slice(0, valueMatch.index).trim();
+    if (!descriptionWithInstallment || shouldIgnoreItauDescription(descriptionWithInstallment)) {
+      stats.skippedPaymentOrCredit += 1;
+      continue;
+    }
+
+    const installment = extractItauInstallmentToken(descriptionWithInstallment);
+    const parcelaAtual = installment?.parcelaAtual ?? 1;
+    const totalParcelas = installment?.totalParcelas ?? 1;
+    const descricaoLimpa = installment
+      ? descriptionWithInstallment.replace(installment.raw, " ").trim()
+      : descriptionWithInstallment;
+    const descricao = normalizarDescricao(descricaoLimpa);
+    if (!descricao || shouldIgnoreItauDescription(descricao)) {
+      stats.skippedPaymentOrCredit += 1;
+      continue;
+    }
+
+    const valorParcela = toMoneyNumber(formatMoneyFixed(valorParcelaRaw));
+    const valor = toMoneyNumber(multiply(valorParcela, totalParcelas));
+    const parcelasRestantes = calculateParcelasRestantes(totalParcelas, parcelaAtual);
+    const estabelecimento = extractEstabelecimento(descricao);
+    const confidenceIssues: string[] = [];
+    let confidenceScore = 95 - parsedDate.confidencePenalty;
+
+    if (parsedDate.issue) confidenceIssues.push(parsedDate.issue);
+    if (mismatchWarning) {
+      confidenceIssues.push(mismatchWarning);
+      confidenceScore -= 8;
+    }
+
+    const finalConfidence = Math.max(0, Math.min(100, confidenceScore));
+    const shouldReview = confidenceIssues.length > 0 || finalConfidence < 75;
+
+    const duplicata = options?.existentes && options?.cartaoId
+      ? checkDuplicata({
+        valorParcela,
+        valor,
+        descricao,
+        estabelecimento,
+        dataCompra: parsedDate.iso,
+        parcelas: totalParcelas,
+        parcelaAtual,
+      }, options.existentes, options.cartaoId)
+      : null;
+
+    const parsedItem = attachRecurringServiceSuggestion({
+      descricao,
+      estabelecimento,
+      valor,
+      valorParcela,
+      parcelas: totalParcelas,
+      parcelaAtual,
+      parcelasRestantes,
+      dataCompra: parsedDate.iso,
+      vencimentoFatura: options?.referenceBillingDate ?? null,
+      tipo: detectarTipo(descricaoLimpa),
+      confidenceScore: finalConfidence,
+      confidenceLevel: finalConfidence >= 85 ? "alta" : finalConfidence >= 65 ? "media" : "baixa",
+      reviewRequired: shouldReview,
+      validationIssues: confidenceIssues,
+    });
+
+    items.push({
+      ...parsedItem,
+      id: String(idx++),
+      duplicata,
+      action: duplicata ? "skip" : "import",
+    });
+  }
+
+  return { items, stats };
+}
+
+export function parseItauInvoiceText(
+  text: string,
+  options?: ParseItauOptions,
+): ParsedItem[] {
+  return parseItauInvoiceTextInternal(text, "pdf", options).items;
+}
+
+function parseItauPdfTransactions(
+  content: string,
+  existentes: CompraCartao[],
+  cartaoId: string,
+  options?: ParseOptions,
+): ParseResult {
+  const parsed = parseItauInvoiceTextInternal(content, "pdf", {
+    ...options,
+    existentes,
+    cartaoId,
+  });
+  return {
+    ...parsed,
+    issuerDetected: "itau",
+    parserUsed: "itau_textual_pdf",
+  };
+}
+
 export function parseNubankInvoiceText(
   text: string,
   options?: ParseNubankOptions,
@@ -979,11 +1418,104 @@ function parseNubankPdfTransactions(
   cartaoId: string,
   options?: ParseOptions,
 ): ParseResult {
-  return parseNubankInvoiceTextInternal(content, "pdf", {
+  const parsed = parseNubankInvoiceTextInternal(content, "pdf", {
     ...options,
     existentes,
     cartaoId,
   });
+  return {
+    ...parsed,
+    issuerDetected: "nubank",
+    parserUsed: "nubank_textual_pdf",
+  };
+}
+
+const INVOICE_PARSER_UNKNOWN_WARNING =
+  "Emissor da fatura nao identificado com seguranca. Revise as compras antes de confirmar.";
+
+const REGISTERED_INVOICE_PARSERS: readonly InvoiceParserRegistration[] = [
+  {
+    issuer: "itau",
+    parserName: "itau_textual_pdf",
+    detect: detectItauInvoiceText,
+    parse: parseItauPdfTransactions,
+  },
+  {
+    issuer: "nubank",
+    parserName: "nubank_textual_pdf",
+    detect: detectNubankInvoiceText,
+    parse: parseNubankPdfTransactions,
+  },
+] as const;
+
+// Planejamento de emissores: os itens abaixo preparam o contrato de extensao,
+// mas so devem ganhar parser dedicado quando tivermos PDF real validado.
+const PLANNED_INVOICE_ISSUERS: readonly Exclude<InvoiceIssuer, "unknown">[] = [
+  "nubank",
+  "itau",
+  "mercado_pago",
+  "c6",
+  "santander",
+  "bradesco",
+  "banco_do_brasil",
+] as const;
+
+export function getRegisteredInvoiceParsers(): readonly InvoiceParserRegistration[] {
+  return REGISTERED_INVOICE_PARSERS;
+}
+
+export function getPlannedInvoiceIssuers(): readonly Exclude<InvoiceIssuer, "unknown">[] {
+  return PLANNED_INVOICE_ISSUERS;
+}
+
+export function detectInvoiceIssuerForPdfText(text: string): InvoiceIssuer {
+  const parser = REGISTERED_INVOICE_PARSERS.find((candidate) => candidate.detect(text));
+  return parser?.issuer ?? "unknown";
+}
+
+function applyUnknownIssuerReviewFallback(result: ParseResult): ParseResult {
+  if (result.items.length === 0) {
+    return {
+      ...result,
+      issuerDetected: "unknown",
+      parserUsed: "generic_pdf_fallback",
+    };
+  }
+
+  const items = result.items.map((item) => {
+    const existingIssues = item.validationIssues ?? [];
+    const hasWarning = existingIssues.some(
+      (issue) => issue.trim().toLowerCase() === INVOICE_PARSER_UNKNOWN_WARNING.toLowerCase(),
+    );
+    const nextIssues = hasWarning
+      ? existingIssues
+      : [...existingIssues, INVOICE_PARSER_UNKNOWN_WARNING];
+
+    const currentConfidence = typeof item.confidenceScore === "number"
+      ? item.confidenceScore
+      : 80;
+    const downgradedConfidence = Math.min(currentConfidence, 70);
+    const confidenceLevel: ParsedItem["confidenceLevel"] = downgradedConfidence >= 85
+      ? "alta"
+      : downgradedConfidence >= 65
+        ? "media"
+        : "baixa";
+
+    return {
+      ...item,
+      reviewRequired: true,
+      validationIssues: nextIssues,
+      confidenceScore: downgradedConfidence,
+      confidenceLevel,
+    };
+  });
+
+  return {
+    ...result,
+    items,
+    issuerDetected: "unknown",
+    parserUsed: "generic_pdf_fallback",
+  };
 }
 
 export function parsePdf(
@@ -992,13 +1524,15 @@ export function parsePdf(
   cartaoId: string,
   options?: ParseOptions,
 ): ParseResult {
-  if (detectNubankInvoiceText(content)) {
-    // Ao detectar fatura Nubank textual, usamos parsing estrito por secao de transacoes.
+  const matchedParser = REGISTERED_INVOICE_PARSERS.find((candidate) => candidate.detect(content));
+  if (matchedParser) {
+    // Ao detectar parser especifico, usamos parsing estrito do emissor correspondente.
     // Isso evita importar cabecalho, totais, limites e textos legais como compras.
-    return parseNubankPdfTransactions(content, existentes, cartaoId, options);
+    return matchedParser.parse(content, existentes, cartaoId, options);
   }
 
-  return parseTexto(content, existentes, cartaoId, options);
+  const genericParsed = parseTexto(content, existentes, cartaoId, options);
+  return applyUnknownIssuerReviewFallback(genericParsed);
 }
 
 function parseTexto(
@@ -1064,6 +1598,16 @@ function parseCsvDate(raw: string, options?: ParseOptions): ParsedDateMetadata {
 }
 
 const PAYMENT_KEYWORDS = /pagamento\s*(recebido|de\s*fatura|efetuado)|credito\s*em\s*conta|estorno|reembolso|cashback/i;
+const ITAU_CSV_PAYMENT_KEYWORDS = /pagamento|total\s+dos\s+pagamentos|saldo\s+financiado|fatura\s+anterior|encargos|juros|iof|multa/i;
+
+function normalizeCsvHeader(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9_]/g, "");
+}
 
 export function parseCsv(
   content: string,
@@ -1079,12 +1623,13 @@ export function parseCsv(
   if (linhas.length < 2) return parseTexto(content, existentes, cartaoId, options);
 
   const rawHeaders = linhas[0].split(sep).map((h) => h.replace(/"/g, "").trim());
-  const headers = rawHeaders.map((h) => h.toLowerCase());
+  const headers = rawHeaders.map(normalizeCsvHeader);
 
-  // Column detection — "title" and "amount" are explicit Nubank/inter CSV names
-  const dateIdx = headers.findIndex((h) => /^date$|^data$|data.compra|lança|post/i.test(h));
-  const descIdx = headers.findIndex((h) => /^title$|^desc|^hist|^memo|^nome$|^lancamento/i.test(h));
-  const valIdx  = headers.findIndex((h) => /^amount$|^valor$|^value$|trnamt|debito|credito/i.test(h));
+  // Column detection: keeps compatibility with existing exports and adds robust accent handling.
+  const dateIdx = headers.findIndex((h) => /^date$|^data$|datacompra|dtposted|post/.test(h));
+  const descIdx = headers.findIndex((h) => /^title$|^descricao$|^desc|^hist|^memo|^nome$|^lancamento$/.test(h));
+  const valIdx  = headers.findIndex((h) => /^amount$|^valor$|^value$|trnamt|debito|credito/.test(h));
+  const isItauCsv = headers.includes("data") && headers.includes("lancamento") && headers.includes("valor");
 
   if (valIdx < 0 && descIdx < 0) return parseTexto(content, existentes, cartaoId, options);
 
@@ -1131,6 +1676,10 @@ export function parseCsv(
     // Skip payments received (negative = credit to account, or keyword match)
     if (valorSigned < 0) {
       stats.skippedNegativeValue += 1;
+      continue;
+    }
+    if (isItauCsv && ITAU_CSV_PAYMENT_KEYWORDS.test(rawDesc)) {
+      stats.skippedPaymentOrCredit += 1;
       continue;
     }
     if (PAYMENT_KEYWORDS.test(rawDesc)) {
@@ -1204,6 +1753,15 @@ export function parseCsv(
     stats.skippedPaymentOrCredit === 0
   ) {
     return parseTexto(content, existentes, cartaoId, options);
+  }
+
+  if (isItauCsv) {
+    return {
+      items,
+      stats,
+      issuerDetected: "itau",
+      parserUsed: "itau_csv",
+    };
   }
 
   return { items, stats };

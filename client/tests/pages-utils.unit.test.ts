@@ -4,10 +4,16 @@ import { formatCurrencyBRL, formatIsoDateToBR } from "../src/utils/formatters";
 import { isOverdueDate } from "../src/pages/dividas/dividas.utils";
 import { getDaysUntilInvoice, getNextInvoiceDate, isParcelaVencida } from "../src/pages/cartoes/cartoes.utils";
 import {
+  detectInvoiceIssuerForPdfText,
+  detectItauInvoiceText,
   detectRecurringServiceCandidate,
   detectNubankInvoiceText,
   extractNubankInvoiceYear,
+  getPlannedInvoiceIssuers,
+  getRegisteredInvoiceParsers,
   parseCsv,
+  parseItauInvoiceText,
+  parseOfx,
   parseNubankInvoiceText,
   parsePdf,
 } from "../src/pages/cartoes/import-parser";
@@ -315,7 +321,38 @@ test("import parser: detecta assinatura textual da fatura Nubank e ano de refere
   ].join("\n");
 
   assert.equal(detectNubankInvoiceText(pdfText), true);
+  assert.equal(detectInvoiceIssuerForPdfText(pdfText), "nubank");
   assert.equal(extractNubankInvoiceYear(pdfText), 2026);
+});
+
+test("import parser: detecta assinatura textual da fatura Itau", () => {
+  const pdfText = [
+    "Cartao Itaucard",
+    "Resumo da fatura em R$",
+    "Lancamentos: compras e saques",
+    "Limite total de credito",
+  ].join("\n");
+
+  assert.equal(detectItauInvoiceText(pdfText), true);
+  assert.equal(detectInvoiceIssuerForPdfText(pdfText), "itau");
+});
+
+test("import parser: registry lista parser Nubank e prepara emissores futuros", () => {
+  const registered = getRegisteredInvoiceParsers();
+  assert.equal(registered.length >= 2, true);
+  assert.equal(registered.some((parser) => parser.issuer === "itau"), true);
+  assert.equal(registered.some((parser) => parser.parserName === "itau_textual_pdf"), true);
+  assert.equal(registered.some((parser) => parser.issuer === "nubank"), true);
+  assert.equal(registered.some((parser) => parser.parserName === "nubank_textual_pdf"), true);
+
+  const planned = getPlannedInvoiceIssuers();
+  assert.equal(planned.includes("nubank"), true);
+  assert.equal(planned.includes("itau"), true);
+  assert.equal(planned.includes("mercado_pago"), true);
+  assert.equal(planned.includes("c6"), true);
+  assert.equal(planned.includes("santander"), true);
+  assert.equal(planned.includes("bradesco"), true);
+  assert.equal(planned.includes("banco_do_brasil"), true);
 });
 
 test("import parser: PDF Nubank importa apenas linhas reais da seção de transações", () => {
@@ -375,6 +412,137 @@ test("import parser: PDF Nubank importa apenas linhas reais da seção de transa
   assert.equal(compraAvista?.valorParcela, 37.94);
 });
 
+test("import parser: PDF Itau importa apenas lancamentos reais da secao de compras e saques", () => {
+  const pdfText = [
+    "Itaucard",
+    "Resumo da fatura em R$",
+    "Pagamento via conta -924,85",
+    "Total dos pagamentos -924,85",
+    "Vencimento 22/04/2026",
+    "Emissao 14/04/2026",
+    "Lancamentos: compras e saques",
+    "DATA ESTABELECIMENTO VALOR EM R$",
+    "04/09 Shopee*SHOPEE* 08/12 224,91",
+    "18/09 EC *LGELECTRON 07/12 410,67",
+    "11/12 PG *WEBFONES W 05/06 108,16",
+    "25/03 NETFLIX ENTRETENIMENTOB 59,90",
+    "25/03 EBN *PLAYST 01/02 99,59",
+    "02/04 EBN *PLAYST 01/04 21,62",
+    "Total dos lancamentos atuais 0,00",
+    "Compras parceladas - proximas faturas",
+    "Proxima fatura",
+    "Limite total de credito",
+    "Encargos cobrados nesta fatura",
+    "Juros",
+  ].join("\n");
+
+  const result = parsePdf(pdfText, [], "cartao-itau", { referenceBillingDate: "2026-04-22" });
+  assert.equal(result.issuerDetected, "itau");
+  assert.equal(result.parserUsed, "itau_textual_pdf");
+  assert.equal(result.items.length, 6);
+
+  const descriptions = result.items.map((item) => item.descricao.toLowerCase());
+  assert.equal(descriptions.some((value) => value.includes("pagamento via conta")), false);
+  assert.equal(descriptions.some((value) => value.includes("total dos pagamentos")), false);
+  assert.equal(descriptions.some((value) => value.includes("total dos lancamentos atuais")), false);
+  assert.equal(descriptions.some((value) => value.includes("proxima fatura")), false);
+  assert.equal(descriptions.some((value) => value.includes("limite total")), false);
+
+  const shopee = result.items.find((item) => item.descricao.toLowerCase().includes("shopee"));
+  assert.ok(shopee);
+  assert.equal(shopee?.parcelaAtual, 8);
+  assert.equal(shopee?.parcelas, 12);
+  assert.equal(shopee?.valorParcela, 224.91);
+  assert.equal(shopee?.dataCompra, "2025-09-04");
+
+  const lge = result.items.find((item) => item.descricao.toLowerCase().includes("lgelectron"));
+  assert.ok(lge);
+  assert.equal(lge?.parcelaAtual, 7);
+  assert.equal(lge?.parcelas, 12);
+  assert.equal(lge?.dataCompra, "2025-09-18");
+
+  const webfones = result.items.find((item) => item.descricao.toLowerCase().includes("webfones"));
+  assert.ok(webfones);
+  assert.equal(webfones?.parcelaAtual, 5);
+  assert.equal(webfones?.parcelas, 6);
+  assert.equal(webfones?.dataCompra, "2025-12-11");
+
+  const netflix = result.items.find((item) => item.descricao.toLowerCase().includes("netflix"));
+  assert.ok(netflix);
+  assert.equal(netflix?.parcelaAtual, 1);
+  assert.equal(netflix?.parcelas, 1);
+  assert.equal(netflix?.dataCompra, "2026-03-25");
+
+  const playst = result.items.find((item) => item.descricao.toLowerCase().includes("playst"));
+  assert.ok(playst);
+  assert.equal(playst?.dataCompra, "2026-03-25");
+
+  const playstAbr = result.items.find((item) => item.dataCompra === "2026-04-02");
+  assert.ok(playstAbr);
+});
+
+test("import parser: PDF desconhecido usa parser generico com revisão obrigatoria", () => {
+  const pdfText = [
+    "Fatura do Cartao XPTO",
+    "12/04 MERCADO CENTRAL 90,00 1/1",
+    "13/04 PADARIA DO BAIRRO 25,00",
+  ].join("\n");
+
+  const result = parsePdf(pdfText, [], "cartao-1", {
+    referenceBillingDate: "2026-04-20",
+  });
+
+  assert.equal(result.issuerDetected, "unknown");
+  assert.equal(result.parserUsed, "generic_pdf_fallback");
+  assert.equal(result.items.length, 2);
+  assert.equal(result.items.every((item) => item.reviewRequired === true), true);
+  assert.equal(
+    result.items.every((item) =>
+      (item.validationIssues ?? []).some((issue) =>
+        issue.toLowerCase().includes("emissor da fatura nao identificado"),
+      ),
+    ),
+    true,
+  );
+});
+
+test("import parser: OFX e QFX continuam funcionando via parseOfx", () => {
+  const content = [
+    "<OFX>",
+    "<STMTTRN>",
+    "<TRNTYPE>DEBIT",
+    "<DTPOSTED>20260412",
+    "<TRNAMT>37.94",
+    "<MEMO>Dl*Uberrides",
+    "</STMTTRN>",
+  ].join("\n");
+
+  const parsedOfx = parseOfx(content, [], "cartao-1");
+  const parsedQfx = parseOfx(content, [], "cartao-1");
+
+  assert.equal(parsedOfx.items.length, 1);
+  assert.equal(parsedQfx.items.length, 1);
+  assert.equal(parsedOfx.items[0]?.descricao.toLowerCase().includes("uberrides"), true);
+  assert.equal(parsedQfx.items[0]?.descricao.toLowerCase().includes("uberrides"), true);
+});
+
+test("import parser: CSV Itau ignora pagamento negativo e importa compras positivas", () => {
+  const csv = [
+    "data,lançamento,valor",
+    "2026-04-07,PAGAMENTO COM SALDO,-924.85",
+    "2026-04-02,EBN *PLAYSTATIONCURITIBABR,21.62",
+    "2026-03-25,NETFLIX ENTRETENIMENTOBARUERIBR,59.9",
+  ].join("\n");
+
+  const parsed = parseCsv(csv, [], "cartao-itau");
+  assert.equal(parsed.issuerDetected, "itau");
+  assert.equal(parsed.parserUsed, "itau_csv");
+  assert.equal(parsed.items.length, 2);
+  assert.equal(parsed.items.some((item) => item.descricao.toLowerCase().includes("pagamento com saldo")), false);
+  assert.equal(parsed.items.some((item) => item.descricao.toLowerCase().includes("netflix")), true);
+  assert.equal(parsed.items.some((item) => item.descricao.toLowerCase().includes("playstation")), true);
+});
+
 test("import parser: mismatch Nubank x Inter pode ser detectado pelo sugestor de emissor", () => {
   const cards = [
     {
@@ -421,6 +589,28 @@ test("import parser: texto Nubank com cartao Inter marca revisão forte", () => 
   assert.equal(parsed[0]?.reviewRequired, true);
   assert.equal(
     parsed[0]?.validationIssues?.some((issue) => issue.toLowerCase().includes("parece ser nubank")),
+    true,
+  );
+});
+
+test("import parser: texto Itau com cartao Inter marca revisão forte", () => {
+  const pdfText = [
+    "ITAUCARD",
+    "Vencimento 22/04/2026",
+    "Lancamentos: compras e saques",
+    "DATA ESTABELECIMENTO VALOR EM R$",
+    "02/04 EBN *PLAYST 01/04 21,62",
+  ].join("\n");
+
+  const parsed = parseItauInvoiceText(pdfText, {
+    selectedCardName: "Inter",
+    referenceBillingDate: "2026-04-22",
+  });
+
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0]?.reviewRequired, true);
+  assert.equal(
+    parsed[0]?.validationIssues?.some((issue) => issue.toLowerCase().includes("parece ser itau")),
     true,
   );
 });
