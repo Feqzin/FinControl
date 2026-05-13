@@ -844,7 +844,8 @@ function parseLinha(
 }
 
 function normalizeForDuplicateCompare(value: string | null | undefined): string {
-  return (value ?? "")
+  const withoutGeoNoise = stripTrailingItauCitySuffix(value ?? "");
+  return withoutGeoNoise
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -1660,6 +1661,52 @@ function parseCsvDate(raw: string, options?: ParseOptions): ParsedDateMetadata {
 
 const PAYMENT_KEYWORDS = /pagamento\s*(recebido|de\s*fatura|efetuado)|credito\s*em\s*conta|estorno|reembolso|cashback/i;
 const ITAU_CSV_PAYMENT_KEYWORDS = /pagamento|total\s+dos\s+pagamentos|saldo\s+financiado|fatura\s+anterior|encargos|juros|iof|multa/i;
+const ITAU_CSV_TRAILING_CITY_SUFFIXES = [
+  "BARUERI",
+  "CURITIBA",
+  "SAO PAULO",
+  "SAOPAULO",
+  "GUARULHOS",
+  "TAUBATE",
+  "CAMPINAS",
+  "BRASILIA",
+  "SANTOS",
+  "NITEROI",
+  "PORTO ALEGRE",
+  "RIO DE JANEIRO",
+  "BELO HORIZONTE",
+] as const;
+
+function stripTrailingItauCitySuffix(rawDescription: string): string {
+  let normalized = rawDescription
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\u00A0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) return normalized;
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const city of ITAU_CSV_TRAILING_CITY_SUFFIXES) {
+      const cityPattern = city.replace(/\s+/g, "\\s*");
+      const regex = new RegExp(`(?:${cityPattern})(?:\\s*BR|BR)\\s*$`, "i");
+      if (regex.test(normalized)) {
+        normalized = normalized.replace(regex, "").trim();
+        changed = true;
+      }
+    }
+  }
+
+  return normalized.replace(/\s+/g, " ").trim();
+}
+
+function normalizeItauCsvDescription(rawDescription: string): string {
+  const withoutTrailingGeo = stripTrailingItauCitySuffix(rawDescription);
+  return withoutTrailingGeo || rawDescription.trim();
+}
 
 function normalizeCsvHeader(raw: string): string {
   return raw
@@ -1717,7 +1764,8 @@ export function parseCsv(
       continue;
     }
 
-    const rawDesc = (descIdx >= 0 ? cols[descIdx] : cols[1] ?? "").replace(/"/g, "").trim();
+    const rawDescOriginal = (descIdx >= 0 ? cols[descIdx] : cols[1] ?? "").replace(/"/g, "").trim();
+    const rawDesc = isItauCsv ? normalizeItauCsvDescription(rawDescOriginal) : rawDescOriginal;
     const valorRaw = (valIdx >= 0 ? cols[valIdx] : cols[cols.length - 1] ?? "").replace(/"/g, "").trim();
     const dataRaw  = (dateIdx >= 0 ? cols[dateIdx] : cols[0] ?? "").replace(/"/g, "").trim();
 

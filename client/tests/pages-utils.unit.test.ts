@@ -598,21 +598,68 @@ test("import parser: OFX e QFX continuam funcionando via parseOfx", () => {
   assert.equal(parsedQfx.items[0]?.descricao.toLowerCase().includes("uberrides"), true);
 });
 
-test("import parser: CSV Itau ignora pagamento negativo e importa compras positivas", () => {
+test("import parser: CSV Itau ignora pagamento negativo, limpa sufixo de cidade/UF e importa compras positivas", () => {
   const csv = [
     "data,lançamento,valor",
     "2026-04-07,PAGAMENTO COM SALDO,-924.85",
     "2026-04-02,EBN *PLAYSTATIONCURITIBABR,21.62",
     "2026-03-25,NETFLIX ENTRETENIMENTOBARUERIBR,59.9",
+    "2026-03-24,EC *LGELECTRONICSTAUBATEBR,410.67",
+    "2026-03-23,PG *WEBFONES WEBFSAO PAULOBR,108.16",
+    "2026-03-22,SHOPEE*SHOPEE* IFGUARULHOSBR,224.91",
+    "2026-03-21,BARUERI SHOPPING CENTER,80.00",
   ].join("\n");
 
   const parsed = parseCsv(csv, [], "cartao-itau");
   assert.equal(parsed.issuerDetected, "itau");
   assert.equal(parsed.parserUsed, "itau_csv");
-  assert.equal(parsed.items.length, 2);
+  assert.equal(parsed.items.length, 6);
   assert.equal(parsed.items.some((item) => item.descricao.toLowerCase().includes("pagamento com saldo")), false);
-  assert.equal(parsed.items.some((item) => item.descricao.toLowerCase().includes("netflix")), true);
-  assert.equal(parsed.items.some((item) => item.descricao.toLowerCase().includes("playstation")), true);
+
+  const playstation = parsed.items.find((item) => item.dataCompra === "2026-04-02");
+  assert.equal(playstation?.descricao, "Ebn Playstation");
+
+  const netflix = parsed.items.find((item) => item.dataCompra === "2026-03-25");
+  assert.equal(netflix?.descricao, "Netflix Entretenimento");
+
+  const lge = parsed.items.find((item) => item.dataCompra === "2026-03-24");
+  assert.equal(lge?.descricao, "Ec Lgelectronics");
+
+  const webfones = parsed.items.find((item) => item.dataCompra === "2026-03-23");
+  assert.equal(webfones?.descricao, "Pg Webfones Webf");
+
+  const shopee = parsed.items.find((item) => item.dataCompra === "2026-03-22");
+  assert.equal(shopee?.descricao, "Shopee Shopee If");
+
+  const nonSuffixCase = parsed.items.find((item) => item.dataCompra === "2026-03-21");
+  assert.equal(nonSuffixCase?.descricao, "Barueri Shopping Center");
+});
+
+test("import parser: deduplicação considera descrição CSV Itau normalizada", () => {
+  const csv = [
+    "data,lançamento,valor",
+    "2026-03-25,NETFLIX ENTRETENIMENTOBARUERIBR,59.90",
+  ].join("\n");
+
+  const existentes = [{
+    id: "compra-1",
+    userId: "user-1",
+    cartaoId: "cartao-itau",
+    descricao: "Netflix Entretenimento",
+    valorTotal: "59.90",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "59.90",
+    dataCompra: "2026-03-25",
+    pessoaId: null,
+    statusPessoa: null,
+    dataPagamentoPessoa: null,
+  }];
+
+  const parsed = parseCsv(csv, existentes, "cartao-itau");
+  assert.equal(parsed.items.length, 1);
+  assert.ok(parsed.items[0]?.duplicata);
+  assert.equal(parsed.items[0]?.action, "skip");
 });
 
 test("import parser: mismatch Nubank x Inter pode ser detectado pelo sugestor de emissor", () => {
