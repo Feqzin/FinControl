@@ -244,10 +244,10 @@ export function ImportFaturaDialog({
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Cartao de destino (obrigatorio)</Label>
+            <Label>Cartão de destino (obrigatório)</Label>
             <Select value={importCartaoId} onValueChange={setImportCartaoId}>
               <SelectTrigger data-testid="select-import-cartao">
-                <SelectValue placeholder="Selecione o cartao para esta importacao" />
+                <SelectValue placeholder="Selecione o cartão para esta importação" />
               </SelectTrigger>
               <SelectContent>
                 {cartoes.map((cartao) => (
@@ -261,7 +261,7 @@ export function ImportFaturaDialog({
               <p className="text-xs text-amber-700">{importCartaoHint}</p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                O cartao e obrigatorio. O sistema nao usa mais o primeiro cartao automaticamente.
+                O cartão é obrigatório. O sistema não usa mais o primeiro cartão automaticamente.
               </p>
             )}
           </div>
@@ -631,7 +631,7 @@ export function ImportFaturaDialog({
                                       : "text-red-600"
                                   }
                                 >
-                                  Confianca: {Math.round(item.confidenceScore)}%
+                                  Confiança: {Math.round(item.confidenceScore)}%
                                 </span>
                               )}
                               {status === "duplicata_exata" && item.forceImport !== true && (
@@ -648,7 +648,7 @@ export function ImportFaturaDialog({
                                     · {formatServiceCategoryLabel(serviceCandidate?.categorySuggestion)}
                                   </p>
                                   <span className="text-[11px] text-indigo-700">
-                                    Confianca {serviceCandidate?.confidence ?? "baixa"}
+                                    Confiança {serviceCandidate?.confidence ?? "baixa"}
                                   </span>
                                 </div>
 
@@ -786,6 +786,8 @@ export function ImportFaturaDialog({
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 flex-shrink-0 mt-0.5"
+                            aria-label={`Editar item ${idx + 1} da importação`}
+                            title="Editar item"
                             onClick={() => {
                               setImportEditingId(item.id);
                                 setImportEditForm({
@@ -805,6 +807,8 @@ export function ImportFaturaDialog({
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 flex-shrink-0 mt-0.5"
+                            aria-label={`Remover item ${idx + 1} da importação`}
+                            title="Remover item"
                             onClick={() => setImportItems((items) => items.filter((_, index) => index !== idx))}
                             data-testid={`button-remove-import-item-${idx}`}
                           >
@@ -836,8 +840,8 @@ export function ImportFaturaDialog({
                     </div>
                   ) : null}
                   <p className="text-sm text-muted-foreground">
-                    {totalImportar} de {importItems.length} serao importadas
-                    {" · "}Total: {formatCurrency(totalMensalImportar)}/mes
+                    {totalImportar} de {importItems.length} serão importadas
+                    {" · "}Total: {formatCurrency(totalMensalImportar)}/mês
                   </p>
                   {hasInvalidImportAttempt ? (
                     <p className="text-xs text-red-600">Itens inválidos não podem ser confirmados para importação.</p>
@@ -858,7 +862,7 @@ export function ImportFaturaDialog({
                   }
                   onClick={onConfirmImport}
                 >
-                  {isBatchImportPending ? "Importando..." : "Confirmar importacao"}
+                  {isBatchImportPending ? "Importando..." : "Confirmar importação"}
                 </Button>
               </div>
             </div>
