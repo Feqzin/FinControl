@@ -1,4 +1,4 @@
-import { useState, useMemo, lazy, Suspense } from "react";
+import { useState, useMemo, useEffect, lazy, Suspense } from "react";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,12 @@ function formatCurrency(value: number): string {
 export default function SimuladorPageContainer() {
   const { visible } = useValuesVisibility();
   const fc = (v: number) => maskValue(formatCurrency(v), visible);
+  const clampSliderValue = (value: number, max: number) => {
+    if (!Number.isFinite(value)) return 0;
+    if (value < 0) return 0;
+    if (value > max) return max;
+    return value;
+  };
 
   // Tab 1: Score Financeiro State
   const [rendaExtra, setRendaExtra] = useState(0);
@@ -83,6 +89,12 @@ export default function SimuladorPageContainer() {
   const baseReceber = dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
   const basePagar = dividas.filter((d) => d.tipo === "pagar" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
   const baseServicos = servicos.filter((s) => s.status === "ativo").reduce((s, sv) => s + Number(sv.valorMensal), 0);
+  const maxReducaoDespesas = Math.max(0, baseServicos);
+  const maxQuitarDivida = Math.max(0, basePagar);
+  const canReduceFixedExpenses = maxReducaoDespesas > 0;
+  const canPayoffDebt = maxQuitarDivida > 0;
+  const sliderMaxReducaoDespesas = canReduceFixedExpenses ? maxReducaoDespesas : 1;
+  const sliderMaxQuitarDivida = canPayoffDebt ? maxQuitarDivida : 1;
   const baseSaldo = baseReceber - basePagar - baseServicos;
   const baseScore: FinancialScore = baseScoreData ?? {
     valor: 0,
@@ -171,6 +183,28 @@ export default function SimuladorPageContainer() {
     else if (p === "cdb") setTaxaAnual(14.6);
     else if (p === "cdi") setTaxaAnual(13.25);
   };
+
+  useEffect(() => {
+    setReducaoDespesas((prev) => {
+      const next = clampSliderValue(prev, maxReducaoDespesas);
+      return next === prev ? prev : next;
+    });
+    setReducaoDespesasCommit((prev) => {
+      const next = clampSliderValue(prev, maxReducaoDespesas);
+      return next === prev ? prev : next;
+    });
+  }, [maxReducaoDespesas]);
+
+  useEffect(() => {
+    setQuitarDivida((prev) => {
+      const next = clampSliderValue(prev, maxQuitarDivida);
+      return next === prev ? prev : next;
+    });
+    setQuitarDividaCommit((prev) => {
+      const next = clampSliderValue(prev, maxQuitarDivida);
+      return next === prev ? prev : next;
+    });
+  }, [maxQuitarDivida]);
 
   if (isLoading) {
     return (
@@ -263,13 +297,17 @@ export default function SimuladorPageContainer() {
                       onValueChange={([v]) => setReducaoDespesas(v)}
                       onValueCommit={([v]) => setReducaoDespesasCommit(v)}
                       min={0}
-                      max={Math.max(baseServicos, 1000)}
+                      max={sliderMaxReducaoDespesas}
                       step={50}
                       className="w-full"
+                      disabled={!canReduceFixedExpenses}
                     />
                     <div className="flex justify-between text-xs text-muted-foreground">
                       <span>R$ 0</span><span>{formatCurrency(baseServicos)}</span>
                     </div>
+                    {!canReduceFixedExpenses ? (
+                      <p className="text-xs text-muted-foreground">Você já não possui gastos fixos a reduzir.</p>
+                    ) : null}
                   </div>
 
                   <Separator />
@@ -287,13 +325,17 @@ export default function SimuladorPageContainer() {
                       onValueChange={([v]) => setQuitarDivida(v)}
                       onValueCommit={([v]) => setQuitarDividaCommit(v)}
                       min={0}
-                      max={Math.max(basePagar, 1000)}
+                      max={sliderMaxQuitarDivida}
                       step={100}
                       className="w-full"
+                      disabled={!canPayoffDebt}
                     />
                     <div className="flex justify-between text-xs text-muted-foreground">
                       <span>R$ 0</span><span>{formatCurrency(basePagar)}</span>
                     </div>
+                    {!canPayoffDebt ? (
+                      <p className="text-xs text-muted-foreground">Nenhuma dívida a pagar no período.</p>
+                    ) : null}
                   </div>
                 </CardContent>
               </Card>
