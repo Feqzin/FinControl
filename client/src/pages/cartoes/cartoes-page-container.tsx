@@ -83,6 +83,8 @@ const DELETE_MODAL_TIMEOUT_MS = 20_000;
 const IS_DEV = import.meta.env.DEV;
 const IMPORT_FILE_MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 const IMPORT_ALLOWED_EXTENSIONS = new Set(["csv", "ofx", "qfx", "txt", "pdf"]);
+const IMPORT_PDF_DEBUG_MAX_LINES = 80;
+const IMPORT_PDF_DEBUG_MAX_LINE_CHARS = 220;
 
 const IMPORT_ALLOWED_MIME_BY_EXTENSION: Record<string, string[]> = {
   csv: ["text/csv", "application/csv", "application/vnd.ms-excel", "text/plain"],
@@ -105,12 +107,26 @@ function normalizeImportDebugText(value: string): string {
 }
 
 function isImportPdfDebugEnabled(): boolean {
-  if (!IS_DEV || typeof window === "undefined") return false;
+  if (typeof window === "undefined") return false;
   try {
     return window.localStorage.getItem("debugImportPdf") === "1";
   } catch {
     return false;
   }
+}
+
+function clampImportDebugLine(line: string): string {
+  if (line.length <= IMPORT_PDF_DEBUG_MAX_LINE_CHARS) return line;
+  return `${line.slice(0, IMPORT_PDF_DEBUG_MAX_LINE_CHARS)}…`;
+}
+
+function toIndexedImportDebugLines(lines: string[]): string[] {
+  const limited = lines.slice(0, IMPORT_PDF_DEBUG_MAX_LINES);
+  const indexed = limited.map((line, index) => `${index + 1}. ${clampImportDebugLine(line)}`);
+  if (lines.length > IMPORT_PDF_DEBUG_MAX_LINES) {
+    indexed.push(`... +${lines.length - IMPORT_PDF_DEBUG_MAX_LINES} linha(s) ocultas`);
+  }
+  return indexed;
 }
 
 function extractItauDebugSectionLines(text: string): string[] {
@@ -153,7 +169,7 @@ function logItauImportDebugSnapshot(debugData: {
   positionalText: string;
   mergedSignalText: string;
 }): void {
-  if (!IS_DEV || typeof console === "undefined") return;
+  if (typeof console === "undefined") return;
 
   const plainSectionLines = extractItauDebugSectionLines(debugData.plainText);
   const positionalSectionLines = extractItauDebugSectionLines(debugData.positionalText);
@@ -161,9 +177,9 @@ function logItauImportDebugSnapshot(debugData: {
 
   console.groupCollapsed("[import-itau][debug] snapshot");
   console.info("file", debugData.fileName);
-  console.info("plain.section.lines", plainSectionLines.map((line, index) => `${index + 1}. ${line}`));
-  console.info("positional.section.lines", positionalSectionLines.map((line, index) => `${index + 1}. ${line}`));
-  console.info("merged.section.lines", mergedSectionLines.map((line, index) => `${index + 1}. ${line}`));
+  console.info("plain.section.lines", toIndexedImportDebugLines(plainSectionLines));
+  console.info("positional.section.lines", toIndexedImportDebugLines(positionalSectionLines));
+  console.info("merged.section.lines", toIndexedImportDebugLines(mergedSectionLines));
   console.groupEnd();
 }
 

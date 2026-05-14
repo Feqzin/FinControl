@@ -352,11 +352,27 @@ const ITAU_SECTION_HEADER_MARKERS_COMPACT = ITAU_SECTION_HEADER_MARKERS.map((mar
 const ITAU_END_SECTION_MARKERS_COMPACT = ITAU_END_SECTION_MARKERS.map((marker) => normalizePortableTextCompact(marker));
 const ITAU_END_SECTION_MARKERS_SPACED = ITAU_END_SECTION_MARKERS.map(normalizePortableTextSpaced);
 const ITAU_TX_START_SPLIT_REGEX = /(?=\d{2}\/\d{2}\s+[A-Za-z*])/g;
+const ITAU_DEBUG_MAX_LINES = 80;
+const ITAU_DEBUG_MAX_STRING_CHARS = 220;
 
 function isItauParserDebugEnabled(options?: ParseItauOptions): boolean {
   const runningInTest = typeof process !== "undefined" && process.env.NODE_ENV === "test";
   if (runningInTest) return true;
-  return Boolean(import.meta.env?.DEV) && options?.debugImportPdf === true;
+  return options?.debugImportPdf === true;
+}
+
+function clampItauDebugString(value: string): string {
+  if (value.length <= ITAU_DEBUG_MAX_STRING_CHARS) return value;
+  return `${value.slice(0, ITAU_DEBUG_MAX_STRING_CHARS)}…`;
+}
+
+function toIndexedItauDebugLines(values: string[]): string[] {
+  const limited = values.slice(0, ITAU_DEBUG_MAX_LINES);
+  const indexed = limited.map((value, index) => `${index + 1}. ${clampItauDebugString(value)}`);
+  if (values.length > ITAU_DEBUG_MAX_LINES) {
+    indexed.push(`... +${values.length - ITAU_DEBUG_MAX_LINES} item(ns) oculto(s)`);
+  }
+  return indexed;
 }
 
 function normalizeRecurringServiceText(value: string): string {
@@ -1294,8 +1310,8 @@ function extractItauTransactionSections(content: string, debugEnabled: boolean):
   const flatLines = sections.flat();
   logItauParserDebug(debugEnabled, "sections.extracted", {
     sections: sections.length,
-    preview: flatLines.slice(0, 12),
-    linesIndexed: flatLines.slice(0, 80).map((line, index) => `${index + 1}. ${line}`),
+    preview: flatLines.slice(0, 12).map(clampItauDebugString),
+    linesIndexed: toIndexedItauDebugLines(flatLines),
   });
   return sections;
 }
@@ -1407,8 +1423,8 @@ function parseItauInvoiceTextInternal(
     lineCandidates: lineCandidates.length,
     mergedCandidates: mergedCandidates.length,
     finalCandidates: candidates.length,
-    preview: candidates.slice(0, 8),
-    indexedCandidates: candidates.slice(0, 60).map((candidate, index) => `${index + 1}. ${candidate}`),
+    preview: candidates.slice(0, 8).map(clampItauDebugString),
+    indexedCandidates: toIndexedItauDebugLines(candidates),
   });
 
   const discardedCandidates: Array<{ candidate: string; reason: string }> = [];
@@ -1541,8 +1557,10 @@ function parseItauInvoiceTextInternal(
   logItauParserDebug(debugEnabled, "candidates.final", {
     acceptedCount: acceptedCandidates.length,
     discardedCount: discardedCandidates.length,
-    acceptedPreview: acceptedCandidates.slice(0, 40),
-    discardedPreview: discardedCandidates.slice(0, 60),
+    acceptedPreview: acceptedCandidates.slice(0, 40).map(clampItauDebugString),
+    discardedPreview: discardedCandidates
+      .slice(0, 60)
+      .map((item) => ({ ...item, candidate: clampItauDebugString(item.candidate) })),
   });
 
   return { items, stats };
