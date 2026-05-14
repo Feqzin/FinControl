@@ -17,13 +17,14 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Receipt, Search, Trash2, ChevronDown, ChevronUp,
   Check,
-  Pencil, FastForward, Calendar, AlertCircle, X, TrendingUp, TrendingDown,
+  Pencil, FastForward, Calendar, AlertCircle, X, TrendingUp, TrendingDown, FileText,
 } from "lucide-react";
 import { useUIPreferences } from "@/context/ui-preferences";
 import type { Parcela } from "@shared/schema";
 import { format } from "date-fns";
 import { useDividas, type DividaWithParcelas } from "@/hooks/useDividas";
 import { ParcelaRow } from "@/pages/dividas/components/parcela-row";
+import { ImportarTextoPanel } from "@/components/importar/importar-texto-panel";
 import {
   FORMAS_PAGAMENTO_DIVIDA,
   type DividaSortBy,
@@ -43,6 +44,7 @@ export default function DividasPage() {
   const [filterTipo, setFilterTipo] = useState<string>("todos");
   const [sortBy, setSortBy] = useState<DividaSortBy>("vencimento_mais_proximo");
   const [highlightDividaId, setHighlightDividaId] = useState<string | null>(null);
+  const [importarTextoOpen, setImportarTextoOpen] = useState(false);
 
   const [createTab, setCreateTab] = useState<"simples" | "parcelado">("simples");
   const [simpleForm, setSimpleForm] = useState({
@@ -104,6 +106,7 @@ export default function DividasPage() {
     const statusParam = params.get("status");
     const tipoParam = params.get("tipo");
     const highlightParam = params.get("highlight");
+    const importarParam = params.get("importar");
 
     if (statusParam === "vencido" || statusParam === "pendente" || statusParam === "pago") {
       setFilterStatus(statusParam);
@@ -115,6 +118,14 @@ export default function DividasPage() {
 
     if (highlightParam) {
       setHighlightDividaId(highlightParam);
+    }
+
+    if (importarParam === "texto") {
+      setImportarTextoOpen(true);
+      params.delete("importar");
+      const nextQuery = params.toString();
+      const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash ?? ""}`;
+      window.history.replaceState({}, "", nextUrl);
     }
   }, []);
 
@@ -298,13 +309,35 @@ export default function DividasPage() {
           <h1 className="text-2xl font-bold tracking-tight">Dividas</h1>
           <p className="text-muted-foreground">Controle parcelado de valores a receber e a pagar</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button className="w-full lg:w-auto" data-testid="button-add-divida">
-              <Plus className="w-4 h-4 mr-2" /> Nova dívida
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end lg:w-auto">
+          <Dialog open={importarTextoOpen} onOpenChange={setImportarTextoOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="w-full sm:w-auto" data-testid="button-importar-texto-dividas">
+                <FileText className="w-4 h-4 mr-2" /> Importar por texto
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="w-[calc(100vw-1.5rem)] max-w-3xl p-0 sm:w-full">
+              <div className="flex max-h-[88vh] flex-col overflow-hidden">
+                <DialogHeader className="px-4 pt-4 sm:px-6">
+                  <DialogTitle>Importar dívidas por texto</DialogTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Cole anotações financeiras e o sistema interpreta valores a receber, a pagar, parcelas e serviços.
+                  </p>
+                </DialogHeader>
+                <div className="overflow-y-auto px-4 pb-4 sm:px-6 sm:pb-6">
+                  <ImportarTextoPanel onCompleted={() => setImportarTextoOpen(false)} />
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button className="w-full sm:w-auto" data-testid="button-add-divida">
+                <Plus className="w-4 h-4 mr-2" /> Nova dívida
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Registrar Dívida</DialogTitle>
             </DialogHeader>
@@ -431,8 +464,9 @@ export default function DividasPage() {
                 </form>
               </TabsContent>
             </Tabs>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,_1fr)_150px_150px_200px] lg:items-center">

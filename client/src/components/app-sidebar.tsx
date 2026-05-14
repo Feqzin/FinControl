@@ -4,7 +4,7 @@ import { useTheme } from "@/components/theme-provider";
 import { useUIPreferences } from "@/context/ui-preferences";
 import {
   LayoutDashboard, Users, Receipt, CreditCard, Calendar,
-  BarChart3, Repeat, LogOut, FileUp, Target, History, Calculator,
+  BarChart3, Repeat, LogOut, Target, History, Calculator,
   Sun, Moon, UserCircle, Wallet, PiggyBank, Settings2, AlertCircle
 } from "lucide-react";
 import {
@@ -43,7 +43,6 @@ const planejamentoItems = [
 
 const ferramentasItems = [
   { title: "Relatórios", url: "/relatorios", icon: BarChart3 },
-  { title: "Importar", url: "/importar", icon: FileUp },
   { title: "Perfil", url: "/perfil", icon: UserCircle },
 ];
 
@@ -69,7 +68,6 @@ export function AppSidebar() {
     { title: "Histórico", url: "/historico" },
     { title: "Simulador", url: "/simulador" },
     { title: "Relatórios", url: "/relatorios" },
-    { title: "Importar", url: "/importar" },
   ];
 
   const renderGroup = (label: string, items: typeof mainItems) => {
