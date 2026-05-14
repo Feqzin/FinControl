@@ -1215,27 +1215,42 @@ function logItauParserDebug(debugEnabled: boolean, event: string, details: Recor
   console.info("[import-itau][debug]", event, details);
 }
 
-function findFirstMarkerIndex(normalizedLine: string, markers: readonly string[]): number {
-  let minIndex = -1;
-  for (const marker of markers) {
-    const index = normalizedLine.indexOf(marker);
-    if (index < 0) continue;
-    if (minIndex === -1 || index < minIndex) minIndex = index;
+function buildCompactIndexMap(normalizedLine: string): { compact: string; rawIndexes: number[] } {
+  let compact = "";
+  const rawIndexes: number[] = [];
+  for (let index = 0; index < normalizedLine.length; index += 1) {
+    const char = normalizedLine[index] ?? "";
+    if (!/[A-Z0-9]/.test(char)) continue;
+    compact += char;
+    rawIndexes.push(index);
   }
-  return minIndex;
+  return { compact, rawIndexes };
 }
 
-function isItauStrongEndLine(rawLine: string): boolean {
-  const normalizedLine = normalizePortableTextSpaced(rawLine);
-  return ITAU_END_SECTION_MARKERS_SPACED.some((marker) => normalizedLine.startsWith(marker));
+function findFirstItauEndMarkerRawIndex(rawLine: string): number {
+  const normalizedRaw = normalizePortableText(rawLine);
+  const { compact, rawIndexes } = buildCompactIndexMap(normalizedRaw);
+  let bestCompactIndex = -1;
+
+  for (const marker of ITAU_END_SECTION_MARKERS_COMPACT) {
+    const compactIndex = compact.indexOf(marker);
+    if (compactIndex < 0) continue;
+    if (bestCompactIndex < 0 || compactIndex < bestCompactIndex) {
+      bestCompactIndex = compactIndex;
+    }
+  }
+
+  if (bestCompactIndex < 0) return -1;
+  return rawIndexes[bestCompactIndex] ?? -1;
+}
+
+function hasItauEndMarkerAnywhere(rawLine: string): boolean {
+  return findFirstItauEndMarkerRawIndex(rawLine) >= 0;
 }
 
 function truncateLineAtItauEndMarker(rawLine: string): string {
-  const normalizedLine = normalizePortableTextSpaced(rawLine);
-  const markerIndex = findFirstMarkerIndex(normalizedLine, ITAU_END_SECTION_MARKERS_SPACED);
-  // Em PDFs com colunas lado a lado, marcadores de fim podem aparecer no meio da linha.
-  // Só truncamos quando o marcador estiver realmente no início (ou muito próximo).
-  if (markerIndex < 0 || markerIndex > 24) return rawLine.trim();
+  const markerIndex = findFirstItauEndMarkerRawIndex(rawLine);
+  if (markerIndex < 0) return rawLine.trim();
   return rawLine.slice(0, markerIndex).trim();
 }
 
@@ -1248,8 +1263,9 @@ function stripContentAfterItauEndMarker(rawContent: string): string {
 
   const kept: string[] = [];
   for (const line of lines) {
-    if (isItauStrongEndLine(line)) break;
-    kept.push(line);
+    const truncated = truncateLineAtItauEndMarker(line);
+    if (truncated) kept.push(truncated);
+    if (hasItauEndMarkerAnywhere(line)) break;
   }
   return kept.join(" ").trim();
 }
@@ -1379,7 +1395,7 @@ function extractItauTransactionSections(content: string, debugEnabled: boolean):
       }
     }
 
-    const hasEndMarker = isItauStrongEndLine(line);
+    const hasEndMarker = hasItauEndMarkerAnywhere(line);
     const possibleDataLine = truncateLineAtItauEndMarker(line);
     if (possibleDataLine) {
       current.push(possibleDataLine);

@@ -596,6 +596,43 @@ test("import parser: seção Itau não encerra em linha auxiliar 'outros' e só 
   assert.equal(result.items.some((item) => item.valorParcela === 1910.79), false);
 });
 
+test("import parser: PDF Itau ignora seção de compras parceladas - próximas faturas", () => {
+  const pdfText = [
+    "Itaúcard",
+    "Resumo da fatura em R$",
+    "Vencimento 22/04/2026",
+    "Lançamentos: compras e saques",
+    "DATA ESTABELECIMENTO VALOR EM R$",
+    "04/09 Shopee*SHOPEE* 08/12 224,91",
+    "18/09 EC *LGELECTRON 07/12 410,67",
+    "11/12 PG *WEBFONES W 05/06 108,16",
+    "25/03 NETFLIX ENTRETENIMENTOB 59,90",
+    "25/03 EBN *PLAYST 01/02 99,59",
+    "02/04 EBN *PLAYST 01/04 21,62 Compras parceladas - próximas faturas 04/09 Shopee*SHOPEE* 09/12 224,91",
+    "18/09 EC *LGELECTRON 08/12 410,67",
+    "11/12 PG *WEBFONES W 06/06 108,16",
+    "25/03 EBN *PLAYST 02/02 99,59",
+    "02/04 EBN *PLAYST 02/04 21,62",
+    "Total para próximas faturas 1.910,79",
+  ].join("\n");
+
+  const result = parsePdf(pdfText, [], "cartao-itau", { referenceBillingDate: "2026-04-22", issuerHint: "itau" });
+
+  assert.equal(result.items.length, 6);
+  assert.equal(result.items.some((item) => item.descricao.toUpperCase().includes("SHOPEE") && item.parcelaAtual === 9), false);
+  assert.equal(result.items.some((item) => item.descricao.toUpperCase().includes("LGELECTRON") && item.parcelaAtual === 8), false);
+  assert.equal(result.items.some((item) => item.descricao.toUpperCase().includes("WEBFONES") && item.parcelaAtual === 6), false);
+  assert.equal(result.items.some((item) => item.descricao.toUpperCase().includes("PLAYST") && item.parcelaAtual === 2 && item.parcelas === 2), false);
+  assert.equal(result.items.some((item) => item.descricao.toUpperCase().includes("PLAYST") && item.parcelaAtual === 2 && item.parcelas === 4), false);
+
+  assert.equal(result.items.some((item) => item.descricao.toUpperCase().includes("SHOPEE") && item.parcelaAtual === 8), true);
+  assert.equal(result.items.some((item) => item.descricao.toUpperCase().includes("LGELECTRON") && item.parcelaAtual === 7), true);
+  assert.equal(result.items.some((item) => item.descricao.toUpperCase().includes("WEBFONES") && item.parcelaAtual === 5), true);
+  assert.equal(result.items.some((item) => item.descricao.toUpperCase().includes("NETFLIX")), true);
+  assert.equal(result.items.some((item) => item.descricao.toUpperCase().includes("PLAYST") && item.parcelaAtual === 1 && item.parcelas === 2), true);
+  assert.equal(result.items.some((item) => item.descricao.toUpperCase().includes("PLAYST") && item.parcelaAtual === 1 && item.parcelas === 4), true);
+});
+
 test("import parser: Itau usa fallback plain quando extração posicional vier incompleta", () => {
   const positionalIncomplete = [
     "Itaúcard",
