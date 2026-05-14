@@ -199,6 +199,15 @@ test("dividas utils: filtros + ordenação combinam sem mudar totais", () => {
   assert.equal(sorted.reduce((sum, divida) => sum + Number(divida.valor), 0), 400);
 });
 
+test("dividas utils: lista vazia retorna vazio sem erro", () => {
+  const sorted = sortDividasForView([], {
+    sortBy: "vencimento_mais_proximo",
+    getPessoaNome: () => "",
+    getDividaStatus: () => "pendente",
+  });
+  assert.deepEqual(sorted, []);
+});
+
 function buildPessoaFixture(overrides: Partial<Pessoa> = {}): Pessoa {
   return {
     id: overrides.id ?? "pessoa-1",
@@ -297,6 +306,28 @@ test("pessoas utils: busca + ordenação juntos preserva ordenação esperada", 
   assert.deepEqual(sorted.map((pessoa) => pessoa.id), ["p2", "p1", "p3"]);
 });
 
+test("pessoas utils: lista vazia retorna vazio sem erro", () => {
+  const sorted = sortPessoasForView([], {
+    sortBy: "nome_az",
+    getMetrics: () => ({ saldo: 0, valorReceber: 0, valorPagar: 0 }),
+  });
+  assert.deepEqual(sorted, []);
+});
+
+test("pessoas utils: campos indefinidos usam fallback seguro", () => {
+  const pessoas = [
+    { id: "p1", nome: undefined } as unknown as Pessoa,
+    { id: "p2", nome: "Ana" } as unknown as Pessoa,
+  ];
+
+  const sorted = sortPessoasForView(pessoas, {
+    sortBy: "maior_saldo",
+    getMetrics: (id) => (id === "p2" ? { saldo: 20, valorReceber: 5, valorPagar: 1 } : (undefined as unknown as { saldo: number; valorReceber: number; valorPagar: number })),
+  });
+
+  assert.deepEqual(sorted.map((pessoa) => pessoa.id), ["p2", "p1"]);
+});
+
 test("servicos utils: ordena por nome A-Z e Z-A", () => {
   const servicos = [
     buildServicoFixture({ id: "s1", nome: "YouTube Premium" }),
@@ -362,6 +393,11 @@ test("servicos utils: filtro + ordenação juntos preserva ordem esperada", () =
   const sorted = sortServicosForView(somenteAtivos, { sortBy: "maior_valor", referenceDay: 10 });
 
   assert.deepEqual(sorted.map((servico) => servico.id), ["s1", "s3"]);
+});
+
+test("servicos utils: lista vazia retorna vazio sem erro", () => {
+  const sorted = sortServicosForView([], { sortBy: "nome_az", referenceDay: 10 });
+  assert.deepEqual(sorted, []);
 });
 
 test("cartoes utils: calcula próxima fatura e dias restantes", () => {

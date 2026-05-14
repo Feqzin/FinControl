@@ -24,12 +24,17 @@ type SortPessoasOptions = {
   getMetrics: (pessoaId: string) => PessoaSortMetrics;
 };
 
-function normalizeName(value: string): string {
-  return value
+function normalizeName(value: unknown): string {
+  return String(value ?? "")
     .toLowerCase()
     .trim()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
+}
+
+function toSafeNumber(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function toTimestampAsc(value?: string | null): number {
@@ -45,40 +50,69 @@ function toTimestampDesc(value?: string | null): number {
 }
 
 function getCreatedAtMaybe(pessoa: PessoaSortable): string | null {
-  const createdAt = (pessoa as Record<string, unknown>).createdAt;
-  return typeof createdAt === "string" && createdAt.length > 0 ? createdAt : null;
+  const raw = pessoa as Record<string, unknown>;
+  const createdAt = raw.createdAt;
+  if (typeof createdAt === "string" && createdAt.length > 0) return createdAt;
+  const updatedAt = raw.updatedAt;
+  if (typeof updatedAt === "string" && updatedAt.length > 0) return updatedAt;
+  return null;
+}
+
+function safeMetrics(
+  getMetrics: (pessoaId: string) => PessoaSortMetrics,
+  pessoaId: string,
+): PessoaSortMetrics {
+  try {
+    const metrics = getMetrics(pessoaId);
+    if (!metrics) {
+      return { saldo: 0, valorReceber: 0, valorPagar: 0 };
+    }
+    return {
+      saldo: toSafeNumber(metrics.saldo),
+      valorReceber: toSafeNumber(metrics.valorReceber),
+      valorPagar: toSafeNumber(metrics.valorPagar),
+    };
+  } catch {
+    return { saldo: 0, valorReceber: 0, valorPagar: 0 };
+  }
 }
 
 export function sortPessoasForView<TPessoa extends PessoaSortable>(
   pessoas: TPessoa[],
   options: SortPessoasOptions,
 ): TPessoa[] {
+  if (!Array.isArray(pessoas) || pessoas.length === 0) {
+    return [];
+  }
+
   const { sortBy, getMetrics } = options;
 
   return [...pessoas].sort((a, b) => {
-    const nameA = normalizeName(a.nome);
-    const nameB = normalizeName(b.nome);
+    const nameA = normalizeName(a?.nome);
+    const nameB = normalizeName(b?.nome);
+    const metricsA = safeMetrics(getMetrics, String(a?.id ?? ""));
+    const metricsB = safeMetrics(getMetrics, String(b?.id ?? ""));
 
     switch (sortBy) {
       case "nome_za":
         return nameB.localeCompare(nameA);
       case "maior_saldo": {
-        const diff = getMetrics(b.id).saldo - getMetrics(a.id).saldo;
+        const diff = metricsB.saldo - metricsA.saldo;
         if (diff !== 0) return diff;
         return nameA.localeCompare(nameB);
       }
       case "menor_saldo": {
-        const diff = getMetrics(a.id).saldo - getMetrics(b.id).saldo;
+        const diff = metricsA.saldo - metricsB.saldo;
         if (diff !== 0) return diff;
         return nameA.localeCompare(nameB);
       }
       case "maior_valor_receber": {
-        const diff = getMetrics(b.id).valorReceber - getMetrics(a.id).valorReceber;
+        const diff = metricsB.valorReceber - metricsA.valorReceber;
         if (diff !== 0) return diff;
         return nameA.localeCompare(nameB);
       }
       case "maior_valor_pagar": {
-        const diff = getMetrics(b.id).valorPagar - getMetrics(a.id).valorPagar;
+        const diff = metricsB.valorPagar - metricsA.valorPagar;
         if (diff !== 0) return diff;
         return nameA.localeCompare(nameB);
       }

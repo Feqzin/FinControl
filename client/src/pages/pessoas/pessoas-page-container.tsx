@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +42,19 @@ import { format } from "date-fns";
 import { formatCurrencyBRL } from "@/utils/formatters";
 
 type PessoaKind = Pessoa["tipo"];
+
+const EMPTY_PESSOA_RESUMO = {
+  consolidadoPendente: 0,
+  totalPago: 0,
+  dividas: {
+    comigo: { pendente: 0, pago: 0, vencidas: 0, quantidadePendentes: 0 },
+    euDevo: { pendente: 0, pago: 0, vencidas: 0, quantidadePendentes: 0 },
+  },
+  comprasVinculadas: { pendentePessoa: 0 },
+  servicosMesAtual: { pendente: 0 },
+  alertas: { comprasAtrasadas: 0 },
+  saldoPessoa: { saldoAtual: 0 },
+} as const;
 
 export default function PessoasPage() {
   const { toast } = useToast();
@@ -211,28 +224,36 @@ export default function PessoasPage() {
             : "Acompanhe as pendências por origem para priorizar os próximos pagamentos.";
   const filteredByStatus = filterTipo === "atrasados"
     ? filtered.filter((pessoa) => {
-      const resumoPessoa = getPessoaResumoConsolidado(pessoa.id);
+      const resumoPessoa = (() => {
+        try {
+          return getPessoaResumoConsolidado(pessoa.id);
+        } catch {
+          return EMPTY_PESSOA_RESUMO;
+        }
+      })();
       return resumoPessoa.alertas.comprasAtrasadas > 0 || resumoPessoa.dividas.comigo.vencidas > 0;
     })
     : filtered;
-  const sortedFilteredByStatus = useMemo(
-    () =>
-      sortPessoasForView(filteredByStatus, {
-        sortBy,
-        getMetrics: (pessoaId) => {
-          const resumo = getPessoaResumoConsolidado(pessoaId);
-          return {
-            saldo: resumo.saldoPessoa.saldoAtual ?? 0,
-            valorReceber:
-              (resumo.dividas.comigo.pendente ?? 0)
-              + (resumo.comprasVinculadas.pendentePessoa ?? 0)
-              + (resumo.servicosMesAtual.pendente ?? 0),
-            valorPagar: resumo.dividas.euDevo.pendente ?? 0,
-          };
-        },
-      }),
-    [filteredByStatus, getPessoaResumoConsolidado, sortBy],
-  );
+  const sortedFilteredByStatus = sortPessoasForView(filteredByStatus, {
+    sortBy,
+    getMetrics: (pessoaId) => {
+      const resumo = (() => {
+        try {
+          return getPessoaResumoConsolidado(pessoaId);
+        } catch {
+          return EMPTY_PESSOA_RESUMO;
+        }
+      })();
+      return {
+        saldo: resumo.saldoPessoa.saldoAtual ?? 0,
+        valorReceber:
+          (resumo.dividas.comigo.pendente ?? 0)
+          + (resumo.comprasVinculadas.pendentePessoa ?? 0)
+          + (resumo.servicosMesAtual.pendente ?? 0),
+        valorPagar: resumo.dividas.euDevo.pendente ?? 0,
+      };
+    },
+  });
   const headerTotalPessoas = filteredByStatus.length;
   const headerTotalPendente = filteredByStatus.reduce((sum, pessoa) => {
     const resumo = getPessoaResumoConsolidado(pessoa.id);

@@ -126,8 +126,8 @@ function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-function normalizeName(value: string): string {
-  return value
+function normalizeName(value: unknown): string {
+  return String(value ?? "")
     .toLowerCase()
     .trim()
     .normalize("NFD")
@@ -460,7 +460,7 @@ export function usePessoas({
   const filtered = useMemo(
     () =>
       pessoas
-        .filter((p) => p.nome.toLowerCase().includes(search.toLowerCase()))
+        .filter((p) => normalizeName(p?.nome).includes(normalizeName(search)))
         .filter((p) => filterTipo === "todos" || filterTipo === "atrasados" || p.tipo === filterTipo),
     [filterTipo, pessoas, search],
   );
@@ -472,7 +472,7 @@ export function usePessoas({
     const target = normalizeName(nome);
     return (
       pessoas.find((p) => {
-        const existing = normalizeName(p.nome);
+        const existing = normalizeName(p?.nome);
         return existing === target || existing.includes(target) || target.includes(existing);
       }) || null
     );

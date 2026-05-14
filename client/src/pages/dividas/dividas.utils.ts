@@ -54,6 +54,14 @@ function toDateTimestamp(value?: string | null): number {
   return parsed;
 }
 
+function normalizeText(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 function toDateTimestampDesc(value?: string | null): number {
   if (!value) return Number.NEGATIVE_INFINITY;
   const parsed = Date.parse(`${value}T00:00:00`);
@@ -100,10 +108,26 @@ function getEffectiveStatusSortRank(
 }
 
 export function sortDividasForView(dividas: DividaSortable[], options: SortDividasOptions): DividaSortable[] {
+  if (!Array.isArray(dividas) || dividas.length === 0) {
+    return [];
+  }
+
   const { sortBy, getPessoaNome, getDividaStatus } = options;
   const nowIsoDate = options.nowIsoDate ?? new Date().toISOString().slice(0, 10);
-
-  const normalizedName = (pessoaId: string) => getPessoaNome(pessoaId).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const normalizedName = (pessoaId: string) => {
+    try {
+      return normalizeText(getPessoaNome(pessoaId));
+    } catch {
+      return "";
+    }
+  };
+  const resolveStatus = (divida: DividaSortable) => {
+    try {
+      return getDividaStatus(divida);
+    } catch {
+      return "pendente";
+    }
+  };
 
   const sorted = [...dividas].sort((a, b) => {
     switch (sortBy) {
@@ -139,7 +163,7 @@ export function sortDividasForView(dividas: DividaSortable[], options: SortDivid
       case "nome_za":
         return normalizedName(b.pessoaId).localeCompare(normalizedName(a.pessoaId));
       case "status": {
-        const diff = getEffectiveStatusSortRank(a, getDividaStatus, nowIsoDate) - getEffectiveStatusSortRank(b, getDividaStatus, nowIsoDate);
+        const diff = getEffectiveStatusSortRank(a, resolveStatus, nowIsoDate) - getEffectiveStatusSortRank(b, resolveStatus, nowIsoDate);
         if (diff !== 0) return diff;
         return toDateTimestamp(getPrimaryDueDate(a)) - toDateTimestamp(getPrimaryDueDate(b));
       }

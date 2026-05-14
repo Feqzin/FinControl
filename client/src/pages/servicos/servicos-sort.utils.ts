@@ -38,8 +38,12 @@ function toDayNumber(value: unknown): number {
 }
 
 function getCreatedAtMaybe(servico: Servico): string | null {
-  const createdAt = (servico as Record<string, unknown>).createdAt;
-  return typeof createdAt === "string" && createdAt.length > 0 ? createdAt : null;
+  const raw = servico as Record<string, unknown>;
+  const createdAt = raw.createdAt;
+  if (typeof createdAt === "string" && createdAt.length > 0) return createdAt;
+  const updatedAt = raw.updatedAt;
+  if (typeof updatedAt === "string" && updatedAt.length > 0) return updatedAt;
+  return null;
 }
 
 function toTimestampAsc(value?: string | null): number {
@@ -68,6 +72,10 @@ function getDistanceFromReference(day: number, referenceDay: number): number {
 }
 
 export function sortServicosForView(servicos: Servico[], options: SortOptions): Servico[] {
+  if (!Array.isArray(servicos) || servicos.length === 0) {
+    return [];
+  }
+
   const { sortBy } = options;
   const referenceDay = options.referenceDay ?? new Date().getDate();
 
