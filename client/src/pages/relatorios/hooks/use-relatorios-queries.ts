@@ -81,6 +81,8 @@ export function useRelatoriosQueries(params: UseRelatoriosQueriesParams = {}) {
     dataSource: hasOverviewData ? "overview" : "legacy",
     isCompatibilityMode: shouldUseLegacyFallback,
     overviewSummary: hasOverviewData ? overviewQuery.data.summary : null,
+    overviewPeriod: hasOverviewData ? overviewQuery.data.period : null,
+    overviewGeneratedAt: hasOverviewData ? overviewQuery.data.generatedAt : null,
     overviewError: overviewQuery.isError ? overviewQuery.error : null,
   };
 }

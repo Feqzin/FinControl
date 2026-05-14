@@ -25,6 +25,7 @@ import {
   isExtractedPdfTextUsable,
   reconstructPdfLinesByPosition,
 } from "../src/pages/cartoes/import-pdf-utils";
+import { buildRelatorioPdfMetadata } from "../src/pages/relatorios/relatorios-pdf-utils";
 import {
   buildTimelineLayout,
   findSelectedTimelineEvent,
@@ -992,4 +993,37 @@ test("import parser: extrai texto de PDF textual valido", async () => {
 
   const text = await extractTextFromPdfBuffer(arrayBuffer);
   assert.match(text.toLowerCase(), /test/);
+});
+
+test("relatorios PDF: metadados usam overview quando disponível", () => {
+  const metadata = buildRelatorioPdfMetadata({
+    label: "Mês atual",
+    dataSource: "overview",
+    overviewPeriod: { startDate: "2026-04-01", endDate: "2026-04-30" },
+    overviewGeneratedAt: "2026-05-14T03:10:00.000Z",
+    fallbackStartDateIso: "2026-05-01",
+    fallbackEndDateIso: "2026-05-31",
+  });
+
+  assert.equal(metadata.periodLabel.includes("01/04/2026"), true);
+  assert.equal(metadata.periodLabel.includes("30/04/2026"), true);
+  assert.equal(metadata.sourceLabel, "relatório consolidado");
+  assert.equal(metadata.generatedAtLabel.length > 0, true);
+});
+
+test("relatorios PDF: metadados usam fallback em modo compatibilidade", () => {
+  const metadata = buildRelatorioPdfMetadata({
+    label: "Mês atual",
+    dataSource: "legacy",
+    overviewPeriod: null,
+    overviewGeneratedAt: null,
+    fallbackStartDateIso: "2026-05-01",
+    fallbackEndDateIso: "2026-05-31",
+    now: new Date("2026-05-14T12:34:00.000Z"),
+  });
+
+  assert.equal(metadata.periodLabel.includes("01/05/2026"), true);
+  assert.equal(metadata.periodLabel.includes("31/05/2026"), true);
+  assert.equal(metadata.sourceLabel, "modo compatibilidade");
+  assert.equal(metadata.generatedAtLabel.length > 0, true);
 });

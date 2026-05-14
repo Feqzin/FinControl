@@ -25,6 +25,7 @@ import {
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useRelatoriosQueries } from "@/pages/relatorios/hooks/use-relatorios-queries";
+import { buildRelatorioPdfMetadata } from "@/pages/relatorios/relatorios-pdf-utils";
 
 const RelatoriosHistoricoChart = lazy(
   () => import("@/components/charts/relatorios-historico-chart"),
@@ -94,8 +95,11 @@ export default function RelatoriosPageContainer() {
     dividas,
     pessoas,
     isLoading,
+    dataSource,
     isCompatibilityMode,
     overviewSummary,
+    overviewPeriod,
+    overviewGeneratedAt,
   } = useRelatoriosQueries({
     startDate: startDateIso,
     endDate: endDateIso,
@@ -173,16 +177,25 @@ export default function RelatoriosPageContainer() {
       import("jspdf-autotable"),
     ]);
     const doc = new jsPDF();
-    const nowStr = new Date().toLocaleDateString('pt-BR');
+    const pdfMeta = buildRelatorioPdfMetadata({
+      label,
+      dataSource,
+      overviewPeriod,
+      overviewGeneratedAt,
+      fallbackStartDateIso: startDateIso,
+      fallbackEndDateIso: endDateIso,
+    });
     
     doc.setFontSize(18);
     doc.text("FinControl — Relatório Financeiro", 14, 20);
     doc.setFontSize(11);
-    doc.text(`Período: ${label} | Gerado em: ${nowStr}`, 14, 28);
+    doc.text(`Período: ${pdfMeta.periodLabel}`, 14, 28);
+    doc.text(`Gerado em: ${pdfMeta.generatedAtLabel}`, 14, 34);
+    doc.text(`Fonte: ${pdfMeta.sourceLabel}`, 14, 40);
 
     // Resumo Geral
     autoTable(doc, {
-      startY: 35,
+      startY: 47,
       head: [['Resumo Geral', 'Valor']],
       body: [
         ['Renda Total', formatCurrency(filteredData.totalRenda)],
@@ -222,7 +235,7 @@ export default function RelatoriosPageContainer() {
     });
 
     // Pessoas
-    const pessoasBody = pessoas.map(p => {
+    const pessoasBody: string[][] = pessoas.map(p => {
       const pDividas = filteredData.dividas.filter(d => d.pessoaId === p.id && d.status === "pendente");
       const total = pDividas.reduce((acc, d) => acc + (d.tipo === "receber" ? Number(d.valor) : -Number(d.valor)), 0);
       return [
@@ -236,7 +249,7 @@ export default function RelatoriosPageContainer() {
     autoTable(doc, {
       startY: (doc as any).lastAutoTable.finalY + 10,
       head: [['Pessoa', 'Tipo', 'Valor Total Pendente', 'Status']],
-      body: pessoasBody,
+      body: pessoasBody.length ? pessoasBody : [['Sem dados no período', '', '', '']],
     });
 
     // Serviços
@@ -246,6 +259,9 @@ export default function RelatoriosPageContainer() {
       formatCurrency(Number(s.valorMensal)),
       s.formaPagamento
     ]);
+    if (servicosBody.length === 0) {
+      servicosBody.push(['Sem dados no período', '', '', '']);
+    }
     servicosBody.push(['Total Mensal', '', formatCurrency(filteredData.totalServicosMensal), '']);
 
     autoTable(doc, {
@@ -260,6 +276,9 @@ export default function RelatoriosPageContainer() {
       p.tipo.replace('_', ' '),
       formatCurrency(Number(p.valorAtual))
     ]);
+    if (patrimoniosBody.length === 0) {
+      patrimoniosBody.push(['Sem dados no período', '', '']);
+    }
     patrimoniosBody.push(['Total', '', formatCurrency(filteredData.totalPatrimonio)]);
 
     autoTable(doc, {
