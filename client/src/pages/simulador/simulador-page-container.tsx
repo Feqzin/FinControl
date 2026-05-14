@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, lazy, Suspense } from "react";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -288,6 +289,11 @@ export default function SimuladorPageContainer() {
                     <div className="flex justify-between items-center">
                       <Label className="flex items-center gap-2">
                         <ArrowDownRight className="w-4 h-4 text-amber-600" /> Redução de gastos fixos
+                        {!canReduceFixedExpenses ? (
+                          <Badge variant="secondary" className="h-5 px-2 text-[10px] font-medium">
+                            Indisponível
+                          </Badge>
+                        ) : null}
                       </Label>
                       <span className="text-sm font-bold text-amber-600">{formatCurrency(reducaoDespesas)}</span>
                     </div>
@@ -299,14 +305,19 @@ export default function SimuladorPageContainer() {
                       min={0}
                       max={sliderMaxReducaoDespesas}
                       step={50}
-                      className="w-full"
+                      className={!canReduceFixedExpenses ? "w-full cursor-not-allowed opacity-60" : "w-full"}
                       disabled={!canReduceFixedExpenses}
+                      aria-label="Redução de gastos fixos"
+                      aria-describedby={!canReduceFixedExpenses ? "slider-reducao-despesas-help" : undefined}
+                      title={!canReduceFixedExpenses ? "Sem valor disponível para reduzir gastos fixos" : undefined}
                     />
                     <div className="flex justify-between text-xs text-muted-foreground">
                       <span>R$ 0</span><span>{formatCurrency(baseServicos)}</span>
                     </div>
                     {!canReduceFixedExpenses ? (
-                      <p className="text-xs text-muted-foreground">Você já não possui gastos fixos a reduzir.</p>
+                      <p id="slider-reducao-despesas-help" className="text-xs text-muted-foreground">
+                        Você não possui gastos fixos ativos para reduzir.
+                      </p>
                     ) : null}
                   </div>
 
@@ -316,6 +327,11 @@ export default function SimuladorPageContainer() {
                     <div className="flex justify-between items-center">
                       <Label className="flex items-center gap-2">
                         <TrendingDown className="w-4 h-4 text-red-600" /> Quitar dívidas a pagar
+                        {!canPayoffDebt ? (
+                          <Badge variant="secondary" className="h-5 px-2 text-[10px] font-medium">
+                            Indisponível
+                          </Badge>
+                        ) : null}
                       </Label>
                       <span className="text-sm font-bold text-red-600">{formatCurrency(quitarDivida)}</span>
                     </div>
@@ -327,14 +343,19 @@ export default function SimuladorPageContainer() {
                       min={0}
                       max={sliderMaxQuitarDivida}
                       step={100}
-                      className="w-full"
+                      className={!canPayoffDebt ? "w-full cursor-not-allowed opacity-60" : "w-full"}
                       disabled={!canPayoffDebt}
+                      aria-label="Quitar dívidas a pagar"
+                      aria-describedby={!canPayoffDebt ? "slider-quitar-divida-help" : undefined}
+                      title={!canPayoffDebt ? "Sem valor disponível para quitar dívidas" : undefined}
                     />
                     <div className="flex justify-between text-xs text-muted-foreground">
                       <span>R$ 0</span><span>{formatCurrency(basePagar)}</span>
                     </div>
                     {!canPayoffDebt ? (
-                      <p className="text-xs text-muted-foreground">Nenhuma dívida a pagar no período.</p>
+                      <p id="slider-quitar-divida-help" className="text-xs text-muted-foreground">
+                        Você não possui dívidas a pagar neste período.
+                      </p>
                     ) : null}
                   </div>
                 </CardContent>
