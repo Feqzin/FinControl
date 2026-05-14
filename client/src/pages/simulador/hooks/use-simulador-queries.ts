@@ -41,11 +41,7 @@ export function useSimuladorQueries({
     servicos,
     baseScoreData,
     simScoreData,
-    isLoading:
-      loadingDividas ||
-      loadingServicos ||
-      loadingBaseScore ||
-      (shouldSimulateScore && loadingSimScore),
+    isLoading: loadingDividas || loadingServicos || loadingBaseScore,
+    isSimScoreLoading: shouldSimulateScore && loadingSimScore,
   };
 }
-

@@ -42,7 +42,9 @@ export default function SimuladorPageContainer() {
   const [rendaExtra, setRendaExtra] = useState(0);
   const [reducaoDespesas, setReducaoDespesas] = useState(0);
   const [quitarDivida, setQuitarDivida] = useState(0);
-  const shouldSimulateScore = quitarDivida > 0 || reducaoDespesas > 0;
+  const [reducaoDespesasCommit, setReducaoDespesasCommit] = useState(0);
+  const [quitarDividaCommit, setQuitarDividaCommit] = useState(0);
+  const shouldSimulateScore = quitarDividaCommit > 0 || reducaoDespesasCommit > 0;
 
   const {
     dividas,
@@ -50,10 +52,11 @@ export default function SimuladorPageContainer() {
     baseScoreData,
     simScoreData,
     isLoading,
+    isSimScoreLoading,
   } = useSimuladorQueries({
     shouldSimulateScore,
-    quitarDivida,
-    reducaoDespesas,
+    quitarDivida: quitarDividaCommit,
+    reducaoDespesas: reducaoDespesasCommit,
   });
 
   // Tab 2: Investimentos State
@@ -186,6 +189,8 @@ export default function SimuladorPageContainer() {
           setRendaExtra(0);
           setReducaoDespesas(0);
           setQuitarDivida(0);
+          setReducaoDespesasCommit(0);
+          setQuitarDividaCommit(0);
         }} data-testid="button-resetar-simulacao">
           <RefreshCw className="w-4 h-4 mr-2" /> Resetar
         </Button>
@@ -249,6 +254,7 @@ export default function SimuladorPageContainer() {
                       data-testid="slider-reducao-despesas"
                       value={[reducaoDespesas]}
                       onValueChange={([v]) => setReducaoDespesas(v)}
+                      onValueCommit={([v]) => setReducaoDespesasCommit(v)}
                       min={0}
                       max={Math.max(baseServicos, 1000)}
                       step={50}
@@ -272,6 +278,7 @@ export default function SimuladorPageContainer() {
                       data-testid="slider-quitar-divida"
                       value={[quitarDivida]}
                       onValueChange={([v]) => setQuitarDivida(v)}
+                      onValueCommit={([v]) => setQuitarDividaCommit(v)}
                       min={0}
                       max={Math.max(basePagar, 1000)}
                       step={100}
@@ -322,6 +329,9 @@ export default function SimuladorPageContainer() {
                           {simScore.valor}<span className="text-sm font-normal text-muted-foreground">/100</span>
                         </p>
                         <p className="text-xs text-muted-foreground">{simScore.classificacao}</p>
+                        {isSimScoreLoading ? (
+                          <p className="text-[11px] text-muted-foreground">Atualizando score simulado...</p>
+                        ) : null}
                       </div>
                     </div>
                   </div>
