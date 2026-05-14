@@ -95,6 +95,78 @@ const IMPORT_ALLOWED_MIME_BY_EXTENSION: Record<string, string[]> = {
 type CartoesTab = "resumo" | "fatura" | "compras";
 type CanonicalImportStatus = "novo" | "duplicata_exata" | "possivel_duplicata" | "invalido";
 
+function normalizeImportDebugText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isImportPdfDebugEnabled(): boolean {
+  if (!IS_DEV || typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem("debugImportPdf") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function extractItauDebugSectionLines(text: string): string[] {
+  const lines = text
+    .replace(/\r/g, "\n")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lines.length === 0) return [];
+
+  const startIndex = lines.findIndex((line) => {
+    const normalized = normalizeImportDebugText(line);
+    return normalized.includes("LANCAMENTOS: COMPRAS E SAQUES")
+      || normalized.includes("LANCAMENTOS COMPRAS E SAQUES");
+  });
+
+  if (startIndex < 0) {
+    return lines.slice(0, 120);
+  }
+
+  const endIndex = lines.findIndex((line, index) => {
+    if (index <= startIndex) return false;
+    const normalized = normalizeImportDebugText(line);
+    return normalized.startsWith("LANCAMENTOS NO CARTAO")
+      || normalized.startsWith("TOTAL DOS LANCAMENTOS ATUAIS")
+      || normalized.startsWith("COMPRAS PARCELADAS - PROXIMAS FATURAS")
+      || normalized.startsWith("COMPRAS PARCELADAS PROXIMAS FATURAS")
+      || normalized.startsWith("LIMITES DE CREDITO")
+      || normalized.startsWith("ENCARGOS COBRADOS NESTA FATURA");
+  });
+
+  const finalEnd = endIndex > startIndex ? endIndex : Math.min(lines.length, startIndex + 180);
+  return lines.slice(startIndex, finalEnd);
+}
+
+function logItauImportDebugSnapshot(debugData: {
+  fileName: string;
+  plainText: string;
+  positionalText: string;
+  mergedSignalText: string;
+}): void {
+  if (!IS_DEV || typeof console === "undefined") return;
+
+  const plainSectionLines = extractItauDebugSectionLines(debugData.plainText);
+  const positionalSectionLines = extractItauDebugSectionLines(debugData.positionalText);
+  const mergedSectionLines = extractItauDebugSectionLines(debugData.mergedSignalText);
+
+  console.groupCollapsed("[import-itau][debug] snapshot");
+  console.info("file", debugData.fileName);
+  console.info("plain.section.lines", plainSectionLines.map((line, index) => `${index + 1}. ${line}`));
+  console.info("positional.section.lines", positionalSectionLines.map((line, index) => `${index + 1}. ${line}`));
+  console.info("merged.section.lines", mergedSectionLines.map((line, index) => `${index + 1}. ${line}`));
+  console.groupEnd();
+}
+
 function normalizeCartoesTab(value: string | null | undefined): CartoesTab {
   if (value === "fatura" || value === "compras" || value === "resumo") {
     return value;
@@ -1717,6 +1789,7 @@ export default function CartoesPage() {
       let content = "";
       let pdfSignalText = "";
       let pdfIssuerHint: "itau" | undefined;
+      const debugImportPdf = isImportPdfDebugEnabled();
       if (extension === "pdf") {
         const pdfBuffer = await file.arrayBuffer();
         const extractedPdf = await extractPdfTextVariantsFromPdfBuffer(pdfBuffer);
@@ -1739,6 +1812,14 @@ export default function CartoesPage() {
         pdfSignalText = combinedPdfText;
         const itauDetectedFromSignals = detectItauInvoiceText(combinedPdfText);
         if (itauDetectedFromSignals) {
+          if (debugImportPdf) {
+            logItauImportDebugSnapshot({
+              fileName: file.name,
+              plainText: extractedPdf.plainText,
+              positionalText: extractedPdf.positionalText,
+              mergedSignalText: combinedPdfText,
+            });
+          }
           pdfIssuerHint = "itau";
           content = extractedPdf.positionalText || extractedPdf.plainText;
         } else {
@@ -1778,6 +1859,7 @@ export default function CartoesPage() {
           referenceBillingDate: importVencimento || undefined,
           selectedCardName: selectedCard?.nome ?? "",
           issuerHint: pdfIssuerHint,
+          debugImportPdf,
         });
         sourceType = "pdf";
       } else {
