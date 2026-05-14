@@ -1,4 +1,4 @@
-import { useState, useMemo, lazy, Suspense } from "react";
+import { useState, useMemo, lazy, Suspense, Fragment } from "react";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -207,7 +207,7 @@ export default function RelatoriosPageContainer() {
 
     // Pessoas
     const pessoasBody = pessoas.map(p => {
-      const pDividas = dividas.filter(d => d.pessoaId === p.id && d.status === "pendente");
+      const pDividas = filteredData.dividas.filter(d => d.pessoaId === p.id && d.status === "pendente");
       const total = pDividas.reduce((acc, d) => acc + (d.tipo === "receber" ? Number(d.valor) : -Number(d.valor)), 0);
       return [
         p.nome,
@@ -270,8 +270,6 @@ export default function RelatoriosPageContainer() {
       </div>
     );
   }
-
-  const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "—";
 
   return (
     <div className="mx-auto w-full max-w-[1600px] overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="relatorios-page">
@@ -450,7 +448,7 @@ export default function RelatoriosPageContainer() {
                         return acc;
                       }, {} as Record<string, CompraCartao[]>)
                     ).map(([cardName, items]) => (
-                      <>
+                      <Fragment key={cardName}>
                         <TableRow key={cardName} className="bg-muted/50 font-semibold">
                           <TableCell colSpan={4}>{cardName}</TableCell>
                         </TableRow>
@@ -468,7 +466,7 @@ export default function RelatoriosPageContainer() {
                             {fc(items.reduce((s, i) => s + Number(i.valorParcela), 0))}
                           </TableCell>
                         </TableRow>
-                      </>
+                      </Fragment>
                     ))
                   )}
                 </TableBody>
@@ -504,7 +502,7 @@ export default function RelatoriosPageContainer() {
                     </TableRow>
                   ) : (
                     pessoas.map((p) => {
-                      const pDividas = dividas.filter(d => d.pessoaId === p.id && d.status === "pendente");
+                      const pDividas = filteredData.dividas.filter(d => d.pessoaId === p.id && d.status === "pendente");
                       const total = pDividas.reduce((acc, d) => acc + (d.tipo === "receber" ? Number(d.valor) : -Number(d.valor)), 0);
                       return (
                         <TableRow key={p.id}>
