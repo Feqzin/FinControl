@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,9 +26,11 @@ import { useDividas, type DividaWithParcelas } from "@/hooks/useDividas";
 import { ParcelaRow } from "@/pages/dividas/components/parcela-row";
 import {
   FORMAS_PAGAMENTO_DIVIDA,
+  type DividaSortBy,
   formatDividaCurrency,
   formatDividaDate,
   isOverdueDate,
+  sortDividasForView,
 } from "@/pages/dividas/dividas.utils";
 
 export default function DividasPage() {
@@ -39,6 +41,7 @@ export default function DividasPage() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("todos");
   const [filterTipo, setFilterTipo] = useState<string>("todos");
+  const [sortBy, setSortBy] = useState<DividaSortBy>("vencimento_mais_proximo");
   const [highlightDividaId, setHighlightDividaId] = useState<string | null>(null);
 
   const [createTab, setCreateTab] = useState<"simples" | "parcelado">("simples");
@@ -90,6 +93,11 @@ export default function DividasPage() {
     error instanceof Error ? error.message : "Erro inesperado"
   );
 
+  const sortedFiltered = useMemo(
+    () => sortDividasForView(filtered, { sortBy, getPessoaNome, getDividaStatus }),
+    [filtered, getDividaStatus, getPessoaNome, sortBy],
+  );
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -118,7 +126,7 @@ export default function DividasPage() {
     cardElement.scrollIntoView({ behavior: "smooth", block: "center" });
     const timeoutHandle = setTimeout(() => setHighlightDividaId(null), 4000);
     return () => clearTimeout(timeoutHandle);
-  }, [highlightDividaId, filtered]);
+  }, [highlightDividaId, sortedFiltered]);
 
   const handleCreateSimple = () => {
     createSimpleMutation.mutate(simpleForm, {
@@ -427,14 +435,14 @@ export default function DividasPage() {
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,_1fr)_150px_150px] lg:items-center">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,_1fr)_150px_150px_200px] lg:items-center">
         <div className="relative w-full min-w-0 lg:max-w-none">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input data-testid="input-search-divida" className="pl-9" placeholder="Buscar pessoa ou descrição..."
             value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select value={filterTipo} onValueChange={setFilterTipo}>
-          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full" aria-label="Filtrar por tipo"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos tipos</SelectItem>
             <SelectItem value="receber">A receber</SelectItem>
@@ -442,16 +450,32 @@ export default function DividasPage() {
           </SelectContent>
         </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full" aria-label="Filtrar por status"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos status</SelectItem>
             <SelectItem value="pendente">Pendente</SelectItem>
             <SelectItem value="pago">Quitado</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={sortBy} onValueChange={(value) => setSortBy(value as DividaSortBy)}>
+          <SelectTrigger className="w-full" aria-label="Ordenar por">
+            <SelectValue placeholder="Ordenar por" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="vencimento_mais_proximo">Vencimento mais próximo</SelectItem>
+            <SelectItem value="vencimento_mais_distante">Vencimento mais distante</SelectItem>
+            <SelectItem value="mais_recente">Mais recente</SelectItem>
+            <SelectItem value="mais_antigo">Mais antigo</SelectItem>
+            <SelectItem value="maior_valor">Maior valor</SelectItem>
+            <SelectItem value="menor_valor">Menor valor</SelectItem>
+            <SelectItem value="nome_az">Nome A-Z</SelectItem>
+            <SelectItem value="nome_za">Nome Z-A</SelectItem>
+            <SelectItem value="status">Status</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
-      {filtered.length > 0 && (
+      {sortedFiltered.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="rounded-md bg-emerald-500/5 border border-emerald-500/10 p-3">
             <p className="text-xs text-muted-foreground mb-1">Total a receber (pendente)</p>
@@ -464,7 +488,7 @@ export default function DividasPage() {
         </div>
       )}
 
-      {filtered.length === 0 ? (
+      {sortedFiltered.length === 0 ? (
         <div className="text-center py-16" data-testid="empty-dividas">
           <Receipt className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
           <p className="text-lg font-medium text-muted-foreground">Nenhuma dívida encontrada</p>
@@ -472,7 +496,7 @@ export default function DividasPage() {
         </div>
       ) : prefs.mobileMode ? (
         <div className="space-y-3" data-testid="dividas-mobile-list">
-          {filtered.map((d) => {
+          {sortedFiltered.map((d) => {
             const status = getDividaStatus(d);
             const isHighlighted = highlightDividaId === d.id;
             const valorPendente = getDividaValorPendente(d);
@@ -633,7 +657,7 @@ export default function DividasPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map((d) => {
+          {sortedFiltered.map((d) => {
             const status = getDividaStatus(d);
             const isHighlighted = highlightDividaId === d.id;
             const valorPendente = getDividaValorPendente(d);

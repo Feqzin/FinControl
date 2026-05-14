@@ -123,17 +123,17 @@ export function CartoesComprasGrid({
             key={cartao.id}
             testId={`card-cartao-${cartao.id}`}
             header={(
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-3">
                   <BrandIconDisplay name={cartao.nome} iconeId={cartao.iconeId} size="md" />
-                  <div>
+                  <div className="min-w-0">
                     <CardTitle className="text-base">{cartao.nome}</CardTitle>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       Melhor compra: dia {cartao.melhorDiaCompra} · Venc: dia {cartao.diaVencimento}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="ml-auto flex items-center gap-1">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -193,7 +193,7 @@ export function CartoesComprasGrid({
 
             <Separator />
 
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <ShoppingBag className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Compras parceladas ({cardCompras.length})</span>
@@ -201,6 +201,7 @@ export function CartoesComprasGrid({
               <Button
                 variant="outline"
                 size="sm"
+                className="w-full sm:w-auto"
                 onClick={() => onAddCompra(cartao.id)}
                 data-testid={`button-add-compra-${cartao.id}`}
               >
@@ -221,7 +222,7 @@ export function CartoesComprasGrid({
 
                     return (
                     <div key={compra.id} className="fintech-surface-subtle touch-feedback p-2 text-sm" data-testid={`compra-${compra.id}`}>
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2.5">
                           <BrandIconDisplay name={compra.descricao} size="sm" />
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
@@ -254,7 +255,7 @@ export function CartoesComprasGrid({
                               {" · "}total: {formatCurrency(Number(compra.valorTotal))}
                             </p>
                           </div>
-                          <div className="flex flex-shrink-0 items-center gap-1">
+                          <div className="flex w-full flex-shrink-0 items-center justify-between gap-1 sm:w-auto sm:justify-end">
                             <span className="text-xs font-semibold">{formatCurrency(Number(compra.valorParcela))}</span>
                             {aguardandoReembolso ? (
                               <Button

@@ -200,21 +200,21 @@ export function DivisaoPanel({
 
   return (
     <div className="mt-3 pt-3 border-t space-y-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Divisão entre pessoas</p>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
           {vinculados.length > 0 && (
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex w-full flex-wrap items-center gap-2 text-xs text-muted-foreground lg:w-auto lg:justify-end">
               <span className="text-emerald-600 font-medium">Recebido: {formatCurrencyBRL(totalRecebido)}</span>
               <span className="text-amber-600 font-medium">
                 Pendente em {labelMes(mesReferencia)}: {formatCurrencyBRL(totalPendenteMes)}
               </span>
             </div>
           )}
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
             <Label className="text-xs text-muted-foreground">Período</Label>
             <Select value={periodoHistorico} onValueChange={(value) => setPeriodoHistorico(value as PeriodoHistorico)}>
-              <SelectTrigger className="h-8 w-[128px] text-xs">
+              <SelectTrigger className="h-8 w-full text-xs sm:w-[128px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -227,14 +227,14 @@ export function DivisaoPanel({
               <>
                 <Input
                   type="month"
-                  className="h-8 w-[132px] text-xs"
+                  className="h-8 w-full text-xs sm:w-[132px]"
                   value={mesInicioCustom}
                   onChange={(event) => setMesInicioCustom(event.target.value)}
                   aria-label="Mês inicial"
                 />
                 <Input
                   type="month"
-                  className="h-8 w-[132px] text-xs"
+                  className="h-8 w-full text-xs sm:w-[132px]"
                   value={mesFimCustom}
                   onChange={(event) => setMesFimCustom(event.target.value)}
                   aria-label="Mês final"
@@ -245,7 +245,7 @@ export function DivisaoPanel({
           {pessoasDisponiveis.length > 0 && (
             <Dialog open={openAdd} onOpenChange={setOpenAdd}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm" data-testid={`button-add-pessoa-servico-${servico.id}`}>
+                <Button variant="outline" size="sm" className="w-full sm:w-auto" data-testid={`button-add-pessoa-servico-${servico.id}`}>
                   <Plus className="w-3 h-3 mr-1" /> Adicionar pessoa
                 </Button>
               </DialogTrigger>

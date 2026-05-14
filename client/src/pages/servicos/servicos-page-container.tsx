@@ -488,7 +488,7 @@ export default function ServicosPage() {
                               )}
                             </div>
                           </div>
-                          <div className="col-span-2 sm:col-span-1 sm:col-start-3 flex items-center justify-between sm:justify-end gap-2 sm:self-start">
+                          <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 sm:col-span-1 sm:col-start-3 sm:justify-end sm:self-start">
                             <span className="fin-value-person whitespace-nowrap">{formatCurrencyBRL(Number(s.valorMensal))}</span>
                             <Badge variant={s.status === "ativo" ? "default" : "secondary"} className="h-7 px-2.5 text-xs font-semibold whitespace-nowrap">
                               {s.status === "ativo" ? "Ativo" : "Cancelado"}

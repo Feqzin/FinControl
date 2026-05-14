@@ -238,7 +238,7 @@ export function ImportFaturaDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] w-[calc(100vw-1rem)] max-w-2xl overflow-y-auto p-4 sm:w-full sm:p-6">
         <DialogHeader>
           <DialogTitle>Importar Fatura</DialogTitle>
         </DialogHeader>
@@ -267,12 +267,12 @@ export function ImportFaturaDialog({
           </div>
 
           <div className="rounded-md border px-3 py-2">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm font-medium">Histórico</p>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 text-xs"
+                className="h-7 w-full text-xs sm:w-auto"
                 onClick={() => setShowHistory((current) => !current)}
                 data-testid="button-toggle-import-history"
               >
@@ -371,7 +371,7 @@ export function ImportFaturaDialog({
             </TabsContent>
 
             <TabsContent value="arquivo" className="space-y-3">
-              <div className="border-2 border-dashed rounded-lg p-8 text-center space-y-3">
+              <div className="space-y-3 rounded-lg border-2 border-dashed p-4 text-center sm:p-8">
                 <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
                 <div>
                   <p className="text-sm font-medium">Arraste ou selecione o arquivo</p>
@@ -404,9 +404,9 @@ export function ImportFaturaDialog({
 
           {importItems.length > 0 && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm font-semibold">{importItems.length} compra(s) detectada(s)</p>
-                <div className="flex gap-1">
+                <div className="flex w-full flex-wrap gap-1 sm:w-auto sm:justify-end">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -435,18 +435,18 @@ export function ImportFaturaDialog({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Label className="text-xs flex-shrink-0">Vencimento da fatura (opcional):</Label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Label className="text-xs sm:flex-shrink-0">Vencimento da fatura (opcional):</Label>
                 <Input
                   type="date"
-                  className="h-7 text-xs flex-1"
+                  className="h-8 text-xs sm:h-7 sm:flex-1"
                   value={importVencimento}
                   onChange={(event) => setImportVencimento(event.target.value)}
                 />
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 text-xs flex-shrink-0"
+                  className="h-8 text-xs sm:h-7 sm:flex-shrink-0"
                   onClick={onApplyVencimentoToAll}
                   disabled={!importVencimento}
                 >
@@ -487,8 +487,8 @@ export function ImportFaturaDialog({
                       className={`text-sm ${rowClassName}`}
                     >
                       {isEditingRow ? (
-                        <div className="p-3 space-y-2">
-                          <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-2 p-3">
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             <div>
                               <p className="text-xs text-muted-foreground mb-1">Descricao</p>
                               <Input
@@ -508,7 +508,7 @@ export function ImportFaturaDialog({
                               />
                             </div>
                           </div>
-                          <div className="grid grid-cols-3 gap-2">
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                             <div>
                               <p className="text-xs text-muted-foreground mb-1">Data compra</p>
                               <Input
@@ -549,13 +549,13 @@ export function ImportFaturaDialog({
                               onChange={(event) => setImportEditForm({ ...importEditForm, vencimentoFatura: event.target.value })}
                             />
                           </div>
-                          <div className="flex gap-2">
-                            <Button size="sm" className="h-7 text-xs" onClick={onApplyImportEdit}>Salvar</Button>
-                            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setImportEditingId(null)}>Cancelar</Button>
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <Button size="sm" className="h-8 text-xs sm:h-7" onClick={onApplyImportEdit}>Salvar</Button>
+                            <Button variant="ghost" size="sm" className="h-8 text-xs sm:h-7" onClick={() => setImportEditingId(null)}>Cancelar</Button>
                           </div>
                         </div>
                       ) : (
-                        <div className="px-3 py-2 flex items-start gap-2">
+                        <div className="flex flex-wrap items-start gap-2 px-3 py-2">
                           <Select
                             value={selectValue}
                             onValueChange={(value) => setImportItems((items) => items.map((current, index) => {
@@ -577,7 +577,7 @@ export function ImportFaturaDialog({
                               };
                             }))}
                           >
-                            <SelectTrigger className="h-7 w-20 text-xs flex-shrink-0 mt-0.5">
+                            <SelectTrigger className="mt-0.5 h-7 w-20 flex-shrink-0 text-xs sm:mt-0">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -782,38 +782,40 @@ export function ImportFaturaDialog({
                             )}
                           </div>
 
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 flex-shrink-0 mt-0.5"
-                            aria-label={`Editar item ${idx + 1} da importação`}
-                            title="Editar item"
-                            onClick={() => {
-                              setImportEditingId(item.id);
-                                setImportEditForm({
-                                  descricao: item.descricao,
-                                  valor: String(item.valorParcela),
-                                  dataCompra: item.dataCompra,
-                                  parcelas: String(item.parcelas),
-                                  parcelaAtual: String(item.parcelaAtual),
-                                  vencimentoFatura: item.vencimentoFatura ?? "",
-                                });
-                              }}
-                              data-testid={`button-edit-import-item-${idx}`}
-                          >
-                            <Pencil className="w-3 h-3 text-muted-foreground" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 flex-shrink-0 mt-0.5"
-                            aria-label={`Remover item ${idx + 1} da importação`}
-                            title="Remover item"
-                            onClick={() => setImportItems((items) => items.filter((_, index) => index !== idx))}
-                            data-testid={`button-remove-import-item-${idx}`}
-                          >
-                            <X className="w-3 h-3 text-muted-foreground" />
-                          </Button>
+                          <div className="ml-auto flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="mt-0.5 h-7 w-7 flex-shrink-0 sm:mt-0"
+                              aria-label={`Editar item ${idx + 1} da importação`}
+                              title="Editar item"
+                              onClick={() => {
+                                setImportEditingId(item.id);
+                                  setImportEditForm({
+                                    descricao: item.descricao,
+                                    valor: String(item.valorParcela),
+                                    dataCompra: item.dataCompra,
+                                    parcelas: String(item.parcelas),
+                                    parcelaAtual: String(item.parcelaAtual),
+                                    vencimentoFatura: item.vencimentoFatura ?? "",
+                                  });
+                                }}
+                                data-testid={`button-edit-import-item-${idx}`}
+                            >
+                              <Pencil className="w-3 h-3 text-muted-foreground" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="mt-0.5 h-7 w-7 flex-shrink-0 sm:mt-0"
+                              aria-label={`Remover item ${idx + 1} da importação`}
+                              title="Remover item"
+                              onClick={() => setImportItems((items) => items.filter((_, index) => index !== idx))}
+                              data-testid={`button-remove-import-item-${idx}`}
+                            >
+                              <X className="w-3 h-3 text-muted-foreground" />
+                            </Button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -821,7 +823,7 @@ export function ImportFaturaDialog({
                 })}
               </div>
 
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">
                   {issuerMismatchWarning ? (
                     <div className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
@@ -851,6 +853,7 @@ export function ImportFaturaDialog({
                   ) : null}
                 </div>
                 <Button
+                  className="w-full sm:w-auto"
                   data-testid="button-confirmar-importacao"
                   disabled={
                     totalImportar === 0

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { formatCurrencyBRL, formatIsoDateToBR } from "../src/utils/formatters";
-import { isOverdueDate } from "../src/pages/dividas/dividas.utils";
+import { isOverdueDate, sortDividasForView } from "../src/pages/dividas/dividas.utils";
 import { getDaysUntilInvoice, getNextInvoiceDate, isParcelaVencida } from "../src/pages/cartoes/cartoes.utils";
 import {
   detectInvoiceIssuerForPdfText,
@@ -18,7 +18,7 @@ import {
   parsePdf,
 } from "../src/pages/cartoes/import-parser";
 import { suggestImportCardByText } from "../src/pages/cartoes/import-card-matching";
-import type { Cartao } from "@shared/schema";
+import type { Cartao, Divida, Parcela } from "@shared/schema";
 import {
   extractTextFromPdfBuffer,
   hasPdfMagicBytes,
@@ -46,6 +46,155 @@ test("dividas utils: identifica vencimento passado", () => {
   assert.equal(isOverdueDate("2000-01-01"), true);
   assert.equal(isOverdueDate("2999-01-01"), false);
   assert.equal(isOverdueDate(undefined), false);
+});
+
+function buildDividaFixture(overrides: Partial<Divida> = {}, parcelas: Parcela[] = []): Divida & { parcelas: Parcela[] } {
+  return {
+    id: overrides.id ?? "divida-1",
+    userId: overrides.userId ?? "user-1",
+    pessoaId: overrides.pessoaId ?? "pessoa-a",
+    tipo: overrides.tipo ?? "receber",
+    valor: overrides.valor ?? "100.00",
+    dataVencimento: overrides.dataVencimento ?? "2026-04-10",
+    status: overrides.status ?? "pendente",
+    dataPagamento: overrides.dataPagamento ?? null,
+    formaPagamento: overrides.formaPagamento ?? null,
+    observacaoPagamento: overrides.observacaoPagamento ?? null,
+    comprovantePath: overrides.comprovantePath ?? null,
+    comprovanteNome: overrides.comprovanteNome ?? null,
+    comprovanteMimeType: overrides.comprovanteMimeType ?? null,
+    comprovanteTamanho: overrides.comprovanteTamanho ?? null,
+    comprovanteEnviadoEm: overrides.comprovanteEnviadoEm ?? null,
+    descricao: overrides.descricao ?? "Teste",
+    totalParcelas: overrides.totalParcelas ?? null,
+    valorTotal: overrides.valorTotal ?? null,
+    parcelas,
+  };
+}
+
+const getPessoaNomeFixture = (pessoaId: string) => {
+  const names: Record<string, string> = {
+    "pessoa-a": "Ana",
+    "pessoa-b": "Bruno",
+    "pessoa-c": "Carla",
+  };
+  return names[pessoaId] ?? "—";
+};
+
+const getDividaStatusFixture = (divida: Divida & { parcelas: Parcela[] }) => {
+  if (divida.parcelas.length === 0) return divida.status;
+  if (divida.parcelas.every((parcela) => parcela.status === "pago")) return "pago";
+  return "pendente";
+};
+
+test("dividas utils: ordena por maior e menor valor", () => {
+  const dividas = [
+    buildDividaFixture({ id: "d1", pessoaId: "pessoa-a", valor: "120.00" }),
+    buildDividaFixture({ id: "d2", pessoaId: "pessoa-b", valor: "980.00" }),
+    buildDividaFixture({ id: "d3", pessoaId: "pessoa-c", valor: "50.00" }),
+  ];
+
+  const maiorValor = sortDividasForView(dividas, {
+    sortBy: "maior_valor",
+    getPessoaNome: getPessoaNomeFixture,
+    getDividaStatus: getDividaStatusFixture,
+  });
+  assert.deepEqual(maiorValor.map((divida) => divida.id), ["d2", "d1", "d3"]);
+
+  const menorValor = sortDividasForView(dividas, {
+    sortBy: "menor_valor",
+    getPessoaNome: getPessoaNomeFixture,
+    getDividaStatus: getDividaStatusFixture,
+  });
+  assert.deepEqual(menorValor.map((divida) => divida.id), ["d3", "d1", "d2"]);
+});
+
+test("dividas utils: ordena por nome A-Z", () => {
+  const dividas = [
+    buildDividaFixture({ id: "d1", pessoaId: "pessoa-c", valor: "80.00" }),
+    buildDividaFixture({ id: "d2", pessoaId: "pessoa-a", valor: "120.00" }),
+    buildDividaFixture({ id: "d3", pessoaId: "pessoa-b", valor: "60.00" }),
+  ];
+
+  const sorted = sortDividasForView(dividas, {
+    sortBy: "nome_az",
+    getPessoaNome: getPessoaNomeFixture,
+    getDividaStatus: getDividaStatusFixture,
+  });
+
+  assert.deepEqual(sorted.map((divida) => divida.id), ["d2", "d3", "d1"]);
+});
+
+test("dividas utils: vencimento mais próximo prioriza data relevante da parcela pendente", () => {
+  const parcelasA: Parcela[] = [
+    {
+      id: "pa-1",
+      userId: "user-1",
+      dividaId: "da",
+      numero: 1,
+      valor: "50.00",
+      dataVencimento: "2026-04-25",
+      status: "pendente",
+      dataPagamento: null,
+      formaPagamento: null,
+      observacaoPagamento: null,
+      comprovantePath: null,
+      comprovanteNome: null,
+      comprovanteMimeType: null,
+      comprovanteTamanho: null,
+      comprovanteEnviadoEm: null,
+    },
+  ];
+  const parcelasB: Parcela[] = [
+    {
+      id: "pb-1",
+      userId: "user-1",
+      dividaId: "db",
+      numero: 1,
+      valor: "70.00",
+      dataVencimento: "2026-04-05",
+      status: "pendente",
+      dataPagamento: null,
+      formaPagamento: null,
+      observacaoPagamento: null,
+      comprovantePath: null,
+      comprovanteNome: null,
+      comprovanteMimeType: null,
+      comprovanteTamanho: null,
+      comprovanteEnviadoEm: null,
+    },
+  ];
+
+  const dividas = [
+    buildDividaFixture({ id: "da", pessoaId: "pessoa-a", dataVencimento: "2026-05-10" }, parcelasA),
+    buildDividaFixture({ id: "db", pessoaId: "pessoa-b", dataVencimento: "2026-05-10" }, parcelasB),
+  ];
+
+  const sorted = sortDividasForView(dividas, {
+    sortBy: "vencimento_mais_proximo",
+    getPessoaNome: getPessoaNomeFixture,
+    getDividaStatus: getDividaStatusFixture,
+  });
+
+  assert.deepEqual(sorted.map((divida) => divida.id), ["db", "da"]);
+});
+
+test("dividas utils: filtros + ordenação combinam sem mudar totais", () => {
+  const dividas = [
+    buildDividaFixture({ id: "d1", pessoaId: "pessoa-a", tipo: "receber", status: "pendente", valor: "300.00" }),
+    buildDividaFixture({ id: "d2", pessoaId: "pessoa-b", tipo: "receber", status: "pendente", valor: "100.00" }),
+    buildDividaFixture({ id: "d3", pessoaId: "pessoa-c", tipo: "pagar", status: "pago", valor: "900.00" }),
+  ];
+
+  const filtradas = dividas.filter((divida) => divida.tipo === "receber" && divida.status === "pendente");
+  const sorted = sortDividasForView(filtradas, {
+    sortBy: "maior_valor",
+    getPessoaNome: getPessoaNomeFixture,
+    getDividaStatus: getDividaStatusFixture,
+  });
+
+  assert.deepEqual(sorted.map((divida) => divida.id), ["d1", "d2"]);
+  assert.equal(sorted.reduce((sum, divida) => sum + Number(divida.valor), 0), 400);
 });
 
 test("cartoes utils: calcula próxima fatura e dias restantes", () => {

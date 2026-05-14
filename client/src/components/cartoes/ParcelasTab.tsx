@@ -122,7 +122,7 @@ export function ParcelasTab({
           <>
             <SheetHeader className="mb-4">
               <SheetTitle>Parcelas — {viewingCompra.descricao}</SheetTitle>
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                 <span>{viewingCompra.parcelas}x de {formatCurrency(Number(viewingCompra.valorParcela))}</span>
                 <span>Total: {formatCurrency(Number(viewingCompra.valorTotal))}</span>
               </div>
@@ -285,7 +285,7 @@ export function ParcelasTab({
                         )}
                       </div>
 
-                      <div className="flex flex-shrink-0 items-center gap-1">
+                      <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-1">
                         {!isEditing && !isPaying && !pago ? (
                           <>
                             <Button
@@ -451,23 +451,23 @@ export function ParcelasTab({
                     ) : null}
 
                     {isPaying ? (
-                      <div className="flex items-center gap-2 border-t border-border/40 pt-1">
+                      <div className="flex flex-col gap-2 border-t border-border/40 pt-1 sm:flex-row sm:items-center">
                         <Input
                           type="date"
-                          className="h-7 flex-1 text-xs"
+                          className="h-8 flex-1 text-xs sm:h-7"
                           value={payParcelaData}
                           onChange={(event) => setPayParcelaData(event.target.value)}
                         />
                         <Button
                           size="sm"
-                          className="h-7 text-xs"
+                          className="h-8 text-xs sm:h-7"
                           onClick={() => onPayParcela(parcela.id, true, payParcelaData)}
                           data-testid={`button-confirm-pay-parcela-${parcela.id}`}
                           disabled={isSubmittingThisRow}
                         >
                           {isSubmittingThisRow ? "Salvando..." : "Confirmar"}
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setPayingParcelaId(null)}>
+                        <Button variant="ghost" size="sm" className="h-8 text-xs sm:h-7" onClick={() => setPayingParcelaId(null)}>
                           Cancelar
                         </Button>
                       </div>

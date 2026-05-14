@@ -209,7 +209,7 @@ export default function SimuladorPageContainer() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="space-y-6 p-4 sm:p-6">
         <Skeleton className="h-8 w-48" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[1, 2].map((i) => <Skeleton key={i} className="h-48" />)}
@@ -219,13 +219,13 @@ export default function SimuladorPageContainer() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl mx-auto" data-testid="simulador-page">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+    <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6" data-testid="simulador-page">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Simulador Financeiro</h1>
           <p className="text-muted-foreground">Explore cenários e planeje seu futuro sem alterar seus dados reais</p>
         </div>
-        <Button variant="outline" onClick={() => {
+        <Button variant="outline" className="w-full sm:w-auto" onClick={() => {
           setRendaExtra(0);
           setReducaoDespesas(0);
           setQuitarDivida(0);
@@ -238,14 +238,14 @@ export default function SimuladorPageContainer() {
       </div>
 
       <Tabs defaultValue="score" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-8">
-          <TabsTrigger value="score" className="flex items-center gap-2">
+        <TabsList className="mb-6 grid h-auto w-full grid-cols-1 gap-1 sm:mb-8 sm:grid-cols-3">
+          <TabsTrigger value="score" className="flex items-center gap-2 text-xs sm:text-sm">
             <Calculator className="w-4 h-4" /> Score Financeiro
           </TabsTrigger>
-          <TabsTrigger value="investimentos" className="flex items-center gap-2">
+          <TabsTrigger value="investimentos" className="flex items-center gap-2 text-xs sm:text-sm">
             <TrendingUp className="w-4 h-4" /> Investimentos
           </TabsTrigger>
-          <TabsTrigger value="independencia" className="flex items-center gap-2">
+          <TabsTrigger value="independencia" className="flex items-center gap-2 text-xs sm:text-sm">
             <Target className="w-4 h-4" /> Independência
           </TabsTrigger>
         </TabsList>
@@ -263,7 +263,7 @@ export default function SimuladorPageContainer() {
                 <CardContent className="space-y-6">
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
-                      <Label className="flex items-center gap-2">
+                      <Label className="flex flex-wrap items-center gap-2">
                         <ArrowUpRight className="w-4 h-4 text-emerald-600" /> Renda extra mensal
                       </Label>
                       <span className="text-sm font-bold text-emerald-600">{formatCurrency(rendaExtra)}</span>
@@ -287,7 +287,7 @@ export default function SimuladorPageContainer() {
 
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
-                      <Label className="flex items-center gap-2">
+                      <Label className="flex flex-wrap items-center gap-2">
                         <ArrowDownRight className="w-4 h-4 text-amber-600" /> Redução de gastos fixos
                         {!canReduceFixedExpenses ? (
                           <Badge variant="secondary" className="h-5 px-2 text-[10px] font-medium">
@@ -368,7 +368,7 @@ export default function SimuladorPageContainer() {
                   <CardTitle className="text-base">Resultado da simulação</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground uppercase tracking-wide">Situação atual</p>
                       <div className="rounded-md bg-muted/40 p-3">
@@ -409,7 +409,7 @@ export default function SimuladorPageContainer() {
                   {(variacaoSaldo !== 0 || variacaoScore !== 0) && (
                     <div className="space-y-2 pt-1">
                       {variacaoSaldo !== 0 && (
-                        <div className={`flex items-center justify-between p-2.5 rounded-md text-sm ${variacaoSaldo > 0 ? "bg-emerald-500/5" : "bg-red-500/5"}`}>
+                        <div className={`flex flex-wrap items-center justify-between gap-1.5 rounded-md p-2.5 text-sm ${variacaoSaldo > 0 ? "bg-emerald-500/5" : "bg-red-500/5"}`}>
                           <span className="text-muted-foreground">Variação no saldo</span>
                           <span className={`font-bold ${variacaoSaldo > 0 ? "text-emerald-600" : "text-red-600"}`}>
                             {variacaoSaldo > 0 ? "+" : ""}{fc(variacaoSaldo)}
@@ -417,7 +417,7 @@ export default function SimuladorPageContainer() {
                         </div>
                       )}
                       {variacaoScore !== 0 && (
-                        <div className={`flex items-center justify-between p-2.5 rounded-md text-sm ${variacaoScore > 0 ? "bg-emerald-500/5" : "bg-red-500/5"}`}>
+                        <div className={`flex flex-wrap items-center justify-between gap-1.5 rounded-md p-2.5 text-sm ${variacaoScore > 0 ? "bg-emerald-500/5" : "bg-red-500/5"}`}>
                           <span className="text-muted-foreground">Variação no score</span>
                           <span className={`font-bold flex items-center gap-1 ${variacaoScore > 0 ? "text-emerald-600" : "text-red-600"}`}>
                             {variacaoScore > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}

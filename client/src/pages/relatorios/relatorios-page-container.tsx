@@ -546,7 +546,7 @@ export default function RelatoriosPageContainer() {
                       const total = pDividas.reduce((acc, d) => acc + (d.tipo === "receber" ? Number(d.valor) : -Number(d.valor)), 0);
                       return (
                         <TableRow key={p.id}>
-                          <TableCell className="font-medium">{p.nome}</TableCell>
+                          <TableCell className="max-w-[180px] truncate font-medium" title={p.nome}>{p.nome}</TableCell>
                           <TableCell>
                             <Badge variant={total >= 0 ? "default" : "destructive"}>
                               {total >= 0 ? "Me deve" : "Eu devo"}
@@ -593,7 +593,7 @@ export default function RelatoriosPageContainer() {
                   ) : (
                     filteredData.activeServicos.map((s) => (
                       <TableRow key={s.id}>
-                        <TableCell className="font-medium">{s.nome}</TableCell>
+                        <TableCell className="max-w-[180px] truncate font-medium" title={s.nome}>{s.nome}</TableCell>
                         <TableCell>{s.categoria}</TableCell>
                         <TableCell className="fin-value-table text-right">
                           {fc(Number(s.valorMensal))}
@@ -622,7 +622,7 @@ export default function RelatoriosPageContainer() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border overflow-hidden">
+            <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -649,7 +649,7 @@ export default function RelatoriosPageContainer() {
                       };
                       return (
                         <TableRow key={p.id}>
-                          <TableCell className="font-medium">{p.nome}</TableCell>
+                          <TableCell className="max-w-[180px] truncate font-medium" title={p.nome}>{p.nome}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">{labels[p.tipo] || p.tipo}</TableCell>
                           <TableCell className="fin-value-table text-right text-indigo-600">
                             {fc(Number(p.valorAtual))}
