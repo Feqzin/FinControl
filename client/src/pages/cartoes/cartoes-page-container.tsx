@@ -1804,6 +1804,7 @@ export default function CartoesPage() {
     try {
       let content = "";
       let pdfSignalText = "";
+      let pdfPlainFallbackText = "";
       let pdfIssuerHint: "itau" | undefined;
       const debugImportPdf = isImportPdfDebugEnabled();
       if (extension === "pdf") {
@@ -1826,7 +1827,11 @@ export default function CartoesPage() {
         }
 
         pdfSignalText = combinedPdfText;
+        pdfPlainFallbackText = extractedPdf.plainText || combinedPdfText;
         const itauDetectedFromSignals = detectItauInvoiceText(combinedPdfText);
+        if (debugImportPdf && typeof console !== "undefined") {
+          console.info("[import-itau][debug] issuer.detected", itauDetectedFromSignals ? "itau" : "unknown");
+        }
         if (itauDetectedFromSignals) {
           if (debugImportPdf) {
             logItauImportDebugSnapshot({
@@ -1876,6 +1881,7 @@ export default function CartoesPage() {
           selectedCardName: selectedCard?.nome ?? "",
           issuerHint: pdfIssuerHint,
           debugImportPdf,
+          itauFallbackContent: pdfPlainFallbackText,
         });
         sourceType = "pdf";
       } else {

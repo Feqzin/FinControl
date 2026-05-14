@@ -81,6 +81,7 @@ export interface ParseOptions {
   selectedCardIssuer?: string | null;
   issuerHint?: InvoiceIssuer;
   debugImportPdf?: boolean;
+  itauFallbackContent?: string | null;
 }
 
 interface ParseNubankOptions extends ParseOptions {
@@ -354,6 +355,7 @@ const ITAU_END_SECTION_MARKERS_SPACED = ITAU_END_SECTION_MARKERS.map(normalizePo
 const ITAU_TX_START_SPLIT_REGEX = /(?=\d{2}\/\d{2}\s+[A-Za-z*])/g;
 const ITAU_DEBUG_MAX_LINES = 80;
 const ITAU_DEBUG_MAX_STRING_CHARS = 220;
+const ITAU_MIN_CONFIDENT_TRANSACTIONS = 3;
 
 function isItauParserDebugEnabled(options?: ParseItauOptions): boolean {
   const runningInTest = typeof process !== "undefined" && process.env.NODE_ENV === "test";
@@ -369,6 +371,18 @@ function clampItauDebugString(value: string): string {
 function toIndexedItauDebugLines(values: string[]): string[] {
   const limited = values.slice(0, ITAU_DEBUG_MAX_LINES);
   const indexed = limited.map((value, index) => `${index + 1}. ${clampItauDebugString(value)}`);
+  if (values.length > ITAU_DEBUG_MAX_LINES) {
+    indexed.push(`... +${values.length - ITAU_DEBUG_MAX_LINES} item(ns) oculto(s)`);
+  }
+  return indexed;
+}
+
+function toIndexedItauDebugEntries<T>(
+  values: T[],
+  formatter: (value: T, index: number) => string,
+): string[] {
+  const limited = values.slice(0, ITAU_DEBUG_MAX_LINES);
+  const indexed = limited.map((value, index) => `${index + 1}. ${clampItauDebugString(formatter(value, index))}`);
   if (values.length > ITAU_DEBUG_MAX_LINES) {
     indexed.push(`... +${values.length - ITAU_DEBUG_MAX_LINES} item(ns) oculto(s)`);
   }
@@ -1248,6 +1262,15 @@ function splitItauLineIntoFragments(rawLine: string): string[] {
   return parts;
 }
 
+function normalizeItauSectionForRegexExtraction(rawSection: string): string {
+  return rawSection
+    .replace(/\u00A0/g, " ")
+    .replace(/(\d,\d{2})(?=\d{2}\/\d{2}\s*[A-Za-z*])/g, "$1 ")
+    .replace(/(\d{2}\/\d{2})(?=[A-Za-z*])/g, "$1 ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function extractItauTransactionSections(content: string, debugEnabled: boolean): string[][] {
   const lines = content
     .replace(/\r/g, "\n")
@@ -1260,12 +1283,36 @@ function extractItauTransactionSections(content: string, debugEnabled: boolean):
   let collecting = false;
   let headerFound = false;
   let current: string[] = [];
+  const startBoundaries: number[] = [];
+  const endBoundaries: number[] = [];
+  const includeDecisions: Array<{
+    index: number;
+    line: string;
+    reason: string;
+    collecting: boolean;
+    headerFound: boolean;
+  }> = [];
 
-  for (const originalLine of lines) {
+  logItauParserDebug(debugEnabled, "positional.fullLines", {
+    lineCount: lines.length,
+    linesIndexed: toIndexedItauDebugLines(lines),
+  });
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const originalLine = lines[lineIndex] ?? "";
     let line = originalLine;
     let normalized = normalizePortableTextSpaced(line);
     let compactLine = normalizePortableTextCompact(line);
-    if (!normalized && !compactLine) continue;
+    if (!normalized && !compactLine) {
+      includeDecisions.push({
+        index: lineIndex,
+        line: originalLine,
+        reason: "empty_line",
+        collecting,
+        headerFound,
+      });
+      continue;
+    }
 
     const hasStartMarker = ITAU_START_SECTION_MARKERS_COMPACT.some((marker) => compactLine.includes(marker));
     if (hasStartMarker) {
@@ -1273,13 +1320,32 @@ function extractItauTransactionSections(content: string, debugEnabled: boolean):
       collecting = true;
       headerFound = false;
       current = [];
+      startBoundaries.push(lineIndex);
       line = line.replace(/^.*?LANCAMENTOS\s*:?\s*COMPRAS\s+E\s+SAQUES\s*/i, "").trim();
-      if (!line) continue;
+      if (!line) {
+        includeDecisions.push({
+          index: lineIndex,
+          line: originalLine,
+          reason: "start_marker_found_waiting_header",
+          collecting,
+          headerFound,
+        });
+        continue;
+      }
       normalized = normalizePortableTextSpaced(line);
       compactLine = normalizePortableTextCompact(line);
     }
 
-    if (!collecting) continue;
+    if (!collecting) {
+      includeDecisions.push({
+        index: lineIndex,
+        line: originalLine,
+        reason: "before_start_marker",
+        collecting,
+        headerFound,
+      });
+      continue;
+    }
 
     if (!headerFound) {
       const hasHeaderMarker = ITAU_SECTION_HEADER_MARKERS_COMPACT.some((marker) => compactLine.includes(marker));
@@ -1288,18 +1354,54 @@ function extractItauTransactionSections(content: string, debugEnabled: boolean):
       }
       if (hasHeaderMarker) {
         line = line.replace(/^.*?DATA\s+ESTABELECIMENTO\s+VALOR\s+EM\s+R\$?\s*/i, "").trim();
-        if (!line) continue;
+        if (!line) {
+          includeDecisions.push({
+            index: lineIndex,
+            line: originalLine,
+            reason: "header_marker_found_skipping_header_line",
+            collecting,
+            headerFound,
+          });
+          continue;
+        }
         normalized = normalizePortableTextSpaced(line);
         compactLine = normalizePortableTextCompact(line);
       }
-      if (!headerFound) continue;
+      if (!headerFound) {
+        includeDecisions.push({
+          index: lineIndex,
+          line: originalLine,
+          reason: "inside_section_waiting_header",
+          collecting,
+          headerFound,
+        });
+        continue;
+      }
     }
 
     const hasEndMarker = isItauStrongEndLine(line);
     const possibleDataLine = truncateLineAtItauEndMarker(line);
-    if (possibleDataLine) current.push(possibleDataLine);
+    if (possibleDataLine) {
+      current.push(possibleDataLine);
+      includeDecisions.push({
+        index: lineIndex,
+        line: originalLine,
+        reason: hasEndMarker ? "included_and_closed_by_end_marker" : "included_inside_section",
+        collecting,
+        headerFound,
+      });
+    } else {
+      includeDecisions.push({
+        index: lineIndex,
+        line: originalLine,
+        reason: hasEndMarker ? "closed_by_end_marker_without_payload" : "ignored_empty_after_truncate",
+        collecting,
+        headerFound,
+      });
+    }
     if (hasEndMarker) {
       if (current.length > 0) sections.push(current);
+      endBoundaries.push(lineIndex);
       collecting = false;
       headerFound = false;
       current = [];
@@ -1308,6 +1410,15 @@ function extractItauTransactionSections(content: string, debugEnabled: boolean):
 
   if (collecting && current.length > 0) sections.push(current);
   const flatLines = sections.flat();
+  logItauParserDebug(debugEnabled, "section.boundaries", {
+    starts: startBoundaries,
+    ends: endBoundaries,
+    sections: sections.length,
+  });
+  logItauParserDebug(debugEnabled, "section.includeDecisions", {
+    decisions: toIndexedItauDebugEntries(includeDecisions, (value) =>
+      `[idx=${value.index}] ${value.reason} | collecting=${value.collecting} header=${value.headerFound} | ${value.line}`),
+  });
   logItauParserDebug(debugEnabled, "sections.extracted", {
     sections: sections.length,
     preview: flatLines.slice(0, 12).map(clampItauDebugString),
@@ -1376,6 +1487,30 @@ function extractItauTransactionCandidatesFromMergedSections(sectionLines: string
   return candidates;
 }
 
+function extractItauTransactionCandidatesByRegex(sectionLines: string[]): string[] {
+  const sanitizedText = stripContentAfterItauEndMarker(sectionLines.join(" "));
+  if (!sanitizedText) return [];
+  const normalized = normalizeItauSectionForRegexExtraction(sanitizedText);
+  if (!normalized) return [];
+
+  const candidates: string[] = [];
+  const transactionRegex =
+    /(\d{2}\/\d{2})\s+([A-Za-z*][\s\S]*?)\s+([\-−]?\d[\d.]*,\d{2})(?=\s+(?:\d{2}\/\d{2}\s*[A-Za-z*]|LANCAMENTOS\b|TOTAL\b|COMPRAS\s+PARCELADAS\b|LIMITES\b|ENCARGOS\b|$))/gi;
+
+  let match: RegExpExecArray | null;
+  while ((match = transactionRegex.exec(normalized)) !== null) {
+    const dateToken = (match[1] ?? "").trim();
+    const description = (match[2] ?? "").trim();
+    const amount = (match[3] ?? "").trim();
+    if (!dateToken || !description || !amount) continue;
+    if (shouldIgnoreItauDescription(description)) continue;
+    if (shouldIgnoreItauCandidateLine(description)) continue;
+    candidates.push(`${dateToken} ${description} ${amount}`.replace(/\s+/g, " ").trim());
+  }
+
+  return candidates;
+}
+
 function extractItauInstallmentToken(input: string): { parcelaAtual: number; totalParcelas: number; raw: string } | null {
   const matches = Array.from(input.matchAll(/\b(\d{1,3})\/(\d{1,3})\b/g));
   for (let index = matches.length - 1; index >= 0; index -= 1) {
@@ -1406,8 +1541,9 @@ function parseItauInvoiceTextInternal(
   const sections = extractItauTransactionSections(content, debugEnabled);
   const lineCandidates = sections.flatMap(buildItauTransactionCandidates);
   const mergedCandidates = sections.flatMap(extractItauTransactionCandidatesFromMergedSections);
+  const regexCandidates = sections.flatMap(extractItauTransactionCandidatesByRegex);
   const candidateMap = new Map<string, string>();
-  for (const candidate of [...lineCandidates, ...mergedCandidates]) {
+  for (const candidate of [...lineCandidates, ...mergedCandidates, ...regexCandidates]) {
     const key = normalizePortableTextSpaced(candidate);
     if (!key) continue;
     if (!candidateMap.has(key)) candidateMap.set(key, candidate);
@@ -1419,9 +1555,11 @@ function parseItauInvoiceTextInternal(
 
   const referenceDate = extractItauReferenceDate(content, options) ?? new Date();
   const mismatchWarning = resolveItauCardMismatchWarning(options);
+  const seenParsedTransactionKeys = new Set<string>();
   logItauParserDebug(debugEnabled, "candidates.built", {
     lineCandidates: lineCandidates.length,
     mergedCandidates: mergedCandidates.length,
+    regexCandidates: regexCandidates.length,
     finalCandidates: candidates.length,
     preview: candidates.slice(0, 8).map(clampItauDebugString),
     indexedCandidates: toIndexedItauDebugLines(candidates),
@@ -1544,6 +1682,19 @@ function parseItauInvoiceTextInternal(
       reviewRequired: shouldReview,
       validationIssues: confidenceIssues,
     });
+
+    const parsedKey = [
+      parsedDate.iso,
+      valorParcela.toFixed(2),
+      String(totalParcelas),
+      String(parcelaAtual),
+      normalizePortableTextSpaced(parsedItem.descricao),
+    ].join("|");
+    if (seenParsedTransactionKeys.has(parsedKey)) {
+      discardedCandidates.push({ candidate, reason: "duplicate_candidate_same_transaction" });
+      continue;
+    }
+    seenParsedTransactionKeys.add(parsedKey);
 
     items.push({
       ...parsedItem,
@@ -1739,16 +1890,41 @@ export function parsePdf(
 ): ParseResult {
   const itauDetected = options?.issuerHint === "itau" || detectItauInvoiceText(content);
   if (itauDetected) {
+    const debugEnabled = isItauParserDebugEnabled(options);
     const strictItau = parseItauPdfTransactions(content, existentes, cartaoId, options);
-    if (strictItau.items.length === 0) {
+    let selectedItau = strictItau;
+
+    const fallbackItauContent = (options?.itauFallbackContent ?? "").trim();
+    const fallbackComparable = normalizePortableTextSpaced(fallbackItauContent);
+    const primaryComparable = normalizePortableTextSpaced(content);
+    const shouldTryFallback =
+      fallbackComparable.length > 0
+      && fallbackComparable !== primaryComparable
+      && strictItau.items.length < ITAU_MIN_CONFIDENT_TRANSACTIONS;
+
+    if (shouldTryFallback) {
+      const fallbackItau = parseItauPdfTransactions(fallbackItauContent, existentes, cartaoId, options);
+      logItauParserDebug(debugEnabled, "fallback.attempt", {
+        primaryItems: strictItau.items.length,
+        fallbackItems: fallbackItau.items.length,
+      });
+      if (fallbackItau.items.length > strictItau.items.length) {
+        selectedItau = {
+          ...fallbackItau,
+          parserUsed: "itau_textual_pdf_fallback_plain",
+        };
+      }
+    }
+
+    if (selectedItau.items.length === 0) {
       return {
-        ...strictItau,
+        ...selectedItau,
         parserWarnings: [ITAU_STRICT_EMPTY_WARNING],
         issuerDetected: "itau",
-        parserUsed: "itau_textual_pdf",
+        parserUsed: selectedItau.parserUsed ?? "itau_textual_pdf",
       };
     }
-    return strictItau;
+    return selectedItau;
   }
 
   const matchedParser = REGISTERED_INVOICE_PARSERS.find((candidate) => candidate.detect(content));

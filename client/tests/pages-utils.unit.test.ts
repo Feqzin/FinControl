@@ -571,6 +571,65 @@ test("import parser: PDF Itau com linhas coladas ainda extrai 6 compras reais", 
   assert.equal(result.items.some((item) => item.descricao.toLowerCase().includes("pagamento via conta")), false);
 });
 
+test("import parser: seção Itau não encerra em linha auxiliar 'outros' e só termina em marcador oficial", () => {
+  const pdfText = [
+    "Itaúcard",
+    "Resumo da fatura em R$",
+    "Vencimento 22/04/2026",
+    "Lançamentos: compras e saques",
+    "DATA ESTABELECIMENTO VALOR EM R$",
+    "04/09 Shopee*SHOPEE* 08/12 224,91",
+    "outros Guarulhos",
+    "18/09 EC *LGELECTRON 07/12 410,67",
+    "ELETRONICS TAUBATE",
+    "11/12 PG *WEBFONES W 05/06 108,16",
+    "outros SAO PAULO",
+    "25/03 NETFLIX ENTRETENIMENTOB 59,90",
+    "25/03 EBN *PLAYST 01/02 99,59",
+    "02/04 EBN *PLAYST 01/04 21,62",
+    "Compras parceladas - próximas faturas",
+    "Demais faturas 1.910,79",
+  ].join("\n");
+
+  const result = parsePdf(pdfText, [], "cartao-itau", { referenceBillingDate: "2026-04-22", issuerHint: "itau" });
+  assert.equal(result.items.length, 6);
+  assert.equal(result.items.some((item) => item.valorParcela === 1910.79), false);
+});
+
+test("import parser: Itau usa fallback plain quando extração posicional vier incompleta", () => {
+  const positionalIncomplete = [
+    "Itaúcard",
+    "Lançamentos: compras e saques",
+    "DATA ESTABELECIMENTO VALOR EM R$",
+    ".",
+    "04/09 Shopee*SHOPEE* 08/12 224,91",
+    "outros Guarulhos",
+  ].join("\n");
+
+  const plainFallback = [
+    "Itaúcard",
+    "Resumo da fatura em R$",
+    "Vencimento 22/04/2026",
+    "Lançamentos: compras e saques",
+    "DATA ESTABELECIMENTO VALOR EM R$",
+    "04/09 Shopee*SHOPEE* 08/12 224,91",
+    "18/09 EC *LGELECTRON 07/12 410,67",
+    "11/12 PG *WEBFONES W 05/06 108,16",
+    "25/03 NETFLIX ENTRETENIMENTOB 59,90",
+    "25/03 EBN *PLAYST 01/02 99,59",
+    "02/04 EBN *PLAYST 01/04 21,62",
+    "Compras parceladas - próximas faturas",
+  ].join("\n");
+
+  const result = parsePdf(positionalIncomplete, [], "cartao-itau", {
+    referenceBillingDate: "2026-04-22",
+    issuerHint: "itau",
+    itauFallbackContent: plainFallback,
+  });
+  assert.equal(result.items.length, 6);
+  assert.equal(result.parserUsed, "itau_textual_pdf_fallback_plain");
+});
+
 test("import parser: PDF desconhecido usa parser generico com revisão obrigatoria", () => {
   const pdfText = [
     "Fatura do Cartao XPTO",
