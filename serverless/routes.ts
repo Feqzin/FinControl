@@ -29,6 +29,7 @@ import { createPagamentosTimelineController } from "./controllers/pagamentos-tim
 import { createCloudBackupsController } from "./controllers/cloud-backups.controller.js";
 import { createSubscriptionController } from "./controllers/subscription.controller.js";
 import { createBillingController } from "./controllers/billing.controller.js";
+import { createReportsController } from "./controllers/reports.controller.js";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.js";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
 import { registerDebugDbPingRoute } from "./routes/debug-db-ping.route.js";
@@ -51,6 +52,7 @@ import { BillingService } from "./services/billing.service.js";
 import { requirePremiumFeature } from "./subscription-access.js";
 import { pool } from "./db.js";
 import { ENV } from "./env.js";
+import { ReportsService } from "./services/reports.service.js";
 
 function auditRoute(
   req: Request,
@@ -97,6 +99,7 @@ export function registerRoutes(app: Express): void {
   const cloudBackupsController = createCloudBackupsController(new CloudBackupsService());
   const subscriptionController = createSubscriptionController(new SubscriptionService(storage));
   const billingController = createBillingController(new BillingService());
+  const reportsController = createReportsController(new ReportsService(financialRepository));
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -113,6 +116,8 @@ export function registerRoutes(app: Express): void {
     rendasController,
     patrimoniosController,
   });
+
+  app.get("/api/reports/overview", requireAuth, reportsController.overview);
 
   registerDebugDbPingRoute(app);
 

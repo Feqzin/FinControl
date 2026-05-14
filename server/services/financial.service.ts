@@ -32,6 +32,15 @@ export type FinancialSimulationInput = {
   rendaExtra?: number;
 };
 
+export type CardConsolidatedSummary = {
+  cartaoId: string;
+  faturaAtual: number;
+  limiteComprometido: number;
+  limiteDisponivel: number;
+  saldoRestanteTotal: number;
+  quantidadeParcelasPendentes: number;
+};
+
 type MoneyValue = string | number | null | undefined;
 const RECOVERABLE_CONTEXT_LOAD_ERROR_CODES = new Set(["42P01", "42703"]);
 
@@ -645,6 +654,49 @@ export class FinancialService {
         valorPendente: round2(sumMoneyBy(parcelasPendentes, (p) => p.valor)),
       },
     };
+  }
+
+  async getCardSummaries(userId: string): Promise<CardConsolidatedSummary[]> {
+    const [cartoes, compras, parcelasCompra] = await Promise.all([
+      this.repository.getCartoes(userId),
+      this.repository.getComprasCartao(userId),
+      this.repository.getParcelasCompraByUser(userId),
+    ]);
+
+    const pendingRows = getOutstandingCardInstallments({ compras, parcelasCompra });
+    const byCard = new Map<string, typeof pendingRows>();
+    for (const row of pendingRows) {
+      const rows = byCard.get(row.cartaoId) ?? [];
+      rows.push(row);
+      byCard.set(row.cartaoId, rows);
+    }
+
+    return cartoes.map((cartao) => {
+      const cardRows = byCard.get(cartao.id) ?? [];
+      const nextPendingByCompra = new Map<string, (typeof cardRows)[number]>();
+      for (const row of cardRows) {
+        const current = nextPendingByCompra.get(row.compraId);
+        if (!current || row.numero < current.numero) {
+          nextPendingByCompra.set(row.compraId, row);
+        }
+      }
+
+      const faturaAtual = Array.from(nextPendingByCompra.values()).reduce(
+        (sum, row) => sum + toMoneyNumber(row.valor),
+        0,
+      );
+      const limiteComprometido = cardRows.reduce((sum, row) => sum + toMoneyNumber(row.valor), 0);
+      const limiteDisponivel = toMoneyNumber(cartao.limite) - limiteComprometido;
+
+      return {
+        cartaoId: cartao.id,
+        faturaAtual: round2(faturaAtual),
+        limiteComprometido: round2(limiteComprometido),
+        limiteDisponivel: round2(limiteDisponivel),
+        saldoRestanteTotal: round2(limiteComprometido),
+        quantidadeParcelasPendentes: cardRows.length,
+      };
+    });
   }
 
   async getScore(userId: string, simulation?: FinancialSimulationInput): Promise<FinancialScore> {

@@ -97,8 +97,16 @@ function createFinancialRepositoryBase(targetStorage: IStorage) {
       return targetStorage.getServicos(userId);
     },
 
+    async getPessoas(userId: string) {
+      return targetStorage.getPessoas(userId);
+    },
+
     async getRendas(userId: string) {
       return targetStorage.getRendas(userId);
+    },
+
+    async getPatrimonios(userId: string) {
+      return targetStorage.getPatrimonios(userId);
     },
 
     async getComprasByCartao(cartaoId: string, userId: string) {

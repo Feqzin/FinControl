@@ -27,10 +27,12 @@ import { createRendasController } from "./controllers/rendas.controller";
 import { createPatrimoniosController } from "./controllers/patrimonios.controller";
 import { createPagamentosTimelineController } from "./controllers/pagamentos-timeline.controller";
 import { createCloudBackupsController } from "./controllers/cloud-backups.controller";
+import { createReportsController } from "./controllers/reports.controller";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes";
 import { PagamentosTimelineService } from "./services/pagamentos-timeline.service";
 import { CloudBackupsService } from "./services/cloud-backups.service";
+import { ReportsService } from "./services/reports.service";
 import { requirePremiumFeature } from "./subscription-access";
 import { importRateLimit } from "./middleware/rate-limit";
 
@@ -65,6 +67,7 @@ export function registerRoutes(app: Express): void {
   const patrimoniosController = createPatrimoniosController(new PatrimoniosService(storage));
   const pagamentosTimelineController = createPagamentosTimelineController(new PagamentosTimelineService(financialRepository));
   const cloudBackupsController = createCloudBackupsController(new CloudBackupsService());
+  const reportsController = createReportsController(new ReportsService(financialRepository));
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -81,6 +84,8 @@ export function registerRoutes(app: Express): void {
     rendasController,
     patrimoniosController,
   });
+
+  app.get("/api/reports/overview", requireAuth, reportsController.overview);
 
   app.get("/api/pessoas/:pessoaId/timeline-pagamentos", requireAuth, pagamentosTimelineController.listByPessoa);
   app.patch("/api/pagamentos/:sourceType/:sourceId/observacao", requireAuth, pagamentosTimelineController.updateObservacao);
