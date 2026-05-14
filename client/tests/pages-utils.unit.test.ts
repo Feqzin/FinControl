@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { formatCurrencyBRL, formatIsoDateToBR } from "../src/utils/formatters";
 import { isOverdueDate, sortDividasForView } from "../src/pages/dividas/dividas.utils";
+import { sortPessoasForView } from "../src/pages/pessoas/pessoas-sort.utils";
 import { getDaysUntilInvoice, getNextInvoiceDate, isParcelaVencida } from "../src/pages/cartoes/cartoes.utils";
 import {
   detectInvoiceIssuerForPdfText,
@@ -18,7 +19,7 @@ import {
   parsePdf,
 } from "../src/pages/cartoes/import-parser";
 import { suggestImportCardByText } from "../src/pages/cartoes/import-card-matching";
-import type { Cartao, Divida, Parcela } from "@shared/schema";
+import type { Cartao, Divida, Parcela, Pessoa } from "@shared/schema";
 import {
   extractTextFromPdfBuffer,
   hasPdfMagicBytes,
@@ -195,6 +196,89 @@ test("dividas utils: filtros + ordenação combinam sem mudar totais", () => {
 
   assert.deepEqual(sorted.map((divida) => divida.id), ["d1", "d2"]);
   assert.equal(sorted.reduce((sum, divida) => sum + Number(divida.valor), 0), 400);
+});
+
+function buildPessoaFixture(overrides: Partial<Pessoa> = {}): Pessoa {
+  return {
+    id: overrides.id ?? "pessoa-1",
+    userId: overrides.userId ?? "user-1",
+    nome: overrides.nome ?? "Pessoa Teste",
+    tipo: overrides.tipo ?? "me_deve",
+    telefone: overrides.telefone ?? null,
+    observacao: overrides.observacao ?? null,
+  };
+}
+
+test("pessoas utils: ordena por nome A-Z e Z-A", () => {
+  const pessoas = [
+    buildPessoaFixture({ id: "p1", nome: "Carla" }),
+    buildPessoaFixture({ id: "p2", nome: "Ana" }),
+    buildPessoaFixture({ id: "p3", nome: "Bruno" }),
+  ];
+
+  const metricsById = {
+    p1: { saldo: 10, valorReceber: 100, valorPagar: 20 },
+    p2: { saldo: 30, valorReceber: 50, valorPagar: 10 },
+    p3: { saldo: 20, valorReceber: 200, valorPagar: 40 },
+  };
+
+  const asc = sortPessoasForView(pessoas, {
+    sortBy: "nome_az",
+    getMetrics: (pessoaId) => metricsById[pessoaId as keyof typeof metricsById],
+  });
+  assert.deepEqual(asc.map((pessoa) => pessoa.id), ["p2", "p3", "p1"]);
+
+  const desc = sortPessoasForView(pessoas, {
+    sortBy: "nome_za",
+    getMetrics: (pessoaId) => metricsById[pessoaId as keyof typeof metricsById],
+  });
+  assert.deepEqual(desc.map((pessoa) => pessoa.id), ["p1", "p3", "p2"]);
+});
+
+test("pessoas utils: ordena por maior e menor saldo", () => {
+  const pessoas = [
+    buildPessoaFixture({ id: "p1", nome: "Ana" }),
+    buildPessoaFixture({ id: "p2", nome: "Bruno" }),
+    buildPessoaFixture({ id: "p3", nome: "Carla" }),
+  ];
+  const metricsById = {
+    p1: { saldo: 120, valorReceber: 320, valorPagar: 90 },
+    p2: { saldo: -15, valorReceber: 200, valorPagar: 150 },
+    p3: { saldo: 45, valorReceber: 410, valorPagar: 20 },
+  };
+
+  const maiorSaldo = sortPessoasForView(pessoas, {
+    sortBy: "maior_saldo",
+    getMetrics: (pessoaId) => metricsById[pessoaId as keyof typeof metricsById],
+  });
+  assert.deepEqual(maiorSaldo.map((pessoa) => pessoa.id), ["p1", "p3", "p2"]);
+
+  const menorSaldo = sortPessoasForView(pessoas, {
+    sortBy: "menor_saldo",
+    getMetrics: (pessoaId) => metricsById[pessoaId as keyof typeof metricsById],
+  });
+  assert.deepEqual(menorSaldo.map((pessoa) => pessoa.id), ["p2", "p3", "p1"]);
+});
+
+test("pessoas utils: busca + ordenação juntos preserva ordenação esperada", () => {
+  const pessoas = [
+    buildPessoaFixture({ id: "p1", nome: "Ana Silva" }),
+    buildPessoaFixture({ id: "p2", nome: "Ana Costa" }),
+    buildPessoaFixture({ id: "p3", nome: "Bruno Ana" }),
+  ];
+  const metricsById = {
+    p1: { saldo: 20, valorReceber: 100, valorPagar: 55 },
+    p2: { saldo: 10, valorReceber: 80, valorPagar: 120 },
+    p3: { saldo: 0, valorReceber: 30, valorPagar: 10 },
+  };
+
+  const resultadoBusca = pessoas.filter((pessoa) => pessoa.nome.toLowerCase().includes("ana"));
+  const sorted = sortPessoasForView(resultadoBusca, {
+    sortBy: "maior_valor_pagar",
+    getMetrics: (pessoaId) => metricsById[pessoaId as keyof typeof metricsById],
+  });
+
+  assert.deepEqual(sorted.map((pessoa) => pessoa.id), ["p2", "p1", "p3"]);
 });
 
 test("cartoes utils: calcula próxima fatura e dias restantes", () => {

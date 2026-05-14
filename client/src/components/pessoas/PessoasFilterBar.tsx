@@ -1,19 +1,25 @@
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { PessoaSortBy } from "@/pages/pessoas/pessoas-sort.utils";
 
 type PessoasFilterBarProps = {
   search: string;
   filterTipo: string;
+  sortBy: PessoaSortBy;
   onSearchChange: (value: string) => void;
   onFilterChange: (value: string) => void;
+  onSortChange: (value: PessoaSortBy) => void;
 };
 
 export function PessoasFilterBar({
   search,
   filterTipo,
+  sortBy,
   onSearchChange,
   onFilterChange,
+  onSortChange,
 }: PessoasFilterBarProps) {
   return (
     <div className="rounded-2xl border border-border/60 bg-card p-2.5 shadow-sm sm:p-3">
@@ -36,6 +42,24 @@ export function PessoasFilterBar({
             <TabsTrigger value="atrasados" className="h-6 rounded-md px-2.5 text-xs" data-testid="filter-pessoas-atrasados">Atrasados</TabsTrigger>
           </TabsList>
         </Tabs>
+        <Select value={sortBy} onValueChange={(value) => onSortChange(value as PessoaSortBy)}>
+          <SelectTrigger
+            className="h-8 w-full rounded-lg border-border/70 bg-background text-sm lg:w-[230px]"
+            aria-label="Ordenar por"
+          >
+            <SelectValue placeholder="Ordenar por" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="nome_az">Nome A-Z</SelectItem>
+            <SelectItem value="nome_za">Nome Z-A</SelectItem>
+            <SelectItem value="maior_saldo">Maior saldo</SelectItem>
+            <SelectItem value="menor_saldo">Menor saldo</SelectItem>
+            <SelectItem value="maior_valor_receber">Maior valor a receber</SelectItem>
+            <SelectItem value="maior_valor_pagar">Maior valor a pagar</SelectItem>
+            <SelectItem value="mais_recente">Mais recente</SelectItem>
+            <SelectItem value="mais_antigo">Mais antigo</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );

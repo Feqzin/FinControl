@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +31,7 @@ import {
 } from "@/lib/subscription-plan-limit";
 import { CompraCartaoSearchPicker } from "@/components/compra-cartao-search-picker";
 import { PaymentTimeline } from "@/pages/pessoas/components/payment-timeline";
+import { sortPessoasForView, type PessoaSortBy } from "@/pages/pessoas/pessoas-sort.utils";
 import {
   Plus, Trash2, Receipt, Check,
   ArrowUpRight, ArrowDownRight, CreditCard, Repeat, AlertTriangle, ExternalLink, RotateCcw, Wallet, ArrowUpCircle, ArrowDownCircle,
@@ -52,6 +53,7 @@ export default function PessoasPage() {
   const [historyPessoa, setHistoryPessoa] = useState<Pessoa | null>(null);
   const [search, setSearch] = useState("");
   const [filterTipo, setFilterTipo] = useState<string>("todos");
+  const [sortBy, setSortBy] = useState<PessoaSortBy>("nome_az");
   const [payOpen, setPayOpen] = useState(false);
   const [payingDivida, setPayingDivida] = useState<Divida | null>(null);
   const [payForm, setPayForm] = useState({ formaPagamento: "pix" });
@@ -153,7 +155,7 @@ export default function PessoasPage() {
 
   useEffect(() => {
     setVisiblePessoasCount(prefs.mobileMode ? 12 : 18);
-  }, [prefs.mobileMode, search, filterTipo]);
+  }, [prefs.mobileMode, search, filterTipo, sortBy]);
 
   if (isLoading) {
     return (
@@ -213,6 +215,24 @@ export default function PessoasPage() {
       return resumoPessoa.alertas.comprasAtrasadas > 0 || resumoPessoa.dividas.comigo.vencidas > 0;
     })
     : filtered;
+  const sortedFilteredByStatus = useMemo(
+    () =>
+      sortPessoasForView(filteredByStatus, {
+        sortBy,
+        getMetrics: (pessoaId) => {
+          const resumo = getPessoaResumoConsolidado(pessoaId);
+          return {
+            saldo: resumo.saldoPessoa.saldoAtual ?? 0,
+            valorReceber:
+              (resumo.dividas.comigo.pendente ?? 0)
+              + (resumo.comprasVinculadas.pendentePessoa ?? 0)
+              + (resumo.servicosMesAtual.pendente ?? 0),
+            valorPagar: resumo.dividas.euDevo.pendente ?? 0,
+          };
+        },
+      }),
+    [filteredByStatus, getPessoaResumoConsolidado, sortBy],
+  );
   const headerTotalPessoas = filteredByStatus.length;
   const headerTotalPendente = filteredByStatus.reduce((sum, pessoa) => {
     const resumo = getPessoaResumoConsolidado(pessoa.id);
@@ -222,8 +242,8 @@ export default function PessoasPage() {
     const resumo = getPessoaResumoConsolidado(pessoa.id);
     return sum + resumo.dividas.comigo.pendente + resumo.comprasVinculadas.pendentePessoa + resumo.servicosMesAtual.pendente;
   }, 0);
-  const visiblePessoas = filteredByStatus.slice(0, visiblePessoasCount);
-  const hasMorePessoas = filteredByStatus.length > visiblePessoas.length;
+  const visiblePessoas = sortedFilteredByStatus.slice(0, visiblePessoasCount);
+  const hasMorePessoas = sortedFilteredByStatus.length > visiblePessoas.length;
   const visibleHistoryDividas = historyDividas.slice(0, historyVisible.dividas);
   const visibleHistoryCompras = historyCompras.slice(0, historyVisible.compras);
   const visibleHistoryServicos = historyServicoPessoas.slice(0, historyVisible.servicos);
@@ -338,11 +358,13 @@ export default function PessoasPage() {
       <PessoasFilterBar
         search={search}
         filterTipo={filterTipo}
+        sortBy={sortBy}
         onSearchChange={setSearch}
         onFilterChange={setFilterTipo}
+        onSortChange={setSortBy}
       />
 
-      {filteredByStatus.length === 0 ? (
+      {sortedFilteredByStatus.length === 0 ? (
         <PessoasEmptyState onAddPessoa={() => setOpenPessoa(true)} />
       ) : (
         <PessoasGrid
