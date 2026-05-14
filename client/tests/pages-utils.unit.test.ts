@@ -539,6 +539,38 @@ test("import parser: PDF Itau sem datas nao cai no generico e retorna warning se
   assert.equal(result.parserWarnings?.some((warning) => warning.toLowerCase().includes("parece ser itau")), true);
 });
 
+test("import parser: PDF Itau com linhas coladas ainda extrai 6 compras reais", () => {
+  const collapsedSectionLine = [
+    "04/09 Shopee*SHOPEE* 08/12 224,91",
+    "18/09 EC *LGELECTRON 07/12 410,67",
+    "11/12 PG *WEBFONES W 05/06 108,16",
+    "25/03 NETFLIX ENTRETENIMENTOB 59,90",
+    "25/03 EBN *PLAYST 01/02 99,59",
+    "02/04 EBN *PLAYST 01/04 21,62",
+    "Compras parceladas - proximas faturas",
+    "Demais faturas 1.910,79",
+  ].join(" ");
+
+  const pdfText = [
+    "Itaúcard",
+    "Resumo da fatura em R$",
+    "Pagamento via conta -924,85",
+    "Vencimento 22/04/2026",
+    "Lançamentos: compras e saques",
+    "DATA ESTABELECIMENTO VALOR EM R$",
+    collapsedSectionLine,
+    "Limites de crédito",
+  ].join("\n");
+
+  const result = parsePdf(pdfText, [], "cartao-itau", { referenceBillingDate: "2026-04-22" });
+  assert.equal(result.issuerDetected, "itau");
+  assert.equal(result.parserUsed, "itau_textual_pdf");
+  assert.equal(result.items.length, 6);
+  assert.equal(result.items.some((item) => item.valorParcela === 1910.79), false);
+  assert.equal(result.items.some((item) => item.descricao.toLowerCase().includes("demais faturas")), false);
+  assert.equal(result.items.some((item) => item.descricao.toLowerCase().includes("pagamento via conta")), false);
+});
+
 test("import parser: PDF desconhecido usa parser generico com revisão obrigatoria", () => {
   const pdfText = [
     "Fatura do Cartao XPTO",

@@ -341,10 +341,20 @@ function normalizePortableTextCompact(value: string): string {
   return normalizePortableText(value).replace(/[^A-Z0-9]/g, "");
 }
 
+function normalizePortableTextSpaced(value: string): string {
+  return normalizePortableText(value).replace(/\s+/g, " ").trim();
+}
+
 const ITAU_DETECTION_SIGNALS_COMPACT = ITAU_DETECTION_SIGNALS.map((signal) => normalizePortableTextCompact(signal));
 const ITAU_START_SECTION_MARKERS_COMPACT = ITAU_START_SECTION_MARKERS.map((marker) => normalizePortableTextCompact(marker));
 const ITAU_SECTION_HEADER_MARKERS_COMPACT = ITAU_SECTION_HEADER_MARKERS.map((marker) => normalizePortableTextCompact(marker));
 const ITAU_END_SECTION_MARKERS_COMPACT = ITAU_END_SECTION_MARKERS.map((marker) => normalizePortableTextCompact(marker));
+const ITAU_END_SECTION_MARKERS_SPACED = ITAU_END_SECTION_MARKERS.map(normalizePortableTextSpaced);
+const ITAU_TX_START_SPLIT_REGEX = /(?=\d{2}\/\d{2}\s+[A-Za-z*])/g;
+const ITAU_DEBUG_PARSER = (
+  (typeof process !== "undefined" && process.env.NODE_ENV === "test")
+  || Boolean(import.meta.env?.DEV)
+);
 
 function normalizeRecurringServiceText(value: string): string {
   return value
@@ -1158,6 +1168,44 @@ function resolveItauCardMismatchWarning(options?: ParseItauOptions): string | nu
   return "Esta fatura parece ser Itau, mas o cartao selecionado nao parece ser Itau. Revise antes de confirmar.";
 }
 
+function logItauParserDebug(event: string, details: Record<string, unknown>): void {
+  if (!ITAU_DEBUG_PARSER) return;
+  if (typeof console === "undefined") return;
+  console.info("[import-itau][debug]", event, details);
+}
+
+function findFirstMarkerIndex(normalizedLine: string, markers: readonly string[]): number {
+  let minIndex = -1;
+  for (const marker of markers) {
+    const index = normalizedLine.indexOf(marker);
+    if (index < 0) continue;
+    if (minIndex === -1 || index < minIndex) minIndex = index;
+  }
+  return minIndex;
+}
+
+function truncateLineAtItauEndMarker(rawLine: string): string {
+  const normalizedLine = normalizePortableTextSpaced(rawLine);
+  const markerIndex = findFirstMarkerIndex(normalizedLine, ITAU_END_SECTION_MARKERS_SPACED);
+  if (markerIndex < 0) return rawLine.trim();
+  return rawLine.slice(0, markerIndex).trim();
+}
+
+function stripContentAfterItauEndMarker(rawContent: string): string {
+  const normalizedContent = normalizePortableTextSpaced(rawContent);
+  const markerIndex = findFirstMarkerIndex(normalizedContent, ITAU_END_SECTION_MARKERS_SPACED);
+  if (markerIndex < 0) return rawContent;
+  return rawContent.slice(0, markerIndex).trim();
+}
+
+function splitItauLineIntoFragments(rawLine: string): string[] {
+  const cleaned = rawLine.replace(/\s+/g, " ").trim();
+  if (!cleaned) return [];
+  const parts = cleaned.split(ITAU_TX_START_SPLIT_REGEX).map((part) => part.trim()).filter(Boolean);
+  if (parts.length <= 1) return [cleaned];
+  return parts;
+}
+
 function extractItauTransactionSections(content: string): string[][] {
   const lines = content
     .replace(/\r/g, "\n")
@@ -1171,9 +1219,10 @@ function extractItauTransactionSections(content: string): string[][] {
   let headerFound = false;
   let current: string[] = [];
 
-  for (const line of lines) {
-    const normalized = normalizePortableText(line).replace(/\s+/g, " ").trim();
-    const compactLine = normalizePortableTextCompact(line);
+  for (const originalLine of lines) {
+    let line = originalLine;
+    let normalized = normalizePortableTextSpaced(line);
+    let compactLine = normalizePortableTextCompact(line);
     if (!normalized && !compactLine) continue;
 
     const hasStartMarker = ITAU_START_SECTION_MARKERS_COMPACT.some((marker) => compactLine.includes(marker));
@@ -1182,33 +1231,44 @@ function extractItauTransactionSections(content: string): string[][] {
       collecting = true;
       headerFound = false;
       current = [];
-      continue;
+      line = line.replace(/^.*?LANCAMENTOS\s*:?\s*COMPRAS\s+E\s+SAQUES\s*/i, "").trim();
+      if (!line) continue;
+      normalized = normalizePortableTextSpaced(line);
+      compactLine = normalizePortableTextCompact(line);
     }
 
     if (!collecting) continue;
-
-    const hasEndMarker = ITAU_END_SECTION_MARKERS_COMPACT.some((marker) => compactLine.includes(marker));
-    if (hasEndMarker) {
-      if (current.length > 0) sections.push(current);
-      collecting = false;
-      headerFound = false;
-      current = [];
-      continue;
-    }
 
     if (!headerFound) {
       const hasHeaderMarker = ITAU_SECTION_HEADER_MARKERS_COMPACT.some((marker) => compactLine.includes(marker));
       if (hasHeaderMarker || /^\d{2}\/\d{2}\b/.test(line)) {
         headerFound = true;
       }
-      if (hasHeaderMarker) continue;
+      if (hasHeaderMarker) {
+        line = line.replace(/^.*?DATA\s+ESTABELECIMENTO\s+VALOR\s+EM\s+R\$?\s*/i, "").trim();
+        if (!line) continue;
+        normalized = normalizePortableTextSpaced(line);
+        compactLine = normalizePortableTextCompact(line);
+      }
       if (!headerFound) continue;
     }
 
-    current.push(line);
+    const hasEndMarker = ITAU_END_SECTION_MARKERS_COMPACT.some((marker) => compactLine.includes(marker));
+    const possibleDataLine = truncateLineAtItauEndMarker(line);
+    if (possibleDataLine) current.push(possibleDataLine);
+    if (hasEndMarker) {
+      if (current.length > 0) sections.push(current);
+      collecting = false;
+      headerFound = false;
+      current = [];
+    }
   }
 
   if (collecting && current.length > 0) sections.push(current);
+  logItauParserDebug("sections.extracted", {
+    sections: sections.length,
+    preview: sections.flat().slice(0, 8),
+  });
   return sections;
 }
 
@@ -1217,37 +1277,58 @@ function buildItauTransactionCandidates(sectionLines: string[]): string[] {
   let pending = "";
 
   for (const line of sectionLines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const compactLine = normalizePortableTextCompact(trimmed);
-    if (shouldIgnoreItauDescription(trimmed)) continue;
-    if (ITAU_END_SECTION_MARKERS_COMPACT.some((marker) => compactLine.includes(marker))) continue;
+    const truncated = truncateLineAtItauEndMarker(line);
+    const fragments = splitItauLineIntoFragments(truncated);
+    for (const fragment of fragments) {
+      const trimmed = fragment.trim();
+      if (!trimmed) continue;
+      const compactLine = normalizePortableTextCompact(trimmed);
+      if (shouldIgnoreItauDescription(trimmed)) continue;
+      if (ITAU_END_SECTION_MARKERS_COMPACT.some((marker) => compactLine.includes(marker))) continue;
 
-    const startsWithDate = /^\d{2}\/\d{2}\b/.test(trimmed);
-    const hasTailValue = /(?:-|\u2212)?\d[\d.]*,\d{2}\s*$/.test(trimmed);
+      const startsWithDate = /^\d{2}\/\d{2}\b/.test(trimmed);
+      const hasTailValue = /(?:-|\u2212)?\d[\d.]*,\d{2}\s*$/.test(trimmed);
 
-    if (startsWithDate) {
-      if (pending) {
-        candidates.push(pending.trim());
-        pending = "";
+      if (startsWithDate) {
+        if (pending) {
+          candidates.push(pending.trim());
+          pending = "";
+        }
+        pending = trimmed;
+        if (hasTailValue) {
+          candidates.push(pending.trim());
+          pending = "";
+        }
+        continue;
       }
-      pending = trimmed;
+
+      if (!pending) continue;
+      pending = `${pending} ${trimmed}`.trim();
       if (hasTailValue) {
         candidates.push(pending.trim());
         pending = "";
       }
-      continue;
-    }
-
-    if (!pending) continue;
-    pending = `${pending} ${trimmed}`.trim();
-    if (hasTailValue) {
-      candidates.push(pending.trim());
-      pending = "";
     }
   }
 
   if (pending) candidates.push(pending.trim());
+  return candidates;
+}
+
+function extractItauTransactionCandidatesFromMergedSections(sectionLines: string[]): string[] {
+  const sanitizedText = stripContentAfterItauEndMarker(sectionLines.join(" "));
+  if (!sanitizedText) return [];
+
+  const candidates: string[] = [];
+  const regex = /(\d{2}\/\d{2}\s+[A-Za-z*][\s\S]*?)(?=(?:\s+\d{2}\/\d{2}\s+[A-Za-z*])|$)/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(sanitizedText)) !== null) {
+    const candidate = (match[1] ?? "").replace(/\s+/g, " ").trim();
+    if (!candidate) continue;
+    if (shouldIgnoreItauDescription(candidate)) continue;
+    if (!/(?:-|\u2212)?\d[\d.]*,\d{2}\s*$/.test(candidate)) continue;
+    candidates.push(candidate);
+  }
   return candidates;
 }
 
@@ -1278,13 +1359,27 @@ function parseItauInvoiceTextInternal(
   options?: ParseItauOptions,
 ): ParseResult {
   const sections = extractItauTransactionSections(content);
-  const candidates = sections.flatMap(buildItauTransactionCandidates);
+  const lineCandidates = sections.flatMap(buildItauTransactionCandidates);
+  const mergedCandidates = sections.flatMap(extractItauTransactionCandidatesFromMergedSections);
+  const candidateMap = new Map<string, string>();
+  for (const candidate of [...lineCandidates, ...mergedCandidates]) {
+    const key = normalizePortableTextSpaced(candidate);
+    if (!key) continue;
+    if (!candidateMap.has(key)) candidateMap.set(key, candidate);
+  }
+  const candidates = Array.from(candidateMap.values());
   const stats = createParseStats(source, candidates.length);
   const items: ParsedItem[] = [];
   let idx = 0;
 
   const referenceDate = extractItauReferenceDate(content, options) ?? new Date();
   const mismatchWarning = resolveItauCardMismatchWarning(options);
+  logItauParserDebug("candidates.built", {
+    lineCandidates: lineCandidates.length,
+    mergedCandidates: mergedCandidates.length,
+    finalCandidates: candidates.length,
+    preview: candidates.slice(0, 8),
+  });
 
   for (const candidate of candidates) {
     const lineMatch = candidate.match(/^(\d{2}\/\d{2})\s+(.+)$/);
