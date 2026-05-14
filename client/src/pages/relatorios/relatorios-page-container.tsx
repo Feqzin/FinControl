@@ -40,18 +40,8 @@ export default function RelatoriosPageContainer() {
   const [periodo, setPeriodo] = useState<Periodo>("mes_atual");
   const { visible } = useValuesVisibility();
   const fc = (v: number) => maskValue(formatCurrency(v), visible);
-  const {
-    rendas,
-    patrimonios,
-    compras,
-    cartoes,
-    servicos,
-    dividas,
-    pessoas,
-    isLoading,
-  } = useRelatoriosQueries();
 
-  const { interval, monthsInPeriod, label } = useMemo(() => {
+  const { interval, monthsInPeriod, label, startDateIso, endDateIso } = useMemo(() => {
     const now = new Date();
     let start: Date;
     let end: Date = endOfMonth(now);
@@ -86,12 +76,31 @@ export default function RelatoriosPageContainer() {
 
     const mCount = periodo === "total_geral" ? 1 : Math.max(1, differenceInMonths(end, start) + 1);
 
-    return { 
-      interval: { start, end }, 
+    return {
+      interval: { start, end },
       monthsInPeriod: mCount,
-      label: lbl
+      label: lbl,
+      startDateIso: format(start, "yyyy-MM-dd"),
+      endDateIso: format(end, "yyyy-MM-dd"),
     };
   }, [periodo]);
+
+  const {
+    rendas,
+    patrimonios,
+    compras,
+    cartoes,
+    servicos,
+    dividas,
+    pessoas,
+    isLoading,
+    isCompatibilityMode,
+    overviewSummary,
+  } = useRelatoriosQueries({
+    startDate: startDateIso,
+    endDate: endDateIso,
+    enableOverview: periodo !== "total_geral",
+  });
 
   const filteredData = useMemo(() => {
     const isInPeriod = (dateStr: string | null | undefined) => {
@@ -110,17 +119,24 @@ export default function RelatoriosPageContainer() {
     const activeRendas = rendas.filter(r => r.ativo);
     const activeServicos = servicos.filter(s => s.status === "ativo");
 
-    const totalRenda = activeRendas.reduce((acc, r) => acc + Number(r.valor), 0) * monthsInPeriod;
+    const totalRendaComputed = activeRendas.reduce((acc, r) => acc + Number(r.valor), 0) * monthsInPeriod;
     const totalCartoes = periodCompras.reduce((acc, c) => acc + Number(c.valorParcela), 0);
-    const totalDividasPagar = periodDividas
+    const totalDividasPagarComputed = periodDividas
       .filter(d => d.tipo === "pagar" && d.status === "pendente")
       .reduce((acc, d) => acc + Number(d.valor), 0);
-    const totalReceber = periodDividas
+    const totalReceberComputed = periodDividas
       .filter(d => d.tipo === "receber" && d.status === "pendente")
       .reduce((acc, d) => acc + Number(d.valor), 0);
-    const totalPatrimonio = patrimonios.reduce((acc, p) => acc + Number(p.valorAtual), 0);
+    const totalPatrimonioComputed = patrimonios.reduce((acc, p) => acc + Number(p.valorAtual), 0);
     
-    const totalServicosMensal = activeServicos.reduce((acc, s) => acc + Number(s.valorMensal), 0);
+    const totalServicosMensalComputed = activeServicos.reduce((acc, s) => acc + Number(s.valorMensal), 0);
+
+    const totalRenda = overviewSummary?.incomeTotal ?? totalRendaComputed;
+    const totalDividasPagar = overviewSummary?.dividasAPagar ?? totalDividasPagarComputed;
+    const totalReceber = overviewSummary?.valoresAReceber ?? totalReceberComputed;
+    const totalPatrimonio = overviewSummary?.patrimonioTotal ?? totalPatrimonioComputed;
+    const totalServicosMensal = overviewSummary?.servicosAtivosTotal ?? totalServicosMensalComputed;
+
     const saldoLiquido = totalRenda - totalCartoes - (totalServicosMensal * monthsInPeriod);
 
     return {
@@ -135,7 +151,7 @@ export default function RelatoriosPageContainer() {
       activeServicos,
       totalServicosMensal
     };
-  }, [compras, dividas, rendas, patrimonios, servicos, interval, monthsInPeriod]);
+  }, [compras, dividas, rendas, patrimonios, servicos, interval, monthsInPeriod, overviewSummary]);
 
   const chartData = useMemo(() => {
     const now = new Date();
@@ -277,6 +293,11 @@ export default function RelatoriosPageContainer() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Relatórios</h1>
           <p className="text-muted-foreground">Análise detalhada da sua saúde financeira</p>
+          {isCompatibilityMode ? (
+            <p className="text-xs text-amber-600 mt-1">
+              Exibindo dados em modo compatibilidade.
+            </p>
+          ) : null}
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <Select value={periodo} onValueChange={(v: Periodo) => setPeriodo(v)}>
