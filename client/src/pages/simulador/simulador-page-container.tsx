@@ -42,9 +42,13 @@ export default function SimuladorPageContainer() {
   const [rendaExtra, setRendaExtra] = useState(0);
   const [reducaoDespesas, setReducaoDespesas] = useState(0);
   const [quitarDivida, setQuitarDivida] = useState(0);
+  const [rendaExtraCommit, setRendaExtraCommit] = useState(0);
   const [reducaoDespesasCommit, setReducaoDespesasCommit] = useState(0);
   const [quitarDividaCommit, setQuitarDividaCommit] = useState(0);
-  const shouldSimulateScore = quitarDividaCommit > 0 || reducaoDespesasCommit > 0;
+  const shouldSimulateScore =
+    rendaExtraCommit > 0 ||
+    quitarDividaCommit > 0 ||
+    reducaoDespesasCommit > 0;
 
   const {
     dividas,
@@ -57,6 +61,7 @@ export default function SimuladorPageContainer() {
     shouldSimulateScore,
     quitarDivida: quitarDividaCommit,
     reducaoDespesas: reducaoDespesasCommit,
+    rendaExtra: rendaExtraCommit,
   });
 
   // Tab 2: Investimentos State
@@ -189,6 +194,7 @@ export default function SimuladorPageContainer() {
           setRendaExtra(0);
           setReducaoDespesas(0);
           setQuitarDivida(0);
+          setRendaExtraCommit(0);
           setReducaoDespesasCommit(0);
           setQuitarDividaCommit(0);
         }} data-testid="button-resetar-simulacao">
@@ -231,6 +237,7 @@ export default function SimuladorPageContainer() {
                       data-testid="slider-renda-extra"
                       value={[rendaExtra]}
                       onValueChange={([v]) => setRendaExtra(v)}
+                      onValueCommit={([v]) => setRendaExtraCommit(v)}
                       min={0}
                       max={10000}
                       step={100}

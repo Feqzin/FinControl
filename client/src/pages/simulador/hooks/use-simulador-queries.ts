@@ -6,12 +6,14 @@ type UseSimuladorQueriesArgs = {
   shouldSimulateScore: boolean;
   quitarDivida: number;
   reducaoDespesas: number;
+  rendaExtra: number;
 };
 
 export function useSimuladorQueries({
   shouldSimulateScore,
   quitarDivida,
   reducaoDespesas,
+  rendaExtra,
 }: UseSimuladorQueriesArgs) {
   const { data: dividas = [], isLoading: loadingDividas } = useQuery<Divida[]>({
     queryKey: ["/api/dividas"],
@@ -23,12 +25,13 @@ export function useSimuladorQueries({
     queryKey: ["/api/financial/score"],
   });
   const { data: simScoreData, isLoading: loadingSimScore } = useQuery<FinancialScore>({
-    queryKey: ["/api/financial/score", "sim", quitarDivida, reducaoDespesas],
+    queryKey: ["/api/financial/score", "sim", quitarDivida, reducaoDespesas, rendaExtra],
     enabled: shouldSimulateScore,
     queryFn: async () => {
       const params = new URLSearchParams();
       if (quitarDivida > 0) params.set("quitarDivida", String(quitarDivida));
       if (reducaoDespesas > 0) params.set("reducaoDespesas", String(reducaoDespesas));
+      if (rendaExtra > 0) params.set("rendaExtra", String(rendaExtra));
       const q = params.toString();
       const res = await fetch(`/api/financial/score${q ? `?${q}` : ""}`, { credentials: "include" });
       if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
