@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { formatCurrencyBRL, formatIsoDateToBR } from "../src/utils/formatters";
 import { isOverdueDate, sortDividasForView } from "../src/pages/dividas/dividas.utils";
 import { sortPessoasForView } from "../src/pages/pessoas/pessoas-sort.utils";
+import { sortServicosForView } from "../src/pages/servicos/servicos-sort.utils";
 import { getDaysUntilInvoice, getNextInvoiceDate, isParcelaVencida } from "../src/pages/cartoes/cartoes.utils";
 import {
   detectInvoiceIssuerForPdfText,
@@ -19,7 +20,7 @@ import {
   parsePdf,
 } from "../src/pages/cartoes/import-parser";
 import { suggestImportCardByText } from "../src/pages/cartoes/import-card-matching";
-import type { Cartao, Divida, Parcela, Pessoa } from "@shared/schema";
+import type { Cartao, Divida, Parcela, Pessoa, Servico } from "@shared/schema";
 import {
   extractTextFromPdfBuffer,
   hasPdfMagicBytes,
@@ -209,6 +210,21 @@ function buildPessoaFixture(overrides: Partial<Pessoa> = {}): Pessoa {
   };
 }
 
+function buildServicoFixture(overrides: Partial<Servico> = {}): Servico {
+  return {
+    id: overrides.id ?? "servico-1",
+    userId: overrides.userId ?? "user-1",
+    nome: overrides.nome ?? "Servico teste",
+    categoria: overrides.categoria ?? "streaming",
+    valorMensal: overrides.valorMensal ?? "19.90",
+    dataCobranca: overrides.dataCobranca ?? 10,
+    formaPagamento: overrides.formaPagamento ?? "cartao",
+    compraCartaoId: overrides.compraCartaoId ?? null,
+    status: overrides.status ?? "ativo",
+    iconeId: overrides.iconeId ?? null,
+  };
+}
+
 test("pessoas utils: ordena por nome A-Z e Z-A", () => {
   const pessoas = [
     buildPessoaFixture({ id: "p1", nome: "Carla" }),
@@ -279,6 +295,73 @@ test("pessoas utils: busca + ordenação juntos preserva ordenação esperada", 
   });
 
   assert.deepEqual(sorted.map((pessoa) => pessoa.id), ["p2", "p1", "p3"]);
+});
+
+test("servicos utils: ordena por nome A-Z e Z-A", () => {
+  const servicos = [
+    buildServicoFixture({ id: "s1", nome: "YouTube Premium" }),
+    buildServicoFixture({ id: "s2", nome: "Apple iCloud" }),
+    buildServicoFixture({ id: "s3", nome: "Netflix" }),
+  ];
+
+  const asc = sortServicosForView(servicos, { sortBy: "nome_az", referenceDay: 10 });
+  assert.deepEqual(asc.map((servico) => servico.id), ["s2", "s3", "s1"]);
+
+  const desc = sortServicosForView(servicos, { sortBy: "nome_za", referenceDay: 10 });
+  assert.deepEqual(desc.map((servico) => servico.id), ["s1", "s3", "s2"]);
+});
+
+test("servicos utils: ordena por maior e menor valor", () => {
+  const servicos = [
+    buildServicoFixture({ id: "s1", valorMensal: "89.90", nome: "Plano A" }),
+    buildServicoFixture({ id: "s2", valorMensal: "19.90", nome: "Plano B" }),
+    buildServicoFixture({ id: "s3", valorMensal: "49.90", nome: "Plano C" }),
+  ];
+
+  const maiorValor = sortServicosForView(servicos, { sortBy: "maior_valor", referenceDay: 10 });
+  assert.deepEqual(maiorValor.map((servico) => servico.id), ["s1", "s3", "s2"]);
+
+  const menorValor = sortServicosForView(servicos, { sortBy: "menor_valor", referenceDay: 10 });
+  assert.deepEqual(menorValor.map((servico) => servico.id), ["s2", "s3", "s1"]);
+});
+
+test("servicos utils: ordena por dia de cobrança mais próximo", () => {
+  const servicos = [
+    buildServicoFixture({ id: "s1", dataCobranca: 2, nome: "Dia 2" }),
+    buildServicoFixture({ id: "s2", dataCobranca: 12, nome: "Dia 12" }),
+    buildServicoFixture({ id: "s3", dataCobranca: 29, nome: "Dia 29" }),
+  ];
+
+  const sorted = sortServicosForView(servicos, { sortBy: "dia_cobranca_mais_proximo", referenceDay: 10 });
+  assert.deepEqual(sorted.map((servico) => servico.id), ["s2", "s3", "s1"]);
+});
+
+test("servicos utils: ordena por status e categoria", () => {
+  const servicos = [
+    buildServicoFixture({ id: "s1", nome: "Seguro A", categoria: "seguro", status: "cancelado" }),
+    buildServicoFixture({ id: "s2", nome: "Netflix", categoria: "streaming", status: "ativo" }),
+    buildServicoFixture({ id: "s3", nome: "Spotify", categoria: "streaming", status: "ativo" }),
+    buildServicoFixture({ id: "s4", nome: "Canva", categoria: "software", status: "ativo" }),
+  ];
+
+  const byStatus = sortServicosForView(servicos, { sortBy: "status", referenceDay: 10 });
+  assert.deepEqual(byStatus.map((servico) => servico.id), ["s4", "s2", "s3", "s1"]);
+
+  const byCategory = sortServicosForView(servicos, { sortBy: "categoria", referenceDay: 10 });
+  assert.deepEqual(byCategory.map((servico) => servico.id), ["s1", "s4", "s2", "s3"]);
+});
+
+test("servicos utils: filtro + ordenação juntos preserva ordem esperada", () => {
+  const servicos = [
+    buildServicoFixture({ id: "s1", nome: "Netflix", status: "ativo", valorMensal: "59.90" }),
+    buildServicoFixture({ id: "s2", nome: "Spotify", status: "cancelado", valorMensal: "21.90" }),
+    buildServicoFixture({ id: "s3", nome: "Apple iCloud", status: "ativo", valorMensal: "9.90" }),
+  ];
+
+  const somenteAtivos = servicos.filter((servico) => servico.status === "ativo");
+  const sorted = sortServicosForView(somenteAtivos, { sortBy: "maior_valor", referenceDay: 10 });
+
+  assert.deepEqual(sorted.map((servico) => servico.id), ["s1", "s3"]);
 });
 
 test("cartoes utils: calcula próxima fatura e dias restantes", () => {

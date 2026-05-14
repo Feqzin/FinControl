@@ -29,6 +29,7 @@ import {
 } from "@/lib/subscription-plan-limit";
 import { CompraCartaoSearchPicker } from "@/components/compra-cartao-search-picker";
 import { DivisaoPanel } from "@/pages/servicos/components/divisao-panel";
+import { sortServicosForView, type ServicoSortBy } from "@/pages/servicos/servicos-sort.utils";
 import { Plus, Repeat, Trash2, X, Check, Users, ChevronUp, Pencil, CreditCard, Unlink2 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
 import { formatCurrencyBRL } from "@/utils/formatters";
@@ -48,12 +49,36 @@ const categorias = [
 
 const COMPRA_NONE_VALUE = "__none__";
 
+const SERVICO_SORT_OPTIONS: Array<{ value: ServicoSortBy; label: string }> = [
+  { value: "dia_cobranca_mais_proximo", label: "Dia de cobrança mais próximo" },
+  { value: "dia_cobranca_mais_distante", label: "Dia de cobrança mais distante" },
+  { value: "nome_az", label: "Nome A-Z" },
+  { value: "nome_za", label: "Nome Z-A" },
+  { value: "maior_valor", label: "Maior valor" },
+  { value: "menor_valor", label: "Menor valor" },
+  { value: "categoria", label: "Categoria" },
+  { value: "status", label: "Status" },
+  { value: "mais_recente", label: "Mais recente" },
+  { value: "mais_antigo", label: "Mais antigo" },
+];
+
+const categoriaLabelByValue = new Map(categorias.map((categoria) => [categoria.value, categoria.label] as const));
+
+function formatCategoriaFallback(categoria: string): string {
+  return categoria
+    .split(/[_-\s]+/)
+    .filter((token) => token.length > 0)
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1).toLowerCase())
+    .join(" ");
+}
+
 export default function ServicosPage() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [expandedDivisao, setExpandedDivisao] = useState<Set<string>>(new Set());
   const [servicosTab, setServicosTab] = useState<"ativos" | "pendentes" | "pagos" | "divisao" | "vinculos">("ativos");
   const [mesReferencia, setMesReferencia] = useState(format(new Date(), "yyyy-MM"));
+  const [sortBy, setSortBy] = useState<ServicoSortBy>("dia_cobranca_mais_proximo");
   const [form, setForm] = useState({
     nome: "",
     categoria: "streaming",
@@ -183,15 +208,32 @@ export default function ServicosPage() {
     }
   });
 
-  const byCategory = categorias
-    .map((cat) => ({
-      ...cat,
-      servicos: servicosFiltradosPorAba.filter((s) => s.categoria === cat.value),
-      total: servicosFiltradosPorAba
-        .filter((s) => s.categoria === cat.value && s.status === "ativo")
-        .reduce((sum, s) => sum + Number(s.valorMensal), 0),
-    }))
-    .filter((c) => c.servicos.length > 0);
+  const servicosOrdenados = sortServicosForView(servicosFiltradosPorAba, {
+    sortBy,
+    referenceDay: new Date().getDate(),
+  });
+
+  const byCategory = servicosOrdenados.reduce<Array<{ value: string; label: string; servicos: Servico[]; total: number }>>(
+    (groups, servico) => {
+      const existing = groups.find((group) => group.value === servico.categoria);
+      if (existing) {
+        existing.servicos.push(servico);
+        if (servico.status === "ativo") {
+          existing.total += Number(servico.valorMensal);
+        }
+        return groups;
+      }
+
+      groups.push({
+        value: servico.categoria,
+        label: categoriaLabelByValue.get(servico.categoria) ?? formatCategoriaFallback(servico.categoria),
+        servicos: [servico],
+        total: servico.status === "ativo" ? Number(servico.valorMensal) : 0,
+      });
+      return groups;
+    },
+    [],
+  );
 
   if (isLoading) {
     return (
@@ -373,18 +415,42 @@ export default function ServicosPage() {
             <TabsTrigger value="vinculos" data-testid="tab-servicos-vinculos">Vínculos cartão</TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:w-auto">
-          <Label htmlFor="servicos-mes-referencia" className="text-xs text-muted-foreground">
-            Mês referência
-          </Label>
-          <Input
-            id="servicos-mes-referencia"
-            type="month"
-            value={mesReferencia}
-            onChange={(event) => setMesReferencia(event.target.value)}
-            className="h-9 w-full sm:w-[180px]"
-            data-testid="input-servicos-mes-referencia"
-          />
+        <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end lg:w-auto">
+          <div className="space-y-1">
+            <Label htmlFor="servicos-mes-referencia" className="text-xs text-muted-foreground">
+              Mês referência
+            </Label>
+            <Input
+              id="servicos-mes-referencia"
+              type="month"
+              value={mesReferencia}
+              onChange={(event) => setMesReferencia(event.target.value)}
+              className="h-9 w-full sm:w-[180px]"
+              data-testid="input-servicos-mes-referencia"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="servicos-sort-by" className="text-xs text-muted-foreground">
+              Ordenar por
+            </Label>
+            <Select value={sortBy} onValueChange={(value) => setSortBy(value as ServicoSortBy)}>
+              <SelectTrigger
+                id="servicos-sort-by"
+                className="h-9 w-full sm:w-[240px]"
+                data-testid="select-servicos-sort-by"
+                aria-label="Ordenar serviços por"
+              >
+                <SelectValue placeholder="Ordenar por" />
+              </SelectTrigger>
+              <SelectContent>
+                {SERVICO_SORT_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
