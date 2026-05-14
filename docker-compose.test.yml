@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${TEST_DB_PASSWORD:-fincontrol_test}
       POSTGRES_DB: ${TEST_DB_NAME:-debt_control_test}
     ports:
-      - "${TEST_DB_PORT:-54329}:5432"
+      - "${TEST_DB_PORT:-55432}:5432"
     healthcheck:
       test:
         - CMD-SHELL
