@@ -335,6 +335,8 @@ export default function PatrimonioPage() {
                         size="icon"
                         className="h-8 w-8"
                         data-testid={`button-edit-${p.id}`}
+                        aria-label="Editar patrimônio"
+                        title="Editar patrimônio"
                         onClick={() => {
                           setEditingPatrimonio(p);
                           setFormData({
@@ -353,6 +355,8 @@ export default function PatrimonioPage() {
                         size="icon"
                         className="h-8 w-8 text-destructive"
                         data-testid={`button-delete-${p.id}`}
+                        aria-label="Excluir patrimônio"
+                        title="Excluir patrimônio"
                         onClick={() => {
                           if (confirm("Tem certeza que deseja remover este item?")) {
                             deleteMutation.mutate(p.id);

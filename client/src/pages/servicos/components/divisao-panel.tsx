@@ -345,10 +345,19 @@ export function DivisaoPanel({
                             size="icon"
                             className="h-5 w-5"
                             onClick={() => updateValorMutation.mutate({ id: sp.id, valorDevido: editingValor })}
+                            aria-label="Salvar valor devido"
+                            title="Salvar valor devido"
                           >
                             <Check className="w-3 h-3 text-emerald-600" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setEditingValorId(null)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5"
+                            onClick={() => setEditingValorId(null)}
+                            aria-label="Cancelar edição de valor"
+                            title="Cancelar edição de valor"
+                          >
                             <X className="w-3 h-3 text-red-500" />
                           </Button>
                         </div>
@@ -413,6 +422,8 @@ export function DivisaoPanel({
                         className="h-7 w-7 text-red-500 hover:text-red-600"
                         onClick={() => removeMutation.mutate(sp.id)}
                         data-testid={`button-remove-pessoa-servico-${sp.id}`}
+                        aria-label="Remover pessoa da divisão"
+                        title="Remover pessoa da divisão"
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>

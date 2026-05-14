@@ -341,6 +341,8 @@ export default function ImportarPage() {
                             size="icon"
                             onClick={() => removeItem(index)}
                             data-testid={`button-remove-preview-${index}`}
+                            aria-label={`Remover item ${index + 1} da prévia`}
+                            title="Remover item da prévia"
                           >
                             <Trash2 className="w-4 h-4 text-muted-foreground" />
                           </Button>

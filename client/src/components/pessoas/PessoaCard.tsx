@@ -229,6 +229,7 @@ export function PessoaCard({
               className="h-8 w-8 rounded-lg"
               onClick={() => onEdit(pessoa)}
               data-testid={`button-edit-pessoa-${pessoa.id}`}
+              aria-label="Editar pessoa"
               title="Editar"
             >
               <Pencil className="h-4 w-4" />
@@ -239,6 +240,7 @@ export function PessoaCard({
               className="h-8 w-8 rounded-lg text-red-500 hover:text-red-600"
               onClick={() => onDelete(pessoa)}
               data-testid={`button-delete-pessoa-${pessoa.id}`}
+              aria-label="Excluir pessoa"
               title="Excluir"
             >
               <Trash2 className="h-4 w-4" />

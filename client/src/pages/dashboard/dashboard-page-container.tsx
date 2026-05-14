@@ -500,7 +500,13 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full" title="Personalizar">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 rounded-full"
+                    aria-label="Personalizar painel"
+                    title="Personalizar"
+                  >
                     <Settings2 className="h-4 w-4" />
                   </Button>
                 </DialogTrigger>

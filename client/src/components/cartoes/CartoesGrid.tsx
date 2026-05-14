@@ -195,6 +195,8 @@ export function CartoesGrid({
                             className="h-7 w-7"
                             onClick={() => onDeleteCompra(compra)}
                             data-testid={`button-delete-compra-fatura-${compra.id}`}
+                            aria-label="Excluir compra da fatura"
+                            title="Excluir compra"
                           >
                             <Trash2 className="h-3 w-3 text-muted-foreground" />
                           </Button>

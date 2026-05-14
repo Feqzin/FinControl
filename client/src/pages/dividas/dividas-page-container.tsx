@@ -562,6 +562,8 @@ export default function DividasPage() {
                             className="h-7 w-7"
                             onClick={() => setExpandedId(isExpanded ? null : d.id)}
                             data-testid={`button-expand-mobile-${d.id}`}
+                            aria-label={isExpanded ? "Recolher parcelas" : "Expandir parcelas"}
+                            title={isExpanded ? "Recolher parcelas" : "Expandir parcelas"}
                           >
                             {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                           </Button>
@@ -614,6 +616,8 @@ export default function DividasPage() {
                                 setPayParcelaForm({ formaPagamento: "pix", dataPagamento: format(new Date(), "yyyy-MM-dd") });
                               }}
                               data-testid={`button-pay-mobile-parcela-${p.id}`}
+                              aria-label={`Marcar parcela ${p.numero} como paga`}
+                              title="Marcar parcela como paga"
                             >
                               <Check className="w-3.5 h-3.5 text-emerald-600" />
                             </Button>
@@ -699,12 +703,15 @@ export default function DividasPage() {
                       </div>
                       {hasParce && status !== "pago" && (
                         <Button variant="ghost" size="icon" onClick={() => { setAnteciparDivida(d); setAnteciparOpen(true); }}
+                          aria-label="Antecipar parcelas"
                           title="Antecipar parcelas" data-testid={`button-antecipar-${d.id}`}>
                           <FastForward className="w-4 h-4 text-primary" />
                         </Button>
                       )}
                       {hasParce && (
                         <Button variant="ghost" size="icon" onClick={() => setExpandedId(isExpanded ? null : d.id)}
+                          aria-label={isExpanded ? "Recolher parcelas" : "Expandir parcelas"}
+                          title={isExpanded ? "Recolher parcelas" : "Expandir parcelas"}
                           data-testid={`button-expand-${d.id}`}>
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </Button>
@@ -723,10 +730,14 @@ export default function DividasPage() {
                           setRecalcularForm({ novoTotal: String(d.totalParcelas || d.parcelas.length || ""), primeiroVencimento: "" });
                           setShowRecalcular(false);
                         }}
+                        aria-label="Editar dívida"
+                        title="Editar dívida"
                         data-testid={`button-edit-divida-${d.id}`}>
                         <Pencil className="w-4 h-4 text-muted-foreground" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => handleDeleteDivida(d.id)}
+                        aria-label="Excluir dívida"
+                        title="Excluir dívida"
                         data-testid={`button-delete-divida-${d.id}`}>
                         <Trash2 className="w-4 h-4 text-muted-foreground" />
                       </Button>

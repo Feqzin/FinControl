@@ -310,6 +310,8 @@ export default function MetasPage() {
                             size="icon"
                             onClick={() => deleteMutation.mutate(meta.id)}
                             data-testid={`button-delete-meta-${meta.id}`}
+                            aria-label="Excluir meta"
+                            title="Excluir meta"
                           >
                             <Trash2 className="w-4 h-4 text-muted-foreground" />
                           </Button>
@@ -338,7 +340,13 @@ export default function MetasPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-bold text-emerald-600">{formatCurrency(Number(meta.valorAlvo))}</span>
-                          <Button variant="ghost" size="icon" onClick={() => deleteMutation.mutate(meta.id)}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => deleteMutation.mutate(meta.id)}
+                            aria-label="Excluir meta concluída"
+                            title="Excluir meta concluída"
+                          >
                             <Trash2 className="w-4 h-4 text-muted-foreground" />
                           </Button>
                         </div>

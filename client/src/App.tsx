@@ -118,6 +118,7 @@ function EyeToggle() {
       size="icon"
       onClick={toggle}
       data-testid="button-toggle-visibility"
+      aria-label={visible ? "Ocultar valores" : "Mostrar valores"}
       title={visible ? "Ocultar valores" : "Mostrar valores"}
       className="transition-all duration-200"
     >

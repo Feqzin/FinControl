@@ -162,6 +162,7 @@ export function CartoesMobileTabs({
                                   variant="ghost"
                                   size="icon"
                                   className="h-7 w-7"
+                                  aria-label="Ver parcelas da compra"
                                   title="Ver parcelas"
                                   onClick={() => onOpenParcelas(compra)}
                                   data-testid={`button-view-parcelas-mobile-${compra.id}`}
@@ -172,6 +173,7 @@ export function CartoesMobileTabs({
                                   variant="ghost"
                                   size="icon"
                                   className="h-7 w-7"
+                                  aria-label="Excluir compra"
                                   title="Excluir compra"
                                   onClick={() => onDeleteCompra(compra)}
                                   data-testid={`button-delete-compra-mobile-${compra.id}`}

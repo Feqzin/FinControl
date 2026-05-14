@@ -1378,6 +1378,8 @@ export default function PessoasPage() {
                                   size="icon"
                                   onClick={() => { setPayingDivida(d); setPayOpen(true); }}
                                   data-testid={`button-pay-history-${d.id}`}
+                                  aria-label="Marcar dívida como paga"
+                                  title="Marcar como paga"
                                 >
                                   <Check className="w-4 h-4 text-emerald-600" />
                                 </Button>
@@ -1498,6 +1500,7 @@ export default function PessoasPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7"
+                                aria-label="Abrir compra no cartão"
                                 title="Abrir no cartão"
                                 onClick={() => handleOpenCompraNoCartao(c.cartaoId, c.id)}
                                 data-testid={`button-abrir-compra-cartao-${c.id}`}
@@ -1508,6 +1511,7 @@ export default function PessoasPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7"
+                                aria-label="Remover vínculo da compra"
                                 title="Remover vinculo"
                                 onClick={() =>
                                   desvincularCompraMutation.mutate(c.id, {

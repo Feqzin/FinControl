@@ -79,6 +79,8 @@ export function ParcelaRow({
             className="h-7 w-7"
             onClick={() => onEdit(parcela)}
             data-testid={`button-edit-parcela-${parcela.id}`}
+            aria-label={`Editar parcela ${parcela.numero}`}
+            title="Editar parcela"
           >
             <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
           </Button>
@@ -89,6 +91,8 @@ export function ParcelaRow({
             onClick={() => onPay(parcela)}
             disabled={isPaying}
             data-testid={`button-pay-parcela-${parcela.id}`}
+            aria-label={`Marcar parcela ${parcela.numero} como paga`}
+            title="Marcar como paga"
           >
             <Check className="w-3.5 h-3.5 text-emerald-600" />
           </Button>

@@ -349,6 +349,7 @@ export default function RendaPage() {
                     size="icon"
                     className="h-8 w-8"
                     onClick={() => toggleAtivo(renda)}
+                    aria-label={renda.ativo ? "Desativar renda" : "Ativar renda"}
                     title={renda.ativo ? "Desativar" : "Ativar"}
                     data-testid={`button-toggle-ativo-${renda.id}`}
                   >
@@ -359,6 +360,8 @@ export default function RendaPage() {
                     size="icon"
                     className="h-8 w-8"
                     onClick={() => handleEdit(renda)}
+                    aria-label="Editar renda"
+                    title="Editar renda"
                     data-testid={`button-edit-renda-${renda.id}`}
                   >
                     <Pencil className="h-4 w-4" />
@@ -372,6 +375,8 @@ export default function RendaPage() {
                         deleteRendaMutation.mutate(renda.id);
                       }
                     }}
+                    aria-label="Excluir renda"
+                    title="Excluir renda"
                     data-testid={`button-delete-renda-${renda.id}`}
                   >
                     <Trash2 className="h-4 w-4" />

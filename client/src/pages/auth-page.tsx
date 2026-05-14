@@ -170,7 +170,14 @@ export default function AuthPage() {
                     </div>
                     <div className="flex gap-2">
                       <Input value={window.location.origin + resetLink} readOnly className="text-xs" />
-                      <Button type="button" variant="outline" size="icon" onClick={copyLink}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={copyLink}
+                        aria-label={copied ? "Link copiado" : "Copiar link de redefinição"}
+                        title={copied ? "Link copiado" : "Copiar link"}
+                      >
                         {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
                       </Button>
                     </div>

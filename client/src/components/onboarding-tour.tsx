@@ -426,6 +426,8 @@ function TourCard({
           className="flex-shrink-0 -mt-1 -mr-1 w-7 h-7"
           onClick={onClose}
           data-testid="button-close-tour"
+          aria-label="Fechar tour"
+          title="Fechar tour"
         >
           <X className="w-3.5 h-3.5" />
         </Button>

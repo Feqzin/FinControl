@@ -154,6 +154,7 @@ export function AppSidebar() {
               size="icon"
               onClick={toggle}
               data-testid="button-theme-toggle"
+              aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"}
               title={theme === "dark" ? "Modo claro" : "Modo escuro"}
             >
               {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -163,6 +164,8 @@ export function AppSidebar() {
               size="icon"
               onClick={() => logout.mutate()}
               data-testid="button-logout"
+              aria-label="Sair da conta"
+              title="Sair"
             >
               <LogOut className="w-4 h-4" />
             </Button>

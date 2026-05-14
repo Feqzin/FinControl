@@ -139,6 +139,8 @@ export function CartoesComprasGrid({
                     size="icon"
                     onClick={() => onEditCartao(cartao)}
                     data-testid={`button-edit-cartao-${cartao.id}`}
+                    aria-label="Editar cartão"
+                    title="Editar cartão"
                   >
                     <Pencil className="h-4 w-4 text-muted-foreground" />
                   </Button>
@@ -147,6 +149,8 @@ export function CartoesComprasGrid({
                     size="icon"
                     onClick={() => onDeleteCartao(cartao.id)}
                     data-testid={`button-delete-cartao-${cartao.id}`}
+                    aria-label="Excluir cartão"
+                    title="Excluir cartão"
                   >
                     <Trash2 className="h-4 w-4 text-muted-foreground" />
                   </Button>
@@ -257,6 +261,7 @@ export function CartoesComprasGrid({
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7"
+                                aria-label="Marcar compra como reembolsada"
                                 title="Marcar como reembolsado"
                                 onClick={() => onMarcarReembolso(compra.id)}
                                 data-testid={`button-reembolso-${compra.id}`}
@@ -268,6 +273,7 @@ export function CartoesComprasGrid({
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
+                              aria-label="Ver parcelas da compra"
                               title="Ver parcelas"
                               onClick={() => onOpenParcelas(compra)}
                               data-testid={`button-view-parcelas-${compra.id}`}
@@ -280,6 +286,8 @@ export function CartoesComprasGrid({
                               className="h-7 w-7"
                               onClick={() => onEditCompra(compra)}
                               data-testid={`button-edit-compra-${compra.id}`}
+                              aria-label="Editar compra"
+                              title="Editar compra"
                             >
                               <Pencil className="h-3 w-3 text-muted-foreground" />
                             </Button>
@@ -289,6 +297,8 @@ export function CartoesComprasGrid({
                               className="h-7 w-7"
                               onClick={() => onDeleteCompra(compra)}
                               data-testid={`button-delete-compra-${compra.id}`}
+                              aria-label="Excluir compra"
+                              title="Excluir compra"
                             >
                               <Trash2 className="h-3 w-3 text-muted-foreground" />
                             </Button>

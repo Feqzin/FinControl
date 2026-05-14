@@ -58,7 +58,13 @@ export function DashboardPageHeader({
 
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" title="Personalizar Painel">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-full"
+                aria-label="Personalizar painel"
+                title="Personalizar Painel"
+              >
                 <Settings2 className="h-4 w-4" />
               </Button>
             </DialogTrigger>

@@ -502,6 +502,7 @@ export default function ServicosPage() {
                               size="icon"
                               className="h-7 w-7"
                               onClick={() => toggleDivisao(s.id)}
+                              aria-label={isDivisaoOpen ? "Recolher divisão entre pessoas" : "Abrir divisão entre pessoas"}
                               title="Divisão entre pessoas"
                               data-testid={`button-divisao-${s.id}`}
                             >
@@ -520,6 +521,7 @@ export default function ServicosPage() {
                               title="Remover vínculo com cartão"
                               data-testid={`button-unlink-cartao-servico-${s.id}`}
                               disabled={!s.compraCartaoId}
+                              aria-label="Remover vínculo com cartão"
                             >
                               <Unlink2 className="w-4 h-4 text-muted-foreground" />
                             </Button>
@@ -540,6 +542,8 @@ export default function ServicosPage() {
                                 });
                               }}
                               data-testid={`button-edit-servico-${s.id}`}
+                              aria-label="Editar serviço"
+                              title="Editar serviço"
                             >
                               <Pencil className="w-4 h-4 text-muted-foreground" />
                             </Button>
@@ -554,6 +558,8 @@ export default function ServicosPage() {
                                 )
                               }
                               data-testid={`button-toggle-servico-${s.id}`}
+                              aria-label={s.status === "ativo" ? "Cancelar serviço" : "Reativar serviço"}
+                              title={s.status === "ativo" ? "Cancelar serviço" : "Reativar serviço"}
                             >
                               {s.status === "ativo" ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
                             </Button>
@@ -567,6 +573,8 @@ export default function ServicosPage() {
                                 })
                               }
                               data-testid={`button-delete-servico-${s.id}`}
+                              aria-label="Excluir serviço"
+                              title="Excluir serviço"
                             >
                               <Trash2 className="w-4 h-4 text-muted-foreground" />
                             </Button>

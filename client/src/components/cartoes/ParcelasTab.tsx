@@ -216,10 +216,24 @@ export function ParcelasTab({
                               value={editingParcelaData}
                               onChange={(event) => setEditingParcelaData(event.target.value)}
                             />
-                            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => onEditParcela(parcela.id)}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5"
+                              onClick={() => onEditParcela(parcela.id)}
+                              aria-label="Salvar edição da parcela"
+                              title="Salvar edição"
+                            >
                               <Check className="h-3 w-3 text-emerald-600" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setEditingParcelaId(null)}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5"
+                              onClick={() => setEditingParcelaId(null)}
+                              aria-label="Cancelar edição da parcela"
+                              title="Cancelar edição"
+                            >
                               <X className="h-3 w-3" />
                             </Button>
                           </div>
@@ -278,6 +292,7 @@ export function ParcelasTab({
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
+                              aria-label="Editar parcela"
                               title="Editar parcela"
                               onClick={() => {
                                 setEditingParcelaId(parcela.id);
@@ -293,6 +308,7 @@ export function ParcelasTab({
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
+                              aria-label="Marcar parcela como paga"
                               title="Marcar como pago"
                               onClick={() => setPayingParcelaId(parcela.id)}
                               data-testid={`button-pay-parcela-compra-${parcela.id}`}
@@ -304,6 +320,7 @@ export function ParcelasTab({
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
+                              aria-label="Abater parcela com saldo da pessoa"
                               title="Abater com saldo da pessoa"
                               onClick={() => {
                                 if (!pessoaVinculadaId) return;
@@ -321,6 +338,7 @@ export function ParcelasTab({
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
+                            aria-label={saldoAbatido > 0 ? "Pago via saldo da pessoa" : "Desfazer pagamento da parcela"}
                             title={saldoAbatido > 0 ? "Pago via saldo da pessoa" : "Desfazer pagamento"}
                             onClick={() => {
                               if (saldoAbatido > 0) return;
@@ -337,6 +355,7 @@ export function ParcelasTab({
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
+                            aria-label="Marcar reembolso recebido"
                             title="Marcar reembolso recebido"
                             onClick={() => onPayParcelaPessoa(parcela.id, true)}
                             data-testid={`button-reembolso-parcela-${parcela.id}`}
@@ -348,6 +367,7 @@ export function ParcelasTab({
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
+                          aria-label={comprovante ? "Ver comprovante da parcela" : "Anexar comprovante da parcela"}
                           title={comprovante ? "Ver comprovante" : "Anexar comprovante"}
                           onClick={() => {
                             if (comprovante) {
@@ -367,6 +387,7 @@ export function ParcelasTab({
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
+                            aria-label="Excluir comprovante da parcela"
                             title="Excluir comprovante"
                             onClick={() => {
                               const confirmed = window.confirm("Excluir este comprovante anexado?");
