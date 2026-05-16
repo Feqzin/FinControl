@@ -2474,6 +2474,7 @@ export default function CartoesPage() {
           setOpenImport(true);
         }}
         cartoes={cartoes}
+        compras={compras}
         importCartaoId={importCartaoId}
         setImportCartaoId={handleImportCartaoChange}
         servicos={servicos}

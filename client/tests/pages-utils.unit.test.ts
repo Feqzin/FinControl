@@ -39,6 +39,7 @@ import {
   getTimelineEventKey,
   toTimelineDateLabel,
 } from "../src/pages/pessoas/payment-timeline.utils";
+import { findPossibleExistingPurchaseMatch } from "../src/pages/cartoes/import-existing-purchase-match";
 
 test("formatters: moeda e data em pt-BR", () => {
   assert.equal(formatCurrencyBRL(1234.56), "R$\u00a01.234,56");
@@ -1679,6 +1680,126 @@ test("import parser: extrai texto de PDF textual valido", async () => {
 
   const text = await extractTextFromPdfBuffer(arrayBuffer);
   assert.match(text.toLowerCase(), /test/);
+});
+
+function buildParsedImportItemFixture(overrides: Partial<ReturnType<typeof parseMercadoPagoInvoiceText>[number]> = {}) {
+  return {
+    id: overrides.id ?? "item-1",
+    descricao: overrides.descricao ?? "Compra teste",
+    estabelecimento: overrides.estabelecimento ?? "Compra teste",
+    valor: overrides.valor ?? 1575.8,
+    valorParcela: overrides.valorParcela ?? 157.58,
+    parcelas: overrides.parcelas ?? 10,
+    parcelaAtual: overrides.parcelaAtual ?? 5,
+    parcelasRestantes: overrides.parcelasRestantes ?? 6,
+    dataCompra: overrides.dataCompra ?? "2025-12-24",
+    vencimentoFatura: overrides.vencimentoFatura ?? "2026-05-18",
+    tipo: overrides.tipo ?? "compra",
+    duplicata: overrides.duplicata ?? null,
+    action: overrides.action ?? "import",
+  };
+}
+
+function buildCompraCartaoFixture(overrides: Partial<CompraCartao> = {}): CompraCartao {
+  return {
+    id: overrides.id ?? "compra-1",
+    userId: overrides.userId ?? "user-1",
+    cartaoId: overrides.cartaoId ?? "cartao-mp",
+    descricao: overrides.descricao ?? "PS Portal",
+    valorTotal: overrides.valorTotal ?? "1575.00",
+    parcelas: overrides.parcelas ?? 10,
+    parcelaAtual: overrides.parcelaAtual ?? 5,
+    valorParcela: overrides.valorParcela ?? "157.50",
+    dataCompra: overrides.dataCompra ?? "2025-12-24",
+    pessoaId: overrides.pessoaId ?? null,
+    statusPessoa: overrides.statusPessoa ?? null,
+    dataPagamentoPessoa: overrides.dataPagamentoPessoa ?? null,
+  };
+}
+
+test("import parser: possível mesma compra detecta MLP KaBuM versus PS Portal com sinais financeiros próximos", () => {
+  const item = buildParsedImportItemFixture({
+    descricao: "MLP KaBuM KaBuM",
+    valor: 1575.8,
+    valorParcela: 157.58,
+    parcelas: 10,
+    parcelaAtual: 5,
+    dataCompra: "2025-12-24",
+  });
+  const existing = buildCompraCartaoFixture({
+    descricao: "PS Portal",
+    valorTotal: "1575.00",
+    valorParcela: "157.50",
+    parcelas: 10,
+    parcelaAtual: 5,
+    dataCompra: "2025-12-24",
+  });
+
+  const match = findPossibleExistingPurchaseMatch(item, [existing], "cartao-mp");
+  assert.ok(match);
+  assert.equal(match?.existing.id, existing.id);
+  assert.equal(match?.parcelasMatch, true);
+  assert.equal(match?.valueDiff <= 1, true);
+});
+
+test("import parser: descrição diferente não impede match quando valor/parcela/data são próximos", () => {
+  const item = buildParsedImportItemFixture({
+    descricao: "MLP KaBuM KaBuM",
+    valorParcela: 157.58,
+    parcelas: 10,
+    parcelaAtual: 5,
+    dataCompra: "2025-12-24",
+  });
+  const existing = buildCompraCartaoFixture({
+    descricao: "PS Portal",
+    valorParcela: "157.50",
+    valorTotal: "1575.00",
+    parcelas: 10,
+    parcelaAtual: 5,
+    dataCompra: "2025-12-24",
+  });
+
+  const match = findPossibleExistingPurchaseMatch(item, [existing], "cartao-mp");
+  assert.ok(match);
+});
+
+test("import parser: mesmo valor com parcelas incompatíveis não vira possível mesma compra forte", () => {
+  const item = buildParsedImportItemFixture({
+    valorParcela: 157.58,
+    valor: 1575.8,
+    parcelas: 10,
+    parcelaAtual: 5,
+  });
+  const existing = buildCompraCartaoFixture({
+    valorParcela: "157.58",
+    valorTotal: "315.16",
+    parcelas: 2,
+    parcelaAtual: 2,
+    dataCompra: "2025-12-24",
+  });
+
+  const match = findPossibleExistingPurchaseMatch(item, [existing], "cartao-mp");
+  assert.equal(match, null);
+});
+
+test("import parser: compra claramente diferente não mostra possível mesma compra", () => {
+  const item = buildParsedImportItemFixture({
+    valorParcela: 89.9,
+    valor: 89.9,
+    parcelas: 1,
+    parcelaAtual: 1,
+    dataCompra: "2026-04-18",
+  });
+  const existing = buildCompraCartaoFixture({
+    valorParcela: "157.50",
+    valorTotal: "1575.00",
+    parcelas: 10,
+    parcelaAtual: 5,
+    dataCompra: "2025-12-24",
+  });
+
+  const match = findPossibleExistingPurchaseMatch(item, [existing], "cartao-mp");
+  assert.equal(match, null);
 });
 
 test("relatorios PDF: metadados usam overview quando disponível", () => {

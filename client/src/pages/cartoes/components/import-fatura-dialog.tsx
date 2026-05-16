@@ -1,9 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Cartao } from "@shared/schema";
+import type { CompraCartao } from "@shared/schema";
 import type { Servico } from "@shared/schema";
 import type { ServicoPessoa } from "@shared/schema";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
+import { findPossibleExistingPurchaseMatch } from "@/pages/cartoes/import-existing-purchase-match";
 import type { ImportConfirmResponse, ImportLogEntry } from "@/services/api/cartoes";
 import { FileText, Pencil, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 type ImportTab = "texto" | "arquivo";
 type CanonicalImportStatus = "novo" | "duplicata_exata" | "possivel_duplicata" | "invalido";
+type PossibleExistingAction = "ignore" | "import_new" | "replace_existing";
 
 interface ImportEditForm {
   descricao: string;
@@ -105,6 +108,7 @@ interface ImportFaturaDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cartoes: Cartao[];
+  compras: CompraCartao[];
   importCartaoId: string;
   setImportCartaoId: (value: string) => void;
   servicos: Servico[];
@@ -149,6 +153,7 @@ export function ImportFaturaDialog({
   open,
   onOpenChange,
   cartoes,
+  compras,
   importCartaoId,
   setImportCartaoId,
   servicos,
@@ -190,6 +195,9 @@ export function ImportFaturaDialog({
 }: ImportFaturaDialogProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [possibleExistingActionByItemId, setPossibleExistingActionByItemId] = useState<
+    Record<string, PossibleExistingAction>
+  >({});
   const totalImportar = importItems.filter((item) => {
     const status = getEffectiveStatus(item);
     if (item.action !== "import") return false;
@@ -235,6 +243,16 @@ export function ImportFaturaDialog({
     }
     return map;
   }, [servicoPessoas]);
+  const possibleExistingByItemId = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof findPossibleExistingPurchaseMatch>>();
+    for (const item of importItems) {
+      const match = findPossibleExistingPurchaseMatch(item, compras, importCartaoId);
+      if (!match) continue;
+      if (item.duplicata?.id && item.duplicata.id === match.existing.id) continue;
+      map.set(item.id, match);
+    }
+    return map;
+  }, [compras, importCartaoId, importItems]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -459,6 +477,8 @@ export function ImportFaturaDialog({
                   const isEditingRow = importEditingId === item.id;
                   const status = getEffectiveStatus(item);
                   const statusBadge = getStatusBadge(status);
+                  const possibleExisting = possibleExistingByItemId.get(item.id) ?? null;
+                  const possibleExistingAction = possibleExistingActionByItemId[item.id] ?? "import_new";
                   const serviceCandidate = item.recurringServiceCandidate;
                   const isServiceCandidate = Boolean(serviceCandidate?.isServiceCandidate);
                   const serviceAction = item.serviceSuggestionAction ?? "ignore";
@@ -780,6 +800,51 @@ export function ImportFaturaDialog({
                                 Similar a: "{item.duplicata.descricao}" ({formatCurrency(Number(item.duplicata.valorParcela))})
                               </p>
                             )}
+                            {possibleExisting ? (
+                              <div className="mt-2 rounded-md border border-sky-200 bg-sky-50/60 px-2 py-2 space-y-1.5">
+                                <p className="text-xs font-medium text-sky-800">Possível mesma compra encontrada</p>
+                                <p className="text-xs text-sky-900">
+                                  Nome existente: <strong>{possibleExisting.existing.descricao}</strong>
+                                </p>
+                                <p className="text-xs text-sky-900">
+                                  Valor existente: {formatCurrency(Number(possibleExisting.existing.valorParcela))}/parc
+                                  {" · "}
+                                  Total existente: {formatCurrency(Number(possibleExisting.existing.valorTotal))}
+                                  {" · "}
+                                  Parcelas existentes: {possibleExisting.existing.parcelaAtual}/{possibleExisting.existing.parcelas}x
+                                </p>
+                                <p className="text-[11px] text-sky-700">
+                                  Confiança do match: {possibleExisting.confidence} ·
+                                  diferença da parcela: {formatCurrency(possibleExisting.valueDiff)} ·
+                                  diferença do total: {formatCurrency(possibleExisting.totalDiff)}
+                                </p>
+                                <div className="max-w-xs">
+                                  <Select
+                                    value={possibleExistingAction}
+                                    onValueChange={(value) => {
+                                      setPossibleExistingActionByItemId((current) => ({
+                                        ...current,
+                                        [item.id]: value as PossibleExistingAction,
+                                      }));
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs">
+                                      <SelectValue placeholder="Ação para compra existente" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="ignore">Ignorar</SelectItem>
+                                      <SelectItem value="import_new">Importar como nova</SelectItem>
+                                      <SelectItem value="replace_existing" disabled>
+                                        Vincular/Substituir existente (próxima etapa)
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <p className="text-[11px] text-sky-700">
+                                  Nesta etapa o vínculo/substituição é apenas visual e ainda não altera compras existentes.
+                                </p>
+                              </div>
+                            ) : null}
                           </div>
 
                           <div className="ml-auto flex items-center gap-1">
