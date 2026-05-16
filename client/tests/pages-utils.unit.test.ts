@@ -1075,6 +1075,8 @@ test("import parser: PDF Mercado Pago importa apenas compras reais da seção de
   assert.equal(result.issuerDetected, "mercado_pago");
   assert.equal(result.parserUsed, "mercado_pago_textual_pdf");
   assert.equal(result.items.length, 9);
+  const uniqueLast4 = Array.from(new Set(result.items.map((item) => item.cardLast4).filter(Boolean)));
+  assert.deepEqual(uniqueLast4, ["4733", "9064"]);
 
   const descriptions = result.items.map((item) => item.descricao.toLowerCase());
   assert.equal(descriptions.some((value) => value.includes("total a pagar")), false);
@@ -1108,6 +1110,7 @@ test("import parser: PDF Mercado Pago importa apenas compras reais da seção de
   assert.equal(mercadoLivre?.parcelaAtual, 5);
   assert.equal(mercadoLivre?.parcelas, 7);
   assert.equal(mercadoLivre?.dataCompra, "2025-12-24");
+  assert.equal(mercadoLivre?.cardLast4, "9064");
 });
 
 test("import parser: Mercado Pago detectado sem transações não cai no genérico e retorna warning seguro", () => {
@@ -1351,6 +1354,65 @@ test("import parser: texto Mercado Pago com cartao Inter marca revisão forte", 
   assert.equal(
     parsed[0]?.validationIssues?.some((issue) => issue.toLowerCase().includes("parece ser mercado pago")),
     true,
+  );
+});
+
+test("import parser: texto Mercado Pago com final incompatível marca revisão forte", () => {
+  const pdfText = [
+    "Mercado Pago",
+    "Essa é sua fatura",
+    "Emitido em: 13/05/2026",
+    "Vencimento: 18/05/2026",
+    "Detalhes de consumo",
+    "Cartão Visa [************4733]",
+    "Data Movimentações Valor em R$",
+    "18/04 SUELI CABELEIREIROS R$ 135,00",
+    "Cartão Visa [************9064]",
+    "Data Movimentações Valor em R$",
+    "24/12 EC *MERCADOLIVRE Parcela 5 de 7 R$ 24,16",
+  ].join("\n");
+
+  const parsed = parseMercadoPagoInvoiceText(pdfText, {
+    selectedCardName: "Mercado Pago Visa final 1111",
+    referenceBillingDate: "2026-05-18",
+  });
+
+  assert.equal(parsed.length, 2);
+  assert.equal(parsed.every((item) => item.reviewRequired === true), true);
+  assert.equal(
+    parsed.every((item) =>
+      (item.validationIssues ?? []).some((issue) =>
+        issue.toLowerCase().includes("não parece corresponder a esses finais")
+        || issue.toLowerCase().includes("nao parece corresponder a esses finais"),
+      )),
+    true,
+  );
+});
+
+test("import parser: texto Mercado Pago com cartão compatível não força mismatch forte", () => {
+  const pdfText = [
+    "Mercado Pago",
+    "Essa é sua fatura",
+    "Emitido em: 13/05/2026",
+    "Vencimento: 18/05/2026",
+    "Detalhes de consumo",
+    "Cartão Visa [************4733]",
+    "Data Movimentações Valor em R$",
+    "18/04 SUELI CABELEIREIROS R$ 135,00",
+  ].join("\n");
+
+  const parsed = parseMercadoPagoInvoiceText(pdfText, {
+    selectedCardName: "Mercado Pago Visa final 4733",
+    referenceBillingDate: "2026-05-18",
+  });
+
+  assert.equal(parsed.length, 1);
+  assert.equal(
+    parsed[0]?.validationIssues?.some((issue) =>
+      issue.toLowerCase().includes("não parece corresponder a esses finais")
+      || issue.toLowerCase().includes("nao parece corresponder a esses finais"),
+    ) ?? false,
+    false,
   );
 });
 

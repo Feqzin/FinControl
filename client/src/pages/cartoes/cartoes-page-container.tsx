@@ -304,6 +304,39 @@ function isItauCardLikeName(cardName: string): boolean {
   return normalized.includes("ITAU") || normalized.includes("ITAUCARD");
 }
 
+function isMercadoPagoCardLikeName(cardName: string): boolean {
+  const normalized = cardName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) return false;
+  return normalized.includes("MERCADO PAGO") || normalized.includes("MERCADOPAGO") || normalized.includes("CARTAO MP");
+}
+
+function extractCardLast4FromName(cardName: string): string | null {
+  const explicitFinal = cardName.match(/(?:final|ending)\s*(\d{4})/i);
+  if (explicitFinal?.[1]) return explicitFinal[1];
+
+  const masked = cardName.match(/\*{2,}\s*(\d{4})/);
+  if (masked?.[1]) return masked[1];
+
+  const allLast4 = cardName.match(/\b(\d{4})\b/g);
+  if (allLast4 && allLast4.length > 0) {
+    return allLast4[allLast4.length - 1] ?? null;
+  }
+
+  return null;
+}
+
+function listToHumanReadable(values: string[]): string {
+  if (values.length <= 1) return values[0] ?? "";
+  if (values.length === 2) return `${values[0]} e ${values[1]}`;
+  return `${values.slice(0, -1).join(", ")} e ${values[values.length - 1]}`;
+}
+
 function normalizeServiceText(value: string | null | undefined): string {
   return (value ?? "")
     .toLowerCase()
@@ -393,6 +426,9 @@ function mergePreviewItemsWithLocalSignals(previewItems: ParsedItem[], parsedIte
       replaceExistingServiceLink: local.replaceExistingServiceLink ?? item.replaceExistingServiceLink ?? false,
       createServiceSuggestion: local.createServiceSuggestion ?? item.createServiceSuggestion ?? null,
       serviceSuggestionWarning: local.serviceSuggestionWarning ?? item.serviceSuggestionWarning ?? null,
+      cardLast4: local.cardLast4 ?? item.cardLast4 ?? null,
+      invoiceIssuerDetected: local.invoiceIssuerDetected ?? item.invoiceIssuerDetected,
+      parserUsed: local.parserUsed ?? item.parserUsed,
       duplicata: local.duplicata ?? item.duplicata,
     };
   });
@@ -1121,13 +1157,82 @@ export default function CartoesPage() {
     return null;
   };
 
-  const applyPdfIssuerMismatchGuard = (sourceText: string, selectedCartaoId: string) => {
+  const applyPdfIssuerMismatchGuard = (
+    sourceText: string,
+    selectedCartaoId: string,
+    parsedItems: ParsedItem[] = [],
+  ) => {
     setImportIssuerMismatchWarning("");
     setImportIssuerMismatchMustAcknowledge(false);
     setImportIssuerMismatchAcknowledged(false);
 
     const selectedCartao = cartoes.find((item) => item.id === selectedCartaoId);
     if (!selectedCartao) return;
+
+    const applyStrongMismatchReview = (warning: string) => {
+      setImportItems((items) =>
+        items.map((item) => {
+          const isMercadoPagoItem = item.invoiceIssuerDetected === "mercado_pago"
+            || item.parserUsed === "mercado_pago_textual_pdf"
+            || /^\d{4}$/.test((item.cardLast4 ?? "").trim());
+          if (!isMercadoPagoItem) return item;
+
+          const issues = item.validationIssues ?? [];
+          const nextIssues = issues.includes(warning) ? issues : [...issues, warning];
+          const nextConfidenceScore = Math.max(
+            0,
+            Math.min(typeof item.confidenceScore === "number" ? item.confidenceScore : 80, 70),
+          );
+
+          return {
+            ...item,
+            reviewRequired: true,
+            validationIssues: nextIssues,
+            confidenceScore: nextConfidenceScore,
+            confidenceLevel: nextConfidenceScore >= 65 ? "media" : "baixa",
+          };
+        }),
+      );
+    };
+
+    const mercadoPagoLast4 = Array.from(new Set(
+      parsedItems
+        .map((item) => item.cardLast4?.trim() ?? "")
+        .filter((value) => /^\d{4}$/.test(value)),
+    ));
+    const isMercadoPagoInvoice = detectMercadoPagoInvoiceText(sourceText) || mercadoPagoLast4.length > 0;
+
+    if (isMercadoPagoInvoice) {
+      const selectedLooksMercadoPago = isMercadoPagoCardLikeName(selectedCartao.nome);
+      const selectedCardLast4 = extractCardLast4FromName(selectedCartao.nome);
+
+      if (!selectedLooksMercadoPago) {
+        const warning = `Esta fatura parece ser Mercado Pago, mas o cartão selecionado é ${selectedCartao.nome}. Revise antes de confirmar.`;
+        setImportIssuerMismatchWarning(warning);
+        setImportIssuerMismatchMustAcknowledge(true);
+        applyStrongMismatchReview(warning);
+        return;
+      }
+
+      if (
+        selectedCardLast4
+        && mercadoPagoLast4.length > 0
+        && !mercadoPagoLast4.includes(selectedCardLast4)
+      ) {
+        const warning = `Esta fatura contém compras dos cartões finais ${listToHumanReadable(mercadoPagoLast4)}, mas o cartão selecionado não parece corresponder a esses finais.`;
+        setImportIssuerMismatchWarning(warning);
+        setImportIssuerMismatchMustAcknowledge(true);
+        applyStrongMismatchReview(warning);
+        return;
+      }
+
+      if (mercadoPagoLast4.length > 1) {
+        setImportIssuerMismatchWarning(
+          `Esta fatura contém compras de mais de um cartão Mercado Pago: finais ${listToHumanReadable(mercadoPagoLast4)}. Confira se deseja importar todos neste cartão.`,
+        );
+      }
+      return;
+    }
 
     const isNubankInvoice = detectNubankInvoiceText(sourceText);
     if (isNubankInvoice && !isNubankCardLikeName(selectedCartao.nome)) {
@@ -1933,7 +2038,7 @@ export default function CartoesPage() {
       setImportSourceType(sourceType);
       setImportSourceName(file.name);
       if (sourceType === "pdf") {
-        applyPdfIssuerMismatchGuard(`${file.name}\n${detectionContent}`, cartaoId);
+        applyPdfIssuerMismatchGuard(`${file.name}\n${detectionContent}`, cartaoId, mergedItems);
       } else {
         setImportIssuerMismatchWarning("");
         setImportIssuerMismatchMustAcknowledge(false);

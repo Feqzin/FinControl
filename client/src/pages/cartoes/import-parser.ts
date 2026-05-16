@@ -44,6 +44,9 @@ export interface ParsedItem {
   };
   serviceSuggestionWarning?: string | null;
   replaceExistingServiceLink?: boolean;
+  cardLast4?: string | null;
+  invoiceIssuerDetected?: InvoiceIssuer;
+  parserUsed?: string;
 }
 
 export type RecurringServiceCategory = "streaming" | "seguro" | "software" | "assinatura" | "outro";
@@ -1881,6 +1884,24 @@ function resolveMercadoPagoCardMismatchWarning(options?: ParseMercadoPagoOptions
   return "Esta fatura parece ser Mercado Pago, mas o cartao selecionado nao parece ser Mercado Pago. Revise antes de confirmar.";
 }
 
+function extractCardLast4FromName(value: string | null | undefined): string | null {
+  const input = (value ?? "").trim();
+  if (!input) return null;
+
+  const explicitFinal = input.match(/(?:final|ending)\s*(\d{4})/i);
+  if (explicitFinal?.[1]) return explicitFinal[1];
+
+  const masked = input.match(/\*{2,}\s*(\d{4})/);
+  if (masked?.[1]) return masked[1];
+
+  const allLast4 = input.match(/\b(\d{4})\b/g);
+  if (allLast4 && allLast4.length > 0) {
+    return allLast4[allLast4.length - 1] ?? null;
+  }
+
+  return null;
+}
+
 function normalizeMercadoPagoDescriptionNoise(raw: string): string {
   return raw
     .replace(/@{3,}/g, " ")
@@ -2039,6 +2060,7 @@ function parseMercadoPagoInvoiceTextInternal(
 
   const referenceDate = extractMercadoPagoReferenceDate(content, options) ?? new Date();
   const mismatchWarning = resolveMercadoPagoCardMismatchWarning(options);
+  const selectedCardLast4 = extractCardLast4FromName(options?.selectedCardName);
   const seenParsedTransactionKeys = new Set<string>();
 
   for (const candidate of candidates) {
@@ -2144,7 +2166,39 @@ function parseMercadoPagoInvoiceTextInternal(
       id: String(idx++),
       duplicata,
       action: duplicata ? "skip" : "import",
+      cardLast4: candidate.cardLast4,
+      invoiceIssuerDetected: "mercado_pago",
+      parserUsed: "mercado_pago_textual_pdf",
     });
+  }
+
+  const uniqueCardLast4 = Array.from(
+    new Set(
+      items
+        .map((item) => item.cardLast4?.trim() ?? "")
+        .filter((value) => /^\d{4}$/.test(value)),
+    ),
+  );
+
+  const strongLast4Mismatch =
+    Boolean(selectedCardLast4)
+    && uniqueCardLast4.length > 0
+    && !uniqueCardLast4.includes(selectedCardLast4 ?? "");
+
+  if (strongLast4Mismatch) {
+    const mismatchMessage =
+      `Esta fatura contém compras dos cartões finais ${uniqueCardLast4.join(" e ")}, `
+      + "mas o cartão selecionado não parece corresponder a esses finais.";
+    for (const item of items) {
+      const issues = item.validationIssues ?? [];
+      if (!issues.includes(mismatchMessage)) {
+        issues.push(mismatchMessage);
+      }
+      item.validationIssues = issues;
+      item.reviewRequired = true;
+      item.confidenceScore = Math.max(0, Math.min(Number(item.confidenceScore ?? 80), 70));
+      item.confidenceLevel = item.confidenceScore >= 65 ? "media" : "baixa";
+    }
   }
 
   return { items, stats };
