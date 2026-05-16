@@ -1025,12 +1025,20 @@ function checkDuplicata(item: {
   dataCompra?: string;
   parcelas?: number;
   parcelaAtual?: number;
-}, existentes: CompraCartao[], cartaoId: string) {
+}, existentes: CompraCartao[], cartaoId: string, config?: DuplicateConfig) {
   const normalizedDescricao = normalizeForDuplicateCompare(item.descricao);
   const normalizedEstabelecimento = normalizeForDuplicateCompare(item.estabelecimento);
   const baseDate = item.dataCompra ? parseIsoDateString(item.dataCompra) : null;
+  const minimumScore = config?.minimumScore ?? 6;
+  const preferDescriptionMatch = config?.preferDescriptionMatch === true;
 
-  let bestMatch: { row: CompraCartao; score: number } | null = null;
+  let bestMatch: {
+    row: CompraCartao;
+    score: number;
+    descricaoSimilarity: number;
+    estabelecimentoSimilarity: number;
+    exactDescriptionMatch: boolean;
+  } | null = null;
   for (const existing of existentes) {
     if (existing.cartaoId !== cartaoId) continue;
 
@@ -1062,12 +1070,28 @@ function checkDuplicata(item: {
     if (normalizedEstabelecimento && estabelecimentoSimilarity >= 0.75) score += 1;
 
     if (!bestMatch || score > bestMatch.score) {
-      bestMatch = { row: existing, score };
+      bestMatch = {
+        row: existing,
+        score,
+        descricaoSimilarity,
+        estabelecimentoSimilarity,
+        exactDescriptionMatch: normalizedDescricao.length > 0 && normalizedDescricao === existingDescricao,
+      };
     }
   }
 
   if (!bestMatch) return null;
-  return bestMatch.score >= 6 ? bestMatch.row : null;
+  if (bestMatch.score < minimumScore) return null;
+
+  if (preferDescriptionMatch) {
+    const hasStrongDescriptionMatch =
+      bestMatch.exactDescriptionMatch
+      || bestMatch.descricaoSimilarity >= 0.4
+      || (normalizedEstabelecimento.length > 0 && bestMatch.estabelecimentoSimilarity >= 0.75);
+    if (!hasStrongDescriptionMatch) return null;
+  }
+
+  return bestMatch.row;
 }
 
 function extractReferenceDateFromMonthTokenText(text: string): Date | null {
@@ -1905,6 +1929,8 @@ function extractCardLast4FromName(value: string | null | undefined): string | nu
 function normalizeMercadoPagoDescriptionNoise(raw: string): string {
   return raw
     .replace(/@{3,}/g, " ")
+    .replace(/([#._-])\1{2,}/g, " ")
+    .replace(/\s*[@#._-]{3,}\s*/g, " ")
     .replace(/[|]{2,}/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -1919,6 +1945,11 @@ function shouldIgnoreMercadoPagoDescription(rawDescription: string): boolean {
   if (MERCADO_PAGO_EXCLUDED_DESCRIPTION_MARKERS.some((marker) => normalized.includes(marker))) return true;
   return false;
 }
+
+type DuplicateConfig = {
+  minimumScore?: number;
+  preferDescriptionMatch?: boolean;
+};
 
 function findFirstCompactMarkerIndexAfterStart(
   compactContent: string,
@@ -1972,7 +2003,7 @@ type MercadoPagoCardBlock = {
 };
 
 function extractMercadoPagoCardBlocks(detailsSection: string): MercadoPagoCardBlock[] {
-  const cardHeaderRegex = /Cart[aã]o\s+Visa\s+\[\s*[*\s]*?(\d{4})\s*\]/gi;
+  const cardHeaderRegex = /Cart[aã]o\s+Visa\s+\[\s*([^\]]*?)\s*\]/gi;
   const matches = Array.from(detailsSection.matchAll(cardHeaderRegex));
   if (matches.length === 0) return [];
 
@@ -1987,8 +2018,11 @@ function extractMercadoPagoCardBlocks(detailsSection: string): MercadoPagoCardBl
     const rawBlock = detailsSection.slice(blockStart, blockEnd);
     if (!rawBlock.trim()) continue;
 
+    const rawCardIdentifier = (current[1] ?? "").trim();
+    const cardLast4Match = rawCardIdentifier.match(/(\d{4})/);
+
     blocks.push({
-      cardLast4: (current[1] ?? "").trim() || null,
+      cardLast4: cardLast4Match?.[1] ?? null,
       content: rawBlock,
     });
   }
@@ -2141,7 +2175,10 @@ function parseMercadoPagoInvoiceTextInternal(
         dataCompra: parsedDate.iso,
         parcelas: totalParcelas,
         parcelaAtual,
-      }, options.existentes, options.cartaoId)
+      }, options.existentes, options.cartaoId, {
+        minimumScore: 8,
+        preferDescriptionMatch: true,
+      })
       : null;
 
     const parsedItem = attachRecurringServiceSuggestion({

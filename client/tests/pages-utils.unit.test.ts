@@ -22,7 +22,7 @@ import {
   parsePdf,
 } from "../src/pages/cartoes/import-parser";
 import { suggestImportCardByText } from "../src/pages/cartoes/import-card-matching";
-import type { Cartao, Divida, Parcela, Pessoa, Servico } from "@shared/schema";
+import type { Cartao, CompraCartao, Divida, Parcela, Pessoa, Servico } from "@shared/schema";
 import {
   extractTextFromPdfBuffer,
   hasPdfMagicBytes,
@@ -1098,8 +1098,13 @@ test("import parser: PDF Mercado Pago importa apenas compras reais da seção de
   assert.equal(automoto?.parcelas, 2);
   assert.equal(automoto?.dataCompra, "2026-05-08");
 
+  const minuto = result.items.find((item) => item.descricao.toLowerCase().includes("minuto pa 1478"));
+  assert.ok(minuto);
+  assert.equal(minuto?.descricao.includes("@"), false);
+
   const kabum = result.items.find((item) => item.descricao.toLowerCase().includes("kabum"));
   assert.ok(kabum);
+  assert.equal(kabum?.descricao.toLowerCase().includes("mlp kabum"), true);
   assert.equal(kabum?.parcelaAtual, 5);
   assert.equal(kabum?.parcelas, 10);
   assert.equal(kabum?.valorParcela, 157.58);
@@ -1107,6 +1112,7 @@ test("import parser: PDF Mercado Pago importa apenas compras reais da seção de
 
   const mercadoLivre = result.items.find((item) => item.descricao.toLowerCase().includes("mercadolivre"));
   assert.ok(mercadoLivre);
+  assert.equal(mercadoLivre?.descricao.toLowerCase().includes("ec mercadolivre"), true);
   assert.equal(mercadoLivre?.parcelaAtual, 5);
   assert.equal(mercadoLivre?.parcelas, 7);
   assert.equal(mercadoLivre?.dataCompra, "2025-12-24");
@@ -1136,6 +1142,133 @@ test("import parser: Mercado Pago detectado sem transações não cai no genéri
     result.parserWarnings?.some((warning) => warning.toLowerCase().includes("mercado pago")),
     true,
   );
+});
+
+test("import parser: Mercado Pago marca duplicata quando compra igual já existe", () => {
+  const pdfText = [
+    "Mercado Pago",
+    "Essa é sua fatura",
+    "Emitido em: 13/05/2026",
+    "Vencimento: 18/05/2026",
+    "Detalhes de consumo",
+    "Cartão Visa [************4733]",
+    "Data Movimentações Valor em R$",
+    "18/04 SUELI CABELEIREIROS R$ 135,00",
+    "Total R$ 135,00",
+  ].join("\n");
+
+  const existentes: CompraCartao[] = [
+    {
+      id: "compra-existente-1",
+      userId: "user-1",
+      cartaoId: "cartao-mp",
+      descricao: "Sueli Cabeleireiros",
+      valorTotal: "135.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "135.00",
+      dataCompra: "2026-04-18",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    },
+  ];
+
+  const parsed = parseMercadoPagoInvoiceText(pdfText, {
+    existentes,
+    cartaoId: "cartao-mp",
+    referenceBillingDate: "2026-05-18",
+    selectedCardName: "Mercado Pago Visa final 4733",
+  });
+
+  assert.equal(parsed.length, 1);
+  assert.ok(parsed[0]?.duplicata);
+  assert.equal(parsed[0]?.action, "skip");
+});
+
+test("import parser: Mercado Pago não marca duplicata exata com mesmo valor quando descrição e data divergem", () => {
+  const pdfText = [
+    "Mercado Pago",
+    "Essa é sua fatura",
+    "Emitido em: 13/05/2026",
+    "Vencimento: 18/05/2026",
+    "Detalhes de consumo",
+    "Cartão Visa [************4733]",
+    "Data Movimentações Valor em R$",
+    "18/04 SUELI CABELEIREIROS R$ 135,00",
+    "Total R$ 135,00",
+  ].join("\n");
+
+  const existentes: CompraCartao[] = [
+    {
+      id: "compra-existente-2",
+      userId: "user-1",
+      cartaoId: "cartao-mp",
+      descricao: "Posto Central",
+      valorTotal: "135.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "135.00",
+      dataCompra: "2026-04-10",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    },
+  ];
+
+  const parsed = parseMercadoPagoInvoiceText(pdfText, {
+    existentes,
+    cartaoId: "cartao-mp",
+    referenceBillingDate: "2026-05-18",
+    selectedCardName: "Mercado Pago Visa final 4733",
+  });
+
+  assert.equal(parsed.length, 1);
+  assert.equal(Boolean(parsed[0]?.duplicata), false);
+  assert.equal(parsed[0]?.action, "import");
+});
+
+test("import parser: Mercado Pago mantém dedupe quando cardLast4 estiver ausente", () => {
+  const pdfText = [
+    "Mercado Pago",
+    "Essa é sua fatura",
+    "Emitido em: 13/05/2026",
+    "Vencimento: 18/05/2026",
+    "Detalhes de consumo",
+    "Cartão Visa [************]",
+    "Data Movimentações Valor em R$",
+    "18/04 SUELI CABELEIREIROS R$ 135,00",
+    "Total R$ 135,00",
+  ].join("\n");
+
+  const existentes: CompraCartao[] = [
+    {
+      id: "compra-existente-3",
+      userId: "user-1",
+      cartaoId: "cartao-mp",
+      descricao: "Sueli Cabeleireiros",
+      valorTotal: "135.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "135.00",
+      dataCompra: "2026-04-18",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    },
+  ];
+
+  const parsed = parseMercadoPagoInvoiceText(pdfText, {
+    existentes,
+    cartaoId: "cartao-mp",
+    referenceBillingDate: "2026-05-18",
+    selectedCardName: "Mercado Pago Visa",
+  });
+
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0]?.cardLast4 ?? null, null);
+  assert.ok(parsed[0]?.duplicata);
+  assert.equal(parsed[0]?.action, "skip");
 });
 
 test("import parser: PDF desconhecido usa parser generico com revisão obrigatoria", () => {
