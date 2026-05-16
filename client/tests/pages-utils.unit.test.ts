@@ -8,6 +8,7 @@ import { getDaysUntilInvoice, getNextInvoiceDate, isParcelaVencida } from "../sr
 import {
   detectInvoiceIssuerForPdfText,
   detectItauInvoiceText,
+  detectMercadoPagoInvoiceText,
   detectRecurringServiceCandidate,
   detectNubankInvoiceText,
   extractNubankInvoiceYear,
@@ -15,6 +16,7 @@ import {
   getRegisteredInvoiceParsers,
   parseCsv,
   parseItauInvoiceText,
+  parseMercadoPagoInvoiceText,
   parseOfx,
   parseNubankInvoiceText,
   parsePdf,
@@ -705,11 +707,27 @@ test("import parser: detecta Itau mesmo com texto quebrado por acentos/espacos",
   assert.equal(detectInvoiceIssuerForPdfText(pdfText), "itau");
 });
 
+test("import parser: detecta assinatura textual da fatura Mercado Pago", () => {
+  const pdfText = [
+    "Mercado Pago",
+    "Essa é sua fatura",
+    "Detalhes de consumo",
+    "Cartão Visa [************4733]",
+    "Data Movimentações Valor em R$",
+    "Pague sua fatura pelo app Mercado Pago",
+  ].join("\n");
+
+  assert.equal(detectMercadoPagoInvoiceText(pdfText), true);
+  assert.equal(detectInvoiceIssuerForPdfText(pdfText), "mercado_pago");
+});
+
 test("import parser: registry lista parser Nubank e prepara emissores futuros", () => {
   const registered = getRegisteredInvoiceParsers();
-  assert.equal(registered.length >= 2, true);
+  assert.equal(registered.length >= 3, true);
   assert.equal(registered.some((parser) => parser.issuer === "itau"), true);
   assert.equal(registered.some((parser) => parser.parserName === "itau_textual_pdf"), true);
+  assert.equal(registered.some((parser) => parser.issuer === "mercado_pago"), true);
+  assert.equal(registered.some((parser) => parser.parserName === "mercado_pago_textual_pdf"), true);
   assert.equal(registered.some((parser) => parser.issuer === "nubank"), true);
   assert.equal(registered.some((parser) => parser.parserName === "nubank_textual_pdf"), true);
 
@@ -1020,6 +1038,103 @@ test("import parser: Itau usa fallback plain quando extração posicional vier i
   assert.equal(result.parserUsed, "itau_textual_pdf_fallback_plain");
 });
 
+test("import parser: PDF Mercado Pago importa apenas compras reais da seção de detalhes de consumo", () => {
+  const pdfText = [
+    "Mercado Pago",
+    "Essa é sua fatura",
+    "Emitido em: 13/05/2026",
+    "Vencimento: 18/05/2026",
+    "Resumo da fatura",
+    "Total a pagar R$ 851,00",
+    "Pagamento mínimo R$ 127,65",
+    "Detalhes de consumo",
+    "Cartão Visa [************4733]",
+    "Data Movimentações Valor em R$",
+    "18/03 NFS ZONA NORTE Parcela 2 de 2 R$ 179,99",
+    "18/04 SUELI CABELEIREIROS R$ 135,00",
+    "18/04 AdimilsonDos R$ 20,00",
+    "18/04 DIMONTAO COMERCIO ALI R$ 18,00",
+    "19/04 MINUTO PA 1478@@@@@@@@ R$ 18,40",
+    "21/04 DIA BRASIL LJ 430 R$ 47,87",
+    "08/05 AutoMotoEscola Parcela 1 de 2 R$ 250,00",
+    "Total R$ 669,26",
+    "Cartão Visa [************9064]",
+    "Data Movimentações Valor em R$",
+    "24/12 MLP*KaBuM KaBuM Parcela 5 de 10 R$ 157,58",
+    "24/12 EC *MERCADOLIVRE Parcela 5 de 7 R$ 24,16",
+    "Total R$ 181,74",
+    "Parcele a fatura",
+    "Limite utilizado R$ 1.937,22",
+    "Compras parceladas R$ 1.086,23",
+  ].join("\n");
+
+  const result = parsePdf(pdfText, [], "cartao-mp", {
+    referenceBillingDate: "2026-05-18",
+  });
+
+  assert.equal(result.issuerDetected, "mercado_pago");
+  assert.equal(result.parserUsed, "mercado_pago_textual_pdf");
+  assert.equal(result.items.length, 9);
+
+  const descriptions = result.items.map((item) => item.descricao.toLowerCase());
+  assert.equal(descriptions.some((value) => value.includes("total a pagar")), false);
+  assert.equal(descriptions.some((value) => value.includes("pagamento minimo")), false);
+  assert.equal(descriptions.some((value) => value.includes("limite utilizado")), false);
+  assert.equal(descriptions.some((value) => value.includes("compras parceladas")), false);
+  assert.equal(descriptions.some((value) => value.includes("total r$")), false);
+
+  const nfs = result.items.find((item) => item.descricao.toLowerCase().includes("nfs zona norte"));
+  assert.ok(nfs);
+  assert.equal(nfs?.parcelaAtual, 2);
+  assert.equal(nfs?.parcelas, 2);
+  assert.equal(nfs?.valorParcela, 179.99);
+  assert.equal(nfs?.dataCompra, "2026-03-18");
+
+  const automoto = result.items.find((item) => item.descricao.toLowerCase().includes("automotoescola"));
+  assert.ok(automoto);
+  assert.equal(automoto?.parcelaAtual, 1);
+  assert.equal(automoto?.parcelas, 2);
+  assert.equal(automoto?.dataCompra, "2026-05-08");
+
+  const kabum = result.items.find((item) => item.descricao.toLowerCase().includes("kabum"));
+  assert.ok(kabum);
+  assert.equal(kabum?.parcelaAtual, 5);
+  assert.equal(kabum?.parcelas, 10);
+  assert.equal(kabum?.valorParcela, 157.58);
+  assert.equal(kabum?.dataCompra, "2025-12-24");
+
+  const mercadoLivre = result.items.find((item) => item.descricao.toLowerCase().includes("mercadolivre"));
+  assert.ok(mercadoLivre);
+  assert.equal(mercadoLivre?.parcelaAtual, 5);
+  assert.equal(mercadoLivre?.parcelas, 7);
+  assert.equal(mercadoLivre?.dataCompra, "2025-12-24");
+});
+
+test("import parser: Mercado Pago detectado sem transações não cai no genérico e retorna warning seguro", () => {
+  const pdfText = [
+    "Mercado Pago",
+    "Essa é sua fatura",
+    "Emitido em: 13/05/2026",
+    "Detalhes de consumo",
+    "Cartão Visa [************4733]",
+    "Data Movimentações Valor em R$",
+    "Total R$ 0,00",
+    "Parcele a fatura",
+  ].join("\n");
+
+  const result = parsePdf(pdfText, [], "cartao-mp", {
+    referenceBillingDate: "2026-05-18",
+  });
+
+  assert.equal(result.issuerDetected, "mercado_pago");
+  assert.equal(result.parserUsed, "mercado_pago_textual_pdf");
+  assert.equal(result.items.length, 0);
+  assert.equal(
+    result.parserWarnings?.some((warning) => warning.toLowerCase().includes("mercado pago")),
+    true,
+  );
+});
+
 test("import parser: PDF desconhecido usa parser generico com revisão obrigatoria", () => {
   const pdfText = [
     "Fatura do Cartao XPTO",
@@ -1211,6 +1326,30 @@ test("import parser: texto Itau com cartao Inter marca revisão forte", () => {
   assert.equal(parsed[0]?.reviewRequired, true);
   assert.equal(
     parsed[0]?.validationIssues?.some((issue) => issue.toLowerCase().includes("parece ser itau")),
+    true,
+  );
+});
+
+test("import parser: texto Mercado Pago com cartao Inter marca revisão forte", () => {
+  const pdfText = [
+    "Mercado Pago",
+    "Essa é sua fatura",
+    "Emitido em: 13/05/2026",
+    "Detalhes de consumo",
+    "Cartão Visa [************4733]",
+    "Data Movimentações Valor em R$",
+    "18/04 SUELI CABELEIREIROS R$ 135,00",
+  ].join("\n");
+
+  const parsed = parseMercadoPagoInvoiceText(pdfText, {
+    selectedCardName: "Inter",
+    referenceBillingDate: "2026-05-18",
+  });
+
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0]?.reviewRequired, true);
+  assert.equal(
+    parsed[0]?.validationIssues?.some((issue) => issue.toLowerCase().includes("parece ser mercado pago")),
     true,
   );
 });

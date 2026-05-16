@@ -16,6 +16,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   detectItauInvoiceText,
+  detectMercadoPagoInvoiceText,
   buildIgnoredDetails,
   countIgnoredRows,
   detectNubankInvoiceText,
@@ -1805,7 +1806,7 @@ export default function CartoesPage() {
       let content = "";
       let pdfSignalText = "";
       let pdfPlainFallbackText = "";
-      let pdfIssuerHint: "itau" | undefined;
+      let pdfIssuerHint: "itau" | "mercado_pago" | undefined;
       const debugImportPdf = isImportPdfDebugEnabled();
       if (extension === "pdf") {
         const pdfBuffer = await file.arrayBuffer();
@@ -1829,8 +1830,14 @@ export default function CartoesPage() {
         pdfSignalText = combinedPdfText;
         pdfPlainFallbackText = extractedPdf.plainText || combinedPdfText;
         const itauDetectedFromSignals = detectItauInvoiceText(combinedPdfText);
+        const mercadoPagoDetectedFromSignals = detectMercadoPagoInvoiceText(combinedPdfText);
         if (debugImportPdf && typeof console !== "undefined") {
-          console.info("[import-itau][debug] issuer.detected", itauDetectedFromSignals ? "itau" : "unknown");
+          const detectedIssuer = itauDetectedFromSignals
+            ? "itau"
+            : mercadoPagoDetectedFromSignals
+              ? "mercado_pago"
+              : "unknown";
+          console.info("[import-itau][debug] issuer.detected", detectedIssuer);
         }
         if (itauDetectedFromSignals) {
           if (debugImportPdf) {
@@ -1842,6 +1849,9 @@ export default function CartoesPage() {
             });
           }
           pdfIssuerHint = "itau";
+          content = extractedPdf.positionalText || extractedPdf.plainText;
+        } else if (mercadoPagoDetectedFromSignals) {
+          pdfIssuerHint = "mercado_pago";
           content = extractedPdf.positionalText || extractedPdf.plainText;
         } else {
           content = extractedPdf.plainText || extractedPdf.positionalText;

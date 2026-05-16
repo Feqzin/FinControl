@@ -94,6 +94,11 @@ interface ParseItauOptions extends ParseOptions {
   cartaoId?: string;
 }
 
+interface ParseMercadoPagoOptions extends ParseOptions {
+  existentes?: CompraCartao[];
+  cartaoId?: string;
+}
+
 export type InvoiceIssuer =
   | "nubank"
   | "itau"
@@ -325,6 +330,58 @@ const ITAU_CARD_KEYWORDS = [
 
 const ITAU_PAGINATION_LINE_REGEX = /^\d+\s+DE\s+\d+$/;
 
+const MERCADO_PAGO_DETECTION_SIGNALS = [
+  "MERCADO PAGO",
+  "ESSA E SUA FATURA",
+  "DETALHES DE CONSUMO",
+  "CARTAO VISA [",
+  "DATA MOVIMENTACOES VALOR EM R$",
+  "PAGUE SUA FATURA PELO APP MERCADO PAGO",
+] as const;
+
+const MERCADO_PAGO_SECTION_START_MARKERS = [
+  "DETALHES DE CONSUMO",
+] as const;
+
+const MERCADO_PAGO_SECTION_END_MARKERS = [
+  "PARCELE A FATURA",
+  "SEU CARTAO DE CREDITO",
+  "DATAS IMPORTANTES",
+  "LIMITE DO CARTAO DE CREDITO",
+  "LANCAMENTOS FUTUROS",
+  "OPCOES DE PAGAMENTO",
+  "COMPRAS INTERNACIONAIS",
+  "COBRANCAS",
+  "TETO DE JUROS",
+  "DECLARACAO ANUAL",
+  "FALE COM A GENTE",
+] as const;
+
+const MERCADO_PAGO_EXCLUDED_DESCRIPTION_MARKERS = [
+  "TOTAL R$",
+  "TOTAL A PAGAR",
+  "RESUMO DA FATURA",
+  "CONSUMOS DE",
+  "TARIFAS E ENCARGOS",
+  "PAGAMENTO MINIMO",
+  "PARCELAMENTO DE FATURA",
+  "LIMITE TOTAL",
+  "LIMITE UTILIZADO",
+  "LIMITE DISPONIVEL",
+  "COMPRAS PARCELADAS R$",
+  "FATURA PARCELADA R$",
+  "JUROS",
+  "IOF",
+  "MULTA",
+] as const;
+
+const MERCADO_PAGO_CARD_KEYWORDS = [
+  "MERCADO PAGO",
+  "MERCADO PAGO VISA",
+  "CARTAO MP",
+  "MERCADOPAGO",
+] as const;
+
 function parseIsoDateString(value: string | null | undefined): Date | null {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const parsed = new Date(`${value}T00:00:00`);
@@ -352,6 +409,9 @@ const ITAU_START_SECTION_MARKERS_COMPACT = ITAU_START_SECTION_MARKERS.map((marke
 const ITAU_SECTION_HEADER_MARKERS_COMPACT = ITAU_SECTION_HEADER_MARKERS.map((marker) => normalizePortableTextCompact(marker));
 const ITAU_END_SECTION_MARKERS_COMPACT = ITAU_END_SECTION_MARKERS.map((marker) => normalizePortableTextCompact(marker));
 const ITAU_END_SECTION_MARKERS_SPACED = ITAU_END_SECTION_MARKERS.map(normalizePortableTextSpaced);
+const MERCADO_PAGO_DETECTION_SIGNALS_COMPACT = MERCADO_PAGO_DETECTION_SIGNALS.map((signal) => normalizePortableTextCompact(signal));
+const MERCADO_PAGO_SECTION_START_MARKERS_COMPACT = MERCADO_PAGO_SECTION_START_MARKERS.map((marker) => normalizePortableTextCompact(marker));
+const MERCADO_PAGO_SECTION_END_MARKERS_COMPACT = MERCADO_PAGO_SECTION_END_MARKERS.map((marker) => normalizePortableTextCompact(marker));
 const ITAU_TX_START_SPLIT_REGEX = /(?=\d{2}\/\d{2}\s+[A-Za-z*])/g;
 const ITAU_DEBUG_MAX_LINES = 80;
 const ITAU_DEBUG_MAX_STRING_CHARS = 220;
@@ -504,6 +564,51 @@ export function detectItauInvoiceText(text: string): boolean {
   if (hasLaunchSection && signalCount >= 3) return true;
   if (hasBrand && signalCount >= 4) return true;
   return /\bPAGAMENTO VIA CONTA\b/.test(normalized) && hasBrand && signalCount >= 3;
+}
+
+function looksLikeMercadoPagoCardName(value: string | null | undefined): boolean {
+  const normalized = normalizePortableText(value ?? "").replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  return MERCADO_PAGO_CARD_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
+
+export function detectMercadoPagoInvoiceText(text: string): boolean {
+  const normalized = normalizePortableText(text).replace(/\s+/g, " ").trim();
+  const compact = normalizePortableTextCompact(text);
+  const hasBrand = compact.includes("MERCADOPAGO");
+  const hasConsumptionSection = MERCADO_PAGO_SECTION_START_MARKERS_COMPACT.some((marker) => compact.includes(marker));
+  const hasSignalCount = MERCADO_PAGO_DETECTION_SIGNALS_COMPACT
+    .filter((signal) => compact.includes(signal)).length;
+  const hasCardBlock = /CARTAO\s+VISA\s+\[[^\]]*?\d{4}\]/.test(normalized);
+
+  if (hasBrand && hasConsumptionSection && hasCardBlock) return true;
+  if (hasBrand && hasConsumptionSection && hasSignalCount >= 3) return true;
+  if (hasConsumptionSection && hasCardBlock && hasSignalCount >= 3) return true;
+  return hasBrand && hasSignalCount >= 4;
+}
+
+function extractMercadoPagoReferenceDate(text: string, options?: ParseMercadoPagoOptions): Date | null {
+  const fromOptions = parseIsoDateString(options?.referenceBillingDate ?? null);
+  if (fromOptions) return fromOptions;
+
+  const normalized = normalizePortableText(text);
+  const patterns = [
+    /EMITIDO EM\s*:?\s*(\d{2})\/(\d{2})\/(20\d{2})/,
+    /VENCIMENTO\s*:?\s*(\d{2})\/(\d{2})\/(20\d{2})/,
+    /VENCE EM\s*(\d{2})\/(\d{2})\/(20\d{2})/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (!match) continue;
+    const day = Number.parseInt(match[1] ?? "", 10);
+    const month = Number.parseInt(match[2] ?? "", 10);
+    const year = Number.parseInt(match[3] ?? "", 10);
+    if (!isValidDateParts(day, month, year)) continue;
+    return new Date(`${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T00:00:00`);
+  }
+
+  return null;
 }
 
 function extractItauReferenceDate(text: string, options?: ParseItauOptions): Date | null {
@@ -1733,6 +1838,343 @@ function parseItauInvoiceTextInternal(
   return { items, stats };
 }
 
+function resolveYearForMercadoPagoDayMonth(month: number, referenceDate: Date | null): number {
+  const now = new Date();
+  if (!referenceDate) return now.getFullYear();
+  const refYear = referenceDate.getFullYear();
+  const refMonth = referenceDate.getMonth() + 1;
+  return month > refMonth ? refYear - 1 : refYear;
+}
+
+function parseMercadoPagoDateToken(token: string, referenceDate: Date | null): ParsedDateMetadata | null {
+  const fullMatch = token.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (fullMatch) {
+    const day = Number.parseInt(fullMatch[1] ?? "", 10);
+    const month = Number.parseInt(fullMatch[2] ?? "", 10);
+    const year = Number.parseInt(fullMatch[3] ?? "", 10);
+    if (!isValidDateParts(day, month, year)) return null;
+    return {
+      iso: `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+      estimatedYear: false,
+      confidencePenalty: 0,
+    };
+  }
+
+  const shortMatch = token.match(/^(\d{2})\/(\d{2})$/);
+  if (!shortMatch) return null;
+  const day = Number.parseInt(shortMatch[1] ?? "", 10);
+  const month = Number.parseInt(shortMatch[2] ?? "", 10);
+  const year = resolveYearForMercadoPagoDayMonth(month, referenceDate);
+  if (!isValidDateParts(day, month, year)) return null;
+  return {
+    iso: `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+    estimatedYear: true,
+    confidencePenalty: 8,
+    issue: "Ano inferido a partir da fatura",
+  };
+}
+
+function resolveMercadoPagoCardMismatchWarning(options?: ParseMercadoPagoOptions): string | null {
+  const selectedCardSignal = `${options?.selectedCardName ?? ""} ${options?.selectedCardIssuer ?? ""}`.trim();
+  if (!selectedCardSignal) return null;
+  if (looksLikeMercadoPagoCardName(selectedCardSignal)) return null;
+  return "Esta fatura parece ser Mercado Pago, mas o cartao selecionado nao parece ser Mercado Pago. Revise antes de confirmar.";
+}
+
+function normalizeMercadoPagoDescriptionNoise(raw: string): string {
+  return raw
+    .replace(/@{3,}/g, " ")
+    .replace(/[|]{2,}/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function shouldIgnoreMercadoPagoDescription(rawDescription: string): boolean {
+  const normalized = normalizePortableText(rawDescription).replace(/\s+/g, " ").trim();
+  if (!normalized) return true;
+  if (/^\d+\s+DE\s+\d+$/.test(normalized)) return true;
+  if (/^TOTAL\b/.test(normalized)) return true;
+  if (/^(PAGAMENTO|LIMITE|JUROS|IOF|MULTA|CET|SAC|OUVIDORIA)\b/.test(normalized)) return true;
+  if (MERCADO_PAGO_EXCLUDED_DESCRIPTION_MARKERS.some((marker) => normalized.includes(marker))) return true;
+  return false;
+}
+
+function findFirstCompactMarkerIndexAfterStart(
+  compactContent: string,
+  markersCompact: readonly string[],
+  startIndex: number,
+): number {
+  let best = -1;
+  for (const marker of markersCompact) {
+    const idx = compactContent.indexOf(marker, startIndex);
+    if (idx < 0) continue;
+    if (best < 0 || idx < best) best = idx;
+  }
+  return best;
+}
+
+function extractMercadoPagoDetailsSection(content: string): string {
+  const normalized = normalizePortableText(content);
+  const { compact, rawIndexes } = buildCompactIndexMap(normalized);
+  if (!compact) return "";
+
+  const startCompact = findFirstCompactMarkerIndexAfterStart(
+    compact,
+    MERCADO_PAGO_SECTION_START_MARKERS_COMPACT,
+    0,
+  );
+  if (startCompact < 0) return "";
+
+  const startRawIndex = rawIndexes[startCompact] ?? 0;
+  const startSearchIndex = startCompact + 1;
+  const endCompact = findFirstCompactMarkerIndexAfterStart(
+    compact,
+    MERCADO_PAGO_SECTION_END_MARKERS_COMPACT,
+    startSearchIndex,
+  );
+
+  if (endCompact < 0) {
+    return content.slice(startRawIndex).trim();
+  }
+
+  const endRawIndex = rawIndexes[endCompact];
+  if (typeof endRawIndex !== "number") {
+    return content.slice(startRawIndex).trim();
+  }
+
+  return content.slice(startRawIndex, endRawIndex).trim();
+}
+
+type MercadoPagoCardBlock = {
+  cardLast4: string | null;
+  content: string;
+};
+
+function extractMercadoPagoCardBlocks(detailsSection: string): MercadoPagoCardBlock[] {
+  const cardHeaderRegex = /Cart[aã]o\s+Visa\s+\[\s*[*\s]*?(\d{4})\s*\]/gi;
+  const matches = Array.from(detailsSection.matchAll(cardHeaderRegex));
+  if (matches.length === 0) return [];
+
+  const blocks: MercadoPagoCardBlock[] = [];
+  for (let index = 0; index < matches.length; index += 1) {
+    const current = matches[index];
+    const next = matches[index + 1];
+    if (!current || typeof current.index !== "number") continue;
+
+    const blockStart = current.index + current[0].length;
+    const blockEnd = typeof next?.index === "number" ? next.index : detailsSection.length;
+    const rawBlock = detailsSection.slice(blockStart, blockEnd);
+    if (!rawBlock.trim()) continue;
+
+    blocks.push({
+      cardLast4: (current[1] ?? "").trim() || null,
+      content: rawBlock,
+    });
+  }
+
+  return blocks;
+}
+
+type MercadoPagoCandidate = {
+  dateToken: string;
+  description: string;
+  amountToken: string;
+  cardLast4: string | null;
+};
+
+function extractMercadoPagoTransactionCandidates(block: MercadoPagoCardBlock): MercadoPagoCandidate[] {
+  let flattened = block.content
+    .replace(/\r/g, "\n")
+    .replace(/\u00A0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!flattened) return [];
+
+  flattened = flattened
+    .replace(/Data\s+Movimenta[cç][oõ]es\s+Valor\s+em\s+R\$?/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const totalMarker = flattened.search(/\bTotal\s+R\$\s*[-−]?\d[\d.]*,\d{2}\b/i);
+  if (totalMarker >= 0) {
+    flattened = flattened.slice(0, totalMarker).trim();
+  }
+  if (!flattened) return [];
+
+  const candidates: MercadoPagoCandidate[] = [];
+  const transactionRegex =
+    /(\d{2}\/\d{2})\s+(.+?)\s+R\$\s*([\-−]?\d[\d.]*,\d{2})(?=\s+\d{2}\/\d{2}\s+|\s+Total\s+R\$|\s+Cart[aã]o\s+Visa\s+\[|$)/gi;
+
+  let match: RegExpExecArray | null;
+  while ((match = transactionRegex.exec(flattened)) !== null) {
+    const dateToken = (match[1] ?? "").trim();
+    const description = (match[2] ?? "").trim();
+    const amountToken = (match[3] ?? "").replace("−", "-").trim();
+    if (!dateToken || !description || !amountToken) continue;
+    candidates.push({
+      dateToken,
+      description,
+      amountToken,
+      cardLast4: block.cardLast4,
+    });
+  }
+
+  return candidates;
+}
+
+function parseMercadoPagoInvoiceTextInternal(
+  content: string,
+  source: ParseSource,
+  options?: ParseMercadoPagoOptions,
+): ParseResult {
+  const stats = createParseStats(source, 0);
+  const items: ParsedItem[] = [];
+  let idx = 0;
+
+  const detailsSection = extractMercadoPagoDetailsSection(content);
+  const blocks = extractMercadoPagoCardBlocks(detailsSection);
+  const candidates = blocks.flatMap(extractMercadoPagoTransactionCandidates);
+  stats.totalRows = candidates.length;
+
+  const referenceDate = extractMercadoPagoReferenceDate(content, options) ?? new Date();
+  const mismatchWarning = resolveMercadoPagoCardMismatchWarning(options);
+  const seenParsedTransactionKeys = new Set<string>();
+
+  for (const candidate of candidates) {
+    const parsedDate = parseMercadoPagoDateToken(candidate.dateToken, referenceDate);
+    if (!parsedDate) {
+      stats.skippedUnrecognized += 1;
+      continue;
+    }
+
+    const rawAmount = candidate.amountToken.replace("−", "-");
+    const valorParcelaRaw = parseMoney(rawAmount);
+    if (valorParcelaRaw == null || !Number.isFinite(valorParcelaRaw) || valorParcelaRaw <= 0) {
+      if (valorParcelaRaw != null && valorParcelaRaw < 0) {
+        stats.skippedNegativeValue += 1;
+      } else {
+        stats.skippedInvalidValue += 1;
+      }
+      continue;
+    }
+
+    const descriptionWithInstallment = normalizeMercadoPagoDescriptionNoise(candidate.description);
+    if (!descriptionWithInstallment || shouldIgnoreMercadoPagoDescription(descriptionWithInstallment)) {
+      stats.skippedPaymentOrCredit += 1;
+      continue;
+    }
+
+    const installment = extractInstallment(descriptionWithInstallment);
+    const parcelaAtual = installment?.parcelaAtual ?? 1;
+    const totalParcelas = installment?.totalParcelas ?? 1;
+    const cleanedDescription = installment
+      ? descriptionWithInstallment.replace(installment.raw, " ").trim()
+      : descriptionWithInstallment;
+    const descricao = normalizarDescricao(cleanedDescription);
+    if (!descricao || shouldIgnoreMercadoPagoDescription(descricao)) {
+      stats.skippedPaymentOrCredit += 1;
+      continue;
+    }
+
+    const valorParcela = toMoneyNumber(formatMoneyFixed(valorParcelaRaw));
+    const valor = toMoneyNumber(multiply(valorParcela, totalParcelas));
+    const parcelasRestantes = calculateParcelasRestantes(totalParcelas, parcelaAtual);
+    const estabelecimento = extractEstabelecimento(descricao);
+    const confidenceIssues: string[] = [];
+    let confidenceScore = 96 - parsedDate.confidencePenalty;
+
+    if (parsedDate.issue) confidenceIssues.push(parsedDate.issue);
+    if (installment?.ambiguous) {
+      confidenceIssues.push("Parcela atual inferida como 1");
+      confidenceScore -= 10;
+    }
+    if (mismatchWarning) {
+      confidenceIssues.push(mismatchWarning);
+      confidenceScore -= 8;
+    }
+
+    const finalConfidence = Math.max(0, Math.min(100, confidenceScore));
+    const shouldReview = confidenceIssues.length > 0 || finalConfidence < 75;
+
+    const parsedKey = [
+      parsedDate.iso,
+      valorParcela.toFixed(2),
+      String(totalParcelas),
+      String(parcelaAtual),
+      normalizePortableTextSpaced(descricao),
+      candidate.cardLast4 ?? "",
+    ].join("|");
+    if (seenParsedTransactionKeys.has(parsedKey)) {
+      continue;
+    }
+    seenParsedTransactionKeys.add(parsedKey);
+
+    const duplicata = options?.existentes && options?.cartaoId
+      ? checkDuplicata({
+        valorParcela,
+        valor,
+        descricao,
+        estabelecimento,
+        dataCompra: parsedDate.iso,
+        parcelas: totalParcelas,
+        parcelaAtual,
+      }, options.existentes, options.cartaoId)
+      : null;
+
+    const parsedItem = attachRecurringServiceSuggestion({
+      descricao,
+      estabelecimento,
+      valor,
+      valorParcela,
+      parcelas: totalParcelas,
+      parcelaAtual,
+      parcelasRestantes,
+      dataCompra: parsedDate.iso,
+      vencimentoFatura: options?.referenceBillingDate ?? null,
+      tipo: detectarTipo(descriptionWithInstallment),
+      confidenceScore: finalConfidence,
+      confidenceLevel: finalConfidence >= 85 ? "alta" : finalConfidence >= 65 ? "media" : "baixa",
+      reviewRequired: shouldReview,
+      validationIssues: confidenceIssues,
+    });
+
+    items.push({
+      ...parsedItem,
+      id: String(idx++),
+      duplicata,
+      action: duplicata ? "skip" : "import",
+    });
+  }
+
+  return { items, stats };
+}
+
+export function parseMercadoPagoInvoiceText(
+  text: string,
+  options?: ParseMercadoPagoOptions,
+): ParsedItem[] {
+  return parseMercadoPagoInvoiceTextInternal(text, "pdf", options).items;
+}
+
+function parseMercadoPagoPdfTransactions(
+  content: string,
+  existentes: CompraCartao[],
+  cartaoId: string,
+  options?: ParseOptions,
+): ParseResult {
+  const parsed = parseMercadoPagoInvoiceTextInternal(content, "pdf", {
+    ...options,
+    existentes,
+    cartaoId,
+  });
+  return {
+    ...parsed,
+    issuerDetected: "mercado_pago",
+    parserUsed: "mercado_pago_textual_pdf",
+  };
+}
+
 export function parseItauInvoiceText(
   text: string,
   options?: ParseItauOptions,
@@ -1787,6 +2229,8 @@ const INVOICE_PARSER_UNKNOWN_WARNING =
   "Emissor da fatura nao identificado com seguranca. Revise as compras antes de confirmar.";
 const ITAU_STRICT_EMPTY_WARNING =
   "Esta fatura parece ser Itau, mas nao foi possivel localizar compras reais na secao de lancamentos.";
+const MERCADO_PAGO_STRICT_EMPTY_WARNING =
+  "Esta fatura parece ser Mercado Pago, mas nao foi possivel localizar compras reais na secao de detalhes de consumo.";
 
 const REGISTERED_INVOICE_PARSERS: readonly InvoiceParserRegistration[] = [
   {
@@ -1794,6 +2238,12 @@ const REGISTERED_INVOICE_PARSERS: readonly InvoiceParserRegistration[] = [
     parserName: "itau_textual_pdf",
     detect: detectItauInvoiceText,
     parse: parseItauPdfTransactions,
+  },
+  {
+    issuer: "mercado_pago",
+    parserName: "mercado_pago_textual_pdf",
+    detect: detectMercadoPagoInvoiceText,
+    parse: parseMercadoPagoPdfTransactions,
   },
   {
     issuer: "nubank",
@@ -1941,6 +2391,21 @@ export function parsePdf(
       };
     }
     return selectedItau;
+  }
+
+  const mercadoPagoDetected =
+    options?.issuerHint === "mercado_pago" || detectMercadoPagoInvoiceText(content);
+  if (mercadoPagoDetected) {
+    const strictMercadoPago = parseMercadoPagoPdfTransactions(content, existentes, cartaoId, options);
+    if (strictMercadoPago.items.length === 0) {
+      return {
+        ...strictMercadoPago,
+        parserWarnings: [MERCADO_PAGO_STRICT_EMPTY_WARNING],
+        issuerDetected: "mercado_pago",
+        parserUsed: strictMercadoPago.parserUsed ?? "mercado_pago_textual_pdf",
+      };
+    }
+    return strictMercadoPago;
   }
 
   const matchedParser = REGISTERED_INVOICE_PARSERS.find((candidate) => candidate.detect(content));
