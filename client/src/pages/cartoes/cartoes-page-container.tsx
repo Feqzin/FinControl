@@ -50,6 +50,7 @@ import {
   deleteFaturasMes,
   deleteCompraCartaoComEscopo,
   createCompraAlias,
+  fetchCompraAliases,
   fetchImportLogs,
   type ImportConfirmResponse,
   type ImportLogEntry,
@@ -567,6 +568,15 @@ export default function CartoesPage() {
     queryFn: () => fetchImportLogs(20),
     enabled: smartImportLiberado && openImport,
     staleTime: 30_000,
+  });
+  const {
+    data: compraAliases = [],
+    isLoading: isCompraAliasesLoading,
+  } = useQuery({
+    queryKey: ["/api/compra-aliases", "import", importCartaoId || "all"],
+    queryFn: fetchCompraAliases,
+    enabled: smartImportLiberado && openImport && importItems.length > 0,
+    staleTime: 5 * 60_000,
   });
 
   useEffect(() => {
@@ -1124,6 +1134,8 @@ export default function CartoesPage() {
     setImportIssuerMismatchAcknowledged(false);
     setImportConfirmResult(null);
     setHistoryRollbackLogId(null);
+    setRememberingCompraAliasByItemId({});
+    setSavedCompraAliasByItemId({});
   };
 
   const handleImportCartaoChange = (value: string) => {
@@ -2524,6 +2536,8 @@ export default function CartoesPage() {
             setImportIssuerMismatchMustAcknowledge(false);
             setImportIssuerMismatchAcknowledged(false);
             setImportConfirmResult(null);
+            setRememberingCompraAliasByItemId({});
+            setSavedCompraAliasByItemId({});
             return;
           }
           if (!smartImportLiberado) {
@@ -2579,6 +2593,8 @@ export default function CartoesPage() {
         onRememberCompraAlias={handleRememberCompraAlias}
         rememberingCompraAliasByItemId={rememberingCompraAliasByItemId}
         savedCompraAliasByItemId={savedCompraAliasByItemId}
+        compraAliases={compraAliases}
+        isCompraAliasesLoading={isCompraAliasesLoading}
         onStartNewImport={() => {
           setImportConfirmResult(null);
           setImportItems([]);
@@ -2592,6 +2608,8 @@ export default function CartoesPage() {
           setImportIssuerMismatchWarning("");
           setImportIssuerMismatchMustAcknowledge(false);
           setImportIssuerMismatchAcknowledged(false);
+          setRememberingCompraAliasByItemId({});
+          setSavedCompraAliasByItemId({});
         }}
       />
 

@@ -1721,6 +1721,40 @@ function buildCompraCartaoFixture(overrides: Partial<CompraCartao> = {}): Compra
   };
 }
 
+function buildCompraAliasSignalFixture(
+  overrides: Partial<{
+    id: string;
+    compraCartaoId: string;
+    cartaoId: string | null;
+    nomeOriginal: string | null;
+    nomeImportado: string;
+    nomeNormalizado: string;
+    issuer: string | null;
+    parserUsed: string | null;
+    cardLast4: string | null;
+    valorParcela: string | null;
+    totalParcelas: number | null;
+    createdAt: string;
+    updatedAt: string;
+  }> = {},
+) {
+  return {
+    id: overrides.id ?? "alias-1",
+    compraCartaoId: overrides.compraCartaoId ?? "compra-1",
+    cartaoId: overrides.cartaoId ?? "cartao-mp",
+    nomeOriginal: overrides.nomeOriginal ?? "PS Portal",
+    nomeImportado: overrides.nomeImportado ?? "MLP KaBuM KaBuM",
+    nomeNormalizado: overrides.nomeNormalizado ?? "mlp kabum kabum",
+    issuer: overrides.issuer ?? "mercado_pago",
+    parserUsed: overrides.parserUsed ?? "mercado_pago_textual_pdf",
+    cardLast4: overrides.cardLast4 ?? "9064",
+    valorParcela: overrides.valorParcela ?? "157.58",
+    totalParcelas: overrides.totalParcelas ?? 10,
+    createdAt: overrides.createdAt ?? "2026-05-16T00:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-05-16T00:00:00.000Z",
+  };
+}
+
 test("import parser: possível mesma compra detecta MLP KaBuM versus PS Portal com sinais financeiros próximos", () => {
   const item = buildParsedImportItemFixture({
     descricao: "MLP KaBuM KaBuM",
@@ -1765,6 +1799,7 @@ test("import parser: descrição diferente não impede match quando valor/parcel
 
   const match = findPossibleExistingPurchaseMatch(item, [existing], "cartao-mp");
   assert.ok(match);
+  assert.equal(match?.aliasMatched, false);
 });
 
 test("import parser: mesmo valor com parcelas incompatíveis não vira possível mesma compra forte", () => {
@@ -1804,6 +1839,115 @@ test("import parser: compra claramente diferente não mostra possível mesma com
 
   const match = findPossibleExistingPurchaseMatch(item, [existing], "cartao-mp");
   assert.equal(match, null);
+});
+
+test("import parser: alias melhora confiança do match para possível mesma compra", () => {
+  const item = buildParsedImportItemFixture({
+    descricao: "MLP KaBuM KaBuM",
+    valorParcela: 157.58,
+    valor: 1575.8,
+    parcelas: 10,
+    parcelaAtual: 5,
+    dataCompra: "2025-12-24",
+    invoiceIssuerDetected: "mercado_pago",
+    cardLast4: "9064",
+  } as any);
+  const existing = buildCompraCartaoFixture({
+    id: "compra-ps-portal",
+    descricao: "PS Portal",
+    valorParcela: "157.50",
+    valorTotal: "1575.00",
+    parcelas: 10,
+    parcelaAtual: 5,
+    dataCompra: "2025-12-24",
+  });
+  const alias = buildCompraAliasSignalFixture({
+    compraCartaoId: "compra-ps-portal",
+    nomeImportado: "MLP KaBuM KaBuM",
+    nomeNormalizado: "mlp kabum kabum",
+  });
+
+  const withoutAlias = findPossibleExistingPurchaseMatch(item as any, [existing], "cartao-mp");
+  const withAlias = findPossibleExistingPurchaseMatch(item as any, [existing], "cartao-mp", [alias as any]);
+  assert.ok(withoutAlias);
+  assert.ok(withAlias);
+  assert.equal(withAlias?.aliasMatched, true);
+  assert.equal(withAlias?.aliasMatchedNameOriginal, "PS Portal");
+  assert.equal((withAlias?.score ?? 0) > (withoutAlias?.score ?? 0), true);
+});
+
+test("import parser: alias não força match quando sinais financeiros são incompatíveis", () => {
+  const item = buildParsedImportItemFixture({
+    descricao: "MLP KaBuM KaBuM",
+    valorParcela: 420,
+    valor: 4200,
+    parcelas: 10,
+    parcelaAtual: 8,
+    dataCompra: "2026-04-18",
+    invoiceIssuerDetected: "mercado_pago",
+  } as any);
+  const existing = buildCompraCartaoFixture({
+    id: "compra-ps-portal",
+    descricao: "PS Portal",
+    valorParcela: "157.50",
+    valorTotal: "1575.00",
+    parcelas: 10,
+    parcelaAtual: 5,
+    dataCompra: "2025-12-24",
+  });
+  const alias = buildCompraAliasSignalFixture({
+    compraCartaoId: "compra-ps-portal",
+    nomeImportado: "MLP KaBuM KaBuM",
+    nomeNormalizado: "mlp kabum kabum",
+  });
+
+  const match = findPossibleExistingPurchaseMatch(item as any, [existing], "cartao-mp", [alias as any]);
+  assert.equal(match, null);
+});
+
+test("import parser: issuer diferente no alias ainda ajuda, mas com confiança menor que issuer igual", () => {
+  const item = buildParsedImportItemFixture({
+    descricao: "NETFLIX.COM",
+    valorParcela: 59.9,
+    valor: 59.9,
+    parcelas: 1,
+    parcelaAtual: 1,
+    dataCompra: "2026-03-25",
+    invoiceIssuerDetected: "nubank",
+  } as any);
+  const existing = buildCompraCartaoFixture({
+    id: "compra-netflix",
+    descricao: "Netflix",
+    cartaoId: "cartao-nu",
+    valorParcela: "59.90",
+    valorTotal: "59.90",
+    parcelas: 1,
+    parcelaAtual: 1,
+    dataCompra: "2026-03-25",
+  });
+  const aliasSameIssuer = buildCompraAliasSignalFixture({
+    compraCartaoId: "compra-netflix",
+    cartaoId: "cartao-nu",
+    nomeOriginal: "Netflix",
+    nomeImportado: "NETFLIX.COM",
+    nomeNormalizado: "netflix com",
+    issuer: "nubank",
+    valorParcela: "59.90",
+    totalParcelas: 1,
+  });
+  const aliasDifferentIssuer = buildCompraAliasSignalFixture({
+    ...aliasSameIssuer,
+    id: "alias-2",
+    issuer: "mercado_pago",
+  });
+
+  const sameIssuerMatch = findPossibleExistingPurchaseMatch(item as any, [existing], "cartao-nu", [aliasSameIssuer as any]);
+  const differentIssuerMatch = findPossibleExistingPurchaseMatch(item as any, [existing], "cartao-nu", [aliasDifferentIssuer as any]);
+  assert.ok(sameIssuerMatch);
+  assert.ok(differentIssuerMatch);
+  assert.equal(sameIssuerMatch?.aliasMatched, true);
+  assert.equal(differentIssuerMatch?.aliasMatched, true);
+  assert.equal((sameIssuerMatch?.score ?? 0) > (differentIssuerMatch?.score ?? 0), true);
 });
 
 test("import parser: buildCompraAliasDraft preserva sinais para issuer mercado_pago", () => {

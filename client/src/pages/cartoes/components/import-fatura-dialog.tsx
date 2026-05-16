@@ -6,7 +6,7 @@ import type { Servico } from "@shared/schema";
 import type { ServicoPessoa } from "@shared/schema";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
 import { findPossibleExistingPurchaseMatch } from "@/pages/cartoes/import-existing-purchase-match";
-import type { ImportConfirmResponse, ImportLogEntry } from "@/services/api/cartoes";
+import type { CompraAliasApiModel, ImportConfirmResponse, ImportLogEntry } from "@/services/api/cartoes";
 import { FileText, Pencil, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -150,6 +150,8 @@ interface ImportFaturaDialogProps {
   onRememberCompraAlias?: (params: { item: ParsedItem; existingCompra: CompraCartao }) => Promise<void>;
   rememberingCompraAliasByItemId?: Record<string, boolean>;
   savedCompraAliasByItemId?: Record<string, boolean>;
+  compraAliases?: CompraAliasApiModel[];
+  isCompraAliasesLoading?: boolean;
 }
 
 export function ImportFaturaDialog({
@@ -198,6 +200,8 @@ export function ImportFaturaDialog({
   onRememberCompraAlias,
   rememberingCompraAliasByItemId = {},
   savedCompraAliasByItemId = {},
+  compraAliases = [],
+  isCompraAliasesLoading = false,
 }: ImportFaturaDialogProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -252,13 +256,13 @@ export function ImportFaturaDialog({
   const possibleExistingByItemId = useMemo(() => {
     const map = new Map<string, ReturnType<typeof findPossibleExistingPurchaseMatch>>();
     for (const item of importItems) {
-      const match = findPossibleExistingPurchaseMatch(item, compras, importCartaoId);
+      const match = findPossibleExistingPurchaseMatch(item, compras, importCartaoId, compraAliases);
       if (!match) continue;
       if (item.duplicata?.id && item.duplicata.id === match.existing.id) continue;
       map.set(item.id, match);
     }
     return map;
-  }, [compras, importCartaoId, importItems]);
+  }, [compras, importCartaoId, importItems, compraAliases]);
   useEffect(() => {
     setPossibleExistingActionByItemId((current) => {
       const validIds = new Set(importItems.map((item) => item.id));
@@ -823,9 +827,29 @@ export function ImportFaturaDialog({
                                 Similar a: "{item.duplicata.descricao}" ({formatCurrency(Number(item.duplicata.valorParcela))})
                               </p>
                             )}
+                            {isCompraAliasesLoading && possibleExisting ? (
+                              <p className="text-[11px] text-sky-700">
+                                Carregando equivalências salvas...
+                              </p>
+                            ) : null}
                             {possibleExisting ? (
                               <div className="mt-2 rounded-md border border-sky-200 bg-sky-50/60 px-2 py-2 space-y-1.5">
                                 <p className="text-xs font-medium text-sky-800">Possível mesma compra encontrada</p>
+                                {possibleExisting.aliasMatched ? (
+                                  <div className="rounded border border-sky-300 bg-sky-100/70 px-2 py-1">
+                                    <p className="text-xs font-medium text-sky-900">Equivalência conhecida</p>
+                                    <p className="text-[11px] text-sky-900">
+                                      Esse nome já foi associado anteriormente a:{" "}
+                                      <strong>
+                                        {possibleExisting.aliasMatchedNameOriginal ?? possibleExisting.existing.descricao}
+                                      </strong>
+                                      .
+                                    </p>
+                                  </div>
+                                ) : null}
+                                <p className="text-xs text-sky-900">
+                                  Nome importado: <strong>{item.descricao}</strong>
+                                </p>
                                 <p className="text-xs text-sky-900">
                                   Nome existente: <strong>{possibleExisting.existing.descricao}</strong>
                                 </p>
@@ -839,7 +863,8 @@ export function ImportFaturaDialog({
                                 <p className="text-[11px] text-sky-700">
                                   Confiança do match: {possibleExisting.confidence} ·
                                   diferença da parcela: {formatCurrency(possibleExisting.valueDiff)} ·
-                                  diferença do total: {formatCurrency(possibleExisting.totalDiff)}
+                                  diferença do total: {formatCurrency(possibleExisting.totalDiff)} ·
+                                  alias: {possibleExisting.aliasMatched ? "sim" : "não"}
                                 </p>
                                 <div className="max-w-xs">
                                   <Select

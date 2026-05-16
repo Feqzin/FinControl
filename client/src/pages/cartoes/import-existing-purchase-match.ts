@@ -10,6 +10,11 @@ export interface PossibleExistingPurchaseMatch {
   dateDiffDays: number | null;
   parcelasMatch: boolean;
   parcelaAtualCompatible: boolean;
+  aliasMatched: boolean;
+  aliasMatchedNameOriginal: string | null;
+  aliasMatchedNameImportado: string | null;
+  aliasIssuerMatch: "same" | "different" | "unknown";
+  aliasCardLast4Match: "same" | "different" | "unknown";
 }
 
 export interface CompraAliasDraft {
@@ -24,6 +29,22 @@ export interface CompraAliasDraft {
   totalParcelas: number | null;
 }
 
+export interface CompraAliasMatchSignal {
+  id: string;
+  compraCartaoId: string;
+  cartaoId: string | null;
+  nomeOriginal: string | null;
+  nomeImportado: string;
+  nomeNormalizado: string;
+  issuer: string | null;
+  parserUsed: string | null;
+  cardLast4: string | null;
+  valorParcela: string | number | null;
+  totalParcelas: number | null;
+  createdAt?: string | Date | null;
+  updatedAt?: string | Date | null;
+}
+
 interface MatchCandidateMetrics {
   score: number;
   valueDiff: number;
@@ -36,6 +57,21 @@ interface MatchCandidateMetrics {
 function toNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeAliasText(value: string | null | undefined): string {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeIssuer(value: string | null | undefined): string | null {
+  const normalized = normalizeAliasText(value);
+  return normalized.length > 0 ? normalized : null;
 }
 
 function normalizeCardLast4(value: string | null | undefined): string | null {
@@ -135,12 +171,100 @@ function evaluatePossibleMatch(
   };
 }
 
+function getAliasPriorityTimestamp(alias: CompraAliasMatchSignal): number {
+  const updatedAt = alias.updatedAt ? new Date(alias.updatedAt).getTime() : NaN;
+  if (Number.isFinite(updatedAt)) return updatedAt;
+  const createdAt = alias.createdAt ? new Date(alias.createdAt).getTime() : NaN;
+  if (Number.isFinite(createdAt)) return createdAt;
+  return 0;
+}
+
+function computeAliasBoost(
+  item: ParsedItem,
+  alias: CompraAliasMatchSignal,
+): {
+  boost: number;
+  issuerMatch: "same" | "different" | "unknown";
+  cardLast4Match: "same" | "different" | "unknown";
+} {
+  let boost = 2.5;
+  const itemIssuer = normalizeIssuer(item.invoiceIssuerDetected ?? null);
+  const aliasIssuer = normalizeIssuer(alias.issuer);
+  let issuerMatch: "same" | "different" | "unknown" = "unknown";
+
+  if (itemIssuer && aliasIssuer) {
+    if (itemIssuer === aliasIssuer) {
+      issuerMatch = "same";
+      boost += 1;
+    } else {
+      issuerMatch = "different";
+      boost += 0.2;
+    }
+  } else if (itemIssuer || aliasIssuer) {
+    boost += 0.5;
+  }
+
+  const itemLast4 = normalizeCardLast4(item.cardLast4);
+  const aliasLast4 = normalizeCardLast4(alias.cardLast4);
+  let cardLast4Match: "same" | "different" | "unknown" = "unknown";
+  if (itemLast4 && aliasLast4) {
+    if (itemLast4 === aliasLast4) {
+      cardLast4Match = "same";
+      boost += 0.8;
+    } else {
+      cardLast4Match = "different";
+      boost -= 0.8;
+    }
+  }
+
+  const aliasTotalParcelas = toNumber(alias.totalParcelas, 0);
+  if (aliasTotalParcelas > 0) {
+    if (aliasTotalParcelas === item.parcelas) {
+      boost += 0.6;
+    } else {
+      boost -= 0.4;
+    }
+  }
+
+  const aliasValorParcela = toNumber(alias.valorParcela, 0);
+  if (aliasValorParcela > 0) {
+    const diff = Math.abs(aliasValorParcela - item.valorParcela);
+    if (diff <= 0.3) boost += 0.8;
+    else if (diff <= 1) boost += 0.4;
+    else if (diff <= 3) boost += 0.1;
+    else boost -= 1;
+  }
+
+  return {
+    boost,
+    issuerMatch,
+    cardLast4Match,
+  };
+}
+
 export function findPossibleExistingPurchaseMatch(
   item: ParsedItem,
   existentes: CompraCartao[],
   cartaoId: string | null | undefined,
+  aliases: CompraAliasMatchSignal[] = [],
 ): PossibleExistingPurchaseMatch | null {
   if (!cartaoId) return null;
+  const normalizedImportName = normalizeAliasText(item.descricao);
+  const filteredAliases = aliases.filter((alias) => (
+    normalizeAliasText(alias.nomeNormalizado) === normalizedImportName
+    || normalizeAliasText(alias.nomeImportado) === normalizedImportName
+  ));
+  const aliasByCompraId = new Map<string, CompraAliasMatchSignal>();
+  for (const alias of filteredAliases) {
+    const current = aliasByCompraId.get(alias.compraCartaoId);
+    if (!current) {
+      aliasByCompraId.set(alias.compraCartaoId, alias);
+      continue;
+    }
+    if (getAliasPriorityTimestamp(alias) > getAliasPriorityTimestamp(current)) {
+      aliasByCompraId.set(alias.compraCartaoId, alias);
+    }
+  }
 
   let best: PossibleExistingPurchaseMatch | null = null;
 
@@ -150,11 +274,22 @@ export function findPossibleExistingPurchaseMatch(
     const metrics = evaluatePossibleMatch(item, existing);
     if (!metrics) continue;
 
-    const confidence: "media" | "alta" = metrics.score >= 8 ? "alta" : "media";
+    const matchedAlias = aliasByCompraId.get(existing.id) ?? null;
+    const aliasSignals = matchedAlias
+      ? computeAliasBoost(item, matchedAlias)
+      : { boost: 0, issuerMatch: "unknown" as const, cardLast4Match: "unknown" as const };
+    const finalScore = metrics.score + aliasSignals.boost;
+    const confidence: "media" | "alta" = finalScore >= 8 ? "alta" : "media";
     const candidate: PossibleExistingPurchaseMatch = {
       existing,
-      confidence,
       ...metrics,
+      score: finalScore,
+      confidence,
+      aliasMatched: Boolean(matchedAlias),
+      aliasMatchedNameOriginal: matchedAlias?.nomeOriginal ?? null,
+      aliasMatchedNameImportado: matchedAlias?.nomeImportado ?? null,
+      aliasIssuerMatch: aliasSignals.issuerMatch,
+      aliasCardLast4Match: aliasSignals.cardLast4Match,
     };
 
     if (!best || candidate.score > best.score) {
