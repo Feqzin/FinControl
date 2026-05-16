@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Cartao } from "@shared/schema";
 import type { CompraCartao } from "@shared/schema";
@@ -147,6 +147,9 @@ interface ImportFaturaDialogProps {
   isImportLogsLoading?: boolean;
   rollbackImportLogLoadingId?: string | null;
   onRollbackImportLog?: (importLogId: string) => void;
+  onRememberCompraAlias?: (params: { item: ParsedItem; existingCompra: CompraCartao }) => Promise<void>;
+  rememberingCompraAliasByItemId?: Record<string, boolean>;
+  savedCompraAliasByItemId?: Record<string, boolean>;
 }
 
 export function ImportFaturaDialog({
@@ -192,6 +195,9 @@ export function ImportFaturaDialog({
   isImportLogsLoading = false,
   rollbackImportLogLoadingId = null,
   onRollbackImportLog,
+  onRememberCompraAlias,
+  rememberingCompraAliasByItemId = {},
+  savedCompraAliasByItemId = {},
 }: ImportFaturaDialogProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -253,6 +259,21 @@ export function ImportFaturaDialog({
     }
     return map;
   }, [compras, importCartaoId, importItems]);
+  useEffect(() => {
+    setPossibleExistingActionByItemId((current) => {
+      const validIds = new Set(importItems.map((item) => item.id));
+      let changed = false;
+      const next: Record<string, PossibleExistingAction> = {};
+      for (const [itemId, action] of Object.entries(current)) {
+        if (validIds.has(itemId)) {
+          next[itemId] = action;
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [importItems]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -479,6 +500,8 @@ export function ImportFaturaDialog({
                   const statusBadge = getStatusBadge(status);
                   const possibleExisting = possibleExistingByItemId.get(item.id) ?? null;
                   const possibleExistingAction = possibleExistingActionByItemId[item.id] ?? "import_new";
+                  const isSavingCompraAlias = rememberingCompraAliasByItemId[item.id] === true;
+                  const compraAliasSaved = savedCompraAliasByItemId[item.id] === true;
                   const serviceCandidate = item.recurringServiceCandidate;
                   const isServiceCandidate = Boolean(serviceCandidate?.isServiceCandidate);
                   const serviceAction = item.serviceSuggestionAction ?? "ignore";
@@ -839,6 +862,29 @@ export function ImportFaturaDialog({
                                       </SelectItem>
                                     </SelectContent>
                                   </Select>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {compraAliasSaved ? (
+                                    <span className="inline-flex items-center rounded bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                                      Equivalência salva
+                                    </span>
+                                  ) : null}
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs"
+                                    disabled={!onRememberCompraAlias || isSavingCompraAlias || compraAliasSaved}
+                                    onClick={() => {
+                                      if (!onRememberCompraAlias) return;
+                                      void onRememberCompraAlias({
+                                        item,
+                                        existingCompra: possibleExisting.existing,
+                                      });
+                                    }}
+                                  >
+                                    {isSavingCompraAlias ? "Salvando..." : "Lembrar equivalência"}
+                                  </Button>
                                 </div>
                                 <p className="text-[11px] text-sky-700">
                                   Nesta etapa o vínculo/substituição é apenas visual e ainda não altera compras existentes.

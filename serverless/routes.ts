@@ -30,6 +30,7 @@ import { createCloudBackupsController } from "./controllers/cloud-backups.contro
 import { createSubscriptionController } from "./controllers/subscription.controller.js";
 import { createBillingController } from "./controllers/billing.controller.js";
 import { createReportsController } from "./controllers/reports.controller.js";
+import { createCompraAliasesController } from "./controllers/compra-aliases.controller.js";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.js";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
 import { registerDebugDbPingRoute } from "./routes/debug-db-ping.route.js";
@@ -53,6 +54,7 @@ import { requirePremiumFeature } from "./subscription-access.js";
 import { pool } from "./db.js";
 import { ENV } from "./env.js";
 import { ReportsService } from "./services/reports.service.js";
+import { CompraAliasesService } from "./services/compra-aliases.service.js";
 
 function auditRoute(
   req: Request,
@@ -100,6 +102,7 @@ export function registerRoutes(app: Express): void {
   const subscriptionController = createSubscriptionController(new SubscriptionService(storage));
   const billingController = createBillingController(new BillingService());
   const reportsController = createReportsController(new ReportsService(financialRepository));
+  const compraAliasesController = createCompraAliasesController(new CompraAliasesService(storage));
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -292,6 +295,9 @@ export function registerRoutes(app: Express): void {
   app.post("/api/imports/preview", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.preview);
   app.post("/api/imports/confirm", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.confirm);
   app.post("/api/imports/:id/rollback", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.rollback);
+  app.get("/api/compra-aliases", requireAuth, compraAliasesController.list);
+  app.post("/api/compra-aliases", requireAuth, compraAliasesController.create);
+  app.delete("/api/compra-aliases/:id", requireAuth, compraAliasesController.remove);
   app.get("/api/subscription/usage", requireAuth, subscriptionController.getUsage);
   app.post("/api/billing/mercadopago/webhook", webhookRateLimit, billingController.processMercadoPagoWebhook);
   app.get("/api/billing/status", requireAuth, billingController.getStatus);

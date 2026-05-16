@@ -3,7 +3,7 @@ import { db } from "./db.js";
 import { writeTechnicalLog } from "./logger.js";
 import {
   users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos,
-  servicoPessoas, servicoPagamentos, metas, parcelasCompra, pessoaSaldoMovimentacoes, rendas, patrimonios,
+  servicoPessoas, servicoPagamentos, metas, parcelasCompra, pessoaSaldoMovimentacoes, rendas, patrimonios, compraAliases,
   type User, type InsertUser,
   type Pessoa, type InsertPessoa,
   type PessoaSaldoMovimentacao, type InsertPessoaSaldoMovimentacao,
@@ -18,6 +18,7 @@ import {
   type ParcelaCompra, type InsertParcelaCompra,
   type Renda, type InsertRenda,
   type Patrimonio, type InsertPatrimonio,
+  type CompraAlias, type InsertCompraAlias,
 } from "../shared/schema.js";
 
 const usersBaseProjection = {
@@ -316,6 +317,9 @@ export interface IStorage {
   createCompraCartao(compra: InsertCompraCartao): Promise<CompraCartao>;
   updateCompraCartao(id: string, userId: string, data: Partial<InsertCompraCartao>): Promise<CompraCartao | undefined>;
   deleteCompraCartao(id: string, userId: string): Promise<boolean>;
+  getCompraAliases(userId: string): Promise<CompraAlias[]>;
+  createCompraAlias(alias: InsertCompraAlias): Promise<CompraAlias>;
+  deleteCompraAlias(id: string, userId: string): Promise<boolean>;
 
   getServicos(userId: string): Promise<Servico[]>;
   getServico(id: string, userId: string): Promise<Servico | undefined>;
@@ -669,6 +673,26 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteCompraCartao(id: string, userId: string) {
     const result = await this.database.delete(comprasCartao).where(and(eq(comprasCartao.id, id), eq(comprasCartao.userId, userId))).returning();
+    return result.length > 0;
+  }
+  async getCompraAliases(userId: string) {
+    return this.database
+      .select()
+      .from(compraAliases)
+      .where(eq(compraAliases.userId, userId));
+  }
+  async createCompraAlias(alias: InsertCompraAlias) {
+    const [created] = await this.database
+      .insert(compraAliases)
+      .values(alias)
+      .returning();
+    return created;
+  }
+  async deleteCompraAlias(id: string, userId: string) {
+    const result = await this.database
+      .delete(compraAliases)
+      .where(and(eq(compraAliases.id, id), eq(compraAliases.userId, userId)))
+      .returning();
     return result.length > 0;
   }
 

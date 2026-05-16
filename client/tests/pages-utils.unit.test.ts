@@ -39,7 +39,7 @@ import {
   getTimelineEventKey,
   toTimelineDateLabel,
 } from "../src/pages/pessoas/payment-timeline.utils";
-import { findPossibleExistingPurchaseMatch } from "../src/pages/cartoes/import-existing-purchase-match";
+import { buildCompraAliasDraft, findPossibleExistingPurchaseMatch } from "../src/pages/cartoes/import-existing-purchase-match";
 
 test("formatters: moeda e data em pt-BR", () => {
   assert.equal(formatCurrencyBRL(1234.56), "R$\u00a01.234,56");
@@ -1697,6 +1697,10 @@ function buildParsedImportItemFixture(overrides: Partial<ReturnType<typeof parse
     tipo: overrides.tipo ?? "compra",
     duplicata: overrides.duplicata ?? null,
     action: overrides.action ?? "import",
+    cardLast4: (overrides as any).cardLast4 ?? null,
+    invoiceIssuerDetected: (overrides as any).invoiceIssuerDetected,
+    parserUsed: (overrides as any).parserUsed,
+    ...overrides,
   };
 }
 
@@ -1800,6 +1804,77 @@ test("import parser: compra claramente diferente não mostra possível mesma com
 
   const match = findPossibleExistingPurchaseMatch(item, [existing], "cartao-mp");
   assert.equal(match, null);
+});
+
+test("import parser: buildCompraAliasDraft preserva sinais para issuer mercado_pago", () => {
+  const item = buildParsedImportItemFixture({
+    descricao: "MLP KaBuM KaBuM",
+    valorParcela: 157.58,
+    parcelas: 10,
+    cardLast4: "9064",
+    parserUsed: "mercado_pago_textual_pdf",
+    invoiceIssuerDetected: "mercado_pago",
+  } as any);
+  const existing = buildCompraCartaoFixture({
+    id: "compra-mp-1",
+    cartaoId: "cartao-mp-1",
+    descricao: "PS Portal",
+  });
+
+  const draft = buildCompraAliasDraft(item as any, existing);
+  assert.equal(draft.compraCartaoId, "compra-mp-1");
+  assert.equal(draft.cartaoId, "cartao-mp-1");
+  assert.equal(draft.nomeOriginal, "PS Portal");
+  assert.equal(draft.nomeImportado, "MLP KaBuM KaBuM");
+  assert.equal(draft.issuer, "mercado_pago");
+  assert.equal(draft.cardLast4, "9064");
+  assert.equal(draft.totalParcelas, 10);
+});
+
+test("import parser: buildCompraAliasDraft funciona para issuer nubank e itau", () => {
+  const existing = buildCompraCartaoFixture({
+    id: "compra-issuer-1",
+    cartaoId: "cartao-issuer-1",
+    descricao: "Assinatura existente",
+  });
+
+  const nubankDraft = buildCompraAliasDraft(
+    buildParsedImportItemFixture({
+      descricao: "NETFLIX.COM",
+      invoiceIssuerDetected: "nubank",
+      parserUsed: "nubank_textual_pdf",
+    } as any) as any,
+    existing,
+  );
+  assert.equal(nubankDraft.issuer, "nubank");
+  assert.equal(nubankDraft.parserUsed, "nubank_textual_pdf");
+
+  const itauDraft = buildCompraAliasDraft(
+    buildParsedImportItemFixture({
+      descricao: "EBN PLAYSTATIONCURITIBABR",
+      invoiceIssuerDetected: "itau",
+      parserUsed: "itau_textual_pdf",
+    } as any) as any,
+    existing,
+  );
+  assert.equal(itauDraft.issuer, "itau");
+  assert.equal(itauDraft.parserUsed, "itau_textual_pdf");
+});
+
+test("import parser: buildCompraAliasDraft usa issuer generic quando ausente e saneia cardLast4 inválido", () => {
+  const item = buildParsedImportItemFixture({
+    descricao: "Compra sem emissor",
+    invoiceIssuerDetected: undefined,
+    cardLast4: "90A4",
+  } as any);
+  const existing = buildCompraCartaoFixture({
+    id: "compra-generic-1",
+    cartaoId: "cartao-generic-1",
+  });
+
+  const draft = buildCompraAliasDraft(item as any, existing);
+  assert.equal(draft.issuer, "generic");
+  assert.equal(draft.cardLast4, null);
 });
 
 test("relatorios PDF: metadados usam overview quando disponível", () => {

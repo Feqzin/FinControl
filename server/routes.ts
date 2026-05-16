@@ -28,11 +28,13 @@ import { createPatrimoniosController } from "./controllers/patrimonios.controlle
 import { createPagamentosTimelineController } from "./controllers/pagamentos-timeline.controller";
 import { createCloudBackupsController } from "./controllers/cloud-backups.controller";
 import { createReportsController } from "./controllers/reports.controller";
+import { createCompraAliasesController } from "./controllers/compra-aliases.controller";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes";
 import { PagamentosTimelineService } from "./services/pagamentos-timeline.service";
 import { CloudBackupsService } from "./services/cloud-backups.service";
 import { ReportsService } from "./services/reports.service";
+import { CompraAliasesService } from "./services/compra-aliases.service";
 import { requirePremiumFeature } from "./subscription-access";
 import { importRateLimit } from "./middleware/rate-limit";
 
@@ -68,6 +70,7 @@ export function registerRoutes(app: Express): void {
   const pagamentosTimelineController = createPagamentosTimelineController(new PagamentosTimelineService(financialRepository));
   const cloudBackupsController = createCloudBackupsController(new CloudBackupsService());
   const reportsController = createReportsController(new ReportsService(financialRepository));
+  const compraAliasesController = createCompraAliasesController(new CompraAliasesService(storage));
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -86,6 +89,9 @@ export function registerRoutes(app: Express): void {
   });
 
   app.get("/api/reports/overview", requireAuth, reportsController.overview);
+  app.get("/api/compra-aliases", requireAuth, compraAliasesController.list);
+  app.post("/api/compra-aliases", requireAuth, compraAliasesController.create);
+  app.delete("/api/compra-aliases/:id", requireAuth, compraAliasesController.remove);
 
   app.get("/api/pessoas/:pessoaId/timeline-pagamentos", requireAuth, pagamentosTimelineController.listByPessoa);
   app.patch("/api/pagamentos/:sourceType/:sourceId/observacao", requireAuth, pagamentosTimelineController.updateObservacao);

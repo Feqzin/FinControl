@@ -4,6 +4,16 @@ import type { ParsedItem } from "@/pages/cartoes/import-parser";
 
 type ImportSourceType = "texto" | "csv" | "ofx" | "qfx" | "pdf" | "manual";
 type ImportLogStatus = "previewed" | "confirmed" | "rolled_back";
+export type CompraAliasIssuer =
+  | "nubank"
+  | "itau"
+  | "mercado_pago"
+  | "c6"
+  | "santander"
+  | "bradesco"
+  | "banco_do_brasil"
+  | "unknown"
+  | "generic";
 
 export type ImportPreviewResponse = {
   importLogId: string;
@@ -67,6 +77,35 @@ export type ImportLogEntry = {
   rollbackServicesUnlinkedCount?: number;
   rollbackServicesRestoredCount?: number;
   rollbackWarningsCount?: number;
+};
+
+export type CompraAliasApiModel = {
+  id: string;
+  userId: string;
+  compraCartaoId: string;
+  cartaoId: string | null;
+  nomeOriginal: string | null;
+  nomeImportado: string;
+  nomeNormalizado: string;
+  issuer: string | null;
+  parserUsed: string | null;
+  cardLast4: string | null;
+  valorParcela: string | null;
+  totalParcelas: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateCompraAliasPayload = {
+  compraCartaoId: string;
+  cartaoId?: string | null;
+  nomeOriginal?: string | null;
+  nomeImportado: string;
+  issuer?: CompraAliasIssuer | null;
+  parserUsed?: string | null;
+  cardLast4?: string | null;
+  valorParcela?: number | null;
+  totalParcelas?: number | null;
 };
 
 export type CartaoPayload = {
@@ -470,6 +509,32 @@ export async function fetchImportLogs(limit = 20): Promise<ImportLogEntry[]> {
   query.set("limit", String(limit));
   const response = await apiRequest("GET", `/api/imports/logs?${query.toString()}`);
   return response.json();
+}
+
+export async function fetchCompraAliases(): Promise<CompraAliasApiModel[]> {
+  const response = await apiRequest("GET", "/api/compra-aliases");
+  return response.json();
+}
+
+export async function createCompraAlias(
+  payload: CreateCompraAliasPayload,
+): Promise<{ alias: CompraAliasApiModel; reusedExisting: boolean }> {
+  const response = await apiRequest("POST", "/api/compra-aliases", {
+    compraCartaoId: payload.compraCartaoId,
+    cartaoId: payload.cartaoId ?? null,
+    nomeOriginal: payload.nomeOriginal ?? null,
+    nomeImportado: payload.nomeImportado,
+    issuer: payload.issuer ?? null,
+    parserUsed: payload.parserUsed ?? null,
+    cardLast4: payload.cardLast4 ?? null,
+    valorParcela: payload.valorParcela ?? null,
+    totalParcelas: payload.totalParcelas ?? null,
+  });
+  return response.json();
+}
+
+export async function deleteCompraAlias(aliasId: string): Promise<void> {
+  await apiRequest("DELETE", `/api/compra-aliases/${aliasId}`);
 }
 
 export async function importComprasLote(

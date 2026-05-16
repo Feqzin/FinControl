@@ -29,6 +29,7 @@ import {
   type ParsedItem,
 } from "@/pages/cartoes/import-parser";
 import { extractPdfTextVariantsFromPdfBuffer, isExtractedPdfTextUsable } from "@/pages/cartoes/import-pdf-utils";
+import { buildCompraAliasDraft } from "@/pages/cartoes/import-existing-purchase-match";
 import { ImportFaturaDialog } from "@/pages/cartoes/components/import-fatura-dialog";
 import { formatImportCardOptionLabel, suggestImportCardByText } from "@/pages/cartoes/import-card-matching";
 import { useCartoes } from "@/hooks/useCartoes";
@@ -48,6 +49,7 @@ import {
   deleteFaturaCartaoMes,
   deleteFaturasMes,
   deleteCompraCartaoComEscopo,
+  createCompraAlias,
   fetchImportLogs,
   type ImportConfirmResponse,
   type ImportLogEntry,
@@ -488,6 +490,8 @@ export default function CartoesPage() {
   const [lastImportLogId, setLastImportLogId] = useState<string | null>(null);
   const [importConfirmResult, setImportConfirmResult] = useState<ImportConfirmResponse | null>(null);
   const [historyRollbackLogId, setHistoryRollbackLogId] = useState<string | null>(null);
+  const [rememberingCompraAliasByItemId, setRememberingCompraAliasByItemId] = useState<Record<string, boolean>>({});
+  const [savedCompraAliasByItemId, setSavedCompraAliasByItemId] = useState<Record<string, boolean>>({});
   const [comprasCartaoFocadoId, setComprasCartaoFocadoId] = useState<string | null>(null);
   const [cartoesTab, setCartoesTab] = useState<CartoesTab>(() => {
     if (typeof window === "undefined") return "resumo";
@@ -716,6 +720,33 @@ export default function CartoesPage() {
     deleteCompraTarget,
     deleteCompraScope,
   ]);
+  useEffect(() => {
+    const validIds = new Set(importItems.map((item) => item.id));
+    setRememberingCompraAliasByItemId((current) => {
+      let changed = false;
+      const next: Record<string, boolean> = {};
+      for (const [itemId, isSaving] of Object.entries(current)) {
+        if (validIds.has(itemId)) {
+          next[itemId] = isSaving;
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+    setSavedCompraAliasByItemId((current) => {
+      let changed = false;
+      const next: Record<string, boolean> = {};
+      for (const [itemId, isSaved] of Object.entries(current)) {
+        if (validIds.has(itemId)) {
+          next[itemId] = isSaved;
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [importItems]);
   const getErrorMessage = (error: unknown) => {
     const planLimitError = parsePlanLimitError(error);
     if (planLimitError) {
@@ -1649,6 +1680,35 @@ export default function CartoesPage() {
     );
   };
 
+  const handleRememberCompraAlias = async (
+    params: { item: ParsedItem; existingCompra: CompraCartao },
+  ): Promise<void> => {
+    const { item, existingCompra } = params;
+    const itemId = item.id;
+    setRememberingCompraAliasByItemId((current) => ({ ...current, [itemId]: true }));
+
+    try {
+      const aliasDraft = buildCompraAliasDraft(item, existingCompra);
+      const response = await createCompraAlias(aliasDraft);
+
+      setSavedCompraAliasByItemId((current) => ({ ...current, [itemId]: true }));
+      toast({
+        title: response.reusedExisting
+          ? "Equivalência já existente"
+          : "Equivalência salva",
+        description: "Próximas faturas reconhecerão essa compra.",
+      });
+    } catch (error) {
+      toast({
+        title: "Não foi possível salvar equivalência",
+        description: getErrorMessage(error),
+        variant: "destructive",
+      });
+    } finally {
+      setRememberingCompraAliasByItemId((current) => ({ ...current, [itemId]: false }));
+    }
+  };
+
   const requestRollbackConfirmation = (): boolean => {
     if (typeof window === "undefined") return true;
     return window.confirm(
@@ -2516,6 +2576,9 @@ export default function CartoesPage() {
         isImportLogsLoading={isImportLogsLoading}
         rollbackImportLogLoadingId={historyRollbackLogId}
         onRollbackImportLog={(importLogId) => handleRollbackImportById(importLogId)}
+        onRememberCompraAlias={handleRememberCompraAlias}
+        rememberingCompraAliasByItemId={rememberingCompraAliasByItemId}
+        savedCompraAliasByItemId={savedCompraAliasByItemId}
         onStartNewImport={() => {
           setImportConfirmResult(null);
           setImportItems([]);

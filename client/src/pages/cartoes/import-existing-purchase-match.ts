@@ -12,6 +12,18 @@ export interface PossibleExistingPurchaseMatch {
   parcelaAtualCompatible: boolean;
 }
 
+export interface CompraAliasDraft {
+  compraCartaoId: string;
+  cartaoId: string | null;
+  nomeOriginal: string;
+  nomeImportado: string;
+  issuer: ParsedItem["invoiceIssuerDetected"] | "generic";
+  parserUsed: string | null;
+  cardLast4: string | null;
+  valorParcela: number | null;
+  totalParcelas: number | null;
+}
+
 interface MatchCandidateMetrics {
   score: number;
   valueDiff: number;
@@ -24,6 +36,36 @@ interface MatchCandidateMetrics {
 function toNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeCardLast4(value: string | null | undefined): string | null {
+  const sanitized = (value ?? "").trim();
+  return /^\d{4}$/.test(sanitized) ? sanitized : null;
+}
+
+export function buildCompraAliasDraft(
+  item: ParsedItem,
+  existing: CompraCartao,
+): CompraAliasDraft {
+  const issuer = item.invoiceIssuerDetected ?? "generic";
+  const valorParcela = Number.isFinite(item.valorParcela) && item.valorParcela > 0
+    ? item.valorParcela
+    : null;
+  const totalParcelas = Number.isInteger(item.parcelas) && item.parcelas > 0
+    ? item.parcelas
+    : null;
+
+  return {
+    compraCartaoId: existing.id,
+    cartaoId: existing.cartaoId ?? null,
+    nomeOriginal: existing.descricao,
+    nomeImportado: item.descricao,
+    issuer,
+    parserUsed: item.parserUsed ?? null,
+    cardLast4: normalizeCardLast4(item.cardLast4),
+    valorParcela,
+    totalParcelas,
+  };
 }
 
 function parseIsoDate(value: string | null | undefined): Date | null {
@@ -122,4 +164,3 @@ export function findPossibleExistingPurchaseMatch(
 
   return best;
 }
-

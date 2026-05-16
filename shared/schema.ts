@@ -137,6 +137,38 @@ export const insertCompraCartaoSchema = createInsertSchema(comprasCartao).omit({
 export type InsertCompraCartao = z.infer<typeof insertCompraCartaoSchema>;
 export type CompraCartao = typeof comprasCartao.$inferSelect;
 
+export const compraAliases = pgTable("compra_aliases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  compraCartaoId: varchar("compra_cartao_id").notNull().references(() => comprasCartao.id, { onDelete: "cascade" }),
+  cartaoId: varchar("cartao_id").references(() => cartoes.id, { onDelete: "set null" }),
+  nomeOriginal: text("nome_original"),
+  nomeImportado: text("nome_importado").notNull(),
+  nomeNormalizado: text("nome_normalizado").notNull(),
+  issuer: text("issuer"),
+  parserUsed: text("parser_used"),
+  cardLast4: varchar("card_last4", { length: 4 }),
+  valorParcela: decimal("valor_parcela", { precision: 12, scale: 2 }),
+  totalParcelas: integer("total_parcelas"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  compraAliasesUserIdIdx: index("idx_compra_aliases_user_id").on(table.userId),
+  compraAliasesCompraIdIdx: index("idx_compra_aliases_compra_cartao_id").on(table.compraCartaoId),
+  compraAliasesCartaoIdIdx: index("idx_compra_aliases_cartao_id").on(table.cartaoId),
+  compraAliasesNomeNormalizadoIdx: index("idx_compra_aliases_nome_normalizado").on(table.nomeNormalizado),
+  compraAliasesIssuerIdx: index("idx_compra_aliases_issuer").on(table.issuer),
+  compraAliasesCreatedAtIdx: index("idx_compra_aliases_created_at").on(table.createdAt),
+}));
+
+export const insertCompraAliasSchema = createInsertSchema(compraAliases).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCompraAlias = z.infer<typeof insertCompraAliasSchema>;
+export type CompraAlias = typeof compraAliases.$inferSelect;
+
 export const servicos = pgTable("servicos", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
