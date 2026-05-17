@@ -40,6 +40,7 @@ import {
   toTimelineDateLabel,
 } from "../src/pages/pessoas/payment-timeline.utils";
 import { buildCompraAliasDraft, findPossibleExistingPurchaseMatch } from "../src/pages/cartoes/import-existing-purchase-match";
+import { buildCreateCompraAliasRequestBody } from "../src/services/api/cartoes";
 
 test("formatters: moeda e data em pt-BR", () => {
   assert.equal(formatCurrencyBRL(1234.56), "R$\u00a01.234,56");
@@ -2019,6 +2020,49 @@ test("import parser: buildCompraAliasDraft usa issuer generic quando ausente e s
   const draft = buildCompraAliasDraft(item as any, existing);
   assert.equal(draft.issuer, "generic");
   assert.equal(draft.cardLast4, null);
+});
+
+test("import parser: buildCreateCompraAliasRequestBody remove undefined e mantém campos numéricos", () => {
+  const body = buildCreateCompraAliasRequestBody({
+    compraCartaoId: "  compra-1  ",
+    nomeImportado: "  MLP KaBuM KaBuM  ",
+    cartaoId: null,
+    nomeOriginal: "  PS Portal  ",
+    issuer: "mercado_pago",
+    parserUsed: "mercado_pago_textual_pdf",
+    cardLast4: "9064",
+    valorParcela: 157.58,
+    totalParcelas: 10,
+  });
+
+  assert.equal(body.compraCartaoId, "compra-1");
+  assert.equal(body.nomeImportado, "MLP KaBuM KaBuM");
+  assert.equal(body.nomeOriginal, "PS Portal");
+  assert.equal(body.issuer, "mercado_pago");
+  assert.equal(body.cardLast4, "9064");
+  assert.equal(body.valorParcela, 157.58);
+  assert.equal(body.totalParcelas, 10);
+  assert.equal(Object.hasOwn(body, "cartaoId"), false);
+});
+
+test("import parser: buildCreateCompraAliasRequestBody aceita cartaoId ausente e saneia opcionais inválidos", () => {
+  const body = buildCreateCompraAliasRequestBody({
+    compraCartaoId: "compra-2",
+    nomeImportado: "NETFLIX.COM",
+    cartaoId: "   ",
+    issuer: "nubank",
+    cardLast4: "90A4",
+    valorParcela: Number.NaN,
+    totalParcelas: 10.5,
+  });
+
+  assert.equal(body.compraCartaoId, "compra-2");
+  assert.equal(body.nomeImportado, "NETFLIX.COM");
+  assert.equal(body.issuer, "nubank");
+  assert.equal(Object.hasOwn(body, "cartaoId"), false);
+  assert.equal(Object.hasOwn(body, "cardLast4"), false);
+  assert.equal(Object.hasOwn(body, "valorParcela"), false);
+  assert.equal(Object.hasOwn(body, "totalParcelas"), false);
 });
 
 test("relatorios PDF: metadados usam overview quando disponível", () => {

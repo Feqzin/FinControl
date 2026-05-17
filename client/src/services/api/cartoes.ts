@@ -108,6 +108,79 @@ export type CreateCompraAliasPayload = {
   totalParcelas?: number | null;
 };
 
+const COMPRA_ALIAS_ISSUERS = new Set<CompraAliasIssuer>([
+  "nubank",
+  "itau",
+  "mercado_pago",
+  "c6",
+  "santander",
+  "bradesco",
+  "banco_do_brasil",
+  "unknown",
+  "generic",
+]);
+
+function sanitizeAliasText(value: unknown, options?: { maxLength?: number }): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  const maxLength = options?.maxLength;
+  if (typeof maxLength === "number" && maxLength > 0 && trimmed.length > maxLength) {
+    const clamped = trimmed.slice(0, maxLength).trim();
+    return clamped.length > 0 ? clamped : null;
+  }
+  return trimmed;
+}
+
+function sanitizeAliasNumber(value: unknown): number | null {
+  if (value == null) return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+export function buildCreateCompraAliasRequestBody(
+  payload: CreateCompraAliasPayload,
+): Record<string, unknown> {
+  const compraCartaoId = sanitizeAliasText(payload.compraCartaoId);
+  const nomeImportado = sanitizeAliasText(payload.nomeImportado, { maxLength: 220 });
+  if (!compraCartaoId || !nomeImportado) {
+    throw new Error("Dados da compra existente incompletos.");
+  }
+
+  const body: Record<string, unknown> = {
+    compraCartaoId,
+    nomeImportado,
+  };
+
+  const cartaoId = sanitizeAliasText(payload.cartaoId);
+  if (cartaoId) body.cartaoId = cartaoId;
+
+  const nomeOriginal = sanitizeAliasText(payload.nomeOriginal);
+  if (nomeOriginal) body.nomeOriginal = nomeOriginal;
+
+  if (payload.issuer && COMPRA_ALIAS_ISSUERS.has(payload.issuer)) {
+    body.issuer = payload.issuer;
+  }
+
+  const parserUsed = sanitizeAliasText(payload.parserUsed);
+  if (parserUsed) body.parserUsed = parserUsed;
+
+  const cardLast4 = sanitizeAliasText(payload.cardLast4);
+  if (cardLast4 && /^\d{4}$/.test(cardLast4)) {
+    body.cardLast4 = cardLast4;
+  }
+
+  const valorParcela = sanitizeAliasNumber(payload.valorParcela);
+  if (valorParcela != null) body.valorParcela = valorParcela;
+
+  const totalParcelas = sanitizeAliasNumber(payload.totalParcelas);
+  if (totalParcelas != null && Number.isInteger(totalParcelas)) {
+    body.totalParcelas = totalParcelas;
+  }
+
+  return body;
+}
+
 export type CartaoPayload = {
   nome: string;
   limite: string;
@@ -519,17 +592,8 @@ export async function fetchCompraAliases(): Promise<CompraAliasApiModel[]> {
 export async function createCompraAlias(
   payload: CreateCompraAliasPayload,
 ): Promise<{ alias: CompraAliasApiModel; reusedExisting: boolean }> {
-  const response = await apiRequest("POST", "/api/compra-aliases", {
-    compraCartaoId: payload.compraCartaoId,
-    cartaoId: payload.cartaoId ?? null,
-    nomeOriginal: payload.nomeOriginal ?? null,
-    nomeImportado: payload.nomeImportado,
-    issuer: payload.issuer ?? null,
-    parserUsed: payload.parserUsed ?? null,
-    cardLast4: payload.cardLast4 ?? null,
-    valorParcela: payload.valorParcela ?? null,
-    totalParcelas: payload.totalParcelas ?? null,
-  });
+  const body = buildCreateCompraAliasRequestBody(payload);
+  const response = await apiRequest("POST", "/api/compra-aliases", body);
   return response.json();
 }
 

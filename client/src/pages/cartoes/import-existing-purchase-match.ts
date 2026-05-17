@@ -79,6 +79,16 @@ function normalizeCardLast4(value: string | null | undefined): string | null {
   return /^\d{4}$/.test(sanitized) ? sanitized : null;
 }
 
+function normalizeNonEmptyText(value: unknown, maxLength?: number): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return "";
+  if (typeof maxLength === "number" && maxLength > 0 && trimmed.length > maxLength) {
+    return trimmed.slice(0, maxLength).trim();
+  }
+  return trimmed;
+}
+
 export function buildCompraAliasDraft(
   item: ParsedItem,
   existing: CompraCartao,
@@ -90,12 +100,16 @@ export function buildCompraAliasDraft(
   const totalParcelas = Number.isInteger(item.parcelas) && item.parcelas > 0
     ? item.parcelas
     : null;
+  const compraCartaoId = normalizeNonEmptyText(existing.id);
+  const cartaoId = normalizeNonEmptyText(existing.cartaoId);
+  const nomeOriginal = normalizeNonEmptyText(existing.descricao);
+  const nomeImportado = normalizeNonEmptyText(item.descricao, 220);
 
   return {
-    compraCartaoId: existing.id,
-    cartaoId: existing.cartaoId ?? null,
-    nomeOriginal: existing.descricao,
-    nomeImportado: item.descricao,
+    compraCartaoId,
+    cartaoId: cartaoId.length > 0 ? cartaoId : null,
+    nomeOriginal,
+    nomeImportado,
     issuer,
     parserUsed: item.parserUsed ?? null,
     cardLast4: normalizeCardLast4(item.cardLast4),

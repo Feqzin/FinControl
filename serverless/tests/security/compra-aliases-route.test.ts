@@ -250,6 +250,28 @@ test("compra aliases: validações bloqueiam cardLast4 inválido e compra inexis
   });
 });
 
+test("compra aliases: aceita cartaoId ausente e números opcionais em string sem erro 500", async () => {
+  const { app } = createCompraAliasesRouteApp();
+  await withTestServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/compra-aliases`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        compraCartaoId: "compra_a_1",
+        nomeImportado: "MLP KaBuM KaBuM",
+        valorParcela: "157.58",
+        totalParcelas: "10",
+      }),
+    });
+    assert.equal(response.status, 201);
+    const payload = await response.json();
+    assert.equal(payload.alias.compraCartaoId, "compra_a_1");
+  });
+});
+
 test("compra aliases: aceita issuer mercado_pago, nubank, itau e também issuer ausente/generic", async () => {
   const { app } = createCompraAliasesRouteApp();
   const payloadBase = {

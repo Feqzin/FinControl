@@ -1701,6 +1701,20 @@ export default function CartoesPage() {
 
     try {
       const aliasDraft = buildCompraAliasDraft(item, existingCompra);
+      if (!aliasDraft.compraCartaoId || !aliasDraft.nomeImportado) {
+        throw new Error("Dados da compra existente incompletos.");
+      }
+      if (IS_DEV) {
+        logDev("compra-alias:payload:sanitized", {
+          compraCartaoId: aliasDraft.compraCartaoId,
+          hasCartaoId: Boolean(aliasDraft.cartaoId),
+          issuer: aliasDraft.issuer,
+          parserUsed: aliasDraft.parserUsed,
+          hasCardLast4: Boolean(aliasDraft.cardLast4),
+          hasValorParcela: aliasDraft.valorParcela != null,
+          hasTotalParcelas: aliasDraft.totalParcelas != null,
+        });
+      }
       const response = await createCompraAlias(aliasDraft);
 
       setSavedCompraAliasByItemId((current) => ({ ...current, [itemId]: true }));
@@ -1711,9 +1725,13 @@ export default function CartoesPage() {
         description: "Próximas faturas reconhecerão essa compra.",
       });
     } catch (error) {
+      const message = getErrorMessage(error);
+      const isValidationError = /obrigatorio|inválid|incomplet|cart[aã]o inválido|não correspondem/i.test(message);
       toast({
         title: "Não foi possível salvar equivalência",
-        description: getErrorMessage(error),
+        description: isValidationError
+          ? "Não foi possível salvar: dados da compra existente incompletos."
+          : message,
         variant: "destructive",
       });
     } finally {

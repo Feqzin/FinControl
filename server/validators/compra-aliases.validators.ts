@@ -18,6 +18,30 @@ const nullableTrimmedString = z.union([z.string(), z.null(), z.undefined()]).tra
   return trimmed.length > 0 ? trimmed : null;
 });
 
+const optionalPositiveNumber = z.preprocess((value) => {
+  if (value == null || value === "") return null;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(",", ".");
+    if (normalized.length === 0) return null;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : value;
+  }
+  return value;
+}, z.union([z.number(), z.null()]));
+
+const optionalPositiveInt = z.preprocess((value) => {
+  if (value == null || value === "") return null;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (normalized.length === 0) return null;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : value;
+  }
+  return value;
+}, z.union([z.number(), z.null()]));
+
 export const compraAliasCreateBody = z.object({
   compraCartaoId: z.string().trim().min(1, "compraCartaoId obrigatorio."),
   cartaoId: nullableTrimmedString,
@@ -32,13 +56,12 @@ export const compraAliasCreateBody = z.object({
       return trimmed.length > 0 ? trimmed : null;
     })
     .refine((value) => value == null || /^\d{4}$/.test(value), "cardLast4 deve conter 4 dígitos."),
-  valorParcela: z.union([z.number(), z.null(), z.undefined()])
+  valorParcela: optionalPositiveNumber
     .transform((value) => (value == null ? null : value))
     .refine((value) => value == null || (Number.isFinite(value) && value > 0), "valorParcela deve ser numérico e positivo."),
-  totalParcelas: z.union([z.number(), z.null(), z.undefined()])
+  totalParcelas: optionalPositiveInt
     .transform((value) => (value == null ? null : value))
     .refine((value) => value == null || (Number.isInteger(value) && value > 0), "totalParcelas deve ser inteiro positivo."),
 });
 
 export type CompraAliasCreateBodyInput = z.infer<typeof compraAliasCreateBody>;
-
