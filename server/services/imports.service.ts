@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { format } from "date-fns";
+import { addMonths, format } from "date-fns";
 import { db } from "../db";
 import {
   cartoes,
@@ -18,6 +18,7 @@ import type {
   ImportConfirmBodyInput,
   ImportPreviewBodyInput,
   ImportPreviewItemInput,
+  ImportReconcilePurchaseBodyInput,
 } from "../validators/import.validators";
 
 type ConfidenceLevel = "alta" | "media" | "baixa";
@@ -138,6 +139,17 @@ type ImportRollbackResult = {
   servicesRestoredCount: number;
   serviceRollbackWarnings: string[];
   alreadyRolledBack?: boolean;
+};
+
+type ImportReconcilePurchaseResult = {
+  existingCompraCartaoId: string;
+  updatedCompraCartaoId: string;
+  updated: boolean;
+  valueChanged: boolean;
+  parcelasChanged: boolean;
+  descriptionChanged: boolean;
+  blockedByProtection: boolean;
+  protectedParcelasCount: number;
 };
 
 const IMPORT_LOG_SOURCE_TYPES = new Set(["texto", "csv", "ofx", "qfx", "manual"]);
@@ -755,6 +767,48 @@ function toCompraInsert(userId: string, cartaoId: string, item: ImportPreviewIte
   };
 }
 
+function hasParcelaComprovante(
+  row: Pick<
+    typeof parcelasCompra.$inferSelect,
+    "comprovantePath" | "comprovanteNome" | "comprovanteMimeType" | "comprovanteTamanho" | "comprovanteEnviadoEm"
+  >,
+): boolean {
+  return Boolean(
+    row.comprovantePath
+    || row.comprovanteNome
+    || row.comprovanteMimeType
+    || row.comprovanteTamanho != null
+    || row.comprovanteEnviadoEm != null,
+  );
+}
+
+function isParcelaProtectedForReconcile(
+  row: Pick<
+    typeof parcelasCompra.$inferSelect,
+    | "statusCartao"
+    | "dataPagamentoCartao"
+    | "statusPessoa"
+    | "dataPagamentoPessoa"
+    | "comprovantePath"
+    | "comprovanteNome"
+    | "comprovanteMimeType"
+    | "comprovanteTamanho"
+    | "comprovanteEnviadoEm"
+  >,
+): boolean {
+  if (row.statusCartao === "pago") return true;
+  if (row.dataPagamentoCartao) return true;
+  if (row.statusPessoa === "pago") return true;
+  if (row.dataPagamentoPessoa) return true;
+  if (hasParcelaComprovante(row)) return true;
+  return false;
+}
+
+function buildParcelaDueDate(baseCompraDate: string, numero: number): string {
+  const baseDate = new Date(`${baseCompraDate}T12:00:00`);
+  return format(addMonths(baseDate, Math.max(0, numero - 1)), "yyyy-MM-dd");
+}
+
 export class ImportsService {
   constructor(
     private readonly deps: {
@@ -1171,6 +1225,201 @@ export class ImportsService {
         transactionResult.servicesCreatedCount,
         transactionResult.servicesLinkedCount,
       ),
+    };
+  }
+
+  async reconcilePurchase(
+    userId: string,
+    payload: ImportReconcilePurchaseBodyInput,
+  ): Promise<ImportReconcilePurchaseResult> {
+    const [existingCompra] = await db.select({
+      id: comprasCartao.id,
+      userId: comprasCartao.userId,
+      cartaoId: comprasCartao.cartaoId,
+      descricao: comprasCartao.descricao,
+      valorTotal: comprasCartao.valorTotal,
+      valorParcela: comprasCartao.valorParcela,
+      parcelas: comprasCartao.parcelas,
+      parcelaAtual: comprasCartao.parcelaAtual,
+      dataCompra: comprasCartao.dataCompra,
+      pessoaId: comprasCartao.pessoaId,
+      statusPessoa: comprasCartao.statusPessoa,
+      dataPagamentoPessoa: comprasCartao.dataPagamentoPessoa,
+    }).from(comprasCartao).where(and(
+      eq(comprasCartao.id, payload.existingCompraCartaoId),
+      eq(comprasCartao.userId, userId),
+    ));
+
+    if (!existingCompra) {
+      throw new ImportPipelineError(404, "Compra existente não encontrada para reconciliação.");
+    }
+
+    const duplicateRows = await db.select({
+      id: comprasCartao.id,
+      descricao: comprasCartao.descricao,
+      valorTotal: comprasCartao.valorTotal,
+      valorParcela: comprasCartao.valorParcela,
+      parcelas: comprasCartao.parcelas,
+      parcelaAtual: comprasCartao.parcelaAtual,
+      dataCompra: comprasCartao.dataCompra,
+      cartaoId: comprasCartao.cartaoId,
+    }).from(comprasCartao).where(and(
+      eq(comprasCartao.userId, userId),
+      eq(comprasCartao.cartaoId, existingCompra.cartaoId),
+    ));
+    const duplicateRowsById = new Map(duplicateRows.map((row) => [row.id, row] as const));
+
+    const normalizedItem = normalizeImportItem(payload.importItem, 0, {
+      duplicateRowsById,
+      duplicateRows,
+      cartaoId: existingCompra.cartaoId,
+      mode: "confirm",
+    });
+    if (normalizedItem.status === "invalido") {
+      throw new ImportPipelineError(400, "Item inválido não pode ser reconciliado com compra existente.");
+    }
+    if (normalizedItem.status === "duplicata_exata" && normalizedItem.forceImport !== true) {
+      throw new ImportPipelineError(400, "Duplicata exata exige confirmação de forçar para reconciliar.");
+    }
+
+    const nextValorTotal = formatMoneyFixed(normalizedItem.valor);
+    const nextValorParcela = formatMoneyFixed(normalizedItem.valorParcela);
+    if (!nextValorTotal || !nextValorParcela) {
+      throw new ImportPipelineError(400, "Valores inválidos para reconciliação.");
+    }
+
+    const previousValorTotal = parseMoney(existingCompra.valorTotal) ?? 0;
+    const previousValorParcela = parseMoney(existingCompra.valorParcela) ?? 0;
+    const valueChanged = Math.abs(previousValorParcela - normalizedItem.valorParcela) > 0.01
+      || Math.abs(previousValorTotal - normalizedItem.valor) > 0.01;
+    const parcelasChanged = existingCompra.parcelas !== normalizedItem.parcelas
+      || existingCompra.parcelaAtual !== normalizedItem.parcelaAtual;
+    const purchaseDateChanged = existingCompra.dataCompra !== normalizedItem.dataCompra;
+    const descriptionChanged = payload.updateDescription !== false
+      && existingCompra.descricao !== normalizedItem.descricao;
+    const scheduleChanged = valueChanged || parcelasChanged || purchaseDateChanged;
+
+    if (valueChanged && payload.confirmValueChange !== true) {
+      throw new ImportPipelineError(
+        409,
+        "Essa ação atualizará valores da compra existente. Confirme explicitamente a alteração para continuar.",
+        {
+          previousValorParcela,
+          nextValorParcela: normalizedItem.valorParcela,
+          previousValorTotal,
+          nextValorTotal: normalizedItem.valor,
+        },
+      );
+    }
+
+    const existingParcelas = await db.select({
+      id: parcelasCompra.id,
+      numero: parcelasCompra.numero,
+      statusCartao: parcelasCompra.statusCartao,
+      dataPagamentoCartao: parcelasCompra.dataPagamentoCartao,
+      statusPessoa: parcelasCompra.statusPessoa,
+      dataPagamentoPessoa: parcelasCompra.dataPagamentoPessoa,
+      comprovantePath: parcelasCompra.comprovantePath,
+      comprovanteNome: parcelasCompra.comprovanteNome,
+      comprovanteMimeType: parcelasCompra.comprovanteMimeType,
+      comprovanteTamanho: parcelasCompra.comprovanteTamanho,
+      comprovanteEnviadoEm: parcelasCompra.comprovanteEnviadoEm,
+    }).from(parcelasCompra).where(and(
+      eq(parcelasCompra.compraCartaoId, existingCompra.id),
+      eq(parcelasCompra.userId, userId),
+    ));
+
+    const protectedParcelas = existingParcelas.filter((row) => isParcelaProtectedForReconcile(row));
+    if (scheduleChanged && protectedParcelas.length > 0) {
+      throw new ImportPipelineError(
+        409,
+        "Essa compra possui parcelas pagas/comprovantes. Edite manualmente para evitar perda de dados.",
+        {
+          blockedByProtection: true,
+          protectedParcelasCount: protectedParcelas.length,
+        },
+      );
+    }
+
+    const reconciled = await db.transaction(async (tx) => {
+      const [updatedCompra] = await tx.update(comprasCartao).set({
+        descricao: payload.updateDescription === false ? existingCompra.descricao : normalizedItem.descricao,
+        valorTotal: nextValorTotal,
+        valorParcela: nextValorParcela,
+        parcelas: normalizedItem.parcelas,
+        parcelaAtual: normalizedItem.parcelaAtual,
+        dataCompra: normalizedItem.dataCompra,
+      }).where(and(
+        eq(comprasCartao.id, existingCompra.id),
+        eq(comprasCartao.userId, userId),
+      )).returning({
+        id: comprasCartao.id,
+        dataCompra: comprasCartao.dataCompra,
+      });
+
+      if (!updatedCompra) {
+        throw new ImportPipelineError(404, "Compra existente não encontrada para reconciliação.");
+      }
+
+      if (scheduleChanged) {
+        const currentRows = await tx.select({
+          id: parcelasCompra.id,
+          numero: parcelasCompra.numero,
+        }).from(parcelasCompra).where(and(
+          eq(parcelasCompra.compraCartaoId, updatedCompra.id),
+          eq(parcelasCompra.userId, userId),
+        ));
+        const rowsByNumero = new Map(currentRows.map((row) => [row.numero, row] as const));
+        const expectedParcelas = Math.max(1, normalizedItem.parcelas);
+
+        for (let numero = 1; numero <= expectedParcelas; numero += 1) {
+          const existingRow = rowsByNumero.get(numero);
+          const dataVencimento = buildParcelaDueDate(updatedCompra.dataCompra, numero);
+          if (existingRow) {
+            await tx.update(parcelasCompra).set({
+              valor: nextValorParcela,
+              dataVencimento,
+            }).where(and(
+              eq(parcelasCompra.id, existingRow.id),
+              eq(parcelasCompra.userId, userId),
+            ));
+            continue;
+          }
+
+          await tx.insert(parcelasCompra).values({
+            userId,
+            compraCartaoId: updatedCompra.id,
+            numero,
+            valor: nextValorParcela,
+            dataVencimento,
+            statusCartao: numero < normalizedItem.parcelaAtual ? "pago" : "pendente",
+            dataPagamentoCartao: numero < normalizedItem.parcelaAtual ? normalizedItem.dataCompra : null,
+            statusPessoa: null,
+            dataPagamentoPessoa: null,
+          });
+        }
+
+        const rowsToRemove = currentRows.filter((row) => row.numero > expectedParcelas);
+        if (rowsToRemove.length > 0) {
+          await tx.delete(parcelasCompra).where(and(
+            eq(parcelasCompra.userId, userId),
+            inArray(parcelasCompra.id, rowsToRemove.map((row) => row.id)),
+          ));
+        }
+      }
+
+      return updatedCompra;
+    });
+
+    return {
+      existingCompraCartaoId: existingCompra.id,
+      updatedCompraCartaoId: reconciled.id,
+      updated: true,
+      valueChanged,
+      parcelasChanged: parcelasChanged || purchaseDateChanged,
+      descriptionChanged,
+      blockedByProtection: false,
+      protectedParcelasCount: protectedParcelas.length,
     };
   }
 

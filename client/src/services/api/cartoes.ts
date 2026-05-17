@@ -45,6 +45,7 @@ export type ImportConfirmResponse = {
     servicesSkippedCount?: number;
     servicesLinkedCount?: number;
     servicesLinkSkippedCount?: number;
+    reconciledExistingCount?: number;
   };
   alreadyConfirmed?: boolean;
 };
@@ -58,6 +59,17 @@ export type ImportRollbackResponse = {
   servicesRestoredCount?: number;
   serviceRollbackWarnings?: string[];
   alreadyRolledBack?: boolean;
+};
+
+export type ImportReconcilePurchaseResponse = {
+  existingCompraCartaoId: string;
+  updatedCompraCartaoId: string;
+  updated: boolean;
+  valueChanged: boolean;
+  parcelasChanged: boolean;
+  descriptionChanged?: boolean;
+  blockedByProtection: boolean;
+  protectedParcelasCount?: number;
 };
 
 export type ImportLogEntry = {
@@ -574,6 +586,29 @@ export async function confirmImportCompras(params: {
 
 export async function rollbackImportCompras(importLogId: string): Promise<ImportRollbackResponse> {
   const response = await apiRequest("POST", `/api/imports/${importLogId}/rollback`);
+  return response.json();
+}
+
+export async function reconcileImportedPurchase(params: {
+  existingCompraCartaoId: string;
+  importItem: ParsedItem;
+  confirmValueChange?: boolean;
+  updateDescription?: boolean;
+  aliasId?: string | null;
+}): Promise<ImportReconcilePurchaseResponse> {
+  const existingCompraCartaoId = sanitizeAliasText(params.existingCompraCartaoId);
+  if (!existingCompraCartaoId) {
+    throw new Error("Dados da compra existente incompletos.");
+  }
+
+  const importItemPayload = toImportItemPayload(params.importItem);
+  const response = await apiRequest("POST", "/api/imports/reconcile-purchase", {
+    existingCompraCartaoId,
+    importItem: importItemPayload,
+    confirmValueChange: params.confirmValueChange === true,
+    updateDescription: params.updateDescription !== false,
+    aliasId: sanitizeAliasText(params.aliasId) ?? null,
+  });
   return response.json();
 }
 

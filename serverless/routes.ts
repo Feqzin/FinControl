@@ -294,6 +294,7 @@ export function registerRoutes(app: Express): void {
   app.get("/api/imports/logs", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.list);
   app.post("/api/imports/preview", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.preview);
   app.post("/api/imports/confirm", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.confirm);
+  app.post("/api/imports/reconcile-purchase", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.reconcile);
   app.post("/api/imports/:id/rollback", importRateLimit, requireAuth, requirePremiumFeature("smartImport"), importsController.rollback);
   app.get("/api/compra-aliases", requireAuth, compraAliasesController.list);
   app.post("/api/compra-aliases", requireAuth, compraAliasesController.create);

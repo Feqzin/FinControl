@@ -47,6 +47,9 @@ export interface ParsedItem {
   cardLast4?: string | null;
   invoiceIssuerDetected?: InvoiceIssuer;
   parserUsed?: string;
+  reconcileAction?: "none" | "replace_existing";
+  reconcileExistingCompraCartaoId?: string | null;
+  reconcileConfirmValueChange?: boolean;
 }
 
 export type RecurringServiceCategory = "streaming" | "seguro" | "software" | "assinatura" | "outro";

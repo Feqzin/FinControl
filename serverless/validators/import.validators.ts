@@ -126,8 +126,17 @@ export const importConfirmBody = z.object({
   items: z.array(importPreviewItemBody).min(1).max(1200).optional(),
 });
 
+export const importReconcilePurchaseBody = z.object({
+  existingCompraCartaoId: z.string().trim().min(1, "existingCompraCartaoId obrigatorio."),
+  importItem: importPreviewItemBody,
+  confirmValueChange: z.boolean().optional(),
+  updateDescription: z.boolean().optional(),
+  aliasId: z.string().trim().min(1).optional().nullable(),
+});
+
 export type ImportSourceType = z.infer<typeof importSourceType>;
 export type ImportAction = z.infer<typeof importAction>;
 export type ImportPreviewItemInput = z.infer<typeof importPreviewItemBody>;
 export type ImportPreviewBodyInput = z.infer<typeof importPreviewBody>;
 export type ImportConfirmBodyInput = z.infer<typeof importConfirmBody>;
+export type ImportReconcilePurchaseBodyInput = z.infer<typeof importReconcilePurchaseBody>;

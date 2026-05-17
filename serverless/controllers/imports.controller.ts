@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { auditRequest, getParam, getUserId } from "./controller-utils.js";
 import { ImportPipelineError, ImportsService } from "../services/imports.service.js";
-import { importConfirmBody, importPreviewBody } from "../validators/import.validators.js";
+import { importConfirmBody, importPreviewBody, importReconcilePurchaseBody } from "../validators/import.validators.js";
 
 function handleError(req: Request, res: Response, userId: string, domain: string, error: unknown, targetId?: string) {
   if (error instanceof ImportPipelineError) {
@@ -101,6 +101,41 @@ export function createImportsController(service: ImportsService) {
         return res.json(result);
       } catch (error) {
         return handleError(req, res, userId, "imports_confirm", error, parsed.data.importLogId);
+      }
+    },
+
+    reconcile: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const parsed = importReconcilePurchaseBody.safeParse(req.body);
+      if (!parsed.success) {
+        auditRequest(req, {
+          action: "import",
+          status: "failure",
+          domain: "imports_reconcile_purchase",
+          userId,
+          details: { reason: "validation_error" },
+        });
+        return res.status(400).json({ message: parsed.error.message });
+      }
+
+      try {
+        const result = await service.reconcilePurchase(userId, parsed.data);
+        auditRequest(req, {
+          action: "import",
+          status: "success",
+          domain: "imports_reconcile_purchase",
+          userId,
+          targetId: result.updatedCompraCartaoId,
+          details: {
+            valueChanged: result.valueChanged,
+            parcelasChanged: result.parcelasChanged,
+            descriptionChanged: result.descriptionChanged,
+            protectedParcelasCount: result.protectedParcelasCount,
+          },
+        });
+        return res.json(result);
+      } catch (error) {
+        return handleError(req, res, userId, "imports_reconcile_purchase", error, parsed.data.existingCompraCartaoId);
       }
     },
 

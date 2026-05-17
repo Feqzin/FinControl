@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Cartao } from "@shared/schema";
 import type { CompraCartao } from "@shared/schema";
@@ -205,9 +205,6 @@ export function ImportFaturaDialog({
 }: ImportFaturaDialogProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const [possibleExistingActionByItemId, setPossibleExistingActionByItemId] = useState<
-    Record<string, PossibleExistingAction>
-  >({});
   const totalImportar = importItems.filter((item) => {
     const status = getEffectiveStatus(item);
     if (item.action !== "import") return false;
@@ -215,6 +212,9 @@ export function ImportFaturaDialog({
     if (status === "duplicata_exata" && item.forceImport !== true) return false;
     return true;
   }).length;
+  const totalReconciliar = importItems.filter((item) => (
+    item.reconcileAction === "replace_existing" && Boolean(item.reconcileExistingCompraCartaoId)
+  )).length;
   const totalMensalImportar = importItems
     .filter((item) => {
       const status = getEffectiveStatus(item);
@@ -244,6 +244,7 @@ export function ImportFaturaDialog({
     servicesSkippedCount: 0,
     servicesLinkedCount: 0,
     servicesLinkSkippedCount: 0,
+    reconciledExistingCount: 0,
   };
   const hasConfirmSummary = Boolean(confirmResult);
   const servicoPessoasCountByServicoId = useMemo(() => {
@@ -263,21 +264,17 @@ export function ImportFaturaDialog({
     }
     return map;
   }, [compras, importCartaoId, importItems, compraAliases]);
-  useEffect(() => {
-    setPossibleExistingActionByItemId((current) => {
-      const validIds = new Set(importItems.map((item) => item.id));
-      let changed = false;
-      const next: Record<string, PossibleExistingAction> = {};
-      for (const [itemId, action] of Object.entries(current)) {
-        if (validIds.has(itemId)) {
-          next[itemId] = action;
-        } else {
-          changed = true;
-        }
-      }
-      return changed ? next : current;
-    });
-  }, [importItems]);
+  const hasReconcileWithoutTarget = importItems.some((item) => (
+    item.reconcileAction === "replace_existing" && !item.reconcileExistingCompraCartaoId
+  ));
+  const hasReconcilePendingValueConfirmation = importItems.some((item) => {
+    if (item.reconcileAction !== "replace_existing") return false;
+    const possibleExisting = possibleExistingByItemId.get(item.id);
+    if (!possibleExisting) return false;
+    const requiresConfirmation = possibleExisting.valueDiff > 0.01 || possibleExisting.totalDiff > 0.01;
+    if (!requiresConfirmation) return false;
+    return item.reconcileConfirmValueChange !== true;
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -503,7 +500,15 @@ export function ImportFaturaDialog({
                   const status = getEffectiveStatus(item);
                   const statusBadge = getStatusBadge(status);
                   const possibleExisting = possibleExistingByItemId.get(item.id) ?? null;
-                  const possibleExistingAction = possibleExistingActionByItemId[item.id] ?? "import_new";
+                  const possibleExistingAction: PossibleExistingAction =
+                    item.reconcileAction === "replace_existing"
+                      ? "replace_existing"
+                      : item.action === "skip"
+                        ? "ignore"
+                        : "import_new";
+                  const requiresReconcileValueChangeConfirmation = Boolean(
+                    possibleExisting && (possibleExisting.valueDiff > 0.01 || possibleExisting.totalDiff > 0.01),
+                  );
                   const isSavingCompraAlias = rememberingCompraAliasByItemId[item.id] === true;
                   const compraAliasSaved = savedCompraAliasByItemId[item.id] === true;
                   const serviceCandidate = item.recurringServiceCandidate;
@@ -609,18 +614,42 @@ export function ImportFaturaDialog({
                               if (index !== idx) return current;
                               const currentStatus = getEffectiveStatus(current);
                               if (currentStatus === "invalido") {
-                                return { ...current, action: "skip", forceImport: false };
+                                return {
+                                  ...current,
+                                  action: "skip",
+                                  forceImport: false,
+                                  reconcileAction: "none",
+                                  reconcileExistingCompraCartaoId: null,
+                                  reconcileConfirmValueChange: false,
+                                };
                               }
                               if (currentStatus === "duplicata_exata") {
                                 if (value === "force") {
-                                  return { ...current, action: "import", forceImport: true };
+                                  return {
+                                    ...current,
+                                    action: "import",
+                                    forceImport: true,
+                                    reconcileAction: "none",
+                                    reconcileExistingCompraCartaoId: null,
+                                    reconcileConfirmValueChange: false,
+                                  };
                                 }
-                                return { ...current, action: "skip", forceImport: false };
+                                return {
+                                  ...current,
+                                  action: "skip",
+                                  forceImport: false,
+                                  reconcileAction: "none",
+                                  reconcileExistingCompraCartaoId: null,
+                                  reconcileConfirmValueChange: false,
+                                };
                               }
                               return {
                                 ...current,
                                 action: value as "import" | "skip",
                                 forceImport: false,
+                                reconcileAction: "none",
+                                reconcileExistingCompraCartaoId: null,
+                                reconcileConfirmValueChange: false,
                               };
                             }))}
                           >
@@ -870,9 +899,34 @@ export function ImportFaturaDialog({
                                   <Select
                                     value={possibleExistingAction}
                                     onValueChange={(value) => {
-                                      setPossibleExistingActionByItemId((current) => ({
-                                        ...current,
-                                        [item.id]: value as PossibleExistingAction,
+                                      const nextAction = value as PossibleExistingAction;
+                                      setImportItems((items) => items.map((current, index) => {
+                                        if (index !== idx) return current;
+
+                                        if (nextAction === "replace_existing") {
+                                          return {
+                                            ...current,
+                                            action: "skip",
+                                            forceImport: false,
+                                            reconcileAction: "replace_existing",
+                                            reconcileExistingCompraCartaoId: possibleExisting.existing.id,
+                                            reconcileConfirmValueChange: requiresReconcileValueChangeConfirmation
+                                              ? current.reconcileConfirmValueChange === true
+                                              : true,
+                                            serviceSuggestionAction: "ignore",
+                                            linkedServiceId: null,
+                                            replaceExistingServiceLink: false,
+                                          };
+                                        }
+
+                                        return {
+                                          ...current,
+                                          action: nextAction === "ignore" ? "skip" : "import",
+                                          forceImport: false,
+                                          reconcileAction: "none",
+                                          reconcileExistingCompraCartaoId: possibleExisting.existing.id,
+                                          reconcileConfirmValueChange: false,
+                                        };
                                       }));
                                     }}
                                   >
@@ -882,12 +936,42 @@ export function ImportFaturaDialog({
                                     <SelectContent>
                                       <SelectItem value="ignore">Ignorar</SelectItem>
                                       <SelectItem value="import_new">Importar como nova</SelectItem>
-                                      <SelectItem value="replace_existing" disabled>
-                                        Vincular/Substituir existente (próxima etapa)
+                                      <SelectItem value="replace_existing">
+                                        Vincular/Substituir existente
                                       </SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
+                                {possibleExistingAction === "replace_existing" ? (
+                                  <div className="rounded-md border border-amber-300 bg-amber-50 px-2 py-2">
+                                    <p className="text-xs text-amber-900">
+                                      Esta ação atualiza a compra existente sem criar nova compra.
+                                      Parcelas pagas e comprovantes são preservados.
+                                    </p>
+                                    {requiresReconcileValueChangeConfirmation ? (
+                                      <label className="mt-1 inline-flex items-center gap-2 text-xs text-amber-900">
+                                        <input
+                                          type="checkbox"
+                                          className="h-3.5 w-3.5"
+                                          checked={item.reconcileConfirmValueChange === true}
+                                          onChange={(event) => {
+                                            const checked = event.target.checked;
+                                            setImportItems((items) => items.map((current, index) => (
+                                              index === idx
+                                                ? { ...current, reconcileConfirmValueChange: checked }
+                                                : current
+                                            )));
+                                          }}
+                                        />
+                                        <span>
+                                          Essa ação atualizará a compra existente de{" "}
+                                          {formatCurrency(Number(possibleExisting.existing.valorParcela))} para{" "}
+                                          {formatCurrency(item.valorParcela)} por parcela.
+                                        </span>
+                                      </label>
+                                    ) : null}
+                                  </div>
+                                ) : null}
                                 <div className="flex flex-wrap items-center gap-2">
                                   {compraAliasSaved ? (
                                     <span className="inline-flex items-center rounded bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
@@ -911,9 +995,6 @@ export function ImportFaturaDialog({
                                     {isSavingCompraAlias ? "Salvando..." : "Lembrar equivalência"}
                                   </Button>
                                 </div>
-                                <p className="text-[11px] text-sky-700">
-                                  Nesta etapa o vínculo/substituição é apenas visual e ainda não altera compras existentes.
-                                </p>
                               </div>
                             ) : null}
                           </div>
@@ -979,8 +1060,15 @@ export function ImportFaturaDialog({
                   ) : null}
                   <p className="text-sm text-muted-foreground">
                     {totalImportar} de {importItems.length} serão importadas
+                    {totalReconciliar > 0 ? ` · ${totalReconciliar} serão reconciliadas` : ""}
                     {" · "}Total: {formatCurrency(totalMensalImportar)}/mês
                   </p>
+                  {hasReconcileWithoutTarget ? (
+                    <p className="text-xs text-red-600">Há item de reconciliação sem compra existente vinculada.</p>
+                  ) : null}
+                  {hasReconcilePendingValueConfirmation ? (
+                    <p className="text-xs text-amber-700">Confirme alterações de valor antes de concluir a reconciliação.</p>
+                  ) : null}
                   {hasInvalidImportAttempt ? (
                     <p className="text-xs text-red-600">Itens inválidos não podem ser confirmados para importação.</p>
                   ) : null}
@@ -992,11 +1080,13 @@ export function ImportFaturaDialog({
                   className="w-full sm:w-auto"
                   data-testid="button-confirmar-importacao"
                   disabled={
-                    totalImportar === 0
+                    (totalImportar === 0 && totalReconciliar === 0)
                     || isBatchImportPending
                     || !importCartaoId
                     || hasInvalidImportAttempt
                     || hasDuplicateExactWithoutForce
+                    || hasReconcileWithoutTarget
+                    || hasReconcilePendingValueConfirmation
                     || (issuerMismatchRequiresAcknowledgement && !issuerMismatchAcknowledged)
                   }
                   onClick={onConfirmImport}
@@ -1021,6 +1111,10 @@ export function ImportFaturaDialog({
                 <div className="rounded-md border p-3">
                   <p className="text-muted-foreground">Compras criadas</p>
                   <p className="text-lg font-semibold">{confirmSummary.createdCount}</p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-muted-foreground">Compras reconciliadas</p>
+                  <p className="text-lg font-semibold">{confirmSummary.reconciledExistingCount ?? 0}</p>
                 </div>
                 <div className="rounded-md border p-3">
                   <p className="text-muted-foreground">Itens ignorados</p>

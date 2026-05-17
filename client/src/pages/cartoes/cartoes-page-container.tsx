@@ -57,6 +57,7 @@ import {
   deleteParcelaComprovante,
   getParcelaComprovanteDownloadUrl,
   previewImportCompras,
+  reconcileImportedPurchase,
   type ParcelaComprovanteResumo,
   type DeleteCompraScope,
   type DeleteCompraResponse,
@@ -491,6 +492,7 @@ export default function CartoesPage() {
   const [lastImportLogId, setLastImportLogId] = useState<string | null>(null);
   const [importConfirmResult, setImportConfirmResult] = useState<ImportConfirmResponse | null>(null);
   const [historyRollbackLogId, setHistoryRollbackLogId] = useState<string | null>(null);
+  const [isReconcilingImport, setIsReconcilingImport] = useState(false);
   const [rememberingCompraAliasByItemId, setRememberingCompraAliasByItemId] = useState<Record<string, boolean>>({});
   const [savedCompraAliasByItemId, setSavedCompraAliasByItemId] = useState<Record<string, boolean>>({});
   const [comprasCartaoFocadoId, setComprasCartaoFocadoId] = useState<string | null>(null);
@@ -1582,7 +1584,7 @@ export default function CartoesPage() {
     );
   };
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     if (!smartImportLiberado) {
       showSmartImportPremiumToast();
       return;
@@ -1607,7 +1609,31 @@ export default function CartoesPage() {
       return;
     }
 
-    const invalidSelectedItems = importItems.filter((item) => (
+    const itemsForConfirm = importItems.map((item) => {
+      if (item.reconcileAction !== "replace_existing") return item;
+      return {
+        ...item,
+        action: "skip" as const,
+        forceImport: false,
+        serviceSuggestionAction: "ignore" as const,
+        linkedServiceId: null,
+        replaceExistingServiceLink: false,
+        serviceAction: { type: "none" as const },
+      };
+    });
+    const reconcileItems = itemsForConfirm.filter((item) => item.reconcileAction === "replace_existing");
+
+    const reconcileItemsMissingTarget = reconcileItems.filter((item) => !item.reconcileExistingCompraCartaoId);
+    if (reconcileItemsMissingTarget.length > 0) {
+      toast({
+        title: "Reconciliação incompleta",
+        description: "Há itens para vincular/substituir sem compra existente selecionada.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const invalidSelectedItems = itemsForConfirm.filter((item) => (
       item.action === "import" && getImportItemEffectiveStatus(item) === "invalido"
     ));
     if (invalidSelectedItems.length > 0) {
@@ -1619,7 +1645,7 @@ export default function CartoesPage() {
       return;
     }
 
-    const duplicateExactWithoutForce = importItems.filter((item) => (
+    const duplicateExactWithoutForce = itemsForConfirm.filter((item) => (
       item.action === "import"
       && getImportItemEffectiveStatus(item) === "duplicata_exata"
       && item.forceImport !== true
@@ -1633,7 +1659,50 @@ export default function CartoesPage() {
       return;
     }
 
-    const missingLinkedServiceItems = importItems.filter((item) => (
+    const reconcileInvalidItems = reconcileItems.filter((item) => getImportItemEffectiveStatus(item) === "invalido");
+    if (reconcileInvalidItems.length > 0) {
+      toast({
+        title: "Itens inválidos não podem ser reconciliados",
+        description: "Revise os itens com vínculo/substituição antes de confirmar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const reconcileDuplicateExactWithoutForce = reconcileItems.filter((item) => (
+      getImportItemEffectiveStatus(item) === "duplicata_exata" && item.forceImport !== true
+    ));
+    if (reconcileDuplicateExactWithoutForce.length > 0) {
+      toast({
+        title: "Duplicata exata exige confirmação explícita",
+        description: "Marque a opção de forçar importação nos itens de duplicata exata antes de reconciliar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const reconcileMissingValueConfirmation = reconcileItems.filter((item) => {
+      const existingCompraId = item.reconcileExistingCompraCartaoId;
+      if (!existingCompraId) return true;
+      const existingCompra = compras.find((compra) => compra.id === existingCompraId);
+      if (!existingCompra) return true;
+      const existingValorParcela = Number(existingCompra.valorParcela) || 0;
+      const existingValorTotal = Number(existingCompra.valorTotal) || 0;
+      const valueChanged = Math.abs(existingValorParcela - item.valorParcela) > 0.01
+        || Math.abs(existingValorTotal - item.valor) > 0.01;
+      if (!valueChanged) return false;
+      return item.reconcileConfirmValueChange !== true;
+    });
+    if (reconcileMissingValueConfirmation.length > 0) {
+      toast({
+        title: "Confirme alteração de valor",
+        description: "Há itens de vincular/substituir com diferença de valor sem confirmação explícita.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const missingLinkedServiceItems = itemsForConfirm.filter((item) => (
       item.action === "import"
       && item.serviceSuggestionAction === "link_existing"
       && !item.linkedServiceId
@@ -1647,7 +1716,7 @@ export default function CartoesPage() {
       return;
     }
 
-    const replaceNotConfirmedItems = importItems.filter((item) => {
+    const replaceNotConfirmedItems = itemsForConfirm.filter((item) => {
       if (item.action !== "import" || item.serviceSuggestionAction !== "link_existing" || !item.linkedServiceId) {
         return false;
       }
@@ -1664,32 +1733,89 @@ export default function CartoesPage() {
       return;
     }
 
-    batchImportMutation.mutate(
-      {
-        items: importItems,
+    let reconcileAppliedCount = 0;
+    try {
+      if (reconcileItems.length > 0) {
+        setIsReconcilingImport(true);
+        for (const item of reconcileItems) {
+          const existingCompraId = item.reconcileExistingCompraCartaoId;
+          if (!existingCompraId) {
+            throw new Error("Compra existente não encontrada para reconciliação.");
+          }
+          const existingCompra = compras.find((compra) => compra.id === existingCompraId);
+          if (!existingCompra) {
+            throw new Error("Compra existente não encontrada para reconciliação.");
+          }
+          const existingValorParcela = Number(existingCompra.valorParcela) || 0;
+          const existingValorTotal = Number(existingCompra.valorTotal) || 0;
+          const valueChanged = Math.abs(existingValorParcela - item.valorParcela) > 0.01
+            || Math.abs(existingValorTotal - item.valor) > 0.01;
+
+          await reconcileImportedPurchase({
+            existingCompraCartaoId: existingCompraId,
+            importItem: item,
+            confirmValueChange: valueChanged ? item.reconcileConfirmValueChange === true : false,
+            updateDescription: true,
+          });
+          reconcileAppliedCount += 1;
+        }
+        toast({
+          title: "Reconciliação aplicada",
+          description: `${reconcileItems.length} compra(s) existente(s) foram atualizadas sem criar duplicidade.`,
+        });
+      }
+
+      const result = await batchImportMutation.mutateAsync({
+        items: itemsForConfirm,
         cartaoId,
         previewLogId: importPreviewLogId,
         sourceType: importSourceType,
         sourceName: importSourceName || undefined,
-      },
-      {
-        onSuccess: (result) => {
-          setLastImportLogId(result.importLogId);
-          setImportConfirmResult(result);
-          setImportPreviewLogId(null);
-          setImportItems([]);
-          setImportTexto("");
-          setImportVencimento("");
-          setImportEditingId(null);
-          setImportSourceType("manual");
-          setImportSourceName("");
-          setImportCartaoHint("");
+      });
+
+      const resultSummary = result.summary ?? {
+        totalProcessed: result.createdCount + result.skippedCount,
+        createdCount: result.createdCount,
+        ignoredCount: result.skippedCount,
+        blockedExactDuplicates: 0,
+        forcedExactDuplicates: 0,
+        invalidCount: 0,
+        errorCount: 0,
+        servicesCreatedCount: 0,
+        servicesSkippedCount: 0,
+        servicesLinkedCount: 0,
+        servicesLinkSkippedCount: 0,
+      };
+
+      setLastImportLogId(result.importLogId);
+      setImportConfirmResult({
+        ...result,
+        summary: {
+          ...resultSummary,
+          reconciledExistingCount: reconcileItems.length,
         },
-        onError: (error) => {
-          toast({ title: "Erro na importacao", description: getErrorMessage(error), variant: "destructive" });
-        },
-      },
-    );
+      });
+      setImportPreviewLogId(null);
+      setImportItems([]);
+      setImportTexto("");
+      setImportVencimento("");
+      setImportEditingId(null);
+      setImportSourceType("manual");
+      setImportSourceName("");
+      setImportCartaoHint("");
+      setRememberingCompraAliasByItemId({});
+      setSavedCompraAliasByItemId({});
+    } catch (error) {
+      if (reconcileAppliedCount > 0) {
+        void queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+        void queryClient.invalidateQueries({ queryKey: ["/api/cartoes"] });
+        void queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
+        void queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
+      }
+      toast({ title: "Erro na importacao", description: getErrorMessage(error), variant: "destructive" });
+    } finally {
+      setIsReconcilingImport(false);
+    }
   };
 
   const handleRememberCompraAlias = async (
@@ -1717,12 +1843,26 @@ export default function CartoesPage() {
       }
       const response = await createCompraAlias(aliasDraft);
 
+      setImportItems((currentItems) => currentItems.map((current) => {
+        if (current.id !== itemId) return current;
+        return {
+          ...current,
+          action: "skip",
+          forceImport: false,
+          reconcileAction: "none",
+          reconcileExistingCompraCartaoId: existingCompra.id,
+          reconcileConfirmValueChange: false,
+          serviceSuggestionAction: "ignore",
+          linkedServiceId: null,
+          replaceExistingServiceLink: false,
+        };
+      }));
       setSavedCompraAliasByItemId((current) => ({ ...current, [itemId]: true }));
       toast({
         title: response.reusedExisting
           ? "Equivalência já existente"
           : "Equivalência salva",
-        description: "Próximas faturas reconhecerão essa compra.",
+        description: "Equivalência salva. Este item foi marcado como Ignorar para evitar duplicidade.",
       });
     } catch (error) {
       const message = getErrorMessage(error);
@@ -2591,7 +2731,7 @@ export default function CartoesPage() {
         setImportEditForm={setImportEditForm}
         onApplyImportEdit={applyImportEdit}
         formatCurrency={formatCartaoCurrency}
-        isBatchImportPending={batchImportMutation.isPending}
+        isBatchImportPending={batchImportMutation.isPending || isReconcilingImport}
         issuerMismatchWarning={importIssuerMismatchWarning}
         issuerMismatchRequiresAcknowledgement={importIssuerMismatchMustAcknowledge}
         issuerMismatchAcknowledged={importIssuerMismatchAcknowledged}
