@@ -61,6 +61,11 @@ import {
 import { buildCompraAliasDraft, findPossibleExistingPurchaseMatch } from "../src/pages/cartoes/import-existing-purchase-match";
 import { buildCreateCompraAliasRequestBody } from "../src/services/api/cartoes";
 import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
+import {
+  canAutoRematerializeCompetency,
+  diffParcelasCompetencySchedules,
+  matchesLegacyPurchaseDateSchedule,
+} from "@shared/parcelas-compra-competency";
 
 test("formatters: moeda e data em pt-BR", () => {
   assert.equal(formatCurrencyBRL(1234.56), "R$\u00a01.234,56");
@@ -757,6 +762,145 @@ test("cartoes utils: parcela vencida somente quando pendente e data passada", ()
     }),
     false,
   );
+});
+
+test("competência diagnóstico: compra com cronograma legado divergente é detectada e marcada para correção", () => {
+  const currentRows = [
+    {
+      numero: 1,
+      dataVencimento: "2025-09-17",
+      statusCartao: "pago",
+      dataPagamentoCartao: "2025-09-18",
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+      comprovantePath: null,
+      comprovanteNome: null,
+      comprovanteMimeType: null,
+      comprovanteTamanho: null,
+      comprovanteEnviadoEm: null,
+    },
+    {
+      numero: 8,
+      dataVencimento: "2026-04-17",
+      statusCartao: "pendente",
+      dataPagamentoCartao: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+      comprovantePath: null,
+      comprovanteNome: null,
+      comprovanteMimeType: null,
+      comprovanteTamanho: null,
+      comprovanteEnviadoEm: null,
+    },
+  ];
+
+  const suggestedRows = [
+    { numero: 1, dataVencimento: "2025-10-23" },
+    { numero: 8, dataVencimento: "2026-05-23" },
+  ];
+
+  const diffs = diffParcelasCompetencySchedules(currentRows, suggestedRows);
+  assert.equal(diffs.length, 2);
+  assert.equal(diffs.every((diff) => diff.kind === "due_date_mismatch"), true);
+  assert.equal(matchesLegacyPurchaseDateSchedule(
+    currentRows.map((row) => ({ numero: row.numero, dataVencimento: row.dataVencimento })),
+    [
+      { numero: 1, dataVencimento: "2025-09-17" },
+      { numero: 8, dataVencimento: "2026-04-17" },
+    ],
+  ), true);
+});
+
+test("competência diagnóstico: compra já correta não gera diferenças", () => {
+  const currentRows = [
+    { numero: 1, dataVencimento: "2026-05-23" },
+    { numero: 2, dataVencimento: "2026-06-23" },
+  ];
+  const suggestedRows = [
+    { numero: 1, dataVencimento: "2026-05-23" },
+    { numero: 2, dataVencimento: "2026-06-23" },
+  ];
+
+  const diffs = diffParcelasCompetencySchedules(currentRows, suggestedRows);
+  assert.equal(diffs.length, 0);
+});
+
+test("competência diagnóstico: parcela paga ou com comprovante bloqueia rematerialização automática", () => {
+  const diffsWithPaid = diffParcelasCompetencySchedules(
+    [{
+      numero: 1,
+      dataVencimento: "2025-09-17",
+      statusCartao: "pago",
+      dataPagamentoCartao: "2025-09-18",
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+      comprovantePath: null,
+      comprovanteNome: null,
+      comprovanteMimeType: null,
+      comprovanteTamanho: null,
+      comprovanteEnviadoEm: null,
+    }],
+    [{ numero: 1, dataVencimento: "2026-05-23" }],
+  );
+  assert.equal(canAutoRematerializeCompetency(diffsWithPaid).canApply, false);
+
+  const diffsWithProof = diffParcelasCompetencySchedules(
+    [{
+      numero: 1,
+      dataVencimento: "2025-09-17",
+      statusCartao: "pendente",
+      dataPagamentoCartao: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+      comprovantePath: "/proofs/doc.pdf",
+      comprovanteNome: "doc.pdf",
+      comprovanteMimeType: "application/pdf",
+      comprovanteTamanho: 1200,
+      comprovanteEnviadoEm: "2026-04-12T10:00:00.000Z",
+    }],
+    [{ numero: 1, dataVencimento: "2026-05-23" }],
+  );
+  assert.equal(canAutoRematerializeCompetency(diffsWithProof).canApply, false);
+});
+
+test("competência diagnóstico: compra sem pagamentos/comprovantes pode ser rematerializada sem alterar valor/quantidade", () => {
+  const currentRows = [
+    {
+      numero: 1,
+      dataVencimento: "2026-04-17",
+      statusCartao: "pendente",
+      dataPagamentoCartao: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+      comprovantePath: null,
+      comprovanteNome: null,
+      comprovanteMimeType: null,
+      comprovanteTamanho: null,
+      comprovanteEnviadoEm: null,
+    },
+    {
+      numero: 2,
+      dataVencimento: "2026-05-17",
+      statusCartao: "pendente",
+      dataPagamentoCartao: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+      comprovantePath: null,
+      comprovanteNome: null,
+      comprovanteMimeType: null,
+      comprovanteTamanho: null,
+      comprovanteEnviadoEm: null,
+    },
+  ];
+  const suggestedRows = [
+    { numero: 1, dataVencimento: "2026-05-23" },
+    { numero: 2, dataVencimento: "2026-06-23" },
+  ];
+
+  const diffs = diffParcelasCompetencySchedules(currentRows, suggestedRows);
+  const decision = canAutoRematerializeCompetency(diffs);
+  assert.equal(decision.canApply, true);
+  assert.equal(currentRows.length, suggestedRows.length);
 });
 
 test("card limit usage: parcela paga de mês anterior não entra na fatura atual nem compromete limite", () => {

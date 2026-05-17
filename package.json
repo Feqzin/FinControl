@@ -23,6 +23,7 @@
     "audit:ops": "tsx script/operational-audit.ts",
     "audit:ops:strict": "tsx script/operational-audit.ts --strict",
     "diagnose:domain": "tsx script/diagnose-domain-values.ts",
+    "diagnose:parcelas-competencia": "tsx script/diagnose-parcelas-compra-competencia.ts",
     "backfill:parcelas-compra": "tsx script/backfill-parcelas-compra.ts",
     "test": "npm run test:frontend-unit && npm run test:recalculo && npm run test:seed-policy && npm run test:startup && npm run test:dividas-unit && npm run test:dividas-integration && npm run test:parcelas-unit && npm run test:parcelas-integration && npm run test:parcelas-compra-materialization && npm run test:compras-unit && npm run test:compras-integration && npm run test:cartoes-unit && npm run test:aggregate-consistency-unit && npm run test:financial-transactions-unit && npm run test:financial-debt-analytics-unit && npm run test:financial-unit && npm run test:financial-integration && npm run test:imports-integration && npm run test:auth-unit && npm run test:auth-integration && npm run test:audit-log-unit && npm run test:pagamentos-timeline-integration",
     "test:recalculo": "tsx --test server/tests/divida-recalculo.test.ts",
