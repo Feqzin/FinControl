@@ -29,7 +29,7 @@ import {
 } from "../src/pages/cartoes/import-parser";
 import { suggestImportCardByText } from "../src/pages/cartoes/import-card-matching";
 import { parseMoneyLikeValue, resolveReembolsoPreview } from "../src/components/cartoes/CompraCartaoDialog";
-import type { Cartao, CompraCartao, Divida, Parcela, Pessoa, Servico } from "@shared/schema";
+import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Pessoa, Servico } from "@shared/schema";
 import {
   extractTextFromPdfBuffer,
   hasPdfMagicBytes,
@@ -253,6 +253,26 @@ function buildCompraCartaoViewFixture(overrides: Partial<CompraCartao> = {}): Co
   };
 }
 
+function buildParcelaCompraViewFixture(overrides: Partial<ParcelaCompra> = {}): ParcelaCompra {
+  return {
+    id: overrides.id ?? "parcela-compra-1",
+    userId: overrides.userId ?? "user-1",
+    compraCartaoId: overrides.compraCartaoId ?? "compra-1",
+    numero: overrides.numero ?? 1,
+    valor: overrides.valor ?? "100.00",
+    dataVencimento: overrides.dataVencimento ?? "2026-04-20",
+    statusCartao: overrides.statusCartao ?? "pendente",
+    dataPagamentoCartao: overrides.dataPagamentoCartao ?? null,
+    statusPessoa: overrides.statusPessoa ?? "pendente",
+    dataPagamentoPessoa: overrides.dataPagamentoPessoa ?? null,
+    comprovantePath: overrides.comprovantePath ?? null,
+    comprovanteNome: overrides.comprovanteNome ?? null,
+    comprovanteMimeType: overrides.comprovanteMimeType ?? null,
+    comprovanteTamanho: overrides.comprovanteTamanho ?? null,
+    comprovanteEnviadoEm: overrides.comprovanteEnviadoEm ?? null,
+  };
+}
+
 test("dividas view: compra vinculada aparece como origem cartao com valor parcial de reembolso", () => {
   const manual = buildDividaFixture({ id: "d-manual", pessoaId: "pessoa-a", tipo: "receber", valor: "100.00", status: "pendente" });
   const compra = buildCompraCartaoViewFixture({
@@ -272,6 +292,7 @@ test("dividas view: compra vinculada aparece como origem cartao com valor parcia
   const items = buildDividasViewItems({
     dividasManuais: manualList,
     comprasCartaoVinculadas: [compra],
+    parcelasCompra: [],
     cartoes: [cartao],
     getDividaStatus: getDividaStatusFixture,
     getDividaValorPendente: (divida) => Number(divida.valor),
@@ -292,6 +313,7 @@ test("dividas view: filtros de origem todos/manual/cartao", () => {
   const items = buildDividasViewItems({
     dividasManuais: [manual as Divida & { parcelas: Parcela[] }],
     comprasCartaoVinculadas: [compra],
+    parcelasCompra: [],
     cartoes: [buildCartaoViewFixture({ id: "cartao-1" })],
     getDividaStatus: getDividaStatusFixture,
     getDividaValorPendente: (divida) => Number(divida.valor),
@@ -339,6 +361,7 @@ test("dividas view: status pago em compra vinculada não entra como pendente", (
   const items = buildDividasViewItems({
     dividasManuais: [],
     comprasCartaoVinculadas: [compraPaga],
+    parcelasCompra: [],
     cartoes: [buildCartaoViewFixture({ id: "cartao-1" })],
     getDividaStatus: getDividaStatusFixture,
     getDividaValorPendente: () => 0,
@@ -353,6 +376,140 @@ test("dividas view: status pago em compra vinculada não entra como pendente", (
   assert.equal(sorted.length, 1);
   assert.equal(sorted[0]?.status, "pago");
   assert.equal(sorted[0]?.valorPendente, 0);
+});
+
+test("dividas view: compra de cartão com parcelas vencidas não entra como quitada", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "c-vencida",
+    pessoaId: "pessoa-b",
+    descricao: "Martelete Leroy Merlin",
+    valorTotal: "700.00",
+    valorParcela: "100.00",
+    parcelas: 7,
+    parcelaAtual: 1,
+    reembolsoModo: "total",
+    statusPessoa: "pago",
+  });
+
+  const parcelasCompra = Array.from({ length: 7 }, (_, index) => buildParcelaCompraViewFixture({
+    id: `pc-vencida-${index + 1}`,
+    compraCartaoId: "c-vencida",
+    numero: index + 1,
+    valor: "100.00",
+    dataVencimento: "2020-01-10",
+    statusPessoa: "pendente",
+  }));
+
+  const items = buildDividasViewItems({
+    dividasManuais: [],
+    comprasCartaoVinculadas: [compra],
+    parcelasCompra,
+    cartoes: [buildCartaoViewFixture({ id: "cartao-1" })],
+    getDividaStatus: getDividaStatusFixture,
+    getDividaValorPendente: () => 0,
+    getDividaValorPago: () => 0,
+  });
+
+  const onlyItem = items[0];
+  assert.ok(onlyItem);
+  assert.equal(onlyItem?.status, "vencido");
+  assert.equal(onlyItem?.parcelasPagas, 0);
+  assert.equal(onlyItem?.parcelasPendentes, 7);
+  assert.equal(onlyItem?.parcelasVencidas, 7);
+
+  const quitado = filterDividasViewItems({
+    items,
+    search: "",
+    filterTipo: "todos",
+    filterStatus: "pago",
+    filterOrigin: "cartao",
+    getPessoaNome: getPessoaNomeFixture,
+  });
+  assert.equal(quitado.length, 0);
+});
+
+test("dividas view: compra de cartão parcialmente reembolsada não aparece em quitado", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "c-parcial",
+    valorTotal: "1000.00",
+    valorParcela: "100.00",
+    parcelas: 10,
+    parcelaAtual: 1,
+    reembolsoModo: "metade",
+  });
+
+  const parcelasCompra = Array.from({ length: 10 }, (_, index) => buildParcelaCompraViewFixture({
+    id: `pc-parcial-${index + 1}`,
+    compraCartaoId: "c-parcial",
+    numero: index + 1,
+    valor: "100.00",
+    dataVencimento: "2030-01-10",
+    statusPessoa: index < 4 ? "pago" : "pendente",
+  }));
+
+  const items = buildDividasViewItems({
+    dividasManuais: [],
+    comprasCartaoVinculadas: [compra],
+    parcelasCompra,
+    cartoes: [buildCartaoViewFixture({ id: "cartao-1" })],
+    getDividaStatus: getDividaStatusFixture,
+    getDividaValorPendente: () => 0,
+    getDividaValorPago: () => 0,
+  });
+
+  assert.equal(items[0]?.status, "pendente");
+  const quitado = filterDividasViewItems({
+    items,
+    search: "",
+    filterTipo: "todos",
+    filterStatus: "pago",
+    filterOrigin: "cartao",
+    getPessoaNome: getPessoaNomeFixture,
+  });
+  assert.equal(quitado.length, 0);
+});
+
+test("dividas view: compra de cartão com todas parcelas reembolsadas aparece como quitada", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "c-quitada",
+    valorTotal: "422.79",
+    valorParcela: "60.40",
+    parcelas: 7,
+    parcelaAtual: 1,
+    reembolsoModo: "metade",
+    statusPessoa: "pendente",
+  });
+
+  const parcelasCompra = Array.from({ length: 7 }, (_, index) => buildParcelaCompraViewFixture({
+    id: `pc-quitada-${index + 1}`,
+    compraCartaoId: "c-quitada",
+    numero: index + 1,
+    valor: "60.40",
+    dataVencimento: "2026-01-10",
+    statusPessoa: "pago",
+  }));
+
+  const items = buildDividasViewItems({
+    dividasManuais: [],
+    comprasCartaoVinculadas: [compra],
+    parcelasCompra,
+    cartoes: [buildCartaoViewFixture({ id: "cartao-1" })],
+    getDividaStatus: getDividaStatusFixture,
+    getDividaValorPendente: () => 0,
+    getDividaValorPago: () => 0,
+  });
+
+  assert.equal(items[0]?.status, "pago");
+  assert.equal(items[0]?.valorPendente, 0);
+  const quitado = filterDividasViewItems({
+    items,
+    search: "",
+    filterTipo: "todos",
+    filterStatus: "pago",
+    filterOrigin: "cartao",
+    getPessoaNome: getPessoaNomeFixture,
+  });
+  assert.equal(quitado.length, 1);
 });
 
 function buildPessoaFixture(overrides: Partial<Pessoa> = {}): Pessoa {

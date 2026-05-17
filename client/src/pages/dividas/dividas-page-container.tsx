@@ -42,6 +42,32 @@ function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function getCartaoReembolsoBadgeMeta(status: "pendente" | "pago" | "vencido"): {
+  label: string;
+  className: string;
+  stripeClassName: string;
+} {
+  if (status === "pago") {
+    return {
+      label: "Reembolsado",
+      className: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+      stripeClassName: "bg-emerald-500",
+    };
+  }
+  if (status === "vencido") {
+    return {
+      label: "Reembolso vencido",
+      className: "bg-red-500/10 text-red-700 dark:text-red-400",
+      stripeClassName: "bg-red-500",
+    };
+  }
+  return {
+    label: "Reembolso pendente",
+    className: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+    stripeClassName: "bg-violet-500",
+  };
+}
+
 export default function DividasPage() {
   const { toast } = useToast();
   const { prefs } = useUIPreferences();
@@ -83,6 +109,7 @@ export default function DividasPage() {
   const {
     dividasComParcelas,
     comprasCartao,
+    parcelasCompra,
     cartoes,
     pessoas,
     isLoading,
@@ -108,12 +135,13 @@ export default function DividasPage() {
     () => buildDividasViewItems({
       dividasManuais: dividasComParcelas,
       comprasCartaoVinculadas: comprasCartao,
+      parcelasCompra,
       cartoes,
       getDividaStatus,
       getDividaValorPendente,
       getDividaValorPago,
     }),
-    [cartoes, comprasCartao, dividasComParcelas, getDividaStatus, getDividaValorPago, getDividaValorPendente],
+    [cartoes, comprasCartao, dividasComParcelas, getDividaStatus, getDividaValorPago, getDividaValorPendente, parcelasCompra],
   );
 
   const filteredViewItems = useMemo(
@@ -602,11 +630,8 @@ export default function DividasPage() {
         <div className="space-y-3" data-testid="dividas-mobile-list">
           {sortedFiltered.map((item) => {
             if (item.origin === "cartao" && item.compraCartao) {
+              const badgeMeta = getCartaoReembolsoBadgeMeta(item.status);
               const pessoaNome = getPessoaNome(item.pessoaId);
-              const statusLabel = item.status === "pago" ? "Pago" : "Pendente";
-              const statusClass = item.status === "pago"
-                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                : "bg-amber-500/10 text-amber-700 dark:text-amber-400";
 
               return (
                 <div
@@ -615,7 +640,7 @@ export default function DividasPage() {
                   data-testid={`mobile-card-divida-${item.id}`}
                 >
                   <div className="flex items-stretch gap-0">
-                    <div className={`w-1 flex-shrink-0 ${item.status === "pago" ? "bg-emerald-500" : "bg-violet-500"}`} />
+                    <div className={`w-1 flex-shrink-0 ${badgeMeta.stripeClassName}`} />
                     <div className="flex-1 p-3.5">
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
@@ -623,8 +648,8 @@ export default function DividasPage() {
                             <p className="font-semibold text-sm leading-tight">{pessoaNome}</p>
                             <Badge variant="default">Receber</Badge>
                             <Badge variant="outline">Cartão</Badge>
-                            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${statusClass}`}>
-                              {statusLabel}
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${badgeMeta.className}`}>
+                              {badgeMeta.label}
                             </span>
                           </div>
                           <p className="text-xs text-muted-foreground mt-1 truncate">
@@ -632,6 +657,9 @@ export default function DividasPage() {
                           </p>
                           <p className="text-xs text-muted-foreground mt-1">
                             Compra no cartão: {formatDividaCurrency(item.cardTotalCompra ?? 0)}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {item.parcelasPagas}/{item.parcelasTotal} reembolsadas
                           </p>
                         </div>
                         <div className="text-right flex-shrink-0">
@@ -823,19 +851,20 @@ export default function DividasPage() {
         <div className="space-y-3">
           {sortedFiltered.map((item) => {
             if (item.origin === "cartao" && item.compraCartao) {
+              const badgeMeta = getCartaoReembolsoBadgeMeta(item.status);
               return (
                 <Card key={item.id} className="hover-elevate transition-all" data-testid={`card-divida-${item.id}`}>
                   <CardContent className="p-4 space-y-3">
                     <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                       <div className="flex items-start gap-3 min-w-0">
-                        <div className={`w-1.5 self-stretch rounded-full flex-shrink-0 ${item.status === "pago" ? "bg-emerald-500" : "bg-violet-500"}`} />
+                        <div className={`w-1.5 self-stretch rounded-full flex-shrink-0 ${badgeMeta.stripeClassName}`} />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-semibold">{getPessoaNome(item.pessoaId)}</p>
                             <Badge variant="default">Receber</Badge>
                             <Badge variant="outline">Cartão</Badge>
-                            <Badge variant={item.status === "pago" ? "secondary" : "outline"}>
-                              {item.status === "pago" ? "Pago" : "Pendente"}
+                            <Badge variant="outline" className={badgeMeta.className}>
+                              {badgeMeta.label}
                             </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground mt-0.5">
@@ -843,6 +872,9 @@ export default function DividasPage() {
                           </p>
                           <p className="text-xs text-muted-foreground mt-1">
                             Compra no cartão: {formatDividaCurrency(item.cardTotalCompra ?? 0)}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {item.parcelasPagas}/{item.parcelasTotal} reembolsadas
                           </p>
                         </div>
                       </div>

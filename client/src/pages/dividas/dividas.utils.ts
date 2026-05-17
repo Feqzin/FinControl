@@ -2,7 +2,7 @@ import { isPast, parseISO } from "date-fns";
 import { formatIsoDateToBR, formatCurrencyBRL } from "@/utils/formatters";
 import { addMonths, format } from "date-fns";
 import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
-import type { Cartao, CompraCartao, Divida, Parcela } from "@shared/schema";
+import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra } from "@shared/schema";
 
 export const FORMAS_PAGAMENTO_DIVIDA = [
   { value: "pix", label: "PIX" },
@@ -216,6 +216,16 @@ function normalizeStatusText(status: string | null | undefined): string {
   return String(status ?? "").trim().toLowerCase();
 }
 
+function isStatusPaid(status: string | null | undefined): boolean {
+  const normalized = normalizeStatusText(status);
+  return normalized === "pago" || normalized === "reembolsado";
+}
+
+function isStatusCanceled(status: string | null | undefined): boolean {
+  const normalized = normalizeStatusText(status);
+  return normalized === "cancelado" || normalized === "cancelada";
+}
+
 function toMoneyNumber(value: string | number | null | undefined): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 0;
@@ -237,6 +247,7 @@ function resolveParcelaDueDate(baseDate: string, parcelaNumero: number): string 
 type BuildDividasViewItemsArgs = {
   dividasManuais: DividaSortable[];
   comprasCartaoVinculadas: CompraCartao[];
+  parcelasCompra: ParcelaCompra[];
   cartoes: Cartao[];
   getDividaStatus: (divida: DividaSortable) => string;
   getDividaValorPendente: (divida: DividaSortable) => number;
@@ -246,12 +257,24 @@ type BuildDividasViewItemsArgs = {
 export function buildDividasViewItems({
   dividasManuais,
   comprasCartaoVinculadas,
+  parcelasCompra,
   cartoes,
   getDividaStatus,
   getDividaValorPendente,
   getDividaValorPago,
 }: BuildDividasViewItemsArgs): DividaViewItem[] {
   const cartaoNomeById = new Map(cartoes.map((cartao) => [cartao.id, cartao.nome]));
+  const parcelasCompraByCompraId = new Map<string, ParcelaCompra[]>();
+  for (const parcela of parcelasCompra) {
+    const compraCartaoId = String(parcela.compraCartaoId ?? "");
+    if (!compraCartaoId) continue;
+    const current = parcelasCompraByCompraId.get(compraCartaoId);
+    if (current) {
+      current.push(parcela);
+      continue;
+    }
+    parcelasCompraByCompraId.set(compraCartaoId, [parcela]);
+  }
   const todayIso = new Date().toISOString().slice(0, 10);
 
   const manualItems: DividaViewItem[] = dividasManuais.map((divida) => {
@@ -309,25 +332,94 @@ export function buildDividasViewItems({
     .map((compra) => {
       const pessoaId = String(compra.pessoaId);
       const breakdown = buildCompraReembolsoBreakdown(compra);
-      const statusPessoa = normalizeStatusText(compra.statusPessoa);
-      const isPaid = statusPessoa === "pago";
-      const isCanceled = statusPessoa === "cancelado";
-      const fromCurrent = breakdown.reembolsoPorParcelaCents.slice(Math.max(0, breakdown.parcelaAtual - 1));
-      const pendenteCents = isPaid || isCanceled
-        ? 0
-        : fromCurrent.reduce((sum, value) => sum + value, 0);
-      const valorPendente = round2(pendenteCents / 100);
       const valorTotalReembolso = round2(breakdown.reembolsoPessoa);
-      const valorPago = round2(Math.max(0, valorTotalReembolso - valorPendente));
-      const parcelasPendentes = isPaid || isCanceled
-        ? 0
-        : fromCurrent.filter((value) => value > 0).length;
-      const parcelasPagas = isPaid
-        ? breakdown.totalParcelas
-        : Math.max(0, breakdown.totalParcelas - parcelasPendentes);
-      const mensalAtual = round2(breakdown.reembolsoPorParcela[Math.max(0, breakdown.parcelaAtual - 1)] ?? 0);
       const cartaoNome = cartaoNomeById.get(compra.cartaoId) ?? "Cartão";
-      const proximaData = resolveParcelaDueDate(compra.dataCompra, breakdown.parcelaAtual);
+      const parcelasDaCompra = (parcelasCompraByCompraId.get(compra.id) ?? [])
+        .filter((parcela) => Number.isFinite(Number(parcela.numero)))
+        .filter((parcela) => Number(parcela.numero) >= 1 && Number(parcela.numero) <= breakdown.totalParcelas)
+        .sort((a, b) => Number(a.numero) - Number(b.numero));
+
+      const parcelasByNumero = new Map<number, ParcelaCompra>();
+      for (const parcela of parcelasDaCompra) {
+        const numero = Number(parcela.numero);
+        if (!Number.isFinite(numero) || numero < 1) continue;
+        if (!parcelasByNumero.has(numero)) {
+          parcelasByNumero.set(numero, parcela);
+        }
+      }
+
+      let parcelasPagas = 0;
+      let parcelasPendentes = 0;
+      let parcelasVencidas = 0;
+      let valorPagoCents = 0;
+      let valorPendenteCents = 0;
+      let proximaParcelaData: string | null = null;
+      let proximaParcelaValorCents = 0;
+
+      const hasCronogramaParcelas = parcelasByNumero.size > 0;
+
+      if (hasCronogramaParcelas) {
+        for (let numero = 1; numero <= breakdown.totalParcelas; numero += 1) {
+          const parcelaCents = breakdown.reembolsoPorParcelaCents[numero - 1] ?? 0;
+          if (parcelaCents <= 0) continue;
+
+          const parcela = parcelasByNumero.get(numero);
+          const statusPessoaParcela = normalizeStatusText(parcela?.statusPessoa);
+
+          if (isStatusCanceled(statusPessoaParcela) || isStatusPaid(statusPessoaParcela)) {
+            parcelasPagas += 1;
+            valorPagoCents += parcelaCents;
+            continue;
+          }
+
+          parcelasPendentes += 1;
+          valorPendenteCents += parcelaCents;
+
+          const vencimentoParcela = parcela?.dataVencimento ?? resolveParcelaDueDate(compra.dataCompra, numero);
+          if (vencimentoParcela && vencimentoParcela < todayIso) {
+            parcelasVencidas += 1;
+          }
+
+          if (!proximaParcelaData) {
+            proximaParcelaData = vencimentoParcela ?? null;
+            proximaParcelaValorCents = parcelaCents;
+          } else if (vencimentoParcela && vencimentoParcela < proximaParcelaData) {
+            proximaParcelaData = vencimentoParcela;
+            proximaParcelaValorCents = parcelaCents;
+          }
+        }
+      } else {
+        const statusPessoaCompra = normalizeStatusText(compra.statusPessoa);
+        const isPaidCompra = isStatusPaid(statusPessoaCompra);
+        const isCanceledCompra = isStatusCanceled(statusPessoaCompra);
+        const fromCurrent = breakdown.reembolsoPorParcelaCents.slice(Math.max(0, breakdown.parcelaAtual - 1));
+        const pendenteCents = isPaidCompra || isCanceledCompra
+          ? 0
+          : fromCurrent.reduce((sum, value) => sum + value, 0);
+
+        valorPendenteCents = pendenteCents;
+        valorPagoCents = Math.max(0, breakdown.reembolsoPessoaCents - pendenteCents);
+        parcelasPendentes = isPaidCompra || isCanceledCompra
+          ? 0
+          : fromCurrent.filter((value) => value > 0).length;
+        parcelasPagas = isPaidCompra
+          ? breakdown.totalParcelas
+          : Math.max(0, breakdown.totalParcelas - parcelasPendentes);
+
+        proximaParcelaData = resolveParcelaDueDate(compra.dataCompra, breakdown.parcelaAtual);
+        proximaParcelaValorCents = breakdown.reembolsoPorParcelaCents[Math.max(0, breakdown.parcelaAtual - 1)] ?? 0;
+
+        if (parcelasPendentes > 0 && proximaParcelaData && proximaParcelaData < todayIso) {
+          parcelasVencidas = 1;
+        }
+      }
+
+      const valorPendente = round2(valorPendenteCents / 100);
+      const valorPago = round2(valorPagoCents / 100);
+      const status: DividaViewStatus = parcelasPendentes === 0
+        ? "pago"
+        : (parcelasVencidas > 0 ? "vencido" : "pendente");
+      const mensalAtual = round2((proximaParcelaValorCents || 0) / 100);
 
       return {
         id: `cartao:${compra.id}`,
@@ -335,17 +427,17 @@ export function buildDividasViewItems({
         origin: "cartao",
         pessoaId,
         tipo: "receber",
-        status: isPaid || isCanceled ? "pago" : "pendente",
+        status,
         descricao: `${compra.descricao} · Cartão ${cartaoNome} · Reembolso parcial`,
-        dataReferencia: proximaData ?? compra.dataCompra,
+        dataReferencia: proximaParcelaData ?? compra.dataCompra,
         valorTotal: valorTotalReembolso,
         valorPendente,
         valorPago,
         parcelasTotal: breakdown.totalParcelas,
         parcelasPagas,
         parcelasPendentes,
-        parcelasVencidas: 0,
-        proximaParcelaData: proximaData,
+        parcelasVencidas,
+        proximaParcelaData,
         proximaParcelaValor: mensalAtual,
         cardLabel: cartaoNome,
         cardTotalCompra: round2(breakdown.valorCompra),
