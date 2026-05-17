@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { addMonths, format } from "date-fns";
 import { formatCurrencyBRL, formatIsoDateToBR } from "../src/utils/formatters";
 import {
   buildDividasViewItems,
@@ -38,6 +39,12 @@ import {
 } from "../src/pages/cartoes/import-pdf-utils";
 import { buildRelatorioPdfMetadata } from "../src/pages/relatorios/relatorios-pdf-utils";
 import { formatMoneyFixed } from "../src/lib/money";
+import {
+  calculateCardCurrentInvoiceTotal,
+  calculateCardUsedLimit,
+  compraHasOpenInstallmentInMonth,
+  groupParcelasCompraByCompraId,
+} from "../src/lib/card-limit-usage";
 import {
   buildTimelineLayout,
   findSelectedTimelineEvent,
@@ -746,6 +753,140 @@ test("cartoes utils: parcela vencida somente quando pendente e data passada", ()
     }),
     false,
   );
+});
+
+test("card limit usage: parcela paga de mês anterior não entra na fatura atual nem compromete limite", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-paga-antiga",
+    cartaoId: "cartao-1",
+    parcelas: 6,
+    parcelaAtual: 6,
+    valorParcela: "200.00",
+    valorTotal: "1200.00",
+  });
+  const parcelaPagaAnterior = buildParcelaCompraViewFixture({
+    id: "parcela-paga-antiga",
+    compraCartaoId: compra.id,
+    numero: 6,
+    valor: "200.00",
+    dataVencimento: format(addMonths(new Date(), -1), "yyyy-MM-dd"),
+    statusCartao: "pago",
+  });
+  const grouped = groupParcelasCompraByCompraId([parcelaPagaAnterior]);
+  const currentMonth = format(new Date(), "yyyy-MM");
+
+  const faturaAtual = calculateCardCurrentInvoiceTotal("cartao-1", [compra], grouped, currentMonth);
+  const limiteComprometido = calculateCardUsedLimit("cartao-1", [compra], grouped);
+
+  assert.equal(faturaAtual, 0);
+  assert.equal(limiteComprometido, 0);
+});
+
+test("card limit usage: parcela pendente do mês atual entra na fatura atual", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-mes-atual",
+    cartaoId: "cartao-1",
+    valorParcela: "150.00",
+    valorTotal: "450.00",
+    parcelas: 3,
+    parcelaAtual: 2,
+  });
+  const parcelaPendenteAtual = buildParcelaCompraViewFixture({
+    id: "parcela-atual",
+    compraCartaoId: compra.id,
+    numero: 2,
+    valor: "150.00",
+    dataVencimento: format(new Date(), "yyyy-MM-dd"),
+    statusCartao: "pendente",
+  });
+  const grouped = groupParcelasCompraByCompraId([parcelaPendenteAtual]);
+  const currentMonth = format(new Date(), "yyyy-MM");
+
+  const faturaAtual = calculateCardCurrentInvoiceTotal("cartao-1", [compra], grouped, currentMonth);
+
+  assert.equal(faturaAtual, 150);
+  assert.equal(compraHasOpenInstallmentInMonth(compra, grouped.get(compra.id), currentMonth), true);
+});
+
+test("card limit usage: parcela vencida não paga continua comprometendo limite, mas fora da competência atual", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-vencida",
+    cartaoId: "cartao-1",
+    valorParcela: "90.00",
+    valorTotal: "180.00",
+    parcelas: 2,
+    parcelaAtual: 2,
+  });
+  const parcelaVencidaNaoPaga = buildParcelaCompraViewFixture({
+    id: "parcela-vencida",
+    compraCartaoId: compra.id,
+    numero: 1,
+    valor: "90.00",
+    dataVencimento: format(addMonths(new Date(), -1), "yyyy-MM-dd"),
+    statusCartao: "pendente",
+  });
+  const grouped = groupParcelasCompraByCompraId([parcelaVencidaNaoPaga]);
+  const currentMonth = format(new Date(), "yyyy-MM");
+
+  const faturaAtual = calculateCardCurrentInvoiceTotal("cartao-1", [compra], grouped, currentMonth);
+  const limiteComprometido = calculateCardUsedLimit("cartao-1", [compra], grouped);
+
+  assert.equal(faturaAtual, 0);
+  assert.equal(limiteComprometido, 90);
+});
+
+test("card limit usage: parcela futura não entra na fatura atual, mas compromete limite", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-futura",
+    cartaoId: "cartao-1",
+    valorParcela: "80.00",
+    valorTotal: "240.00",
+    parcelas: 3,
+    parcelaAtual: 1,
+  });
+  const parcelaFutura = buildParcelaCompraViewFixture({
+    id: "parcela-futura",
+    compraCartaoId: compra.id,
+    numero: 3,
+    valor: "80.00",
+    dataVencimento: format(addMonths(new Date(), 1), "yyyy-MM-dd"),
+    statusCartao: "pendente",
+  });
+  const grouped = groupParcelasCompraByCompraId([parcelaFutura]);
+  const currentMonth = format(new Date(), "yyyy-MM");
+
+  const faturaAtual = calculateCardCurrentInvoiceTotal("cartao-1", [compra], grouped, currentMonth);
+  const limiteComprometido = calculateCardUsedLimit("cartao-1", [compra], grouped);
+
+  assert.equal(faturaAtual, 0);
+  assert.equal(limiteComprometido, 80);
+});
+
+test("card limit usage: parcela cancelada não entra em fatura atual nem limite comprometido", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-cancelada",
+    cartaoId: "cartao-1",
+    valorParcela: "55.00",
+    valorTotal: "55.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+  });
+  const parcelaCancelada = buildParcelaCompraViewFixture({
+    id: "parcela-cancelada",
+    compraCartaoId: compra.id,
+    numero: 1,
+    valor: "55.00",
+    dataVencimento: format(new Date(), "yyyy-MM-dd"),
+    statusCartao: "cancelado",
+  });
+  const grouped = groupParcelasCompraByCompraId([parcelaCancelada]);
+  const currentMonth = format(new Date(), "yyyy-MM");
+
+  const faturaAtual = calculateCardCurrentInvoiceTotal("cartao-1", [compra], grouped, currentMonth);
+  const limiteComprometido = calculateCardUsedLimit("cartao-1", [compra], grouped);
+
+  assert.equal(faturaAtual, 0);
+  assert.equal(limiteComprometido, 0);
 });
 
 test("compra cartao dialog: parse de moeda aceita formatos pt-BR e decimal", () => {

@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense, useEffect } from "react";
+import { useState, lazy, Suspense, useEffect, useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -64,7 +64,11 @@ import {
   type DeleteFaturaResponse,
   uploadParcelaComprovante,
 } from "@/services/api/cartoes";
-import { isParcelaComprometendoLimite } from "@/lib/card-limit-usage";
+import {
+  compraHasOpenInstallmentInMonth,
+  groupParcelasCompraByCompraId,
+  isParcelaComprometendoLimite,
+} from "@/lib/card-limit-usage";
 import {
   buildPlanLimitFriendlyMessage,
   parsePlanLimitError,
@@ -874,6 +878,11 @@ export default function CartoesPage() {
 
   const compraSearchNormalized = compraSearch.trim().toLowerCase();
   const activeCartoesTab: CartoesTab = cartoesTab;
+  const currentInvoiceMonthReference = format(new Date(), "yyyy-MM");
+  const parcelasCompraByCompraId = useMemo(
+    () => groupParcelasCompraByCompraId(parcelasCompraByUser),
+    [parcelasCompraByUser],
+  );
 
   const parcelaComprovanteMutation = useMutation({
     mutationFn: async ({ parcelaId, file }: { parcelaId: string; file: File }) => {
@@ -1006,6 +1015,31 @@ export default function CartoesPage() {
   const getFilteredCardCompras = (cartaoId: string) => {
     const card = cartoes.find((item) => item.id === cartaoId);
     return getCardCompras(cartaoId).filter((compra) => {
+      if (!compraSearchNormalized) return true;
+      const texto = [
+        compra.descricao,
+        card?.nome,
+        compra.dataCompra,
+        String(compra.valorParcela),
+        String(compra.valorTotal),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return texto.includes(compraSearchNormalized);
+    });
+  };
+
+  const getFilteredCardFaturaCompras = (cartaoId: string) => {
+    const card = cartoes.find((item) => item.id === cartaoId);
+    return getCardCompras(cartaoId).filter((compra) => {
+      const parcelasMaterializadas = parcelasCompraByCompraId.get(compra.id);
+      const isFromCurrentInvoiceCompetency = compraHasOpenInstallmentInMonth(
+        compra,
+        parcelasMaterializadas,
+        currentInvoiceMonthReference,
+      );
+      if (!isFromCurrentInvoiceCompetency) return false;
       if (!compraSearchNormalized) return true;
       const texto = [
         compra.descricao,
@@ -2836,7 +2870,7 @@ export default function CartoesPage() {
           getCardUsedLimit={getCardUsedLimit}
           getCardAvailableLimit={getCardAvailableLimit}
           getCardCompras={getCardCompras}
-          getFilteredCardCompras={getFilteredCardCompras}
+          getFilteredCardCompras={getFilteredCardFaturaCompras}
           formatCartaoCurrency={formatCartaoCurrency}
           onOpenCompras={(cartaoId) => {
             setCartoesTab("compras");
@@ -2860,7 +2894,7 @@ export default function CartoesPage() {
           formatCurrency={formatCartaoCurrency}
           getCardTotal={getCardTotal}
           getCardAvailableLimit={getCardAvailableLimit}
-          getFilteredCardCompras={getFilteredCardCompras}
+          getFilteredCardCompras={getFilteredCardFaturaCompras}
           servicos={servicos}
           onOpenParcelas={setViewingCompra}
           onDeleteCompra={openDeleteCompraConfirm}

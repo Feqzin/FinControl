@@ -996,3 +996,172 @@ test("comprometimento e resumo mensal usam apenas parcelas reais do mes atual (n
   assert.equal(comprometimentoFactor?.impacto, 5);
   assert.ok(comprometimentoFactor?.label.includes("5%"));
 });
+
+test("getCardSummaries usa competencia do vencimento para fatura atual e parcelas abertas para limite", async () => {
+  const userId = "user-financial-card-competency";
+  const now = new Date();
+  const dueDate = (offsetMonths: number, day: number) =>
+    format(addMonths(new Date(now.getFullYear(), now.getMonth(), day), offsetMonths), "yyyy-MM-dd");
+
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [
+      {
+        id: "pc-paga-anterior",
+        userId,
+        compraCartaoId: "cc-paga-anterior",
+        numero: 1,
+        valor: "200.00",
+        dataVencimento: dueDate(-1, 10),
+        statusCartao: "pago",
+        dataPagamentoCartao: dueDate(-1, 12),
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "pc-atual-pendente",
+        userId,
+        compraCartaoId: "cc-atual",
+        numero: 1,
+        valor: "150.00",
+        dataVencimento: dueDate(0, 10),
+        statusCartao: "pendente",
+        dataPagamentoCartao: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "pc-futura",
+        userId,
+        compraCartaoId: "cc-futura",
+        numero: 1,
+        valor: "100.00",
+        dataVencimento: dueDate(1, 10),
+        statusCartao: "pendente",
+        dataPagamentoCartao: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "pc-vencida-nao-paga",
+        userId,
+        compraCartaoId: "cc-vencida",
+        numero: 1,
+        valor: "80.00",
+        dataVencimento: dueDate(-2, 10),
+        statusCartao: "pendente",
+        dataPagamentoCartao: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "pc-cancelada",
+        userId,
+        compraCartaoId: "cc-cancelada",
+        numero: 1,
+        valor: "50.00",
+        dataVencimento: dueDate(0, 10),
+        statusCartao: "cancelado",
+        dataPagamentoCartao: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+    ],
+    servicos: [],
+    cartoes: [
+      {
+        id: "card-competency",
+        userId,
+        nome: "Cartao Competencia",
+        limite: "1000.00",
+        melhorDiaCompra: 5,
+        diaVencimento: 20,
+        iconeId: null,
+      },
+    ],
+    compras: [
+      {
+        id: "cc-paga-anterior",
+        userId,
+        cartaoId: "card-competency",
+        descricao: "Parcela paga antiga",
+        valorTotal: "200.00",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "200.00",
+        dataCompra: dueDate(-1, 1),
+        pessoaId: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "cc-atual",
+        userId,
+        cartaoId: "card-competency",
+        descricao: "Parcela atual pendente",
+        valorTotal: "150.00",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "150.00",
+        dataCompra: dueDate(0, 1),
+        pessoaId: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "cc-futura",
+        userId,
+        cartaoId: "card-competency",
+        descricao: "Parcela futura",
+        valorTotal: "100.00",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "100.00",
+        dataCompra: dueDate(1, 1),
+        pessoaId: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "cc-vencida",
+        userId,
+        cartaoId: "card-competency",
+        descricao: "Parcela vencida em aberto",
+        valorTotal: "80.00",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "80.00",
+        dataCompra: dueDate(-2, 1),
+        pessoaId: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "cc-cancelada",
+        userId,
+        cartaoId: "card-competency",
+        descricao: "Parcela cancelada",
+        valorTotal: "50.00",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "50.00",
+        dataCompra: dueDate(0, 1),
+        pessoaId: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+    ],
+    rendas: [],
+  };
+
+  const service = createService(fixture);
+  const summaries = await service.getCardSummaries(userId);
+  const summary = summaries.find((item) => item.cartaoId === "card-competency");
+
+  assert.ok(summary);
+  assert.equal(summary?.faturaAtual, 150);
+  assert.equal(summary?.limiteComprometido, 330);
+  assert.equal(summary?.limiteDisponivel, 670);
+  assert.equal(summary?.quantidadeParcelasPendentes, 3);
+});

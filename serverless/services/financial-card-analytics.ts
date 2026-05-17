@@ -262,7 +262,8 @@ export function getCardPortfolioSummary(input: CardAnalyticsInput): CardPortfoli
  * Resumo consolidado por cartao para consumo direto do frontend.
  *
  * Definicoes:
- * - faturaAtual: soma da proxima parcela em aberto de cada compra do cartao.
+ * - faturaAtual: soma das parcelas em aberto cuja competencia (dataVencimento)
+ *   pertence ao mes atual.
  * - limiteComprometido/saldoRestanteTotal: soma de todas as parcelas em aberto
  *   (nao pagas e nao canceladas).
  * - quantidadeParcelasPendentes: total de parcelas em aberto do cartao.
@@ -270,6 +271,7 @@ export function getCardPortfolioSummary(input: CardAnalyticsInput): CardPortfoli
 export function getCardConsolidatedSummaries(input: CardConsolidatedSummaryInput): CardConsolidatedSummary[] {
   const obligations = getCardObligations(input);
   const parcelaSaldoAbatidoMap = buildParcelaSaldoAbatidoMap(input.saldoMovimentacoes);
+  const currentMonthReference = format(new Date(), "yyyy-MM");
   const byCard = new Map<string, CardInstallmentObligation[]>();
 
   for (const obligation of obligations) {
@@ -281,16 +283,8 @@ export function getCardConsolidatedSummaries(input: CardConsolidatedSummaryInput
   return input.cartoes.map((cartao) => {
     const rows = byCard.get(cartao.id) ?? [];
     const pendingRows = rows.filter((row) => getOutstandingAmount(row, parcelaSaldoAbatidoMap) > 0);
-
-    const nextPendingByCompra = new Map<string, CardInstallmentObligation>();
-    for (const row of pendingRows) {
-      const current = nextPendingByCompra.get(row.compraId);
-      if (!current || row.numero < current.numero) {
-        nextPendingByCompra.set(row.compraId, row);
-      }
-    }
-
-    const faturaAtual = Array.from(nextPendingByCompra.values())
+    const faturaAtual = pendingRows
+      .filter((row) => String(row.dataVencimento || "").startsWith(currentMonthReference))
       .reduce((sum, row) => sum + getOutstandingAmount(row, parcelaSaldoAbatidoMap), 0);
     const limiteComprometido = pendingRows
       .reduce((sum, row) => sum + getOutstandingAmount(row, parcelaSaldoAbatidoMap), 0);

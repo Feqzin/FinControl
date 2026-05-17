@@ -663,6 +663,7 @@ export class FinancialService {
       this.repository.getParcelasCompraByUser(userId),
     ]);
 
+    const currentMonthReference = format(new Date(), "yyyy-MM");
     const pendingRows = getOutstandingCardInstallments({ compras, parcelasCompra });
     const byCard = new Map<string, typeof pendingRows>();
     for (const row of pendingRows) {
@@ -673,15 +674,9 @@ export class FinancialService {
 
     return cartoes.map((cartao) => {
       const cardRows = byCard.get(cartao.id) ?? [];
-      const nextPendingByCompra = new Map<string, (typeof cardRows)[number]>();
-      for (const row of cardRows) {
-        const current = nextPendingByCompra.get(row.compraId);
-        if (!current || row.numero < current.numero) {
-          nextPendingByCompra.set(row.compraId, row);
-        }
-      }
-
-      const faturaAtual = Array.from(nextPendingByCompra.values()).reduce(
+      const faturaAtual = cardRows
+        .filter((row) => String(row.dataVencimento || "").startsWith(currentMonthReference))
+        .reduce(
         (sum, row) => sum + toMoneyNumber(row.valor),
         0,
       );

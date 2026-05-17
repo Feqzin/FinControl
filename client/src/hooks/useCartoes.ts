@@ -1,8 +1,13 @@
 import { useMemo, useRef } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Cartao, CompraCartao, ParcelaCompra, Pessoa, PessoaSaldoMovimentacao, Servico, ServicoPessoa } from "@shared/schema";
+import { format } from "date-fns";
 import { toMoneyNumber } from "@/lib/money";
-import { calculateCardUsedLimit, groupParcelasCompraByCompraId } from "@/lib/card-limit-usage";
+import {
+  calculateCardCurrentInvoiceTotal,
+  calculateCardUsedLimit,
+  groupParcelasCompraByCompraId,
+} from "@/lib/card-limit-usage";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
 import { queryClient } from "@/lib/queryClient";
 import { abaterSaldoParcelaPessoa } from "@/services/api/pessoas";
@@ -334,7 +339,12 @@ export function useCartoes(viewingCompraId?: string) {
   // Mantem compatibilidade enquanto a tela migra para a fonte de verdade
   // do backend (/api/cartoes/resumo).
   const getCardTotalFallback = (cartaoId: string) =>
-    getCardCompras(cartaoId).reduce((sum, compra) => sum + toMoneyNumber(compra.valorParcela), 0);
+    calculateCardCurrentInvoiceTotal(
+      cartaoId,
+      compras,
+      parcelasCompraByCompraId,
+      format(new Date(), "yyyy-MM"),
+    );
   const getCardUsedLimitFallback = (cartaoId: string) =>
     calculateCardUsedLimit(cartaoId, compras, parcelasCompraByCompraId);
   const getCardAvailableLimitFallback = (cartaoId: string) => {
