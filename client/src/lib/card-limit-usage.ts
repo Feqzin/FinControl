@@ -21,7 +21,13 @@ export function isParcelaComprometendoLimite(statusCartao: string | null | undef
   return normalized !== "pago" && normalized !== "cancelado";
 }
 
-function resolveMonthReference(value: string | null | undefined): string | null {
+export function getInvoiceCompetency(value: string | Date | null | undefined): string | null {
+  if (!value) return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return format(value, "yyyy-MM");
+  }
+
   const raw = String(value ?? "").trim();
   if (!raw) return null;
   if (/^\d{4}-\d{2}/.test(raw)) return raw.slice(0, 7);
@@ -61,7 +67,41 @@ export function compraHasOpenInstallmentInMonth(
   if (parcelasMaterializadas && parcelasMaterializadas.length > 0) {
     return parcelasMaterializadas.some((row) =>
       isParcelaComprometendoLimite(row.statusCartao)
-      && resolveMonthReference(row.dataVencimento) === monthReference);
+      && getInvoiceCompetency(row.dataVencimento) === monthReference);
+  }
+
+  const totalInstallments = normalizeInstallmentsTotal(compra);
+  const currentInstallment = normalizeCurrentInstallment(compra, totalInstallments);
+  const legacyInstallmentMonth = resolveLegacyInstallmentMonth(compra, currentInstallment);
+  if (!legacyInstallmentMonth) return false;
+  return legacyInstallmentMonth === monthReference;
+}
+
+export function filterParcelasByCompetency(
+  parcelas: ParcelaCompra[] | undefined,
+  monthReference: string,
+): ParcelaCompra[] {
+  if (!parcelas || parcelas.length === 0) return [];
+  return parcelas.filter((parcela) => getInvoiceCompetency(parcela.dataVencimento) === monthReference);
+}
+
+export function compraHasInstallmentInCompetency(
+  compra: CompraCartao,
+  parcelasMaterializadas: ParcelaCompra[] | undefined,
+  monthReference: string,
+  options?: { includePaid?: boolean; includeCanceled?: boolean },
+): boolean {
+  const includePaid = options?.includePaid === true;
+  const includeCanceled = options?.includeCanceled === true;
+
+  if (parcelasMaterializadas && parcelasMaterializadas.length > 0) {
+    const parcelasNoMes = filterParcelasByCompetency(parcelasMaterializadas, monthReference);
+    return parcelasNoMes.some((parcela) => {
+      const normalizedStatus = String(parcela.statusCartao ?? "").trim().toLowerCase();
+      if (normalizedStatus === "cancelado" && !includeCanceled) return false;
+      if (normalizedStatus === "pago" && !includePaid) return false;
+      return true;
+    });
   }
 
   const totalInstallments = normalizeInstallmentsTotal(compra);
@@ -114,9 +154,8 @@ export function calculateCardCurrentInvoiceTotal(
     .reduce((sum, compra) => {
       const parcelasMaterializadas = parcelasByCompraId.get(compra.id);
       if (parcelasMaterializadas && parcelasMaterializadas.length > 0) {
-        const monthlyOpenTotal = parcelasMaterializadas
+        const monthlyOpenTotal = filterParcelasByCompetency(parcelasMaterializadas, monthReference)
           .filter((row) => isParcelaComprometendoLimite(row.statusCartao))
-          .filter((row) => resolveMonthReference(row.dataVencimento) === monthReference)
           .reduce((acc, row) => acc + toMoneyNumber(row.valor), 0);
         return sum + monthlyOpenTotal;
       }
@@ -127,4 +166,13 @@ export function calculateCardCurrentInvoiceTotal(
       if (legacyInstallmentMonth !== monthReference) return sum;
       return sum + toMoneyNumber(compra.valorParcela);
     }, 0);
+}
+
+export function calculateCardInvoiceForCompetency(
+  cartaoId: string,
+  compras: CompraCartao[],
+  parcelasByCompraId: ParcelasCompraByCompraId,
+  monthReference: string,
+): number {
+  return calculateCardCurrentInvoiceTotal(cartaoId, compras, parcelasByCompraId, monthReference);
 }

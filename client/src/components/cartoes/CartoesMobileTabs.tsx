@@ -4,8 +4,6 @@ import { CartaoCard } from "@/components/cartoes/CartaoCard";
 import { BrandIconDisplay } from "@/lib/brand-icons";
 import type { Cartao, CompraCartao, Servico } from "@shared/schema";
 import { Eye, List, Plus, Trash2 } from "lucide-react";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { getNextInvoiceDate } from "@/pages/cartoes/cartoes.utils";
 
 type CartoesMobileTabsProps = {
@@ -18,6 +16,7 @@ type CartoesMobileTabsProps = {
   getCardTotal: (cartaoId: string) => number;
   getCardAvailableLimit: (cartaoId: string) => number;
   getFilteredCardCompras: (cartaoId: string) => CompraCartao[];
+  invoiceMonthLabel: string;
   servicos: Servico[];
   onOpenParcelas: (compra: CompraCartao) => void;
   onDeleteCompra: (compra: CompraCartao) => void;
@@ -38,6 +37,7 @@ export function CartoesMobileTabs({
   getCardTotal,
   getCardAvailableLimit,
   getFilteredCardCompras,
+  invoiceMonthLabel,
   servicos,
   onOpenParcelas,
   onDeleteCompra,
@@ -69,7 +69,7 @@ export function CartoesMobileTabs({
       <CartaoCard className="touch-feedback" contentClassName="space-y-1 p-4">
         <div className="flex items-center gap-1.5">
           <p className="font-medium text-sm text-muted-foreground">
-            Faturas de {format(new Date(), "MMMM", { locale: ptBR }).replace(/^\w/, (c) => c.toUpperCase())}
+            Faturas de {invoiceMonthLabel}
           </p>
           <Eye className="h-3.5 w-3.5 text-muted-foreground" />
         </div>
@@ -120,7 +120,7 @@ export function CartoesMobileTabs({
 
               <div className="grid grid-cols-2 divide-x divide-border/70 bg-muted/25 px-4 py-3">
                 <div className="pr-4">
-                  <p className="mb-0.5 text-xs text-muted-foreground">Limite disponível</p>
+                  <p className="mb-0.5 text-xs text-muted-foreground">Limite disponível atual</p>
                   <p className="text-sm font-semibold text-emerald-600">{formatCurrency(limiteDisponivel)}</p>
                 </div>
                 <div className="pl-4">
@@ -135,7 +135,7 @@ export function CartoesMobileTabs({
               {selectedCartao === cartao.id ? (
                 <div className="divide-y divide-border/30 border-t border-border/50">
                   {comprasFiltradas.length === 0 ? (
-                    <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma compra na fatura</p>
+                    <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma compra nesta fatura.</p>
                   ) : (
                     <>
                       <p className="px-4 py-2 text-xs text-muted-foreground">

@@ -12,7 +12,7 @@ import {
 import { useUIPreferences } from "@/context/ui-preferences";
 import { queryClient } from "@/lib/queryClient";
 import type { Cartao, CompraCartao, ParcelaCompra, Servico } from "@shared/schema";
-import { format } from "date-fns";
+import { addMonths, format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   detectItauInvoiceText,
@@ -65,7 +65,9 @@ import {
   uploadParcelaComprovante,
 } from "@/services/api/cartoes";
 import {
-  compraHasOpenInstallmentInMonth,
+  calculateCardInvoiceForCompetency,
+  compraHasInstallmentInCompetency,
+  getInvoiceCompetency,
   groupParcelasCompraByCompraId,
   isParcelaComprometendoLimite,
 } from "@/lib/card-limit-usage";
@@ -106,6 +108,7 @@ const IMPORT_ALLOWED_MIME_BY_EXTENSION: Record<string, string[]> = {
 type CartoesTab = "resumo" | "fatura" | "compras";
 type CanonicalImportStatus = "novo" | "duplicata_exata" | "possivel_duplicata" | "invalido";
 type CompraReembolsoModo = "total" | "metade" | "valor_custom" | "percentual_custom";
+type InvoiceMonthOption = { value: string; label: string };
 
 function normalizeImportDebugText(value: string): string {
   return value
@@ -271,6 +274,17 @@ function formatImportFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatInvoiceCompetencyLabel(monthReference: string): string {
+  const [year, month] = monthReference.split("-");
+  const monthNumber = Number(month);
+  const yearNumber = Number(year);
+  if (!Number.isFinite(yearNumber) || !Number.isFinite(monthNumber) || monthNumber < 1 || monthNumber > 12) {
+    return monthReference;
+  }
+  const asDate = new Date(yearNumber, monthNumber - 1, 1);
+  return format(asDate, "MMMM 'de' yyyy", { locale: ptBR }).replace(/^\w/, (char) => char.toUpperCase());
 }
 
 function getImportFileExtension(fileName: string): string {
@@ -542,6 +556,7 @@ export default function CartoesPage() {
     const params = new URLSearchParams(window.location.search);
     return normalizeCartoesTab(params.get("tab"));
   });
+  const [selectedInvoiceMonth, setSelectedInvoiceMonth] = useState(() => format(new Date(), "yyyy-MM"));
   const [compraSearch, setCompraSearch] = useState("");
   const [importEditForm, setImportEditForm] = useState({
     descricao: "", valor: "", dataCompra: "", parcelas: "", parcelaAtual: "", vencimentoFatura: "",
@@ -581,10 +596,8 @@ export default function CartoesPage() {
     refetchParcelas,
     isLoading,
     getCardCompras,
-    getCardTotal,
     getCardUsedLimit,
     getCardAvailableLimit,
-    totalFaturas,
     totalAguardandoReembolso,
     createCardMutation,
     updateCardMutation,
@@ -883,6 +896,74 @@ export default function CartoesPage() {
     () => groupParcelasCompraByCompraId(parcelasCompraByUser),
     [parcelasCompraByUser],
   );
+  const invoiceMonthOptions = useMemo<InvoiceMonthOption[]>(() => {
+    const monthSet = new Set<string>();
+
+    for (let offset = -12; offset <= 12; offset += 1) {
+      monthSet.add(format(addMonths(new Date(), offset), "yyyy-MM"));
+    }
+
+    for (const parcela of parcelasCompraByUser) {
+      const competency = getInvoiceCompetency(parcela.dataVencimento);
+      if (competency) monthSet.add(competency);
+    }
+
+    for (const compra of compras) {
+      const parcelasMaterializadas = parcelasCompraByCompraId.get(compra.id);
+      if (parcelasMaterializadas && parcelasMaterializadas.length > 0) {
+        continue;
+      }
+
+      const totalParcelas = Math.max(1, Math.trunc(Number(compra.parcelas) || 1));
+      const baseRaw = String(compra.dataCompra ?? "").trim();
+      if (!baseRaw) continue;
+
+      let baseDate: Date | null = null;
+      try {
+        const parsed = parseISO(baseRaw);
+        if (!Number.isNaN(parsed.getTime())) {
+          baseDate = parsed;
+        }
+      } catch {
+        baseDate = null;
+      }
+
+      if (!baseDate) continue;
+      for (let installmentIndex = 0; installmentIndex < totalParcelas; installmentIndex += 1) {
+        monthSet.add(format(addMonths(baseDate, installmentIndex), "yyyy-MM"));
+      }
+    }
+
+    return Array.from(monthSet)
+      .filter((month) => /^\d{4}-\d{2}$/.test(month))
+      .sort((a, b) => b.localeCompare(a))
+      .map((month) => ({ value: month, label: formatInvoiceCompetencyLabel(month) }));
+  }, [compras, parcelasCompraByCompraId, parcelasCompraByUser]);
+  const selectedInvoiceMonthLabel = useMemo(() => {
+    const selectedOption = invoiceMonthOptions.find((option) => option.value === selectedInvoiceMonth);
+    if (selectedOption) return selectedOption.label;
+    return formatInvoiceCompetencyLabel(selectedInvoiceMonth);
+  }, [invoiceMonthOptions, selectedInvoiceMonth]);
+  const faturaTabLabel = `Fatura de ${selectedInvoiceMonthLabel}`;
+  const getCardTotalForSelectedMonth = (cartaoId: string) =>
+    calculateCardInvoiceForCompetency(
+      cartaoId,
+      compras,
+      parcelasCompraByCompraId,
+      selectedInvoiceMonth,
+    );
+  const totalFaturasForSelectedMonth = useMemo(
+    () => cartoes.reduce((sum, cartao) => sum + getCardTotalForSelectedMonth(cartao.id), 0),
+    [cartoes, compras, parcelasCompraByCompraId, selectedInvoiceMonth],
+  );
+
+  useEffect(() => {
+    if (invoiceMonthOptions.length === 0) return;
+    const hasSelectedMonth = invoiceMonthOptions.some((option) => option.value === selectedInvoiceMonth);
+    if (!hasSelectedMonth) {
+      setSelectedInvoiceMonth(currentInvoiceMonthReference);
+    }
+  }, [currentInvoiceMonthReference, invoiceMonthOptions, selectedInvoiceMonth]);
 
   const parcelaComprovanteMutation = useMutation({
     mutationFn: async ({ parcelaId, file }: { parcelaId: string; file: File }) => {
@@ -1034,12 +1115,13 @@ export default function CartoesPage() {
     const card = cartoes.find((item) => item.id === cartaoId);
     return getCardCompras(cartaoId).filter((compra) => {
       const parcelasMaterializadas = parcelasCompraByCompraId.get(compra.id);
-      const isFromCurrentInvoiceCompetency = compraHasOpenInstallmentInMonth(
+      const isFromSelectedInvoiceCompetency = compraHasInstallmentInCompetency(
         compra,
         parcelasMaterializadas,
-        currentInvoiceMonthReference,
+        selectedInvoiceMonth,
+        { includePaid: true, includeCanceled: false },
       );
-      if (!isFromCurrentInvoiceCompetency) return false;
+      if (!isFromSelectedInvoiceCompetency) return false;
       if (!compraSearchNormalized) return true;
       const texto = [
         compra.descricao,
@@ -2544,7 +2626,7 @@ export default function CartoesPage() {
 
       <CartoesSummarySection
         hasCartoes={cartoes.length > 0}
-        totalFaturas={totalFaturas}
+        totalFaturas={totalFaturasForSelectedMonth}
         totalAguardandoReembolso={totalAguardandoReembolso}
         formatCurrency={formatCartaoCurrency}
         showInsights={false}
@@ -2556,6 +2638,10 @@ export default function CartoesPage() {
             compraSearch={compraSearch}
             onCompraSearchChange={setCompraSearch}
             showSearch={showCompraSearch}
+            invoiceMonth={selectedInvoiceMonth}
+            invoiceMonthOptions={invoiceMonthOptions}
+            onInvoiceMonthChange={setSelectedInvoiceMonth}
+            faturaTabLabel={faturaTabLabel}
           />
         )}
       />
@@ -2866,7 +2952,7 @@ export default function CartoesPage() {
         <CartoesGrid
           cartoes={cartoes}
           cartoesTab={activeCartoesTab}
-          getCardTotal={getCardTotal}
+          getCardTotal={getCardTotalForSelectedMonth}
           getCardUsedLimit={getCardUsedLimit}
           getCardAvailableLimit={getCardAvailableLimit}
           getCardCompras={getCardCompras}
@@ -2890,11 +2976,12 @@ export default function CartoesPage() {
           selectedCartao={selectedCartao}
           setSelectedCartao={setSelectedCartao}
           setOpenCompra={setOpenCompra}
-          totalFaturas={totalFaturas}
+          totalFaturas={totalFaturasForSelectedMonth}
           formatCurrency={formatCartaoCurrency}
-          getCardTotal={getCardTotal}
+          getCardTotal={getCardTotalForSelectedMonth}
           getCardAvailableLimit={getCardAvailableLimit}
           getFilteredCardCompras={getFilteredCardFaturaCompras}
+          invoiceMonthLabel={selectedInvoiceMonthLabel}
           servicos={servicos}
           onOpenParcelas={setViewingCompra}
           onDeleteCompra={openDeleteCompraConfirm}
@@ -2905,7 +2992,7 @@ export default function CartoesPage() {
           pessoas={pessoas}
           servicos={servicos}
           formatCurrency={formatCartaoCurrency}
-          getCardTotal={getCardTotal}
+          getCardTotal={getCardTotalForSelectedMonth}
           getCardUsedLimit={getCardUsedLimit}
           getCardAvailableLimit={getCardAvailableLimit}
           getFilteredCardCompras={getFilteredCardCompras}

@@ -110,7 +110,7 @@ export function CartoesGrid({
                   <p className="text-xl font-bold">{formatCartaoCurrency(faturaAtual)}</p>
                 </div>
                 <div className="fintech-stat-card flex min-h-[90px] flex-col justify-center bg-emerald-500/5 p-3.5">
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Disponível</p>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Disponível atual</p>
                   <p className="text-xl font-bold text-emerald-600">{formatCartaoCurrency(limiteDisponivel)}</p>
                 </div>
               </div>
@@ -170,7 +170,7 @@ export function CartoesGrid({
                 <Badge variant="outline">{formatCartaoCurrency(getCardTotal(cartao.id))}</Badge>
               </div>
               {comprasFiltradas.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Nenhuma compra encontrada para o filtro.</p>
+                <p className="text-xs text-muted-foreground">Nenhuma compra nesta fatura.</p>
               ) : (
                 <>
                   <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">

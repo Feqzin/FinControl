@@ -165,7 +165,7 @@ export function CartoesComprasGrid({
                 <p className="text-base font-bold">{formatCurrency(faturaAtual)}</p>
               </div>
               <div className="fintech-stat-card bg-emerald-500/5 p-3">
-                <p className="mb-0.5 text-[11px] text-muted-foreground">Disponível</p>
+                <p className="mb-0.5 text-[11px] text-muted-foreground">Disponível atual</p>
                 <p className="text-base font-bold text-emerald-600">{formatCurrency(limiteDisponivel)}</p>
               </div>
             </div>
@@ -208,6 +208,7 @@ export function CartoesComprasGrid({
                 <Plus className="mr-1 h-3 w-3" /> Adicionar
               </Button>
             </div>
+            <p className="text-xs text-muted-foreground">Lista geral de compras parceladas</p>
 
             {cardCompras.length > 0 ? (
               <>

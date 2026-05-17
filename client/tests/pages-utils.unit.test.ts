@@ -40,9 +40,13 @@ import {
 import { buildRelatorioPdfMetadata } from "../src/pages/relatorios/relatorios-pdf-utils";
 import { formatMoneyFixed } from "../src/lib/money";
 import {
+  calculateCardInvoiceForCompetency,
   calculateCardCurrentInvoiceTotal,
   calculateCardUsedLimit,
+  compraHasInstallmentInCompetency,
   compraHasOpenInstallmentInMonth,
+  filterParcelasByCompetency,
+  getInvoiceCompetency,
   groupParcelasCompraByCompraId,
 } from "../src/lib/card-limit-usage";
 import {
@@ -887,6 +891,128 @@ test("card limit usage: parcela cancelada não entra em fatura atual nem limite 
 
   assert.equal(faturaAtual, 0);
   assert.equal(limiteComprometido, 0);
+});
+
+test("card limit usage: getInvoiceCompetency extrai yyyy-MM de data de vencimento", () => {
+  assert.equal(getInvoiceCompetency("2026-04-21"), "2026-04");
+  assert.equal(getInvoiceCompetency("2026-04"), "2026-04");
+  assert.equal(getInvoiceCompetency(null), null);
+});
+
+test("card limit usage: filterParcelasByCompetency filtra somente o mês selecionado", () => {
+  const parcelas = [
+    buildParcelaCompraViewFixture({ id: "p-abr", dataVencimento: "2026-04-05" }),
+    buildParcelaCompraViewFixture({ id: "p-mai", dataVencimento: "2026-05-05" }),
+  ];
+
+  const abril = filterParcelasByCompetency(parcelas, "2026-04");
+  const maio = filterParcelasByCompetency(parcelas, "2026-05");
+
+  assert.deepEqual(abril.map((item) => item.id), ["p-abr"]);
+  assert.deepEqual(maio.map((item) => item.id), ["p-mai"]);
+});
+
+test("card limit usage: compra de dezembro com parcela vencendo em abril entra em abril", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-antiga-parcelada",
+    dataCompra: "2025-12-24",
+    parcelas: 10,
+    parcelaAtual: 5,
+    valorParcela: "157.58",
+    valorTotal: "1575.80",
+  });
+  const parcelaAbril = buildParcelaCompraViewFixture({
+    id: "p-abril",
+    compraCartaoId: compra.id,
+    numero: 5,
+    valor: "157.58",
+    dataVencimento: "2026-04-24",
+    statusCartao: "pendente",
+  });
+  const grouped = groupParcelasCompraByCompraId([parcelaAbril]);
+
+  assert.equal(
+    compraHasInstallmentInCompetency(compra, grouped.get(compra.id), "2026-04", { includePaid: true }),
+    true,
+  );
+  assert.equal(
+    compraHasInstallmentInCompetency(compra, grouped.get(compra.id), "2026-05", { includePaid: true }),
+    false,
+  );
+});
+
+test("card limit usage: parcela paga no mês aparece na competência mas não soma fatura aberta", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-abril-paga",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "200.00",
+    valorTotal: "200.00",
+  });
+  const parcelaPagaAbril = buildParcelaCompraViewFixture({
+    id: "p-abril-paga",
+    compraCartaoId: compra.id,
+    numero: 1,
+    valor: "200.00",
+    dataVencimento: "2026-04-10",
+    statusCartao: "pago",
+  });
+  const grouped = groupParcelasCompraByCompraId([parcelaPagaAbril]);
+
+  const invoiceAbril = calculateCardInvoiceForCompetency("cartao-1", [compra], grouped, "2026-04");
+  assert.equal(
+    compraHasInstallmentInCompetency(compra, grouped.get(compra.id), "2026-04", { includePaid: true }),
+    true,
+  );
+  assert.equal(invoiceAbril, 0);
+});
+
+test("card limit usage: trocar competência muda totais de todos os cartões", () => {
+  const compraCardA = buildCompraCartaoViewFixture({
+    id: "c-a",
+    cartaoId: "card-a",
+    valorParcela: "100.00",
+    valorTotal: "200.00",
+    parcelas: 2,
+    parcelaAtual: 1,
+  });
+  const compraCardB = buildCompraCartaoViewFixture({
+    id: "c-b",
+    cartaoId: "card-b",
+    valorParcela: "75.00",
+    valorTotal: "150.00",
+    parcelas: 2,
+    parcelaAtual: 1,
+  });
+  const parcelas = [
+    buildParcelaCompraViewFixture({
+      id: "a-abril",
+      compraCartaoId: compraCardA.id,
+      numero: 1,
+      valor: "100.00",
+      dataVencimento: "2026-04-08",
+      statusCartao: "pendente",
+    }),
+    buildParcelaCompraViewFixture({
+      id: "b-maio",
+      compraCartaoId: compraCardB.id,
+      numero: 1,
+      valor: "75.00",
+      dataVencimento: "2026-05-08",
+      statusCartao: "pendente",
+    }),
+  ];
+  const grouped = groupParcelasCompraByCompraId(parcelas);
+
+  const totalAbril =
+    calculateCardInvoiceForCompetency("card-a", [compraCardA, compraCardB], grouped, "2026-04")
+    + calculateCardInvoiceForCompetency("card-b", [compraCardA, compraCardB], grouped, "2026-04");
+  const totalMaio =
+    calculateCardInvoiceForCompetency("card-a", [compraCardA, compraCardB], grouped, "2026-05")
+    + calculateCardInvoiceForCompetency("card-b", [compraCardA, compraCardB], grouped, "2026-05");
+
+  assert.equal(totalAbril, 100);
+  assert.equal(totalMaio, 75);
 });
 
 test("compra cartao dialog: parse de moeda aceita formatos pt-BR e decimal", () => {
