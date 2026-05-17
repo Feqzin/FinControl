@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { parseMoney, toCents } from "@/lib/money";
 
 type PessoaOption = {
   id: string;
@@ -34,10 +35,14 @@ type EditCompraForm = {
   reembolsoPercentual: string;
 };
 
-function parseMoneyLikeValue(rawValue: string): number {
-  const normalized = rawValue.replace(/\./g, "").replace(",", ".").trim();
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
+export function parseMoneyLikeValue(rawValue: string): number {
+  const parsed = parseMoney(rawValue);
+  return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseMoneyLikeCents(rawValue: string): number {
+  const parsed = toCents(rawValue);
+  return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : 0;
 }
 
 function clampNonNegative(value: number): number {
@@ -45,33 +50,35 @@ function clampNonNegative(value: number): number {
   return Math.max(0, value);
 }
 
-function resolveReembolsoPreview(form: {
+export function resolveReembolsoPreview(form: {
   valorTotal: string;
   reembolsoModo: ReembolsoModo;
   reembolsoValorTotal: string;
   reembolsoPercentual: string;
 }): { valorCompra: number; reembolsoPessoa: number; partePropria: number } {
-  const valorCompra = clampNonNegative(parseMoneyLikeValue(form.valorTotal));
+  const valorCompraCents = clampNonNegative(parseMoneyLikeCents(form.valorTotal));
   const percentual = clampNonNegative(parseMoneyLikeValue(form.reembolsoPercentual));
-  const valorCustom = clampNonNegative(parseMoneyLikeValue(form.reembolsoValorTotal));
+  const valorCustomCents = clampNonNegative(parseMoneyLikeCents(form.reembolsoValorTotal));
 
-  let reembolsoPessoa = valorCompra;
+  let reembolsoPessoaCents = valorCompraCents;
   if (form.reembolsoModo === "metade") {
-    reembolsoPessoa = valorCompra / 2;
+    reembolsoPessoaCents = Math.ceil(valorCompraCents / 2);
   } else if (form.reembolsoModo === "valor_custom") {
-    reembolsoPessoa = valorCustom;
+    reembolsoPessoaCents = valorCustomCents;
   } else if (form.reembolsoModo === "percentual_custom") {
-    reembolsoPessoa = (valorCompra * percentual) / 100;
+    reembolsoPessoaCents = Math.round((valorCompraCents * percentual) / 100);
   }
 
-  if (reembolsoPessoa > valorCompra) {
-    reembolsoPessoa = valorCompra;
+  if (reembolsoPessoaCents > valorCompraCents) {
+    reembolsoPessoaCents = valorCompraCents;
   }
+
+  const partePropriaCents = Math.max(0, valorCompraCents - reembolsoPessoaCents);
 
   return {
-    valorCompra,
-    reembolsoPessoa,
-    partePropria: Math.max(0, valorCompra - reembolsoPessoa),
+    valorCompra: valorCompraCents / 100,
+    reembolsoPessoa: reembolsoPessoaCents / 100,
+    partePropria: partePropriaCents / 100,
   };
 }
 
@@ -93,8 +100,9 @@ type ReembolsoPessoaSectionProps = {
 
 function ReembolsoPessoaSection({ form, setForm, formatCurrency }: ReembolsoPessoaSectionProps) {
   const preview = resolveReembolsoPreview(form);
-  const valorCustomInformado = clampNonNegative(parseMoneyLikeValue(form.reembolsoValorTotal));
-  const valorCustomExcede = form.reembolsoModo === "valor_custom" && valorCustomInformado > preview.valorCompra;
+  const valorCustomInformadoCents = clampNonNegative(parseMoneyLikeCents(form.reembolsoValorTotal));
+  const valorCompraCents = clampNonNegative(parseMoneyLikeCents(form.valorTotal));
+  const valorCustomExcede = form.reembolsoModo === "valor_custom" && valorCustomInformadoCents > valorCompraCents;
   const percentualExcede = form.reembolsoModo === "percentual_custom"
     && parseMoneyLikeValue(form.reembolsoPercentual) > 100;
 
@@ -138,7 +146,7 @@ function ReembolsoPessoaSection({ form, setForm, formatCurrency }: ReembolsoPess
             data-testid="input-reembolso-valor-custom"
             type="number"
             min="0"
-            max={preview.valorCompra > 0 ? preview.valorCompra : undefined}
+            max={preview.valorCompra > 0 ? preview.valorCompra.toFixed(2) : undefined}
             step="0.01"
             value={form.reembolsoValorTotal}
             onChange={(event) => setForm({ ...form, reembolsoValorTotal: event.target.value })}
@@ -313,7 +321,7 @@ export function NovaCompraCartaoDialog({
               <p className="text-sm">
                 <span className="text-muted-foreground">Parcela: </span>
                 <span className="font-semibold">
-                  {formatCurrency(parseFloat(form.valorTotal) / parseInt(form.parcelas || "1", 10))}
+                  {formatCurrency((parseMoneyLikeValue(form.valorTotal) || 0) / parseInt(form.parcelas || "1", 10))}
                 </span>
                 <span className="text-muted-foreground"> x {form.parcelas}x</span>
               </p>
@@ -400,7 +408,7 @@ export function EditarCompraCartaoDialog({
             <div className="rounded-md bg-muted/50 p-3 text-sm">
               <span className="text-muted-foreground">Nova parcela: </span>
               <span className="font-semibold">
-                {formatCurrency(parseFloat(form.valorTotal) / parseInt(form.parcelas || "1", 10))}
+                {formatCurrency((parseMoneyLikeValue(form.valorTotal) || 0) / parseInt(form.parcelas || "1", 10))}
               </span>
               <span className="text-muted-foreground"> x {form.parcelas}x</span>
             </div>

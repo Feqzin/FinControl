@@ -22,6 +22,7 @@ import {
   parsePdf,
 } from "../src/pages/cartoes/import-parser";
 import { suggestImportCardByText } from "../src/pages/cartoes/import-card-matching";
+import { parseMoneyLikeValue, resolveReembolsoPreview } from "../src/components/cartoes/CompraCartaoDialog";
 import type { Cartao, CompraCartao, Divida, Parcela, Pessoa, Servico } from "@shared/schema";
 import {
   extractTextFromPdfBuffer,
@@ -30,6 +31,7 @@ import {
   reconstructPdfLinesByPosition,
 } from "../src/pages/cartoes/import-pdf-utils";
 import { buildRelatorioPdfMetadata } from "../src/pages/relatorios/relatorios-pdf-utils";
+import { formatMoneyFixed } from "../src/lib/money";
 import {
   buildTimelineLayout,
   findSelectedTimelineEvent,
@@ -446,6 +448,44 @@ test("cartoes utils: parcela vencida somente quando pendente e data passada", ()
     }),
     false,
   );
+});
+
+test("compra cartao dialog: parse de moeda aceita formatos pt-BR e decimal", () => {
+  assert.equal(parseMoneyLikeValue("422,79"), 422.79);
+  assert.equal(parseMoneyLikeValue("1.234,56"), 1234.56);
+  assert.equal(parseMoneyLikeValue("422.79"), 422.79);
+  assert.equal(parseMoneyLikeValue("R$ 422,79"), 422.79);
+});
+
+test("compra cartao dialog: metade fecha total com arredondamento em centavos", () => {
+  const preview = resolveReembolsoPreview({
+    valorTotal: "422,79",
+    reembolsoModo: "metade",
+    reembolsoValorTotal: "",
+    reembolsoPercentual: "",
+  });
+
+  assert.equal(preview.valorCompra, 422.79);
+  assert.equal(preview.reembolsoPessoa, 211.4);
+  assert.equal(preview.partePropria, 211.39);
+  assert.equal(Number((preview.reembolsoPessoa + preview.partePropria).toFixed(2)), 422.79);
+});
+
+test("compra cartao dialog: valor personalizado não ultrapassa total ao calcular resumo", () => {
+  const preview = resolveReembolsoPreview({
+    valorTotal: "422,79",
+    reembolsoModo: "valor_custom",
+    reembolsoValorTotal: "500,00",
+    reembolsoPercentual: "",
+  });
+
+  assert.equal(preview.reembolsoPessoa, 422.79);
+  assert.equal(preview.partePropria, 0);
+});
+
+test("cartoes api: valor total com vírgula não é serializado como inteiro sem centavos", () => {
+  assert.equal(formatMoneyFixed("422,79"), "422.79");
+  assert.equal(formatMoneyFixed("1.234,56"), "1234.56");
 });
 
 test("timeline utils: status define cores e labels corretos", () => {
