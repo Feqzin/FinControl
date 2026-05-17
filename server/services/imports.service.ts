@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { addMonths, format } from "date-fns";
+import { format } from "date-fns";
 import { db } from "../db";
 import {
   cartoes,
@@ -95,6 +95,7 @@ type CompraReconcileSnapshot = {
   parcelas: number;
   parcelaAtual: number;
   dataCompra: string;
+  vencimentoFatura: string | null;
 };
 
 type ReconcileRollbackActionSnapshot = {
@@ -869,11 +870,6 @@ function isParcelaProtectedForReconcile(
   return false;
 }
 
-function buildParcelaDueDate(baseCompraDate: string, numero: number): string {
-  const baseDate = new Date(`${baseCompraDate}T12:00:00`);
-  return format(addMonths(baseDate, Math.max(0, numero - 1)), "yyyy-MM-dd");
-}
-
 export class ImportsService {
   constructor(
     private readonly deps: {
@@ -1111,13 +1107,33 @@ export class ImportsService {
 
     const summary = summarizePreview(candidateItems);
     const transactionResult = await db.transaction(async (tx) => {
+      const [cardCycle] = await tx.select({
+        diaVencimento: cartoes.diaVencimento,
+        melhorDiaCompra: cartoes.melhorDiaCompra,
+      }).from(cartoes).where(and(
+        eq(cartoes.id, log.cartaoId),
+        eq(cartoes.userId, userId),
+      )).limit(1);
+
+      if (!cardCycle) {
+        throw new ImportPipelineError(400, "Cartão de destino não encontrado para materializar parcelas.");
+      }
+
       const createdRows = rowsToInsert.length > 0
         ? await tx.insert(comprasCartao).values(rowsToInsert).returning()
         : [];
 
       if (createdRows.length > 0) {
         const buildRows = this.getBuildParcelasCompraRows();
-        const parcelasRows = createdRows.flatMap((row) => buildRows(row));
+        const parcelasRows = createdRows.flatMap((row, index) => {
+          const sourceItem = importItems[index];
+          return buildRows({
+            ...row,
+            vencimentoFatura: sourceItem?.vencimentoFatura ?? null,
+          }, {
+            cardCycle,
+          });
+        });
         if (parcelasRows.length > 0) {
           await tx.insert(parcelasCompra).values(parcelasRows);
         }
@@ -1417,6 +1433,14 @@ export class ImportsService {
       );
     }
 
+    const [cardCycle] = await db.select({
+      diaVencimento: cartoes.diaVencimento,
+      melhorDiaCompra: cartoes.melhorDiaCompra,
+    }).from(cartoes).where(and(
+      eq(cartoes.id, existingCompra.cartaoId),
+      eq(cartoes.userId, userId),
+    )).limit(1);
+
     const reconciled = await db.transaction(async (tx) => {
       const [updatedCompra] = await tx.update(comprasCartao).set({
         descricao: shouldUpdateNameFromImport ? normalizedItem.descricao : existingCompra.descricao,
@@ -1438,6 +1462,22 @@ export class ImportsService {
       }
 
       if (scheduleChanged) {
+        const buildRows = this.getBuildParcelasCompraRows();
+        const expectedSchedule = buildRows({
+          id: updatedCompra.id,
+          userId,
+          cartaoId: existingCompra.cartaoId,
+          parcelas: normalizedItem.parcelas,
+          parcelaAtual: normalizedItem.parcelaAtual,
+          valorParcela: nextValorParcela,
+          dataCompra: normalizedItem.dataCompra,
+          pessoaId: existingCompra.pessoaId,
+          statusPessoa: existingCompra.statusPessoa,
+          dataPagamentoPessoa: existingCompra.dataPagamentoPessoa,
+          vencimentoFatura: normalizedItem.vencimentoFatura ?? null,
+        }, {
+          cardCycle: cardCycle ?? null,
+        });
         const currentRows = await tx.select({
           id: parcelasCompra.id,
           numero: parcelasCompra.numero,
@@ -1450,7 +1490,9 @@ export class ImportsService {
 
         for (let numero = 1; numero <= expectedParcelas; numero += 1) {
           const existingRow = rowsByNumero.get(numero);
-          const dataVencimento = buildParcelaDueDate(updatedCompra.dataCompra, numero);
+          const expectedParcela = expectedSchedule[numero - 1];
+          const dataVencimento = expectedParcela?.dataVencimento;
+          if (!dataVencimento) continue;
           if (existingRow) {
             await tx.update(parcelasCompra).set({
               valor: nextValorParcela,
@@ -1494,6 +1536,7 @@ export class ImportsService {
       parcelas: existingCompra.parcelas,
       parcelaAtual: existingCompra.parcelaAtual,
       dataCompra: existingCompra.dataCompra,
+      vencimentoFatura: null,
     };
     const appliedSnapshot: CompraReconcileSnapshot = {
       descricao: shouldUpdateNameFromImport ? normalizedItem.descricao : existingCompra.descricao,
@@ -1502,6 +1545,7 @@ export class ImportsService {
       parcelas: normalizedItem.parcelas,
       parcelaAtual: normalizedItem.parcelaAtual,
       dataCompra: normalizedItem.dataCompra,
+      vencimentoFatura: normalizedItem.vencimentoFatura ?? null,
     };
 
     if (payload.importLogId) {
@@ -1608,6 +1652,7 @@ export class ImportsService {
       for (const action of reconcileActions) {
         const [targetCompra] = await tx.select({
           id: comprasCartao.id,
+          cartaoId: comprasCartao.cartaoId,
           descricao: comprasCartao.descricao,
           valorTotal: comprasCartao.valorTotal,
           valorParcela: comprasCartao.valorParcela,
@@ -1682,6 +1727,30 @@ export class ImportsService {
         }
 
         if (scheduleWasChanged) {
+          const [cardCycle] = await tx.select({
+            diaVencimento: cartoes.diaVencimento,
+            melhorDiaCompra: cartoes.melhorDiaCompra,
+          }).from(cartoes).where(and(
+            eq(cartoes.id, targetCompra.cartaoId),
+            eq(cartoes.userId, userId),
+          )).limit(1);
+
+          const buildRows = this.getBuildParcelasCompraRows();
+          const expectedSchedule = buildRows({
+            id: restoredCompra.id,
+            userId,
+            cartaoId: targetCompra.cartaoId,
+            parcelas: action.previousSnapshot.parcelas,
+            parcelaAtual: action.previousSnapshot.parcelaAtual,
+            valorParcela: action.previousSnapshot.valorParcela,
+            dataCompra: action.previousSnapshot.dataCompra,
+            pessoaId: null,
+            statusPessoa: null,
+            dataPagamentoPessoa: null,
+            vencimentoFatura: action.previousSnapshot.vencimentoFatura ?? null,
+          }, {
+            cardCycle: cardCycle ?? null,
+          });
           const currentRows = await tx.select({
             id: parcelasCompra.id,
             numero: parcelasCompra.numero,
@@ -1694,7 +1763,9 @@ export class ImportsService {
           const previousValorParcela = action.previousSnapshot.valorParcela;
           for (let numero = 1; numero <= expectedParcelas; numero += 1) {
             const existingRow = rowsByNumero.get(numero);
-            const dataVencimento = buildParcelaDueDate(restoredCompra.dataCompra, numero);
+            const expectedParcela = expectedSchedule[numero - 1];
+            const dataVencimento = expectedParcela?.dataVencimento;
+            if (!dataVencimento) continue;
             if (existingRow) {
               await tx.update(parcelasCompra).set({
                 valor: previousValorParcela,

@@ -151,6 +151,101 @@ testImports("pipeline de importacao: preview, confirmacao e rollback", async () 
   }
 });
 
+testImports("confirmacao ancora competencia no vencimento da fatura importada", async () => {
+  const { db } = await import("../db");
+  const { ImportsService } = await import("../services/imports.service");
+  const { users, cartoes, parcelasCompra } = await import("@shared/schema");
+  const { and, asc, eq } = await import("drizzle-orm");
+
+  const service = new ImportsService();
+  const username = `it_imports_competencia_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Import Competencia Test",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Itau Competencia",
+    limite: "8000.00",
+    melhorDiaCompra: 14,
+    diaVencimento: 23,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const preview = await service.preview(user.id, {
+      cartaoId: cartao.id,
+      sourceType: "manual",
+      sourceName: "fatura-itau-maio-2026",
+      items: [
+        {
+          id: "itau-8-12",
+          descricao: "EC *LGELECTRONICS",
+          valor: "4928.04",
+          valorParcela: "410.67",
+          parcelas: 12,
+          parcelaAtual: 8,
+          dataCompra: "2025-09-17",
+          vencimentoFatura: "2026-05-23",
+          tipo: "compra",
+          action: "import",
+        },
+        {
+          id: "itau-6-6",
+          descricao: "PG *WEBFONES W",
+          valor: "648.96",
+          valorParcela: "108.16",
+          parcelas: 6,
+          parcelaAtual: 6,
+          dataCompra: "2025-12-10",
+          vencimentoFatura: "2026-05-23",
+          tipo: "compra",
+          action: "import",
+        },
+      ],
+    });
+
+    const confirmed = await service.confirm(user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+    });
+    assert.equal(confirmed.createdCount, 2);
+
+    const [compraAId, compraBId] = confirmed.createdCompraIds;
+    assert.ok(compraAId);
+    assert.ok(compraBId);
+
+    const parcelasA = await db.select({
+      numero: parcelasCompra.numero,
+      dataVencimento: parcelasCompra.dataVencimento,
+    }).from(parcelasCompra).where(and(
+      eq(parcelasCompra.userId, user.id),
+      eq(parcelasCompra.compraCartaoId, compraAId!),
+    )).orderBy(asc(parcelasCompra.numero));
+
+    const parcelasB = await db.select({
+      numero: parcelasCompra.numero,
+      dataVencimento: parcelasCompra.dataVencimento,
+    }).from(parcelasCompra).where(and(
+      eq(parcelasCompra.userId, user.id),
+      eq(parcelasCompra.compraCartaoId, compraBId!),
+    )).orderBy(asc(parcelasCompra.numero));
+
+    assert.equal(parcelasA.length, 12);
+    assert.equal(parcelasA[7]?.dataVencimento, "2026-05-23");
+    assert.equal(parcelasA[0]?.dataVencimento, "2025-10-23");
+
+    assert.equal(parcelasB.length, 6);
+    assert.equal(parcelasB[5]?.dataVencimento, "2026-05-23");
+    assert.equal(parcelasB[0]?.dataVencimento, "2025-12-23");
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
 testImports("confirmacao ignora item invalido sem criar compras inconsistentes", async () => {
   const { db } = await import("../db");
   const { ImportsService } = await import("../services/imports.service");

@@ -1,5 +1,5 @@
-import { addMonths, format } from "date-fns";
-import type { CompraCartao, InsertParcelaCompra } from "@shared/schema";
+import { addMonths, differenceInCalendarDays, format } from "date-fns";
+import type { Cartao, CompraCartao, InsertParcelaCompra } from "@shared/schema";
 import type { FinancialRepository } from "../repositories/financial.repository";
 import { formatMoneyFixed, parseMoney } from "../../utils/money";
 import { recomputeCardPurchaseAggregate } from "./financial-aggregate-consistency";
@@ -8,6 +8,7 @@ type CompraScheduleSource = Pick<
   CompraCartao,
   | "id"
   | "userId"
+  | "cartaoId"
   | "parcelas"
   | "parcelaAtual"
   | "valorParcela"
@@ -15,7 +16,11 @@ type CompraScheduleSource = Pick<
   | "pessoaId"
   | "statusPessoa"
   | "dataPagamentoPessoa"
->;
+> & {
+  vencimentoFatura?: string | null;
+};
+
+type CardCycleSource = Pick<Cartao, "diaVencimento" | "melhorDiaCompra"> | null;
 
 export type ParcelasCompraSyncResult = {
   compraCartaoId: string;
@@ -53,15 +58,83 @@ function normalizeParcelaAtual(value: number, total: number): number {
   return Math.max(1, Math.min(Math.trunc(value), total));
 }
 
+function parseIsoDate(value: string | null | undefined): Date | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function normalizeDay(value: number | null | undefined, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.min(31, Math.trunc(parsed)));
+}
+
+function hasValidCardCycle(cardCycle: CardCycleSource): cardCycle is Pick<Cartao, "diaVencimento" | "melhorDiaCompra"> {
+  if (!cardCycle) return false;
+  const due = Number(cardCycle.diaVencimento);
+  const best = Number(cardCycle.melhorDiaCompra);
+  return Number.isFinite(due) && Number.isFinite(best);
+}
+
+function buildDateWithDay(year: number, monthIndex: number, day: number): Date {
+  const maxDayOfMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const clampedDay = Math.max(1, Math.min(maxDayOfMonth, day));
+  return new Date(year, monthIndex, clampedDay, 12, 0, 0, 0);
+}
+
+function resolveMinimumLeadDays(cardCycle: CardCycleSource): number {
+  if (!hasValidCardCycle(cardCycle)) return 0;
+  const dueDay = normalizeDay(cardCycle.diaVencimento, 1);
+  const bestPurchaseDay = normalizeDay(cardCycle.melhorDiaCompra, dueDay);
+  const cycleGap = (dueDay - bestPurchaseDay + 31) % 31;
+  return Math.max(1, cycleGap === 0 ? 1 : cycleGap);
+}
+
+function resolveFirstInstallmentDueDate(
+  compra: CompraScheduleSource,
+  cardCycle: CardCycleSource,
+): Date {
+  const total = normalizeParcelas(Number(compra.parcelas));
+  const atual = normalizeParcelaAtual(Number(compra.parcelaAtual), total);
+  const purchaseDate = parseIsoDate(compra.dataCompra) ?? new Date();
+  const invoiceDueDate = parseIsoDate(compra.vencimentoFatura ?? null);
+
+  if (invoiceDueDate) {
+    return addMonths(invoiceDueDate, -(atual - 1));
+  }
+
+  if (!hasValidCardCycle(cardCycle)) {
+    return purchaseDate;
+  }
+
+  const dueDay = normalizeDay(cardCycle.diaVencimento, purchaseDate.getDate());
+  let candidate = buildDateWithDay(purchaseDate.getFullYear(), purchaseDate.getMonth(), dueDay);
+  if (differenceInCalendarDays(candidate, purchaseDate) < 0) {
+    candidate = addMonths(candidate, 1);
+  }
+
+  const minimumLeadDays = resolveMinimumLeadDays(cardCycle);
+  if (differenceInCalendarDays(candidate, purchaseDate) < minimumLeadDays) {
+    candidate = addMonths(candidate, 1);
+  }
+
+  return candidate;
+}
+
 /**
  * Materializa o cronograma de parcelas de uma compra parcelada.
  * Regras mantidas para retrocompatibilidade com o comportamento anterior do sistema.
  */
-export function buildParcelasCompraRows(compra: CompraScheduleSource): InsertParcelaCompra[] {
+export function buildParcelasCompraRows(
+  compra: CompraScheduleSource,
+  options?: { cardCycle?: CardCycleSource },
+): InsertParcelaCompra[] {
   const total = normalizeParcelas(Number(compra.parcelas));
   const atual = normalizeParcelaAtual(Number(compra.parcelaAtual), total);
   const valorParcela = parseMoney(compra.valorParcela) ?? 0;
-  const baseDate = new Date(`${compra.dataCompra}T12:00:00`);
+  const firstDueDate = resolveFirstInstallmentDueDate(compra, options?.cardCycle ?? null);
 
   return Array.from({ length: total }, (_, index) => {
     const numero = index + 1;
@@ -72,7 +145,7 @@ export function buildParcelasCompraRows(compra: CompraScheduleSource): InsertPar
       compraCartaoId: compra.id,
       numero,
       valor: formatMoneyFixed(valorParcela) ?? "0.00",
-      dataVencimento: format(addMonths(baseDate, index), "yyyy-MM-dd"),
+      dataVencimento: format(addMonths(firstDueDate, index), "yyyy-MM-dd"),
       statusCartao: isPaid ? "pago" : "pendente",
       dataPagamentoCartao: isPaid ? compra.dataCompra : null,
       statusPessoa: isPaid
@@ -100,7 +173,8 @@ export async function materializeParcelasCompraIfMissing(
     };
   }
 
-  const rows = buildParcelasCompraRows(compra);
+  const cardCycle = await repository.getCartao(compra.cartaoId, compra.userId);
+  const rows = buildParcelasCompraRows(compra, { cardCycle });
   const created = await repository.createParcelasCompraBulk(rows);
 
   return {
@@ -138,7 +212,8 @@ export async function syncMaterializedParcelasAfterCompraUpdate(
     return;
   }
 
-  const expectedRows = buildParcelasCompraRows(compra);
+  const cardCycle = await repository.getCartao(compra.cartaoId, compra.userId);
+  const expectedRows = buildParcelasCompraRows(compra, { cardCycle });
   const expectedCount = expectedRows.length;
   const existingByNumber = new Map(existing.map((row) => [row.numero, row]));
 

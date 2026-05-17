@@ -142,7 +142,8 @@ export class ParcelasService {
             },
           });
 
-          const rows = buildParcelasCompraRows(compra).map((row) => ({
+          const cardCycle = await repository.getCartao(compra.cartaoId, userId);
+          const rows = buildParcelasCompraRows(compra, { cardCycle }).map((row) => ({
             id: `compat-${compra!.id}-${row.numero}`,
             ...row,
             comprovantePath: null,

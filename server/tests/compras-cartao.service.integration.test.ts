@@ -74,6 +74,65 @@ testComprasIntegration("create persiste compra parcelada de cartao sem alterar c
   }
 });
 
+testComprasIntegration("create calcula competencia da primeira parcela pelo ciclo do cartao", async () => {
+  const { db } = await import("../db");
+  const { ComprasCartaoService } = await import("../services/compras-cartao.service");
+  const { financialRepository } = await import("../repositories/financial.repository");
+  const { users, cartoes, parcelasCompra } = await import("@shared/schema");
+  const { and, asc, eq } = await import("drizzle-orm");
+
+  const service = new ComprasCartaoService(financialRepository);
+  const username = `it_compras_competencia_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Compras Competencia Integration",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Itau Ciclo",
+    limite: "4000.00",
+    melhorDiaCompra: 14,
+    diaVencimento: 23,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const result = await service.create(user.id, {
+      cartaoId: cartao.id,
+      descricao: "Compra ciclo abril",
+      valorTotal: "422.79",
+      parcelas: 2,
+      parcelaAtual: 1,
+      valorParcela: "211.40",
+      dataCompra: "2026-04-17",
+      pessoaId: null,
+    });
+
+    if ("error" in result) {
+      assert.fail("Nao deveria retornar erro para compra manual com cartao valido");
+    }
+
+    const parcelasRows = await db.select({
+      numero: parcelasCompra.numero,
+      dataVencimento: parcelasCompra.dataVencimento,
+      statusCartao: parcelasCompra.statusCartao,
+    }).from(parcelasCompra).where(and(
+      eq(parcelasCompra.userId, user.id),
+      eq(parcelasCompra.compraCartaoId, result.created.id),
+    )).orderBy(asc(parcelasCompra.numero));
+
+    assert.equal(parcelasRows.length, 2);
+    assert.equal(parcelasRows[0]?.dataVencimento, "2026-05-23");
+    assert.equal(parcelasRows[1]?.dataVencimento, "2026-06-23");
+    assert.equal(parcelasRows[0]?.statusCartao, "pendente");
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
 testComprasIntegration("create retorna erro quando cartao informado nao existe", async () => {
   const { db } = await import("../db");
   const { ComprasCartaoService } = await import("../services/compras-cartao.service");
