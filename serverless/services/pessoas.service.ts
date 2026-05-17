@@ -8,6 +8,7 @@ import type {
   ServicoPagamento,
   ServicoPessoa,
 } from "../../shared/schema.js";
+import { buildCompraReembolsoBreakdown } from "../../shared/compra-reembolso.js";
 import { parseMoney } from "../../utils/money.js";
 import { db } from "../db.js";
 import { createFinancialRepository } from "../repositories/financial.repository.js";
@@ -337,18 +338,6 @@ function isOverdue(dateValue: string | null | undefined, todayIso: string): bool
   return Boolean(dateValue) && String(dateValue) < todayIso;
 }
 
-function normalizeInstallmentCount(value: number | null | undefined): number {
-  const parsed = Number(value ?? 1);
-  if (!Number.isFinite(parsed)) return 1;
-  return Math.max(1, Math.trunc(parsed));
-}
-
-function normalizeCurrentInstallment(current: number | null | undefined, total: number): number {
-  const parsed = Number(current ?? 1);
-  if (!Number.isFinite(parsed)) return 1;
-  return Math.max(1, Math.min(total, Math.trunc(parsed)));
-}
-
 function getFallbackInstallmentDueDate(baseDate: string, offset: number): string | null {
   try {
     return format(addMonths(parseISO(baseDate), offset), "yyyy-MM-dd");
@@ -372,6 +361,14 @@ function summarizeCompraPessoa(
   todayIso: string,
   saldoMovimentacoes: PessoaSaldoMovimentacao[],
 ): CompraResumo {
+  const reembolso = buildCompraReembolsoBreakdown(compra);
+  const getParcelaReembolsoCents = (numero: number | null | undefined): number => {
+    const parsed = Number(numero ?? 1);
+    const fallback = Number.isFinite(parsed) ? Math.trunc(parsed) : 1;
+    const index = Math.max(1, Math.min(reembolso.totalParcelas, fallback)) - 1;
+    return reembolso.reembolsoPorParcelaCents[index] ?? 0;
+  };
+
   if (rows.length > 0) {
     let pendentePessoa = 0;
     let pagoPessoa = 0;
@@ -380,7 +377,8 @@ function summarizeCompraPessoa(
 
     for (const row of rows) {
       if (isCanceled(row.statusPessoa)) continue;
-      const valor = toMoneyNumber(row.valor);
+      const valor = getParcelaReembolsoCents(row.numero) / 100;
+      if (valor <= 0) continue;
       const abatidoSaldo = getParcelaCompraSaldoAbatido(saldoMovimentacoes, row.id);
       const pagoPorSaldo = Math.min(valor, abatidoSaldo);
       const pendentePorSaldo = round2(Math.max(0, valor - pagoPorSaldo));
@@ -403,8 +401,8 @@ function summarizeCompraPessoa(
     }
 
     return {
-      pendentePessoa,
-      pagoPessoa,
+      pendentePessoa: round2(pendentePessoa),
+      pagoPessoa: round2(pagoPessoa),
       parcelasPendentesPessoa,
       parcelasAtrasadasPessoa,
       compraAtrasada: parcelasAtrasadasPessoa > 0,
@@ -412,18 +410,22 @@ function summarizeCompraPessoa(
     };
   }
 
-  const totalParcelas = normalizeInstallmentCount(compra.parcelas);
-  const parcelaAtual = normalizeCurrentInstallment(compra.parcelaAtual, totalParcelas);
-  const valorParcela = toMoneyNumber(compra.valorParcela);
+  const totalParcelas = reembolso.totalParcelas;
+  const parcelaAtual = reembolso.parcelaAtual;
   const statusPessoa = normalizeStatus(compra.statusPessoa);
   const statusPago = statusPessoa === "pago";
   const statusCancelado = statusPessoa === "cancelado";
-  const parcelasPendentesPessoa = statusPago || statusCancelado ? 0 : Math.max(0, totalParcelas - parcelaAtual + 1);
-  const parcelasPagasPessoa = statusPago ? totalParcelas : Math.max(0, parcelaAtual - 1);
+  const parcelasPendentesPessoa = statusPago || statusCancelado
+    ? 0
+    : Math.max(0, totalParcelas - parcelaAtual + 1);
 
   let parcelasAtrasadasPessoa = 0;
+  let pendentePessoa = 0;
   if (parcelasPendentesPessoa > 0) {
     for (let numero = parcelaAtual; numero <= totalParcelas; numero += 1) {
+      const valorParcela = getParcelaReembolsoCents(numero) / 100;
+      if (valorParcela <= 0) continue;
+      pendentePessoa += valorParcela;
       const dataVencimento = getFallbackInstallmentDueDate(compra.dataCompra, numero - 1);
       if (isOverdue(dataVencimento, todayIso)) {
         parcelasAtrasadasPessoa += 1;
@@ -431,10 +433,20 @@ function summarizeCompraPessoa(
     }
   }
 
+  const pendenteFinal = statusPago || statusCancelado ? 0 : round2(pendentePessoa);
+  const pagoFinal = statusCancelado
+    ? 0
+    : round2(Math.max(0, reembolso.reembolsoPessoa - pendenteFinal));
+  const parcelasPendentesFinal = statusPago || statusCancelado
+    ? 0
+    : reembolso.reembolsoPorParcelaCents
+      .slice(parcelaAtual - 1)
+      .filter((valor) => valor > 0).length;
+
   return {
-    pendentePessoa: round2(parcelasPendentesPessoa * valorParcela),
-    pagoPessoa: round2(parcelasPagasPessoa * valorParcela),
-    parcelasPendentesPessoa,
+    pendentePessoa: pendenteFinal,
+    pagoPessoa: pagoFinal,
+    parcelasPendentesPessoa: parcelasPendentesFinal,
     parcelasAtrasadasPessoa,
     compraAtrasada: parcelasAtrasadasPessoa > 0,
     usaParcelasReais: false,

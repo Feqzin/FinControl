@@ -43,6 +43,7 @@ import {
 } from "../src/pages/pessoas/payment-timeline.utils";
 import { buildCompraAliasDraft, findPossibleExistingPurchaseMatch } from "../src/pages/cartoes/import-existing-purchase-match";
 import { buildCreateCompraAliasRequestBody } from "../src/services/api/cartoes";
+import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
 
 test("formatters: moeda e data em pt-BR", () => {
   assert.equal(formatCurrencyBRL(1234.56), "R$\u00a01.234,56");
@@ -481,6 +482,60 @@ test("compra cartao dialog: valor personalizado não ultrapassa total ao calcula
 
   assert.equal(preview.reembolsoPessoa, 422.79);
   assert.equal(preview.partePropria, 0);
+});
+
+test("reembolso helper: compra sem pessoa vinculada retorna zero para a pessoa", () => {
+  const breakdown = buildCompraReembolsoBreakdown({
+    pessoaId: null,
+    valorTotal: "422.79",
+    parcelas: 1,
+    parcelaAtual: 1,
+    reembolsoModo: null,
+  });
+
+  assert.equal(breakdown.reembolsoPessoa, 0);
+  assert.equal(breakdown.partePropria, 422.79);
+});
+
+test("reembolso helper: compra legada com pessoa e modo nulo mantém 100%", () => {
+  const breakdown = buildCompraReembolsoBreakdown({
+    pessoaId: "p-1",
+    valorTotal: "422.79",
+    parcelas: 1,
+    parcelaAtual: 1,
+    reembolsoModo: null,
+  });
+
+  assert.equal(breakdown.reembolsoPessoa, 422.79);
+  assert.equal(breakdown.partePropria, 0);
+});
+
+test("reembolso helper: metade de 422,79 gera 211,40 para pessoa e 211,39 para minha parte", () => {
+  const breakdown = buildCompraReembolsoBreakdown({
+    pessoaId: "p-1",
+    valorTotal: "422.79",
+    parcelas: 1,
+    parcelaAtual: 1,
+    reembolsoModo: "metade",
+  });
+
+  assert.equal(breakdown.reembolsoPessoa, 211.4);
+  assert.equal(breakdown.partePropria, 211.39);
+  assert.equal(Number((breakdown.reembolsoPessoa + breakdown.partePropria).toFixed(2)), 422.79);
+});
+
+test("reembolso helper: metade em compra parcelada distribui por parcela", () => {
+  const breakdown = buildCompraReembolsoBreakdown({
+    pessoaId: "p-1",
+    valorTotal: "1000.00",
+    parcelas: 10,
+    parcelaAtual: 5,
+    reembolsoModo: "metade",
+  });
+
+  assert.equal(breakdown.reembolsoPessoa, 500);
+  assert.equal(breakdown.reembolsoPorParcela[0], 50);
+  assert.equal(breakdown.reembolsoPorParcela[9], 50);
 });
 
 test("cartoes api: valor total com vírgula não é serializado como inteiro sem centavos", () => {

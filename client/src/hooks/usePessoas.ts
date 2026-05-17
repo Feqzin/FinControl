@@ -41,6 +41,7 @@ import {
   type PagamentoTimelineSourceType,
   type PessoaPayload,
 } from "@/services/api/pessoas";
+import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
 
 type UsePessoasArgs = {
   search: string;
@@ -571,21 +572,28 @@ export function usePessoas({
     let comprasPagas = 0;
     let parcelasPendentesPessoa = 0;
     for (const compra of pessoaCompras) {
-      const valorParcela = Number(compra.valorParcela) || 0;
-      const totalParcelas = Math.max(1, Number(compra.parcelas) || 1);
-      const parcelaAtual = Math.max(1, Math.min(totalParcelas, Number(compra.parcelaAtual) || 1));
+      const reembolso = buildCompraReembolsoBreakdown(compra);
 
       if (isPaidStatus(compra.statusPessoa)) {
-        comprasPagas += Number(compra.valorTotal) || (valorParcela * totalParcelas);
+        comprasPagas += reembolso.reembolsoPessoa;
         continue;
       }
       if (isCanceledStatus(compra.statusPessoa)) {
         continue;
       }
 
-      const restantes = Math.max(0, totalParcelas - parcelaAtual + 1);
-      parcelasPendentesPessoa += restantes;
-      comprasPendentes += valorParcela * restantes;
+      const pendenteCents = reembolso.reembolsoPorParcelaCents
+        .slice(reembolso.parcelaAtual - 1)
+        .reduce((sum, value) => sum + value, 0);
+      const pendente = pendenteCents / 100;
+      const parcelasPendentes = reembolso.reembolsoPorParcelaCents
+        .slice(reembolso.parcelaAtual - 1)
+        .filter((value) => value > 0).length;
+      const pago = Math.max(0, reembolso.reembolsoPessoa - pendente);
+
+      parcelasPendentesPessoa += parcelasPendentes;
+      comprasPendentes += pendente;
+      comprasPagas += pago;
     }
 
     let servicosPendentes = 0;

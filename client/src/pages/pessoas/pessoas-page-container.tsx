@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { useUIPreferences } from "@/context/ui-preferences";
 import type { Pessoa, Divida, CompraCartao, Cartao, ServicoPessoa, ServicoPagamento, Servico } from "@shared/schema";
+import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
 import { format } from "date-fns";
 import { formatCurrencyBRL } from "@/utils/formatters";
 
@@ -1518,6 +1519,8 @@ export default function PessoasPage() {
                   <div className="space-y-2">
                     {visibleHistoryCompras.map((c) => {
                       const cartao = cartoes.find((ct) => ct.id === c.cartaoId);
+                      const reembolso = buildCompraReembolsoBreakdown(c);
+                      const valorMensalPessoa = reembolso.reembolsoPorParcela[c.parcelaAtual - 1] ?? 0;
                       return (
                         <div
                           key={c.id}
@@ -1536,8 +1539,9 @@ export default function PessoasPage() {
                             </div>
                             <div className="flex items-center gap-1 flex-shrink-0">
                               <div className="text-right">
-                                <p className="text-sm font-bold text-blue-600">{formatCurrencyBRL(Number(c.valorParcela))}/mês</p>
-                                <p className="text-xs text-muted-foreground">Total: {formatCurrencyBRL(Number(c.valorTotal))}</p>
+                                <p className="text-sm font-bold text-blue-600">{formatCurrencyBRL(valorMensalPessoa)}/mês</p>
+                                <p className="text-xs text-muted-foreground">Total a reembolsar: {formatCurrencyBRL(reembolso.reembolsoPessoa)}</p>
+                                <p className="text-xs text-muted-foreground">Compra no cartão: {formatCurrencyBRL(reembolso.valorCompra)}</p>
                               </div>
                               <Button
                                 variant="ghost"
