@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { formatCurrencyBRL, formatIsoDateToBR } from "../src/utils/formatters";
-import { isOverdueDate, sortDividasForView } from "../src/pages/dividas/dividas.utils";
+import {
+  buildDividasViewItems,
+  filterDividasViewItems,
+  isOverdueDate,
+  sortDividasForView,
+  sortDividasViewItems,
+} from "../src/pages/dividas/dividas.utils";
 import { sortPessoasForView } from "../src/pages/pessoas/pessoas-sort.utils";
 import { sortServicosForView } from "../src/pages/servicos/servicos-sort.utils";
 import { getDaysUntilInvoice, getNextInvoiceDate, isParcelaVencida } from "../src/pages/cartoes/cartoes.utils";
@@ -213,6 +219,140 @@ test("dividas utils: lista vazia retorna vazio sem erro", () => {
     getDividaStatus: () => "pendente",
   });
   assert.deepEqual(sorted, []);
+});
+
+function buildCartaoViewFixture(overrides: Partial<Cartao> = {}): Cartao {
+  return {
+    id: overrides.id ?? "cartao-1",
+    userId: overrides.userId ?? "user-1",
+    nome: overrides.nome ?? "Nubank Mastercard",
+    limite: overrides.limite ?? "1000.00",
+    melhorDiaCompra: overrides.melhorDiaCompra ?? 20,
+    diaVencimento: overrides.diaVencimento ?? 10,
+    iconeId: overrides.iconeId ?? null,
+  };
+}
+
+function buildCompraCartaoViewFixture(overrides: Partial<CompraCartao> = {}): CompraCartao {
+  return {
+    id: overrides.id ?? "compra-1",
+    userId: overrides.userId ?? "user-1",
+    cartaoId: overrides.cartaoId ?? "cartao-1",
+    descricao: overrides.descricao ?? "Compra teste",
+    valorTotal: overrides.valorTotal ?? "100.00",
+    parcelas: overrides.parcelas ?? 1,
+    parcelaAtual: overrides.parcelaAtual ?? 1,
+    valorParcela: overrides.valorParcela ?? "100.00",
+    dataCompra: overrides.dataCompra ?? "2026-04-20",
+    pessoaId: overrides.pessoaId ?? "pessoa-a",
+    statusPessoa: overrides.statusPessoa ?? "pendente",
+    dataPagamentoPessoa: overrides.dataPagamentoPessoa ?? null,
+    reembolsoModo: overrides.reembolsoModo ?? null,
+    reembolsoValorTotal: overrides.reembolsoValorTotal ?? null,
+    reembolsoPercentual: overrides.reembolsoPercentual ?? null,
+  };
+}
+
+test("dividas view: compra vinculada aparece como origem cartao com valor parcial de reembolso", () => {
+  const manual = buildDividaFixture({ id: "d-manual", pessoaId: "pessoa-a", tipo: "receber", valor: "100.00", status: "pendente" });
+  const compra = buildCompraCartaoViewFixture({
+    id: "c-assai",
+    pessoaId: "pessoa-b",
+    descricao: "Assai Atacadista Lj89",
+    valorTotal: "422.79",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "422.79",
+    reembolsoModo: "metade",
+    statusPessoa: "pendente",
+  });
+  const cartao = buildCartaoViewFixture({ id: "cartao-1", nome: "Nubank Mastercard" });
+  const manualList = [manual as Divida & { parcelas: Parcela[] }];
+
+  const items = buildDividasViewItems({
+    dividasManuais: manualList,
+    comprasCartaoVinculadas: [compra],
+    cartoes: [cartao],
+    getDividaStatus: getDividaStatusFixture,
+    getDividaValorPendente: (divida) => Number(divida.valor),
+    getDividaValorPago: () => 0,
+  });
+
+  const itemCartao = items.find((item) => item.origin === "cartao");
+  assert.ok(itemCartao);
+  assert.equal(itemCartao?.valorTotal, 211.4);
+  assert.equal(itemCartao?.mensalPessoa, 211.4);
+  assert.equal(itemCartao?.cardTotalCompra, 422.79);
+  assert.equal(itemCartao?.tipo, "receber");
+});
+
+test("dividas view: filtros de origem todos/manual/cartao", () => {
+  const manual = buildDividaFixture({ id: "d-manual", pessoaId: "pessoa-a", tipo: "receber", valor: "100.00", status: "pendente" });
+  const compra = buildCompraCartaoViewFixture({ id: "c-1", pessoaId: "pessoa-b", statusPessoa: "pendente" });
+  const items = buildDividasViewItems({
+    dividasManuais: [manual as Divida & { parcelas: Parcela[] }],
+    comprasCartaoVinculadas: [compra],
+    cartoes: [buildCartaoViewFixture({ id: "cartao-1" })],
+    getDividaStatus: getDividaStatusFixture,
+    getDividaValorPendente: (divida) => Number(divida.valor),
+    getDividaValorPago: () => 0,
+  });
+
+  const todos = filterDividasViewItems({
+    items,
+    search: "",
+    filterTipo: "todos",
+    filterStatus: "todos",
+    filterOrigin: "todos",
+    getPessoaNome: getPessoaNomeFixture,
+  });
+  const manuais = filterDividasViewItems({
+    items,
+    search: "",
+    filterTipo: "todos",
+    filterStatus: "todos",
+    filterOrigin: "manual",
+    getPessoaNome: getPessoaNomeFixture,
+  });
+  const cartoes = filterDividasViewItems({
+    items,
+    search: "",
+    filterTipo: "todos",
+    filterStatus: "todos",
+    filterOrigin: "cartao",
+    getPessoaNome: getPessoaNomeFixture,
+  });
+
+  assert.equal(todos.length, 2);
+  assert.equal(manuais.length, 1);
+  assert.equal(cartoes.length, 1);
+  assert.equal(cartoes[0]?.origin, "cartao");
+});
+
+test("dividas view: status pago em compra vinculada não entra como pendente", () => {
+  const compraPaga = buildCompraCartaoViewFixture({
+    id: "c-paga",
+    statusPessoa: "pago",
+    valorTotal: "422.79",
+    reembolsoModo: "metade",
+  });
+  const items = buildDividasViewItems({
+    dividasManuais: [],
+    comprasCartaoVinculadas: [compraPaga],
+    cartoes: [buildCartaoViewFixture({ id: "cartao-1" })],
+    getDividaStatus: getDividaStatusFixture,
+    getDividaValorPendente: () => 0,
+    getDividaValorPago: () => 0,
+  });
+
+  const sorted = sortDividasViewItems(items, {
+    sortBy: "vencimento_mais_proximo",
+    getPessoaNome: getPessoaNomeFixture,
+  });
+
+  assert.equal(sorted.length, 1);
+  assert.equal(sorted[0]?.status, "pago");
+  assert.equal(sorted[0]?.valorPendente, 0);
 });
 
 function buildPessoaFixture(overrides: Partial<Pessoa> = {}): Pessoa {

@@ -17,31 +17,41 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Receipt, Search, Trash2, ChevronDown, ChevronUp,
   Check,
-  Pencil, FastForward, Calendar, AlertCircle, X, TrendingUp, TrendingDown, FileText,
+  Pencil, FastForward, Calendar, AlertCircle, X, TrendingUp, TrendingDown, FileText, ExternalLink,
 } from "lucide-react";
 import { useUIPreferences } from "@/context/ui-preferences";
 import type { Parcela } from "@shared/schema";
 import { format } from "date-fns";
+import { useLocation } from "wouter";
 import { useDividas, type DividaWithParcelas } from "@/hooks/useDividas";
 import { ParcelaRow } from "@/pages/dividas/components/parcela-row";
 import { ImportarTextoPanel } from "@/components/importar/importar-texto-panel";
 import {
+  buildDividasViewItems,
+  filterDividasViewItems,
   FORMAS_PAGAMENTO_DIVIDA,
+  type DividaOrigemFilter,
   type DividaSortBy,
   formatDividaCurrency,
   formatDividaDate,
   isOverdueDate,
-  sortDividasForView,
+  sortDividasViewItems,
 } from "@/pages/dividas/dividas.utils";
+
+function roundMoney(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
 
 export default function DividasPage() {
   const { toast } = useToast();
   const { prefs } = useUIPreferences();
+  const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("todos");
   const [filterTipo, setFilterTipo] = useState<string>("todos");
+  const [filterOrigem, setFilterOrigem] = useState<DividaOrigemFilter>("todos");
   const [sortBy, setSortBy] = useState<DividaSortBy>("vencimento_mais_proximo");
   const [highlightDividaId, setHighlightDividaId] = useState<string | null>(null);
   const [importarTextoOpen, setImportarTextoOpen] = useState(false);
@@ -71,12 +81,11 @@ export default function DividasPage() {
   const [showRecalcular, setShowRecalcular] = useState(false);
 
   const {
-    dividas,
+    dividasComParcelas,
+    comprasCartao,
+    cartoes,
     pessoas,
     isLoading,
-    filtered,
-    totalReceber,
-    totalPagar,
     getPessoaNome,
     getDividaStatus,
     getDividaValorPendente,
@@ -95,9 +104,51 @@ export default function DividasPage() {
     error instanceof Error ? error.message : "Erro inesperado"
   );
 
+  const viewItems = useMemo(
+    () => buildDividasViewItems({
+      dividasManuais: dividasComParcelas,
+      comprasCartaoVinculadas: comprasCartao,
+      cartoes,
+      getDividaStatus,
+      getDividaValorPendente,
+      getDividaValorPago,
+    }),
+    [cartoes, comprasCartao, dividasComParcelas, getDividaStatus, getDividaValorPago, getDividaValorPendente],
+  );
+
+  const filteredViewItems = useMemo(
+    () => filterDividasViewItems({
+      items: viewItems,
+      search,
+      filterTipo,
+      filterStatus,
+      filterOrigin: filterOrigem,
+      getPessoaNome,
+    }),
+    [filterOrigem, filterStatus, filterTipo, getPessoaNome, search, viewItems],
+  );
+
   const sortedFiltered = useMemo(
-    () => sortDividasForView(filtered, { sortBy, getPessoaNome, getDividaStatus }),
-    [filtered, getDividaStatus, getPessoaNome, sortBy],
+    () => sortDividasViewItems(filteredViewItems, { sortBy, getPessoaNome }),
+    [filteredViewItems, getPessoaNome, sortBy],
+  );
+
+  const totalReceber = useMemo(
+    () => roundMoney(
+      sortedFiltered
+        .filter((item) => item.tipo === "receber" && item.status !== "pago")
+        .reduce((sum, item) => sum + item.valorPendente, 0),
+    ),
+    [sortedFiltered],
+  );
+
+  const totalPagar = useMemo(
+    () => roundMoney(
+      sortedFiltered
+        .filter((item) => item.origin === "manual" && item.tipo === "pagar" && item.status !== "pago")
+        .reduce((sum, item) => sum + item.valorPendente, 0),
+    ),
+    [sortedFiltered],
   );
 
   useEffect(() => {
@@ -138,6 +189,15 @@ export default function DividasPage() {
     const timeoutHandle = setTimeout(() => setHighlightDividaId(null), 4000);
     return () => clearTimeout(timeoutHandle);
   }, [highlightDividaId, sortedFiltered]);
+
+  const handleOpenCompraNoCartao = (cartaoId: string, compraId: string) => {
+    const params = new URLSearchParams({
+      cartaoId,
+      compraId,
+      origem: "dividas",
+    });
+    setLocation(`/cartoes?${params.toString()}`);
+  };
 
   const handleCreateSimple = () => {
     createSimpleMutation.mutate(simpleForm, {
@@ -469,7 +529,7 @@ export default function DividasPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,_1fr)_150px_150px_200px] lg:items-center">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,_1fr)_140px_140px_160px_190px] lg:items-center">
         <div className="relative w-full min-w-0 lg:max-w-none">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input data-testid="input-search-divida" className="pl-9" placeholder="Buscar pessoa ou descrição..."
@@ -481,6 +541,16 @@ export default function DividasPage() {
             <SelectItem value="todos">Todos tipos</SelectItem>
             <SelectItem value="receber">A receber</SelectItem>
             <SelectItem value="pagar">A pagar</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterOrigem} onValueChange={(value) => setFilterOrigem(value as DividaOrigemFilter)}>
+          <SelectTrigger className="w-full" aria-label="Filtrar por origem">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todas origens</SelectItem>
+            <SelectItem value="manual">Dívidas pessoais</SelectItem>
+            <SelectItem value="cartao">Cartões</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -530,7 +600,67 @@ export default function DividasPage() {
         </div>
       ) : prefs.mobileMode ? (
         <div className="space-y-3" data-testid="dividas-mobile-list">
-          {sortedFiltered.map((d) => {
+          {sortedFiltered.map((item) => {
+            if (item.origin === "cartao" && item.compraCartao) {
+              const pessoaNome = getPessoaNome(item.pessoaId);
+              const statusLabel = item.status === "pago" ? "Pago" : "Pendente";
+              const statusClass = item.status === "pago"
+                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                : "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+
+              return (
+                <div
+                  key={item.id}
+                  className="bg-card border rounded-2xl overflow-hidden"
+                  data-testid={`mobile-card-divida-${item.id}`}
+                >
+                  <div className="flex items-stretch gap-0">
+                    <div className={`w-1 flex-shrink-0 ${item.status === "pago" ? "bg-emerald-500" : "bg-violet-500"}`} />
+                    <div className="flex-1 p-3.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-sm leading-tight">{pessoaNome}</p>
+                            <Badge variant="default">Receber</Badge>
+                            <Badge variant="outline">Cartão</Badge>
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${statusClass}`}>
+                              {statusLabel}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1 truncate">
+                            {item.descricao}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Compra no cartão: {formatDividaCurrency(item.cardTotalCompra ?? 0)}
+                          </p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="fin-value-debt">{formatDividaCurrency(item.mensalPessoa ?? item.valorPendente)}/mês</p>
+                          <p className="text-xs text-muted-foreground">
+                            Total a reembolsar: {formatDividaCurrency(item.valorTotal)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex items-center justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenCompraNoCartao(item.compraCartao!.cartaoId, item.compraCartao!.id)}
+                          data-testid={`button-open-compra-cartao-${item.sourceId}`}
+                          aria-label="Abrir compra no cartão"
+                          title="Abrir compra"
+                        >
+                          <ExternalLink className="w-4 h-4 mr-1" />
+                          Abrir compra
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            const d = item.manual!;
             const status = getDividaStatus(d);
             const isHighlighted = highlightDividaId === d.id;
             const valorPendente = getDividaValorPendente(d);
@@ -691,7 +821,55 @@ export default function DividasPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {sortedFiltered.map((d) => {
+          {sortedFiltered.map((item) => {
+            if (item.origin === "cartao" && item.compraCartao) {
+              return (
+                <Card key={item.id} className="hover-elevate transition-all" data-testid={`card-divida-${item.id}`}>
+                  <CardContent className="p-4 space-y-3">
+                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className={`w-1.5 self-stretch rounded-full flex-shrink-0 ${item.status === "pago" ? "bg-emerald-500" : "bg-violet-500"}`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold">{getPessoaNome(item.pessoaId)}</p>
+                            <Badge variant="default">Receber</Badge>
+                            <Badge variant="outline">Cartão</Badge>
+                            <Badge variant={item.status === "pago" ? "secondary" : "outline"}>
+                              {item.status === "pago" ? "Pago" : "Pendente"}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-0.5">
+                            {item.descricao}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Compra no cartão: {formatDividaCurrency(item.cardTotalCompra ?? 0)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-wrap justify-start lg:justify-end">
+                        <div className="text-left lg:text-right min-w-[180px] mr-1">
+                          <div className="fin-value-debt">{formatDividaCurrency(item.mensalPessoa ?? item.valorPendente)}/mês</div>
+                          <div className="text-xs text-muted-foreground">Total a reembolsar: {formatDividaCurrency(item.valorTotal)}</div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenCompraNoCartao(item.compraCartao!.cartaoId, item.compraCartao!.id)}
+                          aria-label="Abrir compra no cartão"
+                          title="Abrir compra"
+                          data-testid={`button-open-compra-cartao-${item.sourceId}`}
+                        >
+                          <ExternalLink className="w-4 h-4 mr-1" />
+                          Abrir compra
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            }
+
+            const d = item.manual!;
             const status = getDividaStatus(d);
             const isHighlighted = highlightDividaId === d.id;
             const valorPendente = getDividaValorPendente(d);

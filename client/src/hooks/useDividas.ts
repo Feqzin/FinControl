@@ -1,6 +1,6 @@
 ﻿import { useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Divida, Parcela, Pessoa } from "@shared/schema";
+import type { Cartao, CompraCartao, Divida, Parcela, Pessoa } from "@shared/schema";
 import { toMoneyNumber } from "@/lib/money";
 import { queryClient } from "@/lib/queryClient";
 import {
@@ -25,6 +25,8 @@ export function useDividas({ search, filterStatus, filterTipo }: UseDividasArgs)
   const { data: dividas = [], isLoading } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: parcelas = [] } = useQuery<Parcela[]>({ queryKey: ["/api/parcelas"] });
   const { data: pessoas = [] } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
+  const { data: comprasCartao = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
+  const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
 
   const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "—";
 
@@ -169,8 +171,11 @@ export function useDividas({ search, filterStatus, filterTipo }: UseDividasArgs)
 
   return {
     dividas,
+    dividasComParcelas,
     parcelas,
     pessoas,
+    comprasCartao,
+    cartoes,
     isLoading,
     filtered,
     totalReceber,
