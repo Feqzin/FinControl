@@ -898,41 +898,52 @@ export function ImportFaturaDialog({
                               </p>
                             ) : null}
                             {possibleExisting ? (
-                              <div className="mt-2 rounded-md border border-sky-200 bg-sky-50/60 px-2 py-2 space-y-1.5">
-                                <p className="text-xs font-medium text-sky-800">Possível mesma compra encontrada</p>
+                              <div className="mt-2 space-y-1.5 rounded-md border border-sky-200 bg-sky-50/60 px-2 py-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-xs font-medium text-sky-800">
+                                    {possibleExisting.aliasMatched
+                                      ? "Essa compra parece já existir"
+                                      : "Essa compra pode já existir"}
+                                  </p>
+                                  {possibleExisting.aliasMatched ? (
+                                    <span className="inline-flex items-center rounded bg-sky-200 px-2 py-0.5 text-[11px] font-medium text-sky-900">
+                                      Já reconhecido
+                                    </span>
+                                  ) : null}
+                                </div>
                                 {possibleExisting.aliasMatched ? (
                                   <div className="rounded border border-sky-300 bg-sky-100/70 px-2 py-1">
-                                    <p className="text-xs font-medium text-sky-900">Equivalência conhecida</p>
                                     <p className="text-[11px] text-sky-900">
-                                      Esse nome já foi associado anteriormente a:{" "}
-                                      <strong>
-                                        {possibleExisting.aliasMatchedNameOriginal ?? possibleExisting.existing.descricao}
-                                      </strong>
-                                      .
+                                      A fatura trouxe o nome: <strong>{item.descricao}</strong>
+                                    </p>
+                                    <p className="text-[11px] text-sky-900">
+                                      Mas você já salvou essa compra como:{" "}
+                                      <strong>{possibleExisting.aliasMatchedNameOriginal ?? possibleExisting.existing.descricao}</strong>
+                                    </p>
+                                    <p className="text-[11px] text-sky-900">
+                                      O sistema reconheceu que esses dois nomes representam a mesma compra.
                                     </p>
                                   </div>
-                                ) : null}
+                                ) : (
+                                  <div className="rounded border border-sky-300 bg-sky-100/70 px-2 py-1">
+                                    <p className="text-[11px] text-sky-900">
+                                      A fatura trouxe: <strong>{item.descricao}</strong>
+                                    </p>
+                                    <p className="text-[11px] text-sky-900">
+                                      Encontramos uma compra parecida: <strong>{possibleExisting.existing.descricao}</strong>
+                                    </p>
+                                    <p className="text-[11px] text-sky-900">
+                                      Os valores e parcelas são muito parecidos.
+                                    </p>
+                                  </div>
+                                )}
                                 <p className="text-xs text-sky-900">
-                                  Nome importado: <strong>{item.descricao}</strong>
-                                </p>
-                                <p className="text-xs text-sky-900">
-                                  Nome existente: <strong>{possibleExisting.existing.descricao}</strong>
+                                  Recomendado: use a compra já existente para evitar duplicidade.
                                 </p>
                                 <p className="text-[11px] text-sky-700">
-                                  O nome atual será preservado por padrão. O nome da fatura será lembrado como equivalência.
-                                </p>
-                                <p className="text-xs text-sky-900">
-                                  Valor existente: {formatCurrency(Number(possibleExisting.existing.valorParcela))}/parc
-                                  {" · "}
-                                  Total existente: {formatCurrency(Number(possibleExisting.existing.valorTotal))}
-                                  {" · "}
-                                  Parcelas existentes: {possibleExisting.existing.parcelaAtual}/{possibleExisting.existing.parcelas}x
-                                </p>
-                                <p className="text-[11px] text-sky-700">
-                                  Confiança do match: {possibleExisting.confidence} ·
-                                  diferença da parcela: {formatCurrency(possibleExisting.valueDiff)} ·
-                                  diferença do total: {formatCurrency(possibleExisting.totalDiff)} ·
-                                  alias: {possibleExisting.aliasMatched ? "sim" : "não"}
+                                  O nome <strong>{possibleExisting.existing.descricao}</strong> será mantido por padrão.{" "}
+                                  <strong>{item.descricao}</strong> ficará salvo apenas como apelido para próximas
+                                  faturas.
                                 </p>
                                 <div className="max-w-xs">
                                   <Select
@@ -971,18 +982,48 @@ export function ImportFaturaDialog({
                                       }));
                                     }}
                                   >
-                                    <SelectTrigger className="h-8 text-xs">
-                                      <SelectValue placeholder="Ação para compra existente" />
+                                    <SelectTrigger className="h-8 text-xs" aria-label="Escolha o que fazer com esta compra">
+                                      <SelectValue placeholder="Escolha como tratar esta compra" />
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="ignore">Ignorar</SelectItem>
                                       <SelectItem value="import_new">Importar como nova</SelectItem>
-                                      <SelectItem value="replace_existing">
-                                        Vincular/Substituir existente
-                                      </SelectItem>
+                                      <SelectItem value="replace_existing">Usar compra já existente</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
+                                {possibleExistingAction === "replace_existing" ? (
+                                  <p className="text-[11px] text-sky-700">Não será criada uma nova compra.</p>
+                                ) : null}
+                                {possibleExistingAction === "import_new" ? (
+                                  <p className="text-[11px] text-amber-700">Isso criará uma compra separada.</p>
+                                ) : null}
+                                <details className="rounded border border-sky-200 bg-white/60 px-2 py-1">
+                                  <summary className="cursor-pointer text-[11px] font-medium text-sky-800">
+                                    Ver detalhes da comparação
+                                  </summary>
+                                  <div className="mt-1 space-y-1 text-[11px] text-sky-700">
+                                    <p>
+                                      Parcela: {formatCurrency(item.valorParcela)} (fatura) vs{" "}
+                                      {formatCurrency(Number(possibleExisting.existing.valorParcela))} (existente)
+                                    </p>
+                                    <p>
+                                      Total: {formatCurrency(item.valorParcela * item.parcelas)} (fatura) vs{" "}
+                                      {formatCurrency(Number(possibleExisting.existing.valorTotal))} (existente)
+                                    </p>
+                                    <p>
+                                      Parcelas: {item.parcelaAtual}/{item.parcelas}x (fatura) vs{" "}
+                                      {possibleExisting.existing.parcelaAtual}/{possibleExisting.existing.parcelas}x
+                                      {" "}(existente)
+                                    </p>
+                                    <p>
+                                      Confiança da comparação: {possibleExisting.confidence} · diferença da parcela:{" "}
+                                      {formatCurrency(possibleExisting.valueDiff)} · diferença do total:{" "}
+                                      {formatCurrency(possibleExisting.totalDiff)} · equivalência salva:{" "}
+                                      {possibleExisting.aliasMatched ? "sim" : "não"}
+                                    </p>
+                                  </div>
+                                </details>
                                 {possibleExistingAction === "replace_existing" ? (
                                   <div className="rounded-md border border-amber-300 bg-amber-50 px-2 py-2">
                                     <p className="text-xs text-amber-900">
@@ -1054,9 +1095,12 @@ export function ImportFaturaDialog({
                                       });
                                     }}
                                   >
-                                    {isSavingCompraAlias ? "Salvando..." : "Lembrar equivalência"}
+                                    {isSavingCompraAlias ? "Salvando..." : "Salvar como mesma compra"}
                                   </Button>
                                 </div>
+                                <p className="text-[11px] text-sky-700">
+                                  Ao salvar, o sistema vai reconhecer esse nome nas próximas faturas.
+                                </p>
                               </div>
                             ) : null}
                           </div>
