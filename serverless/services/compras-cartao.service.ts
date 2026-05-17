@@ -1,6 +1,6 @@
 import type { FinancialRepository } from "../repositories/financial.repository.js";
 import type { ParcelaCompra } from "../../shared/schema.js";
-import { parseMoney } from "../../utils/money.js";
+import { formatMoneyFixed, parseMoney } from "../../utils/money.js";
 import type {
   CompraBodyInput,
   CompraUpdateBodyInput,
@@ -31,13 +31,28 @@ export type DeleteCompraResult = {
   compraRemovida: boolean;
 };
 
+type ReembolsoModo = "total" | "metade" | "valor_custom" | "percentual_custom";
+
+type ReembolsoPatch = {
+  pessoaId: string | null;
+  statusPessoa: string | null;
+  dataPagamentoPessoa: string | null;
+  reembolsoModo: ReembolsoModo | null;
+  reembolsoValorTotal: string | null;
+  reembolsoPercentual: string | null;
+};
+
+type ReembolsoNormalizationResult =
+  | { ok: true; patch: ReembolsoPatch }
+  | { ok: false; message: string };
+
 type DeleteCompraWithScopeInput = {
   scope?: DeleteCompraScope;
   parcelaId?: string;
   dryRun?: boolean;
 };
 
-function toMoneyNumber(value: string | number | null | undefined): number {
+function toMoneyNumberOrZero(value: string | number | null | undefined): number {
   return parseMoney(value) ?? 0;
 }
 
@@ -48,6 +63,128 @@ function round2(value: number): number {
 function resolveParcelaTarget(rows: ParcelaCompra[], parcelaId?: string): ParcelaCompra | null {
   if (!parcelaId) return null;
   return rows.find((row) => row.id === parcelaId) ?? null;
+}
+
+function normalizePessoaId(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizePercentualFixed(value: number): string {
+  return value.toFixed(4);
+}
+
+function toNullableMoneyNumber(value: string | number | null | undefined): number | null {
+  const parsed = parseMoney(value);
+  return parsed == null ? null : Number(parsed.toFixed(2));
+}
+
+function resolveDefaultStatus(statusValue: string | null | undefined): string {
+  const trimmed = typeof statusValue === "string" ? statusValue.trim() : "";
+  return trimmed.length > 0 ? trimmed : "pendente";
+}
+
+function normalizeReembolsoFields(params: {
+  pessoaId: string | null;
+  statusPessoa: string | null | undefined;
+  dataPagamentoPessoa: string | null | undefined;
+  reembolsoModo: ReembolsoModo | null | undefined;
+  reembolsoValorTotal: number | null | undefined;
+  reembolsoPercentual: number | null | undefined;
+  valorTotalCompra: number | null;
+}): ReembolsoNormalizationResult {
+  const {
+    pessoaId,
+    statusPessoa,
+    dataPagamentoPessoa,
+    reembolsoModo,
+    reembolsoValorTotal,
+    reembolsoPercentual,
+    valorTotalCompra,
+  } = params;
+
+  if (!pessoaId) {
+    return {
+      ok: true,
+      patch: {
+        pessoaId: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+        reembolsoModo: null,
+        reembolsoValorTotal: null,
+        reembolsoPercentual: null,
+      },
+    };
+  }
+
+  if (valorTotalCompra == null || !Number.isFinite(valorTotalCompra) || valorTotalCompra <= 0) {
+    return { ok: false, message: "Valor total da compra invalido para calcular reembolso" };
+  }
+
+  const mode: ReembolsoModo = reembolsoModo ?? "total";
+
+  if (mode === "valor_custom") {
+    if (reembolsoValorTotal == null || !Number.isFinite(reembolsoValorTotal)) {
+      return { ok: false, message: "Informe o valor personalizado de reembolso" };
+    }
+    if (reembolsoValorTotal < 0) {
+      return { ok: false, message: "Valor personalizado de reembolso deve ser maior ou igual a zero" };
+    }
+    if (reembolsoValorTotal > valorTotalCompra) {
+      return { ok: false, message: "Valor personalizado de reembolso nao pode ser maior que o valor total da compra" };
+    }
+
+    const fixedValor = formatMoneyFixed(reembolsoValorTotal);
+    if (!fixedValor) {
+      return { ok: false, message: "Valor personalizado de reembolso invalido" };
+    }
+
+    return {
+      ok: true,
+      patch: {
+        pessoaId,
+        statusPessoa: resolveDefaultStatus(statusPessoa),
+        dataPagamentoPessoa: dataPagamentoPessoa ?? null,
+        reembolsoModo: mode,
+        reembolsoValorTotal: fixedValor,
+        reembolsoPercentual: null,
+      },
+    };
+  }
+
+  if (mode === "percentual_custom") {
+    if (reembolsoPercentual == null || !Number.isFinite(reembolsoPercentual)) {
+      return { ok: false, message: "Informe o percentual personalizado de reembolso" };
+    }
+    if (reembolsoPercentual < 0 || reembolsoPercentual > 100) {
+      return { ok: false, message: "Percentual personalizado de reembolso deve ficar entre 0 e 100" };
+    }
+
+    return {
+      ok: true,
+      patch: {
+        pessoaId,
+        statusPessoa: resolveDefaultStatus(statusPessoa),
+        dataPagamentoPessoa: dataPagamentoPessoa ?? null,
+        reembolsoModo: mode,
+        reembolsoValorTotal: null,
+        reembolsoPercentual: normalizePercentualFixed(reembolsoPercentual),
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    patch: {
+      pessoaId,
+      statusPessoa: resolveDefaultStatus(statusPessoa),
+      dataPagamentoPessoa: dataPagamentoPessoa ?? null,
+      reembolsoModo: mode,
+      reembolsoValorTotal: null,
+      reembolsoPercentual: null,
+    },
+  };
 }
 
 export class ComprasCartaoService {
@@ -69,8 +206,30 @@ export class ComprasCartaoService {
     return runFinancialTransaction(this.repository, async (repository) => {
       const cartao = await repository.getCartao(data.cartaoId, userId);
       if (!cartao) return { error: "CARTAO_NOT_FOUND" as const };
+      const pessoaId = normalizePessoaId(data.pessoaId);
+      if (pessoaId) {
+        const pessoa = await repository.getPessoa(pessoaId, userId);
+        if (!pessoa) return { error: "PESSOA_NOT_FOUND" as const };
+      }
 
-      const created = await repository.createCompraCartao({ ...data, userId });
+      const normalized = normalizeReembolsoFields({
+        pessoaId,
+        statusPessoa: pessoaId ? "pendente" : null,
+        dataPagamentoPessoa: null,
+        reembolsoModo: data.reembolsoModo ?? undefined,
+        reembolsoValorTotal: data.reembolsoValorTotal ?? undefined,
+        reembolsoPercentual: data.reembolsoPercentual ?? undefined,
+        valorTotalCompra: toNullableMoneyNumber(data.valorTotal),
+      });
+      if (!normalized.ok) {
+        return { error: "REEMBOLSO_INVALIDO" as const, message: normalized.message };
+      }
+
+      const created = await repository.createCompraCartao({
+        ...data,
+        userId,
+        ...normalized.patch,
+      });
       await materializeParcelasCompraIfMissing(repository, created);
       await recomputeCardPurchaseAggregate(repository, created.id, userId);
       return { created };
@@ -79,17 +238,57 @@ export class ComprasCartaoService {
 
   async update(id: string, userId: string, data: CompraUpdateBodyInput) {
     return runFinancialTransaction(this.repository, async (repository) => {
+      const currentCompra = await repository.getCompraCartao(id, userId);
+      if (!currentCompra) return { error: "NOT_FOUND" as const };
+
       if (data.cartaoId) {
         const cartao = await repository.getCartao(data.cartaoId, userId);
         if (!cartao) return { error: "CARTAO_NOT_FOUND" as const };
       }
 
-      if (data.pessoaId) {
-        const pessoa = await repository.getPessoa(data.pessoaId, userId);
+      const requestedPessoaId = data.pessoaId === undefined
+        ? currentCompra.pessoaId
+        : normalizePessoaId(data.pessoaId);
+
+      if (requestedPessoaId) {
+        const pessoa = await repository.getPessoa(requestedPessoaId, userId);
         if (!pessoa) return { error: "PESSOA_NOT_FOUND" as const };
       }
 
-      const updated = await repository.updateCompraCartao(id, userId, data);
+      const effectiveValorTotal = data.valorTotal ?? currentCompra.valorTotal;
+      const effectiveReembolsoModo = data.reembolsoModo === undefined
+        ? ((currentCompra.reembolsoModo as ReembolsoModo | null | undefined) ?? null)
+        : (data.reembolsoModo ?? null);
+      const effectiveReembolsoValorTotal = data.reembolsoValorTotal === undefined
+        ? toNullableMoneyNumber(currentCompra.reembolsoValorTotal ?? null)
+        : data.reembolsoValorTotal;
+      const effectiveReembolsoPercentual = data.reembolsoPercentual === undefined
+        ? toNullableMoneyNumber(currentCompra.reembolsoPercentual ?? null)
+        : data.reembolsoPercentual;
+
+      const normalized = normalizeReembolsoFields({
+        pessoaId: requestedPessoaId,
+        statusPessoa: data.statusPessoa === undefined
+          ? currentCompra.statusPessoa
+          : data.statusPessoa,
+        dataPagamentoPessoa: data.dataPagamentoPessoa === undefined
+          ? currentCompra.dataPagamentoPessoa
+          : data.dataPagamentoPessoa,
+        reembolsoModo: effectiveReembolsoModo,
+        reembolsoValorTotal: effectiveReembolsoValorTotal,
+        reembolsoPercentual: effectiveReembolsoPercentual,
+        valorTotalCompra: toNullableMoneyNumber(effectiveValorTotal),
+      });
+      if (!normalized.ok) {
+        return { error: "REEMBOLSO_INVALIDO" as const, message: normalized.message };
+      }
+
+      const updatePayload = {
+        ...data,
+        ...normalized.patch,
+      };
+
+      const updated = await repository.updateCompraCartao(id, userId, updatePayload);
       if (!updated) return { error: "NOT_FOUND" as const };
       // Fluxo explicito para registros legados sem cronograma materializado.
       await syncMaterializedParcelasAfterCompraUpdate(repository, updated);
@@ -132,11 +331,11 @@ export class ComprasCartaoService {
         : (parcelas.length > 0 ? parcelas.length : Math.max(1, Number(compra.parcelas) || 1));
 
       const valorTotalRemovido = scope === "single_parcela"
-        ? round2(toMoneyNumber(parcelaTarget?.valor))
+        ? round2(toMoneyNumberOrZero(parcelaTarget?.valor))
         : round2(
           parcelas.length > 0
-            ? parcelas.reduce((sum, row) => sum + toMoneyNumber(row.valor), 0)
-            : toMoneyNumber(compra.valorTotal),
+            ? parcelas.reduce((sum, row) => sum + toMoneyNumberOrZero(row.valor), 0)
+            : toMoneyNumberOrZero(compra.valorTotal),
         );
 
       const compraRemovida = scope === "all_parcelas" || (scope === "single_parcela" && parcelas.length <= 1);
@@ -152,7 +351,7 @@ export class ComprasCartaoService {
           ? {
             id: parcelaTarget.id,
             numero: parcelaTarget.numero,
-            valor: round2(toMoneyNumber(parcelaTarget.valor)),
+            valor: round2(toMoneyNumberOrZero(parcelaTarget.valor)),
           }
           : null,
       };

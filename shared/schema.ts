@@ -125,6 +125,9 @@ export const comprasCartao = pgTable("compras_cartao", {
   pessoaId: varchar("pessoa_id").references(() => pessoas.id, { onDelete: "set null" }),
   statusPessoa: varchar("status_pessoa"),
   dataPagamentoPessoa: date("data_pagamento_pessoa", { mode: "string" }),
+  reembolsoModo: text("reembolso_modo"),
+  reembolsoValorTotal: decimal("reembolso_valor_total", { precision: 12, scale: 2 }),
+  reembolsoPercentual: decimal("reembolso_percentual", { precision: 7, scale: 4 }),
 }, (table) => ({
   comprasUserIdIdx: index("idx_compras_cartao_user_id").on(table.userId),
   comprasCartaoIdIdx: index("idx_compras_cartao_cartao_id").on(table.cartaoId),
@@ -135,7 +138,12 @@ export const comprasCartao = pgTable("compras_cartao", {
 
 export const insertCompraCartaoSchema = createInsertSchema(comprasCartao).omit({ id: true });
 export type InsertCompraCartao = z.infer<typeof insertCompraCartaoSchema>;
-export type CompraCartao = typeof comprasCartao.$inferSelect;
+type CompraCartaoBase = typeof comprasCartao.$inferSelect;
+export type CompraCartao = Omit<CompraCartaoBase, "reembolsoModo" | "reembolsoValorTotal" | "reembolsoPercentual"> & {
+  reembolsoModo?: "total" | "metade" | "valor_custom" | "percentual_custom" | null;
+  reembolsoValorTotal?: string | null;
+  reembolsoPercentual?: string | null;
+};
 
 export const compraAliases = pgTable("compra_aliases", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

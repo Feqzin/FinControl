@@ -53,6 +53,31 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
 
       const result = await service.create(userId, parsed.data);
       if ("error" in result) {
+        if (result.error === "PESSOA_NOT_FOUND") {
+          auditRequest(req, {
+            action: "create",
+            status: "failure",
+            domain: "compras_cartao",
+            userId,
+            details: { reason: "pessoa_not_found", pessoaId: parsed.data.pessoaId },
+          });
+          return sendBadRequest(res, "Pessoa not found");
+        }
+
+        if (result.error === "REEMBOLSO_INVALIDO") {
+          const errorMessage = "message" in result && typeof result.message === "string"
+            ? result.message
+            : "Dados de reembolso invalidos";
+          auditRequest(req, {
+            action: "create",
+            status: "failure",
+            domain: "compras_cartao",
+            userId,
+            details: { reason: "reembolso_invalido" },
+          });
+          return sendBadRequest(res, errorMessage);
+        }
+
         auditRequest(req, {
           action: "create",
           status: "failure",
@@ -121,6 +146,21 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
             details: { reason: "pessoa_not_found", pessoaId: parsed.data.pessoaId },
           });
           return sendBadRequest(res, "Pessoa not found");
+        }
+
+        if (result.error === "REEMBOLSO_INVALIDO") {
+          const errorMessage = "message" in result && typeof result.message === "string"
+            ? result.message
+            : "Dados de reembolso invalidos";
+          auditRequest(req, {
+            action: "update",
+            status: "failure",
+            domain: "compras_cartao",
+            userId,
+            targetId: compraId,
+            details: { reason: "reembolso_invalido" },
+          });
+          return sendBadRequest(res, errorMessage);
         }
 
         auditRequest(req, {

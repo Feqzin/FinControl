@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/queryClient";
-import { divide, formatMoneyFixed } from "@/lib/money";
+import { divide, formatMoneyFixed, parseMoney } from "@/lib/money";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
 
 type ImportSourceType = "texto" | "csv" | "ofx" | "qfx" | "pdf" | "manual";
@@ -201,6 +201,134 @@ export type CartaoPayload = {
   iconeId?: string | null;
 };
 
+export type ReembolsoModo = "total" | "metade" | "valor_custom" | "percentual_custom";
+
+function parseOptionalMoneyNumber(value: string | number | null | undefined): number | null {
+  if (value == null || value === "") return null;
+  const parsed = parseMoney(value);
+  if (parsed == null) return null;
+  return Number(parsed.toFixed(2));
+}
+
+function parseOptionalPercentual(value: string | number | null | undefined): number | null {
+  if (value == null || value === "") return null;
+  const parsed = parseMoney(value);
+  if (parsed == null) return null;
+  return Number(parsed.toFixed(4));
+}
+
+function resolveCreateReembolsoFields(params: {
+  pessoaId: string | null;
+  valorTotal: string;
+  reembolsoModo?: ReembolsoModo | null;
+  reembolsoValorTotal?: string | number | null;
+  reembolsoPercentual?: string | number | null;
+}): {
+  reembolsoModo: ReembolsoModo | null;
+  reembolsoValorTotal: string | null;
+  reembolsoPercentual: number | null;
+} {
+  if (!params.pessoaId) {
+    return {
+      reembolsoModo: null,
+      reembolsoValorTotal: null,
+      reembolsoPercentual: null,
+    };
+  }
+
+  const modo = params.reembolsoModo ?? "total";
+  const totalCompra = parseMoney(params.valorTotal) ?? 0;
+
+  if (modo === "valor_custom") {
+    const valor = parseOptionalMoneyNumber(params.reembolsoValorTotal);
+    if (valor == null) throw new Error("Informe um valor personalizado de reembolso válido.");
+    if (valor < 0) throw new Error("O valor personalizado não pode ser negativo.");
+    if (valor > totalCompra) throw new Error("O valor personalizado não pode ser maior que o valor total da compra.");
+    const fixed = formatMoneyFixed(valor);
+    if (!fixed) throw new Error("Valor personalizado de reembolso inválido.");
+    return {
+      reembolsoModo: modo,
+      reembolsoValorTotal: fixed,
+      reembolsoPercentual: null,
+    };
+  }
+
+  if (modo === "percentual_custom") {
+    const percentual = parseOptionalPercentual(params.reembolsoPercentual);
+    if (percentual == null) throw new Error("Informe um percentual de reembolso válido.");
+    if (percentual < 0 || percentual > 100) throw new Error("O percentual deve ficar entre 0 e 100.");
+    return {
+      reembolsoModo: modo,
+      reembolsoValorTotal: null,
+      reembolsoPercentual: percentual,
+    };
+  }
+
+  return {
+    reembolsoModo: modo,
+    reembolsoValorTotal: null,
+    reembolsoPercentual: null,
+  };
+}
+
+function resolveUpdateReembolsoFields(params: {
+  pessoaId: string | null;
+  valorTotal: string;
+  reembolsoModo?: ReembolsoModo | null;
+  reembolsoValorTotal?: string | number | null;
+  reembolsoPercentual?: string | number | null;
+}): Partial<{
+  reembolsoModo: ReembolsoModo | null;
+  reembolsoValorTotal: string | null;
+  reembolsoPercentual: number | null;
+}> {
+  if (!params.pessoaId) {
+    return {
+      reembolsoModo: null,
+      reembolsoValorTotal: null,
+      reembolsoPercentual: null,
+    };
+  }
+
+  if (params.reembolsoModo === undefined) {
+    return {};
+  }
+
+  const modo = params.reembolsoModo ?? "total";
+  const totalCompra = parseMoney(params.valorTotal) ?? 0;
+
+  if (modo === "valor_custom") {
+    const valor = parseOptionalMoneyNumber(params.reembolsoValorTotal);
+    if (valor == null) throw new Error("Informe um valor personalizado de reembolso válido.");
+    if (valor < 0) throw new Error("O valor personalizado não pode ser negativo.");
+    if (valor > totalCompra) throw new Error("O valor personalizado não pode ser maior que o valor total da compra.");
+    const fixed = formatMoneyFixed(valor);
+    if (!fixed) throw new Error("Valor personalizado de reembolso inválido.");
+    return {
+      reembolsoModo: modo,
+      reembolsoValorTotal: fixed,
+      reembolsoPercentual: null,
+    };
+  }
+
+  if (modo === "percentual_custom") {
+    const percentual = parseOptionalPercentual(params.reembolsoPercentual);
+    if (percentual == null) throw new Error("Informe um percentual de reembolso válido.");
+    if (percentual < 0 || percentual > 100) throw new Error("O percentual deve ficar entre 0 e 100.");
+    return {
+      reembolsoModo: modo,
+      reembolsoValorTotal: null,
+      reembolsoPercentual: percentual,
+    };
+  }
+
+  return {
+    reembolsoModo: modo,
+    reembolsoValorTotal: null,
+    reembolsoPercentual: null,
+  };
+}
+
 export type CartaoResumo = {
   cartaoId: string;
   faturaAtual: number;
@@ -281,6 +409,9 @@ export type CompraPayload = {
   parcelas: string | number;
   dataCompra: string;
   pessoaId?: string | null;
+  reembolsoModo?: ReembolsoModo | null;
+  reembolsoValorTotal?: string | number | null;
+  reembolsoPercentual?: string | number | null;
 };
 
 export async function createCompraCartao(payload: CompraPayload): Promise<void> {
@@ -290,13 +421,22 @@ export async function createCompraCartao(payload: CompraPayload): Promise<void> 
     throw new Error("Valor total invalido");
   }
   const valorParcela = divide(valorTotal, parcelas);
+  const pessoaId = payload.pessoaId || null;
+  const reembolsoFields = resolveCreateReembolsoFields({
+    pessoaId,
+    valorTotal,
+    reembolsoModo: payload.reembolsoModo,
+    reembolsoValorTotal: payload.reembolsoValorTotal,
+    reembolsoPercentual: payload.reembolsoPercentual,
+  });
 
   await apiRequest("POST", "/api/compras-cartao", {
     cartaoId: payload.cartaoId,
     descricao: payload.descricao,
     valorTotal,
-    pessoaId: payload.pessoaId || null,
-    statusPessoa: payload.pessoaId ? "pendente" : null,
+    pessoaId,
+    statusPessoa: pessoaId ? "pendente" : null,
+    ...reembolsoFields,
     parcelas,
     parcelaAtual: 1,
     valorParcela,
@@ -310,6 +450,9 @@ export type UpdateCompraPayload = {
   parcelas: string | number;
   pessoaId?: string | null;
   statusPessoa?: string | null;
+  reembolsoModo?: ReembolsoModo | null;
+  reembolsoValorTotal?: string | number | null;
+  reembolsoPercentual?: string | number | null;
 };
 
 export async function updateCompraCartao(id: string, payload: UpdateCompraPayload): Promise<void> {
@@ -320,6 +463,13 @@ export async function updateCompraCartao(id: string, payload: UpdateCompraPayloa
   }
   const valorParcela = divide(valorTotal, parcelas);
   const pessoaId = payload.pessoaId || null;
+  const reembolsoFields = resolveUpdateReembolsoFields({
+    pessoaId,
+    valorTotal,
+    reembolsoModo: payload.reembolsoModo,
+    reembolsoValorTotal: payload.reembolsoValorTotal,
+    reembolsoPercentual: payload.reembolsoPercentual,
+  });
 
   await apiRequest("PATCH", `/api/compras-cartao/${id}`, {
     descricao: payload.descricao,
@@ -328,6 +478,7 @@ export async function updateCompraCartao(id: string, payload: UpdateCompraPayloa
     valorParcela,
     pessoaId,
     statusPessoa: pessoaId ? payload.statusPessoa || "pendente" : null,
+    ...reembolsoFields,
   });
 }
 

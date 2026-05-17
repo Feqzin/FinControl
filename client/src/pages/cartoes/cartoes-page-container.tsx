@@ -101,6 +101,7 @@ const IMPORT_ALLOWED_MIME_BY_EXTENSION: Record<string, string[]> = {
 
 type CartoesTab = "resumo" | "fatura" | "compras";
 type CanonicalImportStatus = "novo" | "duplicata_exata" | "possivel_duplicata" | "invalido";
+type CompraReembolsoModo = "total" | "metade" | "valor_custom" | "percentual_custom";
 
 function normalizeImportDebugText(value: string): string {
   return value
@@ -451,7 +452,25 @@ export default function CartoesPage() {
   const [openCompra, setOpenCompra] = useState(false);
   const [selectedCartao, setSelectedCartao] = useState<string>("");
   const [cardForm, setCardForm] = useState({ nome: "", limite: "", melhorDiaCompra: "", diaVencimento: "" });
-  const [compraForm, setCompraForm] = useState({ descricao: "", valorTotal: "", parcelas: "1", dataCompra: "", pessoaId: "" });
+  const [compraForm, setCompraForm] = useState<{
+    descricao: string;
+    valorTotal: string;
+    parcelas: string;
+    dataCompra: string;
+    pessoaId: string;
+    reembolsoModo: CompraReembolsoModo;
+    reembolsoValorTotal: string;
+    reembolsoPercentual: string;
+  }>({
+    descricao: "",
+    valorTotal: "",
+    parcelas: "1",
+    dataCompra: "",
+    pessoaId: "",
+    reembolsoModo: "total" as const,
+    reembolsoValorTotal: "",
+    reembolsoPercentual: "",
+  });
 
   const [editingCard, setEditingCard] = useState<Cartao | null>(null);
   const [editCardForm, setEditCardForm] = useState({ nome: "", limite: "", melhorDiaCompra: "", diaVencimento: "" });
@@ -459,7 +478,25 @@ export default function CartoesPage() {
   const [newCardIcone, setNewCardIcone] = useState<string | null>(null);
 
   const [editingCompra, setEditingCompra] = useState<CompraCartao | null>(null);
-  const [editCompraForm, setEditCompraForm] = useState({ descricao: "", valorTotal: "", parcelas: "", pessoaId: "", statusPessoa: "" });
+  const [editCompraForm, setEditCompraForm] = useState<{
+    descricao: string;
+    valorTotal: string;
+    parcelas: string;
+    pessoaId: string;
+    statusPessoa: string;
+    reembolsoModo: CompraReembolsoModo;
+    reembolsoValorTotal: string;
+    reembolsoPercentual: string;
+  }>({
+    descricao: "",
+    valorTotal: "",
+    parcelas: "",
+    pessoaId: "",
+    statusPessoa: "",
+    reembolsoModo: "total" as const,
+    reembolsoValorTotal: "",
+    reembolsoPercentual: "",
+  });
 
   const [viewingCompra, setViewingCompra] = useState<CompraCartao | null>(null);
   const [editingParcelaId, setEditingParcelaId] = useState<string | null>(null);
@@ -1378,11 +1415,23 @@ export default function CartoesPage() {
         parcelas: compraForm.parcelas,
         dataCompra: compraForm.dataCompra,
         pessoaId: compraForm.pessoaId || null,
+        reembolsoModo: compraForm.pessoaId ? compraForm.reembolsoModo : null,
+        reembolsoValorTotal: compraForm.pessoaId ? compraForm.reembolsoValorTotal : null,
+        reembolsoPercentual: compraForm.pessoaId ? compraForm.reembolsoPercentual : null,
       },
       {
         onSuccess: () => {
           setOpenCompra(false);
-          setCompraForm({ descricao: "", valorTotal: "", parcelas: "1", dataCompra: "", pessoaId: "" });
+          setCompraForm({
+            descricao: "",
+            valorTotal: "",
+            parcelas: "1",
+            dataCompra: "",
+            pessoaId: "",
+            reembolsoModo: "total",
+            reembolsoValorTotal: "",
+            reembolsoPercentual: "",
+          });
           toast({ title: "Compra registrada" });
         },
         onError: (error) => {
@@ -1404,7 +1453,12 @@ export default function CartoesPage() {
     updateCompraMutation.mutate(
       {
         id: editingCompra.id,
-        data: editCompraForm,
+        data: {
+          ...editCompraForm,
+          reembolsoModo: editCompraForm.pessoaId ? editCompraForm.reembolsoModo : null,
+          reembolsoValorTotal: editCompraForm.pessoaId ? editCompraForm.reembolsoValorTotal : null,
+          reembolsoPercentual: editCompraForm.pessoaId ? editCompraForm.reembolsoPercentual : null,
+        },
       },
       {
         onSuccess: () => {
@@ -2848,6 +2902,9 @@ export default function CartoesPage() {
               parcelas: String(compra.parcelas),
               pessoaId: compra.pessoaId ?? "",
               statusPessoa: compra.statusPessoa ?? "pendente",
+              reembolsoModo: (compra.reembolsoModo as "total" | "metade" | "valor_custom" | "percentual_custom" | null | undefined) ?? "total",
+              reembolsoValorTotal: compra.reembolsoValorTotal ? String(compra.reembolsoValorTotal) : "",
+              reembolsoPercentual: compra.reembolsoPercentual ? String(compra.reembolsoPercentual) : "",
             });
           }}
           onDeleteCompra={openDeleteCompraConfirm}

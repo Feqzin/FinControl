@@ -200,3 +200,132 @@ testComprasIntegration("update de compra com parcelas_compra recalcula agregado 
     await db.delete(users).where(eq(users.id, user.id));
   }
 });
+
+testComprasIntegration("create/update de compra com reembolso parcial preserva compatibilidade e validacoes", async () => {
+  const { db } = await import("../db");
+  const { ComprasCartaoService } = await import("../services/compras-cartao.service");
+  const { financialRepository } = await import("../repositories/financial.repository");
+  const { users, pessoas, cartoes, comprasCartao } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ComprasCartaoService(financialRepository);
+  const username = `it_compras_reembolso_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Compras Reembolso Integration",
+  }).returning();
+
+  const [pessoa] = await db.insert(pessoas).values({
+    userId: user.id,
+    nome: "Elza",
+    tipo: "pessoa_fisica",
+    telefone: null,
+    observacao: null,
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Reembolso IT",
+    limite: "5000.00",
+    melhorDiaCompra: 10,
+    diaVencimento: 25,
+    iconeId: null,
+  }).returning();
+
+  try {
+    const createdResult = await service.create(user.id, {
+      cartaoId: cartao.id,
+      descricao: "Compra parcial",
+      valorTotal: "422.79",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "422.79",
+      dataCompra: "2026-05-11",
+      pessoaId: pessoa.id,
+      reembolsoModo: "metade",
+    });
+
+    if ("error" in createdResult) {
+      assert.fail(`Nao deveria falhar no create com metade: ${createdResult.error}`);
+    }
+
+    assert.equal(createdResult.created.reembolsoModo, "metade");
+    assert.equal(createdResult.created.reembolsoValorTotal, null);
+    assert.equal(createdResult.created.reembolsoPercentual, null);
+    assert.equal(createdResult.created.statusPessoa, "pendente");
+
+    const updatedCustomValue = await service.update(createdResult.created.id, user.id, {
+      reembolsoModo: "valor_custom",
+      reembolsoValorTotal: 211.4,
+      statusPessoa: "pendente",
+    });
+    if ("error" in updatedCustomValue) {
+      assert.fail(`Nao deveria falhar no update valor_custom: ${updatedCustomValue.error}`);
+    }
+    assert.equal(updatedCustomValue.updated.reembolsoModo, "valor_custom");
+    assert.equal(updatedCustomValue.updated.reembolsoValorTotal, "211.40");
+    assert.equal(updatedCustomValue.updated.reembolsoPercentual, null);
+
+    const updatedCustomPercent = await service.update(createdResult.created.id, user.id, {
+      reembolsoModo: "percentual_custom",
+      reembolsoPercentual: 50,
+    });
+    if ("error" in updatedCustomPercent) {
+      assert.fail(`Nao deveria falhar no update percentual_custom: ${updatedCustomPercent.error}`);
+    }
+    assert.equal(updatedCustomPercent.updated.reembolsoModo, "percentual_custom");
+    assert.equal(updatedCustomPercent.updated.reembolsoPercentual, "50.0000");
+    assert.equal(updatedCustomPercent.updated.reembolsoValorTotal, null);
+
+    const invalidTooHigh = await service.update(createdResult.created.id, user.id, {
+      reembolsoModo: "valor_custom",
+      reembolsoValorTotal: 9999,
+    });
+    assert.deepEqual(invalidTooHigh, {
+      error: "REEMBOLSO_INVALIDO",
+      message: "Valor personalizado de reembolso nao pode ser maior que o valor total da compra",
+    });
+
+    const removedPessoa = await service.update(createdResult.created.id, user.id, {
+      pessoaId: null,
+    });
+    if ("error" in removedPessoa) {
+      assert.fail(`Nao deveria falhar ao remover pessoa: ${removedPessoa.error}`);
+    }
+    assert.equal(removedPessoa.updated.pessoaId, null);
+    assert.equal(removedPessoa.updated.statusPessoa, null);
+    assert.equal(removedPessoa.updated.dataPagamentoPessoa, null);
+    assert.equal(removedPessoa.updated.reembolsoModo, null);
+    assert.equal(removedPessoa.updated.reembolsoValorTotal, null);
+    assert.equal(removedPessoa.updated.reembolsoPercentual, null);
+
+    const [legacyCompra] = await db.insert(comprasCartao).values({
+      userId: user.id,
+      cartaoId: cartao.id,
+      descricao: "Legacy compra",
+      valorTotal: "300.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "300.00",
+      dataCompra: "2026-05-12",
+      pessoaId: pessoa.id,
+      statusPessoa: "pendente",
+      dataPagamentoPessoa: null,
+      reembolsoModo: null,
+      reembolsoValorTotal: null,
+      reembolsoPercentual: null,
+    }).returning();
+
+    const updatedLegacy = await service.update(legacyCompra.id, user.id, {
+      descricao: "Legacy compra atualizada",
+    });
+    if ("error" in updatedLegacy) {
+      assert.fail(`Nao deveria falhar no update legado: ${updatedLegacy.error}`);
+    }
+    assert.equal(updatedLegacy.updated.reembolsoModo, "total");
+  } finally {
+    await db.delete(users).where(and(eq(users.id, user.id)));
+  }
+});
