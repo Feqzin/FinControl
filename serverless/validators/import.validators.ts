@@ -127,9 +127,14 @@ export const importConfirmBody = z.object({
 });
 
 export const importReconcilePurchaseBody = z.object({
+  importLogId: z.string().trim().min(1).optional(),
+  itemId: z.string().trim().min(1).optional(),
   existingCompraCartaoId: z.string().trim().min(1, "existingCompraCartaoId obrigatorio."),
   importItem: importPreviewItemBody,
   confirmValueChange: z.boolean().optional(),
+  updateNameFromImport: z.boolean().optional(),
+  // Compatibilidade retroativa: alguns clientes antigos ainda enviam updateDescription.
+  // A semântica nova usa updateNameFromImport e preserva o nome por padrão.
   updateDescription: z.boolean().optional(),
   aliasId: z.string().trim().min(1).optional().nullable(),
 });

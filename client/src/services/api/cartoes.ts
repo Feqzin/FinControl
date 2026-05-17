@@ -590,9 +590,12 @@ export async function rollbackImportCompras(importLogId: string): Promise<Import
 }
 
 export async function reconcileImportedPurchase(params: {
+  importLogId?: string;
+  itemId?: string;
   existingCompraCartaoId: string;
   importItem: ParsedItem;
   confirmValueChange?: boolean;
+  updateNameFromImport?: boolean;
   updateDescription?: boolean;
   aliasId?: string | null;
 }): Promise<ImportReconcilePurchaseResponse> {
@@ -603,10 +606,13 @@ export async function reconcileImportedPurchase(params: {
 
   const importItemPayload = toImportItemPayload(params.importItem);
   const response = await apiRequest("POST", "/api/imports/reconcile-purchase", {
+    importLogId: sanitizeAliasText(params.importLogId) ?? undefined,
+    itemId: sanitizeAliasText(params.itemId) ?? undefined,
     existingCompraCartaoId,
     importItem: importItemPayload,
     confirmValueChange: params.confirmValueChange === true,
-    updateDescription: params.updateDescription !== false,
+    updateNameFromImport: params.updateNameFromImport === true,
+    updateDescription: params.updateDescription === true,
     aliasId: sanitizeAliasText(params.aliasId) ?? null,
   });
   return response.json();

@@ -50,6 +50,7 @@ export interface ParsedItem {
   reconcileAction?: "none" | "replace_existing";
   reconcileExistingCompraCartaoId?: string | null;
   reconcileConfirmValueChange?: boolean;
+  reconcileUpdateNameFromImport?: boolean;
 }
 
 export type RecurringServiceCategory = "streaming" | "seguro" | "software" | "assinatura" | "outro";

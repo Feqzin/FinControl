@@ -454,12 +454,36 @@ export function ImportFaturaDialog({
                     onClick={() => setImportItems((items) => items.map((item) => {
                       const status = getEffectiveStatus(item);
                       if (status === "invalido") {
-                        return { ...item, action: "skip", forceImport: false };
+                        return {
+                          ...item,
+                          action: "skip",
+                          forceImport: false,
+                          reconcileAction: "none",
+                          reconcileExistingCompraCartaoId: null,
+                          reconcileConfirmValueChange: false,
+                          reconcileUpdateNameFromImport: false,
+                        };
                       }
                       if (status === "duplicata_exata") {
-                        return { ...item, action: "skip", forceImport: false };
+                        return {
+                          ...item,
+                          action: "skip",
+                          forceImport: false,
+                          reconcileAction: "none",
+                          reconcileExistingCompraCartaoId: null,
+                          reconcileConfirmValueChange: false,
+                          reconcileUpdateNameFromImport: false,
+                        };
                       }
-                      return { ...item, action: "import", forceImport: false };
+                      return {
+                        ...item,
+                        action: "import",
+                        forceImport: false,
+                        reconcileAction: "none",
+                        reconcileExistingCompraCartaoId: null,
+                        reconcileConfirmValueChange: false,
+                        reconcileUpdateNameFromImport: false,
+                      };
                     }))}
                   >
                     Marcar todas
@@ -468,7 +492,15 @@ export function ImportFaturaDialog({
                     variant="ghost"
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => setImportItems((items) => items.map((item) => ({ ...item, action: "skip", forceImport: false })))}
+                    onClick={() => setImportItems((items) => items.map((item) => ({
+                      ...item,
+                      action: "skip",
+                      forceImport: false,
+                      reconcileAction: "none",
+                      reconcileExistingCompraCartaoId: null,
+                      reconcileConfirmValueChange: false,
+                      reconcileUpdateNameFromImport: false,
+                    })))}
                   >
                     Ignorar todas
                   </Button>
@@ -621,6 +653,7 @@ export function ImportFaturaDialog({
                                   reconcileAction: "none",
                                   reconcileExistingCompraCartaoId: null,
                                   reconcileConfirmValueChange: false,
+                                  reconcileUpdateNameFromImport: false,
                                 };
                               }
                               if (currentStatus === "duplicata_exata") {
@@ -632,6 +665,7 @@ export function ImportFaturaDialog({
                                     reconcileAction: "none",
                                     reconcileExistingCompraCartaoId: null,
                                     reconcileConfirmValueChange: false,
+                                    reconcileUpdateNameFromImport: false,
                                   };
                                 }
                                 return {
@@ -641,6 +675,7 @@ export function ImportFaturaDialog({
                                   reconcileAction: "none",
                                   reconcileExistingCompraCartaoId: null,
                                   reconcileConfirmValueChange: false,
+                                  reconcileUpdateNameFromImport: false,
                                 };
                               }
                               return {
@@ -650,6 +685,7 @@ export function ImportFaturaDialog({
                                 reconcileAction: "none",
                                 reconcileExistingCompraCartaoId: null,
                                 reconcileConfirmValueChange: false,
+                                reconcileUpdateNameFromImport: false,
                               };
                             }))}
                           >
@@ -882,6 +918,9 @@ export function ImportFaturaDialog({
                                 <p className="text-xs text-sky-900">
                                   Nome existente: <strong>{possibleExisting.existing.descricao}</strong>
                                 </p>
+                                <p className="text-[11px] text-sky-700">
+                                  O nome atual será preservado por padrão. O nome da fatura será lembrado como equivalência.
+                                </p>
                                 <p className="text-xs text-sky-900">
                                   Valor existente: {formatCurrency(Number(possibleExisting.existing.valorParcela))}/parc
                                   {" · "}
@@ -913,6 +952,7 @@ export function ImportFaturaDialog({
                                             reconcileConfirmValueChange: requiresReconcileValueChangeConfirmation
                                               ? current.reconcileConfirmValueChange === true
                                               : true,
+                                            reconcileUpdateNameFromImport: current.reconcileUpdateNameFromImport === true,
                                             serviceSuggestionAction: "ignore",
                                             linkedServiceId: null,
                                             replaceExistingServiceLink: false,
@@ -926,6 +966,7 @@ export function ImportFaturaDialog({
                                           reconcileAction: "none",
                                           reconcileExistingCompraCartaoId: possibleExisting.existing.id,
                                           reconcileConfirmValueChange: false,
+                                          reconcileUpdateNameFromImport: false,
                                         };
                                       }));
                                     }}
@@ -948,6 +989,27 @@ export function ImportFaturaDialog({
                                       Esta ação atualiza a compra existente sem criar nova compra.
                                       Parcelas pagas e comprovantes são preservados.
                                     </p>
+                                    <label className="mt-1 inline-flex items-center gap-2 text-xs text-amber-900">
+                                      <input
+                                        type="checkbox"
+                                        className="h-3.5 w-3.5"
+                                        checked={item.reconcileUpdateNameFromImport === true}
+                                        onChange={(event) => {
+                                          const checked = event.target.checked;
+                                          setImportItems((items) => items.map((current, index) => (
+                                            index === idx
+                                              ? { ...current, reconcileUpdateNameFromImport: checked }
+                                              : current
+                                          )));
+                                        }}
+                                      />
+                                      <span>
+                                        Atualizar nome da compra para o nome da fatura.
+                                        {item.reconcileUpdateNameFromImport === true
+                                          ? ` Isso substituirá "${possibleExisting.existing.descricao}" por "${item.descricao}".`
+                                          : ""}
+                                      </span>
+                                    </label>
                                     {requiresReconcileValueChangeConfirmation ? (
                                       <label className="mt-1 inline-flex items-center gap-2 text-xs text-amber-900">
                                         <input

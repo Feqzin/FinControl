@@ -85,6 +85,32 @@ type ImportPreviewSummary = {
 type ImportPreviewPayloadSnapshot = {
   items: ImportPreviewItem[];
   summary: ImportPreviewSummary;
+  reconcileActions?: ReconcileRollbackActionSnapshot[];
+};
+
+type CompraReconcileSnapshot = {
+  descricao: string;
+  valorTotal: string;
+  valorParcela: string;
+  parcelas: number;
+  parcelaAtual: number;
+  dataCompra: string;
+};
+
+type ReconcileRollbackActionSnapshot = {
+  itemId: string;
+  action: "replace_existing";
+  existingCompraCartaoId: string;
+  updatedCompraCartaoId: string;
+  previousSnapshot: CompraReconcileSnapshot;
+  appliedSnapshot: CompraReconcileSnapshot;
+  valueChanged: boolean;
+  parcelasChanged: boolean;
+  purchaseDateChanged: boolean;
+  descriptionChanged: boolean;
+  updateNameFromImport: boolean;
+  protectedParcelasCount: number;
+  recordedAt: string;
 };
 
 type ServiceRollbackActionSnapshot = {
@@ -107,6 +133,7 @@ type ServiceRollbackActionSnapshot = {
 type ImportConfirmedPayloadSnapshot = {
   items: ImportPreviewItem[];
   serviceActions: ServiceRollbackActionSnapshot[];
+  reconcileActions: ReconcileRollbackActionSnapshot[];
 };
 
 type ImportConfirmResult = {
@@ -126,6 +153,7 @@ type ImportConfirmResult = {
     servicesSkippedCount: number;
     servicesLinkedCount: number;
     servicesLinkSkippedCount: number;
+    reconciledExistingCount?: number;
   };
   alreadyConfirmed?: boolean;
 };
@@ -457,8 +485,38 @@ function deserializeJson<T>(value: string | null | undefined, fallback: T): T {
   }
 }
 
+function parsePreviewPayloadSnapshot(value: string | null | undefined): ImportPreviewPayloadSnapshot {
+  const fallback: ImportPreviewPayloadSnapshot = {
+    items: [],
+    summary: summarizePreview([]),
+    reconcileActions: [],
+  };
+  if (!value) return fallback;
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object") return fallback;
+    const objectValue = parsed as Record<string, unknown>;
+    const rawItems = objectValue.items;
+    const rawSummary = objectValue.summary;
+    const rawReconcileActions = objectValue.reconcileActions;
+
+    return {
+      items: Array.isArray(rawItems) ? (rawItems as ImportPreviewItem[]) : [],
+      summary: rawSummary && typeof rawSummary === "object"
+        ? (rawSummary as ImportPreviewSummary)
+        : summarizePreview([]),
+      reconcileActions: Array.isArray(rawReconcileActions)
+        ? (rawReconcileActions as ReconcileRollbackActionSnapshot[])
+        : [],
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 function parseConfirmedPayloadSnapshot(value: string | null | undefined): ImportConfirmedPayloadSnapshot {
-  if (!value) return { items: [], serviceActions: [] };
+  if (!value) return { items: [], serviceActions: [], reconcileActions: [] };
 
   try {
     const parsed = JSON.parse(value) as unknown;
@@ -466,25 +524,30 @@ function parseConfirmedPayloadSnapshot(value: string | null | undefined): Import
       return {
         items: parsed as ImportPreviewItem[],
         serviceActions: [],
+        reconcileActions: [],
       };
     }
 
     if (!parsed || typeof parsed !== "object") {
-      return { items: [], serviceActions: [] };
+      return { items: [], serviceActions: [], reconcileActions: [] };
     }
 
     const objectValue = parsed as Record<string, unknown>;
     const rawItems = objectValue.items;
     const rawServiceActions = objectValue.serviceActions;
+    const rawReconcileActions = objectValue.reconcileActions;
 
     return {
       items: Array.isArray(rawItems) ? (rawItems as ImportPreviewItem[]) : [],
       serviceActions: Array.isArray(rawServiceActions)
         ? (rawServiceActions as ServiceRollbackActionSnapshot[])
         : [],
+      reconcileActions: Array.isArray(rawReconcileActions)
+        ? (rawReconcileActions as ReconcileRollbackActionSnapshot[])
+        : [],
     };
   } catch {
-    return { items: [], serviceActions: [] };
+    return { items: [], serviceActions: [], reconcileActions: [] };
   }
 }
 
@@ -693,6 +756,7 @@ function summarizeConfirmResult(
   createdCount: number,
   servicesCreatedCount = 0,
   servicesLinkedCount = 0,
+  reconciledExistingCount = 0,
 ) {
   const totalProcessed = items.length;
   const invalidCount = items.filter((item) => item.status === "invalido").length;
@@ -716,6 +780,7 @@ function summarizeConfirmResult(
     servicesSkippedCount: 0,
     servicesLinkedCount,
     servicesLinkSkippedCount: 0,
+    reconciledExistingCount,
   };
 }
 
@@ -885,6 +950,7 @@ export class ImportsService {
       const existingIds = deserializeJson<string[]>(log.createdCompraIds, []);
       const confirmedSnapshot = parseConfirmedPayloadSnapshot(log.confirmedPayload);
       const confirmedItems = confirmedSnapshot.items;
+      const reconciledExistingCount = confirmedSnapshot.reconcileActions.length;
       const servicesCreatedCount = confirmedItems.filter((item) => (
         item.action === "import" && item.serviceAction?.type === "create_new"
       )).length;
@@ -892,7 +958,13 @@ export class ImportsService {
         item.action === "import" && item.serviceAction?.type === "link_existing"
       )).length;
       const summary = confirmedItems.length > 0
-        ? summarizeConfirmResult(confirmedItems, existingIds.length, servicesCreatedCount, servicesLinkedCount)
+        ? summarizeConfirmResult(
+          confirmedItems,
+          existingIds.length,
+          servicesCreatedCount,
+          servicesLinkedCount,
+          reconciledExistingCount,
+        )
         : {
           totalProcessed: Math.max(log.totalItems, existingIds.length + log.skippedItems),
           createdCount: existingIds.length,
@@ -905,6 +977,7 @@ export class ImportsService {
           servicesSkippedCount: 0,
           servicesLinkedCount: 0,
           servicesLinkSkippedCount: 0,
+          reconciledExistingCount,
         };
       return {
         importLogId: log.id,
@@ -916,7 +989,7 @@ export class ImportsService {
       };
     }
 
-    const snapshot = deserializeJson<ImportPreviewPayloadSnapshot>(log.previewPayload, { items: [], summary: summarizePreview([]) });
+    const snapshot = parsePreviewPayloadSnapshot(log.previewPayload);
     const sourceItems = payload.items ?? snapshot.items;
     const duplicateRows = await db.select({
       id: comprasCartao.id,
@@ -1188,6 +1261,7 @@ export class ImportsService {
       const confirmedPayloadSnapshot: ImportConfirmedPayloadSnapshot = {
         items: candidateItems,
         serviceActions: serviceRollbackActions,
+        reconcileActions: snapshot.reconcileActions ?? [],
       };
 
       const [updatedLog] = await tx.update(importLogs).set({
@@ -1224,6 +1298,7 @@ export class ImportsService {
         transactionResult.ids.length,
         transactionResult.servicesCreatedCount,
         transactionResult.servicesLinkedCount,
+        (snapshot.reconcileActions ?? []).length,
       ),
     };
   }
@@ -1295,7 +1370,8 @@ export class ImportsService {
     const parcelasChanged = existingCompra.parcelas !== normalizedItem.parcelas
       || existingCompra.parcelaAtual !== normalizedItem.parcelaAtual;
     const purchaseDateChanged = existingCompra.dataCompra !== normalizedItem.dataCompra;
-    const descriptionChanged = payload.updateDescription !== false
+    const shouldUpdateNameFromImport = payload.updateNameFromImport === true || payload.updateDescription === true;
+    const descriptionChanged = shouldUpdateNameFromImport
       && existingCompra.descricao !== normalizedItem.descricao;
     const scheduleChanged = valueChanged || parcelasChanged || purchaseDateChanged;
 
@@ -1343,7 +1419,7 @@ export class ImportsService {
 
     const reconciled = await db.transaction(async (tx) => {
       const [updatedCompra] = await tx.update(comprasCartao).set({
-        descricao: payload.updateDescription === false ? existingCompra.descricao : normalizedItem.descricao,
+        descricao: shouldUpdateNameFromImport ? normalizedItem.descricao : existingCompra.descricao,
         valorTotal: nextValorTotal,
         valorParcela: nextValorParcela,
         parcelas: normalizedItem.parcelas,
@@ -1411,6 +1487,73 @@ export class ImportsService {
       return updatedCompra;
     });
 
+    const previousSnapshot: CompraReconcileSnapshot = {
+      descricao: existingCompra.descricao,
+      valorTotal: formatMoneyFixed(previousValorTotal) ?? existingCompra.valorTotal,
+      valorParcela: formatMoneyFixed(previousValorParcela) ?? existingCompra.valorParcela,
+      parcelas: existingCompra.parcelas,
+      parcelaAtual: existingCompra.parcelaAtual,
+      dataCompra: existingCompra.dataCompra,
+    };
+    const appliedSnapshot: CompraReconcileSnapshot = {
+      descricao: shouldUpdateNameFromImport ? normalizedItem.descricao : existingCompra.descricao,
+      valorTotal: nextValorTotal,
+      valorParcela: nextValorParcela,
+      parcelas: normalizedItem.parcelas,
+      parcelaAtual: normalizedItem.parcelaAtual,
+      dataCompra: normalizedItem.dataCompra,
+    };
+
+    if (payload.importLogId) {
+      const [targetLog] = await db.select({
+        id: importLogs.id,
+        status: importLogs.status,
+        previewPayload: importLogs.previewPayload,
+      }).from(importLogs).where(and(
+        eq(importLogs.id, payload.importLogId),
+        eq(importLogs.userId, userId),
+      ));
+
+      if (!targetLog) {
+        throw new ImportPipelineError(404, "Lote de importação não encontrado para registrar reconciliação.");
+      }
+
+      const previewSnapshot = parsePreviewPayloadSnapshot(targetLog.previewPayload);
+      const existingActions = previewSnapshot.reconcileActions ?? [];
+      const nextAction: ReconcileRollbackActionSnapshot = {
+        itemId: payload.itemId ?? payload.importItem.id ?? existingCompra.id,
+        action: "replace_existing",
+        existingCompraCartaoId: existingCompra.id,
+        updatedCompraCartaoId: reconciled.id,
+        previousSnapshot,
+        appliedSnapshot,
+        valueChanged,
+        parcelasChanged,
+        purchaseDateChanged,
+        descriptionChanged,
+        updateNameFromImport: shouldUpdateNameFromImport,
+        protectedParcelasCount: protectedParcelas.length,
+        recordedAt: new Date().toISOString(),
+      };
+
+      const updatedActions = [
+        ...existingActions.filter((action) => (
+          !(action.itemId === nextAction.itemId && action.existingCompraCartaoId === nextAction.existingCompraCartaoId)
+        )),
+        nextAction,
+      ];
+
+      await db.update(importLogs).set({
+        previewPayload: serializeJson({
+          ...previewSnapshot,
+          reconcileActions: updatedActions,
+        }),
+      }).where(and(
+        eq(importLogs.id, targetLog.id),
+        eq(importLogs.userId, userId),
+      ));
+    }
+
     return {
       existingCompraCartaoId: existingCompra.id,
       updatedCompraCartaoId: reconciled.id,
@@ -1449,6 +1592,7 @@ export class ImportsService {
     const requestedIds = deserializeJson<string[]>(log.createdCompraIds, []);
     const confirmedSnapshot = parseConfirmedPayloadSnapshot(log.confirmedPayload);
     const serviceActions = confirmedSnapshot.serviceActions;
+    const reconcileActions = confirmedSnapshot.reconcileActions;
     const rollbackResult = await db.transaction(async (tx) => {
       let servicesRemovedCount = 0;
       let servicesUnlinkedCount = 0;
@@ -1460,6 +1604,130 @@ export class ImportsService {
           serviceRollbackWarnings.push(message);
         }
       };
+
+      for (const action of reconcileActions) {
+        const [targetCompra] = await tx.select({
+          id: comprasCartao.id,
+          descricao: comprasCartao.descricao,
+          valorTotal: comprasCartao.valorTotal,
+          valorParcela: comprasCartao.valorParcela,
+          parcelas: comprasCartao.parcelas,
+          parcelaAtual: comprasCartao.parcelaAtual,
+          dataCompra: comprasCartao.dataCompra,
+        }).from(comprasCartao).where(and(
+          eq(comprasCartao.id, action.updatedCompraCartaoId),
+          eq(comprasCartao.userId, userId),
+        ));
+
+        if (!targetCompra) {
+          pushWarning("Uma compra reconciliada não foi restaurada automaticamente por segurança.");
+          continue;
+        }
+
+        const stillInAppliedState =
+          targetCompra.descricao === action.appliedSnapshot.descricao
+          && targetCompra.valorTotal === action.appliedSnapshot.valorTotal
+          && targetCompra.valorParcela === action.appliedSnapshot.valorParcela
+          && targetCompra.parcelas === action.appliedSnapshot.parcelas
+          && targetCompra.parcelaAtual === action.appliedSnapshot.parcelaAtual
+          && targetCompra.dataCompra === action.appliedSnapshot.dataCompra;
+
+        if (!stillInAppliedState) {
+          pushWarning("Uma compra reconciliada não foi restaurada automaticamente porque foi alterada após a importação.");
+          continue;
+        }
+
+        const existingParcelas = await tx.select({
+          id: parcelasCompra.id,
+          numero: parcelasCompra.numero,
+          statusCartao: parcelasCompra.statusCartao,
+          dataPagamentoCartao: parcelasCompra.dataPagamentoCartao,
+          statusPessoa: parcelasCompra.statusPessoa,
+          dataPagamentoPessoa: parcelasCompra.dataPagamentoPessoa,
+          comprovantePath: parcelasCompra.comprovantePath,
+          comprovanteNome: parcelasCompra.comprovanteNome,
+          comprovanteMimeType: parcelasCompra.comprovanteMimeType,
+          comprovanteTamanho: parcelasCompra.comprovanteTamanho,
+          comprovanteEnviadoEm: parcelasCompra.comprovanteEnviadoEm,
+        }).from(parcelasCompra).where(and(
+          eq(parcelasCompra.compraCartaoId, targetCompra.id),
+          eq(parcelasCompra.userId, userId),
+        ));
+
+        const scheduleWasChanged = action.valueChanged || action.parcelasChanged || action.purchaseDateChanged;
+        const protectedParcelas = existingParcelas.filter((row) => isParcelaProtectedForReconcile(row));
+        if (scheduleWasChanged && protectedParcelas.length > 0) {
+          pushWarning("Uma compra reconciliada não foi restaurada automaticamente porque possui parcelas pagas/comprovantes.");
+          continue;
+        }
+
+        const [restoredCompra] = await tx.update(comprasCartao).set({
+          descricao: action.previousSnapshot.descricao,
+          valorTotal: action.previousSnapshot.valorTotal,
+          valorParcela: action.previousSnapshot.valorParcela,
+          parcelas: action.previousSnapshot.parcelas,
+          parcelaAtual: action.previousSnapshot.parcelaAtual,
+          dataCompra: action.previousSnapshot.dataCompra,
+        }).where(and(
+          eq(comprasCartao.id, targetCompra.id),
+          eq(comprasCartao.userId, userId),
+        )).returning({
+          id: comprasCartao.id,
+          dataCompra: comprasCartao.dataCompra,
+        });
+
+        if (!restoredCompra) {
+          pushWarning("Uma compra reconciliada não foi restaurada automaticamente por segurança.");
+          continue;
+        }
+
+        if (scheduleWasChanged) {
+          const currentRows = await tx.select({
+            id: parcelasCompra.id,
+            numero: parcelasCompra.numero,
+          }).from(parcelasCompra).where(and(
+            eq(parcelasCompra.compraCartaoId, restoredCompra.id),
+            eq(parcelasCompra.userId, userId),
+          ));
+          const rowsByNumero = new Map(currentRows.map((row) => [row.numero, row] as const));
+          const expectedParcelas = Math.max(1, action.previousSnapshot.parcelas);
+          const previousValorParcela = action.previousSnapshot.valorParcela;
+          for (let numero = 1; numero <= expectedParcelas; numero += 1) {
+            const existingRow = rowsByNumero.get(numero);
+            const dataVencimento = buildParcelaDueDate(restoredCompra.dataCompra, numero);
+            if (existingRow) {
+              await tx.update(parcelasCompra).set({
+                valor: previousValorParcela,
+                dataVencimento,
+              }).where(and(
+                eq(parcelasCompra.id, existingRow.id),
+                eq(parcelasCompra.userId, userId),
+              ));
+              continue;
+            }
+
+            await tx.insert(parcelasCompra).values({
+              userId,
+              compraCartaoId: restoredCompra.id,
+              numero,
+              valor: previousValorParcela,
+              dataVencimento,
+              statusCartao: numero < action.previousSnapshot.parcelaAtual ? "pago" : "pendente",
+              dataPagamentoCartao: numero < action.previousSnapshot.parcelaAtual ? action.previousSnapshot.dataCompra : null,
+              statusPessoa: null,
+              dataPagamentoPessoa: null,
+            });
+          }
+
+          const rowsToRemove = currentRows.filter((row) => row.numero > expectedParcelas);
+          if (rowsToRemove.length > 0) {
+            await tx.delete(parcelasCompra).where(and(
+              eq(parcelasCompra.userId, userId),
+              inArray(parcelasCompra.id, rowsToRemove.map((row) => row.id)),
+            ));
+          }
+        }
+      }
 
       for (const action of serviceActions) {
         const [targetService] = await tx.select({

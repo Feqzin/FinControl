@@ -1752,10 +1752,12 @@ export default function CartoesPage() {
             || Math.abs(existingValorTotal - item.valor) > 0.01;
 
           await reconcileImportedPurchase({
+            importLogId: importPreviewLogId ?? undefined,
+            itemId: item.id,
             existingCompraCartaoId: existingCompraId,
             importItem: item,
             confirmValueChange: valueChanged ? item.reconcileConfirmValueChange === true : false,
-            updateDescription: true,
+            updateNameFromImport: item.reconcileUpdateNameFromImport === true,
           });
           reconcileAppliedCount += 1;
         }
@@ -1852,6 +1854,7 @@ export default function CartoesPage() {
           reconcileAction: "none",
           reconcileExistingCompraCartaoId: existingCompra.id,
           reconcileConfirmValueChange: false,
+          reconcileUpdateNameFromImport: false,
           serviceSuggestionAction: "ignore",
           linkedServiceId: null,
           replaceExistingServiceLink: false,
@@ -1922,7 +1925,7 @@ export default function CartoesPage() {
         if (warnings.length > 0) {
           toast({
             title: "Rollback concluído com avisos",
-            description: "Alguns vínculos de serviço não foram alterados automaticamente por segurança.",
+            description: "Alguns vínculos/ajustes não foram restaurados automaticamente por segurança. Revise manualmente os itens sinalizados.",
             variant: "default",
           });
         }

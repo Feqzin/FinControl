@@ -5,9 +5,14 @@ import type { AddressInfo } from "node:net";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import express from "express";
+import { eq } from "drizzle-orm";
 import { requireAuth } from "../../auth";
 import { createImportsController } from "../../controllers/imports.controller";
-import { ImportPipelineError } from "../../services/imports.service";
+import { ImportPipelineError, ImportsService } from "../../services/imports.service";
+import { shouldRunDbIntegrationTests } from "../../../server/tests/test-db-availability";
+import { createSecurityTestUser } from "./test-user-seed";
+
+const testReconcileIntegration = (await shouldRunDbIntegrationTests()) ? test : test.skip;
 
 async function withTestServer(
   app: ReturnType<typeof express>,
@@ -90,6 +95,78 @@ function buildValidPayload() {
     },
     confirmValueChange: true,
     updateDescription: true,
+  };
+}
+
+async function createReconcileFixture(label: string) {
+  const [{ db }, schema] = await Promise.all([
+    import("../../db"),
+    import("../../../shared/schema"),
+  ]);
+
+  const user = await createSecurityTestUser(label);
+
+  const [cartao] = await db.insert(schema.cartoes).values({
+    userId: user.id,
+    nome: `Cartao Reconciliacao ${label}`,
+    limite: "5000.00",
+    melhorDiaCompra: 10,
+    diaVencimento: 20,
+    iconeId: null,
+  }).returning();
+
+  const [existingCompra] = await db.insert(schema.comprasCartao).values({
+    userId: user.id,
+    cartaoId: cartao.id,
+    descricao: "PS Portal",
+    valorTotal: "1575.00",
+    parcelas: 10,
+    parcelaAtual: 1,
+    valorParcela: "157.50",
+    dataCompra: "2025-12-24",
+    pessoaId: null,
+    statusPessoa: null,
+    dataPagamentoPessoa: null,
+  }).returning();
+
+  const parcelasRows = Array.from({ length: 10 }, (_, idx) => ({
+    userId: user.id,
+    compraCartaoId: existingCompra.id,
+    numero: idx + 1,
+    valor: "157.50",
+    dataVencimento: `2026-${String((idx % 12) + 1).padStart(2, "0")}-20`,
+    statusCartao: "pendente" as const,
+    dataPagamentoCartao: null,
+    statusPessoa: null,
+    dataPagamentoPessoa: null,
+  }));
+  await db.insert(schema.parcelasCompra).values(parcelasRows);
+
+  return {
+    db,
+    schema,
+    user,
+    cartao,
+    existingCompra,
+    cleanup: async () => {
+      await user.cleanup();
+    },
+  };
+}
+
+function buildReconcileImportItem(overrides?: Record<string, unknown>): any {
+  return {
+    id: "item-reconcile-1",
+    descricao: "MLP KaBuM KaBuM",
+    valor: 1575.8,
+    valorParcela: 157.58,
+    parcelas: 10,
+    parcelaAtual: 5,
+    dataCompra: "2025-12-24",
+    tipo: "compra",
+    action: "skip",
+    status: "possivel_duplicata",
+    ...overrides,
   };
 }
 
@@ -176,4 +253,108 @@ test("imports reconcile: erro de domínio controlado retorna status do ImportPip
     const body = await response.json();
     assert.equal(body.message, "Compra protegida para reconciliação");
   });
+});
+
+testReconcileIntegration("reconcile preserva nome manual por padrão e não cria compra nova", async () => {
+  const fixture = await createReconcileFixture("reconcile_keep_name_default");
+  const service = new ImportsService();
+
+  try {
+    const preview = await service.preview(fixture.user.id, {
+      cartaoId: fixture.cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-reconcile",
+      items: [buildReconcileImportItem()],
+    });
+
+    const reconcileResult = await service.reconcilePurchase(fixture.user.id, {
+      importLogId: preview.importLogId,
+      itemId: "item-reconcile-1",
+      existingCompraCartaoId: fixture.existingCompra.id,
+      importItem: buildReconcileImportItem(),
+      confirmValueChange: true,
+      updateNameFromImport: false,
+    });
+
+    assert.equal(reconcileResult.updated, true);
+    assert.equal(reconcileResult.descriptionChanged, false);
+
+    const [compraAfterReconcile] = await fixture.db.select({
+      id: fixture.schema.comprasCartao.id,
+      descricao: fixture.schema.comprasCartao.descricao,
+      valorParcela: fixture.schema.comprasCartao.valorParcela,
+      valorTotal: fixture.schema.comprasCartao.valorTotal,
+      parcelas: fixture.schema.comprasCartao.parcelas,
+      parcelaAtual: fixture.schema.comprasCartao.parcelaAtual,
+    }).from(fixture.schema.comprasCartao).where(eq(
+      fixture.schema.comprasCartao.id,
+      fixture.existingCompra.id,
+    ));
+
+    assert.equal(compraAfterReconcile?.descricao, "PS Portal");
+    assert.equal(compraAfterReconcile?.valorParcela, "157.58");
+    assert.equal(compraAfterReconcile?.parcelaAtual, 5);
+
+    const confirm = await service.confirm(fixture.user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+      items: [buildReconcileImportItem()],
+    });
+    assert.equal(confirm.createdCount, 0);
+    assert.equal(confirm.createdCompraIds.length, 0);
+    assert.equal(confirm.summary.reconciledExistingCount, 1);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+testReconcileIntegration("rollback restaura nome anterior após reconcile com updateNameFromImport=true", async () => {
+  const fixture = await createReconcileFixture("reconcile_rollback_restore_name");
+  const service = new ImportsService();
+
+  try {
+    const preview = await service.preview(fixture.user.id, {
+      cartaoId: fixture.cartao.id,
+      sourceType: "manual",
+      sourceName: "teste-reconcile-rollback",
+      items: [buildReconcileImportItem()],
+    });
+
+    await service.reconcilePurchase(fixture.user.id, {
+      importLogId: preview.importLogId,
+      itemId: "item-reconcile-1",
+      existingCompraCartaoId: fixture.existingCompra.id,
+      importItem: buildReconcileImportItem(),
+      confirmValueChange: true,
+      updateNameFromImport: true,
+    });
+
+    const confirm = await service.confirm(fixture.user.id, {
+      importLogId: preview.importLogId,
+      userConfirmed: true,
+      items: [buildReconcileImportItem()],
+    });
+    assert.equal(confirm.createdCount, 0);
+
+    const rollback = await service.rollback(fixture.user.id, preview.importLogId);
+    assert.equal(rollback.deletedCount, 0);
+    assert.equal(rollback.serviceRollbackWarnings.length, 0);
+
+    const [{ descricao, valorParcela, valorTotal, parcelaAtual }] = await fixture.db.select({
+      descricao: fixture.schema.comprasCartao.descricao,
+      valorParcela: fixture.schema.comprasCartao.valorParcela,
+      valorTotal: fixture.schema.comprasCartao.valorTotal,
+      parcelaAtual: fixture.schema.comprasCartao.parcelaAtual,
+    }).from(fixture.schema.comprasCartao).where(eq(
+      fixture.schema.comprasCartao.id,
+      fixture.existingCompra.id,
+    ));
+
+    assert.equal(descricao, "PS Portal");
+    assert.equal(valorParcela, "157.50");
+    assert.equal(valorTotal, "1575.00");
+    assert.equal(parcelaAtual, 1);
+  } finally {
+    await fixture.cleanup();
+  }
 });
