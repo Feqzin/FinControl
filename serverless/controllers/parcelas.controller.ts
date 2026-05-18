@@ -4,6 +4,7 @@ import { normalizeIsoDate } from "../../utils/date.js";
 import { ParcelasService } from "../services/parcelas.service.js";
 import {
   anteciparParcelasBody,
+  parcelaCompraCompetenciaUpdateBody,
   parcelaCompraUpdateBody,
   parcelaUpdateBody,
   parcelasCompraBulkBody,
@@ -186,6 +187,50 @@ export function createParcelasController(service: ParcelasService) {
           valor: formatMoneyFixed(updated.valor),
           dataPagamentoCartao: normalizeIsoDate(updated.dataPagamentoCartao),
           dataPagamentoPessoa: normalizeIsoDate(updated.dataPagamentoPessoa),
+        },
+      });
+      return res.json(updated);
+    },
+
+    updateCompraCompetencia: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const parcelaCompraId = getParam(req, "id");
+      const parsed = parcelaCompraCompetenciaUpdateBody.safeParse(req.body);
+      if (!parsed.success) {
+        auditRequest(req, {
+          action: "update",
+          status: "failure",
+          domain: "parcelas_compra_competencia",
+          userId,
+          targetId: parcelaCompraId,
+          details: { reason: "validation_error" },
+        });
+        return sendBadRequest(res, parsed.error.message);
+      }
+
+      const updated = await service.updateParcelaCompraCompetencia(parcelaCompraId, userId, parsed.data);
+      if (!updated) {
+        auditRequest(req, {
+          action: "update",
+          status: "failure",
+          domain: "parcelas_compra_competencia",
+          userId,
+          targetId: parcelaCompraId,
+          details: { reason: "not_found" },
+        });
+        return sendNotFound(res);
+      }
+
+      auditRequest(req, {
+        action: "update",
+        status: "success",
+        domain: "parcelas_compra_competencia",
+        userId,
+        targetId: updated.id,
+        details: {
+          compraCartaoId: updated.compraCartaoId,
+          numero: updated.numero,
+          dataVencimento: normalizeIsoDate(updated.dataVencimento),
         },
       });
       return res.json(updated);

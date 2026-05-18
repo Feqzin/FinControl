@@ -474,3 +474,147 @@ testParcelasIntegration("quitacao total de parcelas_compra sincroniza agregado d
     await db.delete(users).where(eq(users.id, user.id));
   }
 });
+
+testParcelasIntegration("mover competência atualiza apenas dataVencimento da parcela mantendo status e comprovante", async () => {
+  const { db } = await import("../db");
+  const { ParcelasService } = await import("../services/parcelas.service");
+  const { financialRepository } = await import("../repositories/financial.repository");
+  const { users, cartoes, comprasCartao, parcelasCompra } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ParcelasService(financialRepository);
+  const username = `it_parcela_competencia_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Parcela Competencia Integration",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Competencia",
+    limite: "3000.00",
+    melhorDiaCompra: 10,
+    diaVencimento: 24,
+    iconeId: null,
+  }).returning();
+
+  const [compra] = await db.insert(comprasCartao).values({
+    userId: user.id,
+    cartaoId: cartao.id,
+    descricao: "Compra Competencia",
+    valorTotal: "422.79",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "422.79",
+    dataCompra: "2026-05-10",
+    pessoaId: null,
+    statusPessoa: null,
+    dataPagamentoPessoa: null,
+  }).returning();
+
+  const [parcela] = await db.insert(parcelasCompra).values({
+    userId: user.id,
+    compraCartaoId: compra.id,
+    numero: 1,
+    valor: "422.79",
+    dataVencimento: "2026-05-24",
+    statusCartao: "pendente",
+    dataPagamentoCartao: null,
+    statusPessoa: null,
+    dataPagamentoPessoa: null,
+    comprovantePath: "/tmp/recibo-1.pdf",
+    comprovanteNome: "recibo-1.pdf",
+    comprovanteMimeType: "application/pdf",
+    comprovanteTamanho: 1024,
+    comprovanteEnviadoEm: new Date("2026-05-11T12:00:00.000Z"),
+  }).returning();
+
+  try {
+    const updated = await service.updateParcelaCompraCompetencia(parcela.id, user.id, {
+      competencia: "2026-03",
+    });
+
+    assert.ok(updated);
+    assert.equal(updated.dataVencimento, "2026-03-24");
+    assert.equal(updated.valor, "422.79");
+    assert.equal(updated.statusCartao, "pendente");
+    assert.equal(updated.comprovanteNome, "recibo-1.pdf");
+
+    const [stored] = await db.select().from(parcelasCompra).where(and(
+      eq(parcelasCompra.id, parcela.id),
+      eq(parcelasCompra.userId, user.id),
+    ));
+    assert.ok(stored);
+    assert.equal(stored.dataVencimento, "2026-03-24");
+    assert.equal(stored.valor, "422.79");
+    assert.equal(stored.statusCartao, "pendente");
+    assert.equal(stored.comprovanteNome, "recibo-1.pdf");
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testParcelasIntegration("mover competência respeita dia de vencimento do cartão com clamp de mês", async () => {
+  const { db } = await import("../db");
+  const { ParcelasService } = await import("../services/parcelas.service");
+  const { financialRepository } = await import("../repositories/financial.repository");
+  const { users, cartoes, comprasCartao, parcelasCompra } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const service = new ParcelasService(financialRepository);
+  const username = `it_parcela_competencia_clamp_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Parcela Competencia Clamp",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Dia 31",
+    limite: "5000.00",
+    melhorDiaCompra: 5,
+    diaVencimento: 31,
+    iconeId: null,
+  }).returning();
+
+  const [compra] = await db.insert(comprasCartao).values({
+    userId: user.id,
+    cartaoId: cartao.id,
+    descricao: "Compra Clamp",
+    valorTotal: "100.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "100.00",
+    dataCompra: "2026-01-01",
+    pessoaId: null,
+    statusPessoa: null,
+    dataPagamentoPessoa: null,
+  }).returning();
+
+  const [parcela] = await db.insert(parcelasCompra).values({
+    userId: user.id,
+    compraCartaoId: compra.id,
+    numero: 1,
+    valor: "100.00",
+    dataVencimento: "2026-01-31",
+    statusCartao: "pendente",
+    dataPagamentoCartao: null,
+    statusPessoa: null,
+    dataPagamentoPessoa: null,
+  }).returning();
+
+  try {
+    const updated = await service.updateParcelaCompraCompetencia(parcela.id, user.id, {
+      competencia: "2026-02",
+    });
+
+    assert.ok(updated);
+    assert.equal(updated.dataVencimento, "2026-02-28");
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});

@@ -65,6 +65,7 @@ import {
   canAutoRematerializeCompetency,
   diffParcelasCompetencySchedules,
   matchesLegacyPurchaseDateSchedule,
+  resolveDueDateFromCompetencia,
 } from "@shared/parcelas-compra-competency";
 
 test("formatters: moeda e data em pt-BR", () => {
@@ -901,6 +902,24 @@ test("competência diagnóstico: compra sem pagamentos/comprovantes pode ser rem
   const decision = canAutoRematerializeCompetency(diffs);
   assert.equal(decision.canApply, true);
   assert.equal(currentRows.length, suggestedRows.length);
+});
+
+test("competência de parcela: usa dia de vencimento do cartão ao mover para outra fatura", () => {
+  const dueDate = resolveDueDateFromCompetencia({
+    competencia: "2026-03",
+    diaVencimento: 24,
+    fallbackDataVencimento: "2026-05-20",
+  });
+  assert.equal(dueDate, "2026-03-24");
+});
+
+test("competência de parcela: sem dia de vencimento no cartão usa fallback seguro da própria parcela", () => {
+  const dueDate = resolveDueDateFromCompetencia({
+    competencia: "2026-02",
+    diaVencimento: null,
+    fallbackDataVencimento: "2026-05-31",
+  });
+  assert.equal(dueDate, "2026-02-28");
 });
 
 test("card limit usage: parcela paga de mês anterior não entra na fatura atual nem compromete limite", () => {

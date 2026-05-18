@@ -62,6 +62,19 @@ const isoDateNullableOptional = z.union([z.string(), z.date(), z.null(), z.undef
   return normalized;
 });
 
+const competenciaMonthRequired = z.string().trim().transform((value, ctx) => {
+  if (!/^\d{4}-\d{2}$/.test(value)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Competencia invalida. Use YYYY-MM." });
+    return z.NEVER;
+  }
+  const month = Number(value.slice(5, 7));
+  if (!Number.isFinite(month) || month < 1 || month > 12) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Competencia invalida. Mes deve ficar entre 01 e 12." });
+    return z.NEVER;
+  }
+  return value;
+});
+
 const reembolsoModeNullableOptional = z
   .union([z.string(), z.null(), z.undefined()])
   .transform((value, ctx) => {
@@ -258,6 +271,10 @@ export const parcelaCompraUpdateBody = z.object({
   dataPagamentoPessoa: isoDateNullableOptional,
 }).strict().refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });
 
+export const parcelaCompraCompetenciaUpdateBody = z.object({
+  competencia: competenciaMonthRequired,
+}).strict();
+
 export const parcelaCompraBulkItemBody = z.object({
   numero: z.coerce.number().int().min(1),
   valor: moneyField,
@@ -306,4 +323,5 @@ export type CompraUpdateBodyInput = z.infer<typeof compraUpdateBody>;
 export type CartaoBodyInput = z.infer<typeof cartaoBody>;
 export type CartaoUpdateBodyInput = z.infer<typeof cartaoUpdateBody>;
 export type ParcelaCompraUpdateBodyInput = z.infer<typeof parcelaCompraUpdateBody>;
+export type ParcelaCompraCompetenciaUpdateBodyInput = z.infer<typeof parcelaCompraCompetenciaUpdateBody>;
 export type ParcelasCompraBulkBodyInput = z.infer<typeof parcelasCompraBulkBody>;

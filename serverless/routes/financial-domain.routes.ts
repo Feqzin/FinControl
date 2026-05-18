@@ -21,6 +21,7 @@ type ParcelasController = {
   listCompraByUser: RequestHandler;
   listCompra: RequestHandler;
   updateCompra: RequestHandler;
+  updateCompraCompetencia: RequestHandler;
   replaceCompraBulk: RequestHandler;
 };
 
@@ -71,6 +72,7 @@ export function registerFinancialDomainRoutes(app: Express, controllers: Financi
   app.get("/api/parcelas-compra", requireAuth, parcelasController.listCompraByUser);
   app.get("/api/parcelas-compra/:compraId", requireAuth, parcelasController.listCompra);
   app.patch("/api/parcelas-compra/:id", requireAuth, parcelasController.updateCompra);
+  app.patch("/api/parcelas-compra/:id/competencia", requireAuth, parcelasController.updateCompraCompetencia);
   app.post("/api/parcelas-compra/bulk", requireAuth, parcelasController.replaceCompraBulk);
 
   app.get("/api/cartoes", requireAuth, cartoesController.list);

@@ -637,6 +637,12 @@ export async function updateParcelaCompraValores(id: string, payload: { valor?: 
   });
 }
 
+export async function updateParcelaCompraCompetencia(id: string, competencia: string): Promise<void> {
+  await apiRequest("PATCH", `/api/parcelas-compra/${id}/competencia`, {
+    competencia,
+  });
+}
+
 function toImportItemPayload(item: ParsedItem) {
   const duplicateId =
     item.duplicateId

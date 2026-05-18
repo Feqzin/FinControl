@@ -8,11 +8,13 @@ import { runFinancialTransaction } from "./transaction-utils";
 import { buildParcelasCompraRows, materializeParcelasCompraIfMissing } from "./parcelas-compra-materialization";
 import {
   type AnteciparParcelasBodyInput,
+  type ParcelaCompraCompetenciaUpdateBodyInput,
   type ParcelaCompraUpdateBodyInput,
   type ParcelaUpdateBodyInput,
   type ParcelasCompraBulkBodyInput,
 } from "../validators/financial.validators";
 import { toErrorLog, writeTechnicalLog } from "../logger";
+import { resolveDueDateFromCompetencia } from "@shared/parcelas-compra-competency";
 
 function extractErrorCode(error: unknown): string | null {
   if (!error || typeof error !== "object") return null;
@@ -176,6 +178,41 @@ export class ParcelasService {
   async updateParcelaCompra(id: string, userId: string, data: ParcelaCompraUpdateBodyInput) {
     return runFinancialTransaction(this.repository, async (repository) => {
       const updated = await repository.updateParcelaCompra(id, userId, data);
+      if (!updated) return updated;
+
+      await recomputeCardPurchaseAggregate(repository, updated.compraCartaoId, userId);
+      return updated;
+    });
+  }
+
+  async updateParcelaCompraCompetencia(
+    id: string,
+    userId: string,
+    data: ParcelaCompraCompetenciaUpdateBodyInput,
+  ) {
+    return runFinancialTransaction(this.repository, async (repository) => {
+      const parcela = await repository.getParcelaCompraById(id, userId);
+      if (!parcela) return undefined;
+
+      const compra = await repository.getCompraCartao(parcela.compraCartaoId, userId);
+      if (!compra) return undefined;
+
+      const cartao = await repository.getCartao(compra.cartaoId, userId);
+      const resolvedDueDate = resolveDueDateFromCompetencia({
+        competencia: data.competencia,
+        diaVencimento: cartao?.diaVencimento ?? null,
+        fallbackDataVencimento: parcela.dataVencimento,
+      });
+
+      if (!resolvedDueDate) {
+        const error = new Error("Competencia invalida. Use YYYY-MM.");
+        (error as Error & { status?: number }).status = 400;
+        throw error;
+      }
+
+      const updated = await repository.updateParcelaCompra(id, userId, {
+        dataVencimento: resolvedDueDate,
+      });
       if (!updated) return updated;
 
       await recomputeCardPurchaseAggregate(repository, updated.compraCartaoId, userId);

@@ -26,6 +26,7 @@ import {
   updateCompraReembolso,
   updateParcelaCompraStatusCartao,
   updateParcelaCompraStatusPessoa,
+  updateParcelaCompraCompetencia,
   updateParcelaCompraValores,
   type CartaoResumo,
   type CartaoPayload,
@@ -98,6 +99,7 @@ export function useCartoes(viewingCompraId?: string) {
       keys.push(["/api/pessoas"]);
       keys.push(["/api/pessoas", "includeResumo=true"]);
       keys.push(["/api/pessoas/saldo-movimentacoes"]);
+      keys.push(["/api/dividas"]);
     }
     if (options?.includeUsage) {
       keys.push(["/api/subscription/usage"]);
@@ -281,6 +283,14 @@ export function useCartoes(viewingCompraId?: string) {
     },
   });
 
+  const moveParcelaCompetenciaMutation = useMutation({
+    mutationFn: ({ id, competencia }: { id: string; competencia: string }) =>
+      updateParcelaCompraCompetencia(id, competencia),
+    onSuccess: async () => {
+      await refreshCartoesQueries({ includePessoas: true });
+    },
+  });
+
   const abaterSaldoParcelaMutation = useMutation({
     mutationFn: ({
       pessoaId,
@@ -444,6 +454,7 @@ export function useCartoes(viewingCompraId?: string) {
     payParcelaMutation,
     payParcelaPessoaMutation,
     editParcelaMutation,
+    moveParcelaCompetenciaMutation,
     abaterSaldoParcelaMutation,
     batchImportMutation,
     rollbackImportMutation,

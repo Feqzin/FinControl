@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import type { CompraCartao, ParcelaCompra, Pessoa } from "@shared/schema";
 import { Check, ExternalLink, Paperclip, Pencil, RefreshCw, Trash2, Wallet, X } from "lucide-react";
 import { formatBytes } from "@/pages/pessoas/payment-timeline.utils";
+import { getInvoiceCompetency } from "@/lib/card-limit-usage";
 
 type AbaterSaldoParcelaForm = {
   valor: string;
@@ -21,6 +22,17 @@ type ParcelaComprovanteResumo = {
   enviadoEm: string | null;
   downloadUrl: string;
 };
+
+function formatCompetenciaLabel(value: string): string {
+  if (!/^\d{4}-\d{2}$/.test(value)) return value;
+  const [yearText, monthText] = value.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return value;
+  const asDate = new Date(year, month - 1, 1);
+  const formatted = asDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  return formatted.replace(/^\w/, (char) => char.toUpperCase());
+}
 
 type ParcelasTabProps = {
   open: boolean;
@@ -47,6 +59,7 @@ type ParcelasTabProps = {
   payParcelaData: string;
   setPayParcelaData: (value: string) => void;
   onEditParcela: (id: string) => void;
+  onMoveParcelaCompetencia: (id: string, competencia: string) => Promise<void>;
   onPayParcela: (id: string, pago: boolean, dataPagamento?: string) => void;
   onPayParcelaPessoa: (id: string, pago: boolean) => void;
   parcelaActionLoadingId: string | null;
@@ -90,6 +103,7 @@ export function ParcelasTab({
   payParcelaData,
   setPayParcelaData,
   onEditParcela,
+  onMoveParcelaCompetencia,
   onPayParcela,
   onPayParcelaPessoa,
   parcelaActionLoadingId,
@@ -108,12 +122,20 @@ export function ParcelasTab({
   comprovanteDeleteLoadingId,
 }: ParcelasTabProps) {
   const [comprovanteFiles, setComprovanteFiles] = useState<Record<string, File | null>>({});
+  const [movingParcelaId, setMovingParcelaId] = useState<string | null>(null);
+  const [movingParcelaCompetencia, setMovingParcelaCompetencia] = useState("");
 
   const setComprovanteFile = (parcelaId: string, file: File | null) => {
     setComprovanteFiles((prev) => ({ ...prev, [parcelaId]: file }));
   };
 
   const getComprovanteFile = (parcelaId: string): File | null => comprovanteFiles[parcelaId] ?? null;
+
+  useEffect(() => {
+    if (open) return;
+    setMovingParcelaId(null);
+    setMovingParcelaCompetencia("");
+  }, [open]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -177,6 +199,7 @@ export function ParcelasTab({
                 const pago = parcela.statusCartao === "pago";
                 const isPaying = payingParcelaId === parcela.id;
                 const isEditing = editingParcelaId === parcela.id;
+                const isMovingCompetencia = movingParcelaId === parcela.id;
                 const pessoaVinculadaId = viewingCompra.pessoaId || null;
                 const saldoAbatido = getParcelaSaldoAbatido(parcela.id);
                 const parcialViaSaldo = !pago && saldoAbatido > 0;
@@ -189,6 +212,8 @@ export function ParcelasTab({
                 const uploadFile = getComprovanteFile(parcela.id);
                 const isUploadingComprovante = comprovanteUploadLoadingId === parcela.id;
                 const isDeletingComprovante = comprovanteDeleteLoadingId === parcela.id;
+                const currentCompetencia = getInvoiceCompetency(parcela.dataVencimento);
+                const hasHistoricalSignals = pago || Boolean(comprovante);
 
                 return (
                   <div
@@ -254,6 +279,11 @@ export function ParcelasTab({
                               {!pago && parcela.dataVencimento ? (
                                 <span className={`text-xs ${vencida ? "font-medium text-red-600" : "text-muted-foreground"}`}>
                                   Venc. {parcela.dataVencimento}{vencida ? " · VENCIDA" : ""}
+                                </span>
+                              ) : null}
+                              {currentCompetencia ? (
+                                <span className="text-xs text-muted-foreground">
+                                  Fatura: {formatCompetenciaLabel(currentCompetencia)}
                                 </span>
                               ) : null}
                             </div>
@@ -363,6 +393,24 @@ export function ParcelasTab({
                             <RefreshCw className="h-3 w-3 text-amber-600" />
                           </Button>
                         ) : null}
+                        {!isEditing && !isPaying ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            aria-label="Mover parcela para outra fatura"
+                            title="Mover para outra fatura"
+                            onClick={() => {
+                              const defaultCompetencia = currentCompetencia ?? new Date().toISOString().slice(0, 7);
+                              setMovingParcelaId(parcela.id);
+                              setMovingParcelaCompetencia(defaultCompetencia);
+                            }}
+                            disabled={isSubmittingThisRow}
+                            data-testid={`button-move-parcela-competencia-${parcela.id}`}
+                          >
+                            Mover fatura
+                          </Button>
+                        ) : null}
                         <Button
                           variant="ghost"
                           size="icon"
@@ -470,6 +518,68 @@ export function ParcelasTab({
                         <Button variant="ghost" size="sm" className="h-8 text-xs sm:h-7" onClick={() => setPayingParcelaId(null)}>
                           Cancelar
                         </Button>
+                      </div>
+                    ) : null}
+
+                    {isMovingCompetencia ? (
+                      <div className="space-y-2 border-t border-border/40 pt-2">
+                        <p className="text-xs text-muted-foreground">
+                          {currentCompetencia
+                            ? `Esta parcela sairá de ${formatCompetenciaLabel(currentCompetencia)} e irá para ${formatCompetenciaLabel(movingParcelaCompetencia || currentCompetencia)}.`
+                            : `Selecione o mês da nova fatura para esta parcela.`}
+                        </p>
+                        {hasHistoricalSignals ? (
+                          <p className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-700">
+                            Esta parcela já possui histórico. A alteração mudará apenas o mês da fatura, sem alterar pagamento ou comprovante.
+                          </p>
+                        ) : null}
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <div className="flex-1">
+                            <Label htmlFor={`input-competencia-parcela-${parcela.id}`} className="text-xs text-muted-foreground">
+                              Mover para fatura (mês/ano)
+                            </Label>
+                            <Input
+                              id={`input-competencia-parcela-${parcela.id}`}
+                              type="month"
+                              className="h-8 text-xs"
+                              value={movingParcelaCompetencia}
+                              onChange={(event) => setMovingParcelaCompetencia(event.target.value)}
+                              data-testid={`input-move-parcela-competencia-${parcela.id}`}
+                            />
+                          </div>
+                          <Button
+                            size="sm"
+                            className="h-8 text-xs"
+                            disabled={
+                              !movingParcelaCompetencia
+                              || movingParcelaCompetencia === currentCompetencia
+                              || isSubmittingThisRow
+                            }
+                            onClick={async () => {
+                              try {
+                                await onMoveParcelaCompetencia(parcela.id, movingParcelaCompetencia);
+                                setMovingParcelaId(null);
+                                setMovingParcelaCompetencia("");
+                              } catch {
+                                // O toast de erro é tratado no container.
+                              }
+                            }}
+                            data-testid={`button-confirm-move-parcela-competencia-${parcela.id}`}
+                          >
+                            {isSubmittingThisRow ? "Salvando..." : "Confirmar"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-xs"
+                            onClick={() => {
+                              setMovingParcelaId(null);
+                              setMovingParcelaCompetencia("");
+                            }}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
                       </div>
                     ) : null}
                   </div>

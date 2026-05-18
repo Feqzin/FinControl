@@ -611,6 +611,7 @@ export default function CartoesPage() {
     payParcelaMutation,
     payParcelaPessoaMutation,
     editParcelaMutation,
+    moveParcelaCompetenciaMutation,
     abaterSaldoParcelaMutation,
     batchImportMutation,
     rollbackImportMutation,
@@ -1754,6 +1755,26 @@ export default function CartoesPage() {
     );
   };
 
+  const handleMoveParcelaCompetencia = async (id: string, competencia: string): Promise<void> => {
+    setParcelaSubmittingId(id);
+    try {
+      await moveParcelaCompetenciaMutation.mutateAsync({ id, competencia });
+      toast({
+        title: "Fatura da parcela atualizada",
+        description: `Competência ajustada para ${formatInvoiceCompetencyLabel(competencia)}.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao mover parcela de fatura",
+        description: getErrorMessage(error),
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setParcelaSubmittingId((current) => (current === id ? null : current));
+    }
+  };
+
   const handleConfirmImport = async () => {
     if (!smartImportLiberado) {
       showSmartImportPremiumToast();
@@ -2803,10 +2824,15 @@ export default function CartoesPage() {
         payParcelaData={payParcelaData}
         setPayParcelaData={setPayParcelaData}
         onEditParcela={handleEditParcela}
+        onMoveParcelaCompetencia={handleMoveParcelaCompetencia}
         onPayParcela={handlePayParcela}
         onPayParcelaPessoa={handlePayParcelaPessoa}
         parcelaActionLoadingId={parcelaSubmittingId}
-        isParcelaActionPending={payParcelaMutation.isPending}
+        isParcelaActionPending={
+          payParcelaMutation.isPending
+          || editParcelaMutation.isPending
+          || moveParcelaCompetenciaMutation.isPending
+        }
         onOpenAbaterSaldoParcela={openAbaterSaldoParcelaDialog}
         abaterSaldoParcelaId={abaterSaldoParcelaId}
         setAbaterSaldoParcelaId={setAbaterSaldoParcelaId}

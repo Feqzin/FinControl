@@ -38,6 +38,60 @@ export function hasParcelaComprovanteForCompetency(row: ParcelaCompetencySnapsho
   );
 }
 
+type ParsedCompetenciaMonth = {
+  year: number;
+  month: number;
+};
+
+function parseIsoDay(value: string | null | undefined): number | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const day = Number(value.slice(8, 10));
+  if (!Number.isFinite(day) || day < 1 || day > 31) return null;
+  return day;
+}
+
+function clampDay(value: number, minValue: number, maxValue: number): number {
+  if (!Number.isFinite(value)) return minValue;
+  return Math.max(minValue, Math.min(maxValue, Math.trunc(value)));
+}
+
+export function parseCompetenciaMonth(value: string | null | undefined): ParsedCompetenciaMonth | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!/^\d{4}-\d{2}$/.test(normalized)) return null;
+
+  const year = Number(normalized.slice(0, 4));
+  const month = Number(normalized.slice(5, 7));
+
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+  if (month < 1 || month > 12) return null;
+  return { year, month };
+}
+
+export function resolveDueDateFromCompetencia(params: {
+  competencia: string;
+  diaVencimento?: number | null;
+  fallbackDataVencimento?: string | null;
+}): string | null {
+  const parsedCompetencia = parseCompetenciaMonth(params.competencia);
+  if (!parsedCompetencia) return null;
+
+  const dueDayFromCard = (
+    typeof params.diaVencimento === "number"
+    && Number.isFinite(params.diaVencimento)
+    && params.diaVencimento >= 1
+  ) ? params.diaVencimento : null;
+  const dueDayFromFallback = parseIsoDay(params.fallbackDataVencimento);
+  const dueDayCandidate = dueDayFromCard ?? dueDayFromFallback ?? 1;
+
+  const maxDayOfMonth = new Date(parsedCompetencia.year, parsedCompetencia.month, 0).getDate();
+  const dueDay = clampDay(dueDayCandidate, 1, maxDayOfMonth);
+
+  const monthText = String(parsedCompetencia.month).padStart(2, "0");
+  const dayText = String(dueDay).padStart(2, "0");
+  return `${parsedCompetencia.year}-${monthText}-${dayText}`;
+}
+
 export function getParcelaProtectionReasonsForCompetency(row: ParcelaCompetencySnapshot): string[] {
   const reasons: string[] = [];
   if (row.statusCartao === "pago") reasons.push("status_cartao_pago");
