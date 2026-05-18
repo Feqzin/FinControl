@@ -90,7 +90,11 @@ import {
   resolveDueDateFromCompetencia,
 } from "@shared/parcelas-compra-competency";
 import {
+  calculateServicoEquivalentMonthlyAmount,
   calculateServicoValorMensalEquivalente,
+  calculateServicoRealChargeForCompetency,
+  getServicoBillingDisplayInfo,
+  isServicoLinkedToCardCharge,
   resolveServicoBillingFields,
 } from "@shared/servico-periodicidade";
 
@@ -789,6 +793,143 @@ test("servicos periodicidade: listagem anual mostra cobrança e equivalente mens
 test("servicos periodicidade: trimestral calcula equivalente mensal corretamente", () => {
   const equivalente = calculateServicoValorMensalEquivalente("90.00", "trimestral");
   assert.equal(equivalente, 30);
+});
+
+test("servicos periodicidade canônica: equivalente mensal por periodicidade", () => {
+  const mensal = calculateServicoEquivalentMonthlyAmount(buildServicoFixture({
+    periodicidadeCobranca: "mensal",
+    valorCobranca: "80.00",
+    valorMensal: "80.00",
+  }));
+  assert.equal(mensal, 80);
+
+  const anual = calculateServicoEquivalentMonthlyAmount(buildServicoFixture({
+    periodicidadeCobranca: "anual",
+    valorCobranca: "229.82",
+    valorMensal: "19.15",
+  }));
+  assert.equal(anual, 19.15);
+
+  const semestral = calculateServicoEquivalentMonthlyAmount(buildServicoFixture({
+    periodicidadeCobranca: "semestral",
+    valorCobranca: "120.00",
+    valorMensal: "20.00",
+  }));
+  assert.equal(semestral, 20);
+
+  const trimestral = calculateServicoEquivalentMonthlyAmount(buildServicoFixture({
+    periodicidadeCobranca: "trimestral",
+    valorCobranca: "90.00",
+    valorMensal: "30.00",
+  }));
+  assert.equal(trimestral, 30);
+
+  const bimestral = calculateServicoEquivalentMonthlyAmount(buildServicoFixture({
+    periodicidadeCobranca: "bimestral",
+    valorCobranca: "40.00",
+    valorMensal: "20.00",
+  }));
+  assert.equal(bimestral, 20);
+});
+
+test("servicos periodicidade canônica: semanal usa aproximação mensal documentada", () => {
+  const semanal = calculateServicoEquivalentMonthlyAmount(buildServicoFixture({
+    periodicidadeCobranca: "semanal",
+    valorCobranca: "70.00",
+    valorMensal: "303.33",
+  }));
+  assert.equal(semanal, 303.33);
+});
+
+test("servicos periodicidade canônica: legado sem periodicidade mantém fallback mensal compatível", () => {
+  const legado = calculateServicoEquivalentMonthlyAmount(buildServicoFixture({
+    periodicidadeCobranca: null,
+    valorCobranca: null,
+    valorMensal: "49.90",
+  }));
+  assert.equal(legado, 49.9);
+});
+
+test("servicos periodicidade canônica: cobrança real anual e trimestral respeita competência base", () => {
+  const anualServico = {
+    ...buildServicoFixture({
+      periodicidadeCobranca: "anual",
+      valorCobranca: "229.82",
+      valorMensal: "19.15",
+    }),
+    competenciaBase: "2026-05",
+  };
+  assert.equal(calculateServicoRealChargeForCompetency(anualServico, "2026-05"), 229.82);
+  assert.equal(calculateServicoRealChargeForCompetency(anualServico, "2026-06"), 0);
+  assert.equal(calculateServicoRealChargeForCompetency(anualServico, "2027-05"), 229.82);
+
+  const trimestralServico = {
+    ...buildServicoFixture({
+      periodicidadeCobranca: "trimestral",
+      valorCobranca: "90.00",
+      valorMensal: "30.00",
+    }),
+    competenciaBase: "2026-01",
+  };
+  assert.equal(calculateServicoRealChargeForCompetency(trimestralServico, "2026-01"), 90);
+  assert.equal(calculateServicoRealChargeForCompetency(trimestralServico, "2026-02"), 0);
+  assert.equal(calculateServicoRealChargeForCompetency(trimestralServico, "2026-04"), 90);
+});
+
+test("servicos periodicidade canônica: cobrança real semanal usa aproximação mensal por competência", () => {
+  const semanalServico = buildServicoFixture({
+    periodicidadeCobranca: "semanal",
+    valorCobranca: "70.00",
+    valorMensal: "303.33",
+  });
+  assert.equal(calculateServicoRealChargeForCompetency(semanalServico, "2026-05"), 303.33);
+  assert.equal(calculateServicoRealChargeForCompetency(semanalServico, "2026-06"), 303.33);
+});
+
+test("servicos periodicidade canônica: fallback sem base para não mensal mantém compatibilidade", () => {
+  const semBase = buildServicoFixture({
+    periodicidadeCobranca: "anual",
+    valorCobranca: "120.00",
+    valorMensal: "10.00",
+  });
+  assert.equal(calculateServicoRealChargeForCompetency(semBase, "2026-05"), 10);
+});
+
+test("servicos periodicidade canônica: vínculo com cartão identifica risco de duplicidade", () => {
+  const linked = buildServicoFixture({
+    compraCartaoId: "compra-1",
+  });
+  assert.equal(isServicoLinkedToCardCharge(linked), true);
+  assert.equal(isServicoLinkedToCardCharge(buildServicoFixture({ compraCartaoId: null })), false);
+});
+
+test("servicos periodicidade canônica: display info retorna texto curto com equivalente mensal", () => {
+  const info = getServicoBillingDisplayInfo(buildServicoFixture({
+    periodicidadeCobranca: "anual",
+    valorCobranca: "229.82",
+    valorMensal: "19.15",
+  }));
+
+  assert.equal(info.periodicidade, "anual");
+  assert.equal(info.valorCobranca, 229.82);
+  assert.equal(info.equivalenteMensal, 19.15);
+  assert.equal(info.shortText.includes("equiv."), true);
+});
+
+test("servicos periodicidade canônica: valores inválidos/negativos não quebram e retornam zero", () => {
+  const invalido = calculateServicoEquivalentMonthlyAmount({
+    periodicidadeCobranca: "mensal",
+    valorCobranca: "-100",
+    valorMensal: "-100",
+  });
+  assert.equal(invalido, 0);
+
+  const realCompetencia = calculateServicoRealChargeForCompetency({
+    periodicidadeCobranca: "mensal",
+    valorCobranca: "abc",
+    valorMensal: "abc",
+  }, "2026-05");
+  assert.equal(realCompetencia, 0);
 });
 
 test("servicos periodicidade: payload legado com valorMensal resolve valorCobranca compatível", () => {
