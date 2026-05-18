@@ -22,6 +22,7 @@ type CartoesMobileTabsProps = {
   onOpenParcelas: (compra: CompraCartao) => void;
   onDeleteCompra: (compra: CompraCartao) => void;
   resolveCompraIconSuggestion: (compra: CompraCartao) => PurchaseIconMatchResult;
+  resolveCardIconId: (cartao: Cartao) => string | null;
 };
 
 const INITIAL_VISIBLE_ITEMS = 6;
@@ -44,6 +45,7 @@ export function CartoesMobileTabs({
   onOpenParcelas,
   onDeleteCompra,
   resolveCompraIconSuggestion,
+  resolveCardIconId,
 }: CartoesMobileTabsProps) {
   const [pageByCard, setPageByCard] = useState<PageByCard>({});
 
@@ -103,7 +105,7 @@ export function CartoesMobileTabs({
               data-testid={`mobile-card-cartao-${cartao.id}`}
             >
               <div className="flex items-center gap-3 p-4">
-                <BrandIconDisplay name={cartao.nome} iconeId={cartao.iconeId} size="md" />
+                <BrandIconDisplay name={cartao.nome} iconeId={resolveCardIconId(cartao)} size="md" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold leading-tight">{cartao.nome}</p>
                   <p className="text-xs text-muted-foreground">Cartão manual</p>

@@ -65,7 +65,7 @@ import {
   uploadParcelaComprovante,
 } from "@/services/api/cartoes";
 import { createIconMatchRules, fetchIconMatchRules, type IconMatchRuleApiModel } from "@/services/api/icon-match-rules";
-import { matchPurchaseIconByDescription, type UserIconMatchRule } from "@/lib/purchase-icon-matching";
+import { matchIconByText, matchPurchaseIconByDescription, type UserIconMatchRule } from "@/lib/purchase-icon-matching";
 import {
   calculateCardInvoiceForCompetency,
   compraHasInstallmentInCompetency,
@@ -933,6 +933,14 @@ export default function CartoesPage() {
   );
   const resolveCompraIconSuggestion = (compra: CompraCartao) =>
     matchPurchaseIconByDescription(compra.descricao, normalizedIconMatchRules);
+  const resolveStrongAutoIconId = (text: string, explicitIconId?: string | null) => {
+    if (explicitIconId) return explicitIconId;
+    const match = matchIconByText(text, normalizedIconMatchRules);
+    if (!match.matched || !match.shouldAutoApply || !match.iconId) return null;
+    return match.iconId;
+  };
+  const resolveCardAutoIconId = (cartao: Cartao) =>
+    resolveStrongAutoIconId(cartao.nome, cartao.iconeId ?? null);
   const handleSaveCompraIconRule = async (descricao: string, iconId: string) => {
     await saveIconMatchRuleMutation.mutateAsync({ descricao, iconId });
   };
@@ -1524,10 +1532,11 @@ export default function CartoesPage() {
   };
 
   const handleCreateCard = () => {
+    const nextIconeId = resolveStrongAutoIconId(cardForm.nome, newCardIcone);
     createCardMutation.mutate(
       {
         ...cardForm,
-        iconeId: newCardIcone,
+        iconeId: nextIconeId,
       },
       {
         onSuccess: () => {
@@ -1550,10 +1559,11 @@ export default function CartoesPage() {
 
   const handleUpdateCard = () => {
     if (!editingCard) return;
+    const nextIconeId = resolveStrongAutoIconId(editCardForm.nome, editCardIcone);
     updateCardMutation.mutate(
       {
         id: editingCard.id,
-        data: { ...editCardForm, iconeId: editCardIcone },
+        data: { ...editCardForm, iconeId: nextIconeId },
       },
       {
         onSuccess: () => {
@@ -3032,6 +3042,7 @@ export default function CartoesPage() {
             setSelectedCartao(cartaoId);
             setComprasCartaoFocadoId(cartaoId);
           }}
+          resolveCardIconId={resolveCardAutoIconId}
         />
       </div>
 
@@ -3054,6 +3065,7 @@ export default function CartoesPage() {
           onOpenParcelas={setViewingCompra}
           onDeleteCompra={openDeleteCompraConfirm}
           resolveCompraIconSuggestion={resolveCompraIconSuggestion}
+          resolveCardIconId={resolveCardAutoIconId}
         />
       ) : (
         <CartoesComprasGrid
@@ -3102,6 +3114,7 @@ export default function CartoesPage() {
           onMarcarReembolso={(compraId) => handleMarcarReembolso(compraId, true)}
           resolveCompraIconSuggestion={resolveCompraIconSuggestion}
           onSaveCompraIconRule={handleSaveCompraIconRule}
+          resolveCardIconId={resolveCardAutoIconId}
         />
       )}
       </div>

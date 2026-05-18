@@ -1,5 +1,6 @@
-import { useState, lazy, Suspense } from "react";
+import { useState, lazy, Suspense, useMemo } from "react";
 import { format } from "date-fns";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,10 +31,19 @@ import {
 import { CompraCartaoSearchPicker } from "@/components/compra-cartao-search-picker";
 import { DivisaoPanel } from "@/pages/servicos/components/divisao-panel";
 import { sortServicosForView, type ServicoSortBy } from "@/pages/servicos/servicos-sort.utils";
+import {
+  buildServicoPeriodicidadeResumo,
+  formatServicoBillingValue,
+  resolveServicoBillingView,
+  SERVICO_PERIODICIDADE_OPTIONS,
+} from "@/pages/servicos/servico-periodicidade.utils";
 import { Plus, Repeat, Trash2, X, Check, Users, ChevronUp, Pencil, CreditCard, Unlink2 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
+import { fetchIconMatchRules, type IconMatchRuleApiModel } from "@/services/api/icon-match-rules";
+import { matchIconByText, type UserIconMatchRule } from "@/lib/purchase-icon-matching";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import type { Servico } from "@shared/schema";
+import { resolveServicoBillingFields, type ServicoPeriodicidade } from "@shared/servico-periodicidade";
 
 const IconPicker = lazy(() =>
   import("@/components/icon-picker").then((mod) => ({ default: mod.IconPicker })),
@@ -82,7 +92,8 @@ export default function ServicosPage() {
   const [form, setForm] = useState({
     nome: "",
     categoria: "streaming",
-    valorMensal: "",
+    valorCobranca: "",
+    periodicidadeCobranca: "mensal" as ServicoPeriodicidade,
     dataCobranca: "",
     formaPagamento: "cartao",
     compraCartaoId: COMPRA_NONE_VALUE,
@@ -93,7 +104,8 @@ export default function ServicosPage() {
   const [editForm, setEditForm] = useState({
     nome: "",
     categoria: "streaming",
-    valorMensal: "",
+    valorCobranca: "",
+    periodicidadeCobranca: "mensal" as ServicoPeriodicidade,
     dataCobranca: "",
     formaPagamento: "cartao",
     compraCartaoId: COMPRA_NONE_VALUE,
@@ -114,6 +126,59 @@ export default function ServicosPage() {
     deleteMutation,
     updateMutation,
   } = useServicos();
+  const { data: iconMatchRules = [] } = useQuery<IconMatchRuleApiModel[]>({
+    queryKey: ["/api/icon-match-rules"],
+    queryFn: fetchIconMatchRules,
+    staleTime: 5 * 60_000,
+  });
+
+  const normalizedIconMatchRules = useMemo<UserIconMatchRule[]>(
+    () => iconMatchRules.map((rule) => ({
+      id: rule.id,
+      iconId: rule.iconId,
+      normalizedTerm: rule.normalizedTerm,
+      originalTerm: rule.originalTerm,
+    })),
+    [iconMatchRules],
+  );
+
+  const resolveStrongAutoIconId = (text: string, explicitIconId?: string | null) => {
+    if (explicitIconId) return explicitIconId;
+    const match = matchIconByText(text, normalizedIconMatchRules);
+    if (!match.matched || !match.shouldAutoApply || !match.iconId) return null;
+    return match.iconId;
+  };
+
+  const resolveServiceIconId = (servico: Servico) =>
+    resolveStrongAutoIconId(servico.nome, servico.iconeId ?? null);
+
+  const createBilling = useMemo(
+    () =>
+      resolveServicoBillingFields({
+        periodicidadeCobranca: form.periodicidadeCobranca,
+        valorCobranca: form.valorCobranca,
+      }),
+    [form.periodicidadeCobranca, form.valorCobranca],
+  );
+
+  const createBillingResumo = useMemo(
+    () => buildServicoPeriodicidadeResumo(form.periodicidadeCobranca, form.valorCobranca),
+    [form.periodicidadeCobranca, form.valorCobranca],
+  );
+
+  const editBilling = useMemo(
+    () =>
+      resolveServicoBillingFields({
+        periodicidadeCobranca: editForm.periodicidadeCobranca,
+        valorCobranca: editForm.valorCobranca,
+      }),
+    [editForm.periodicidadeCobranca, editForm.valorCobranca],
+  );
+
+  const editBillingResumo = useMemo(
+    () => buildServicoPeriodicidadeResumo(editForm.periodicidadeCobranca, editForm.valorCobranca),
+    [editForm.periodicidadeCobranca, editForm.valorCobranca],
+  );
 
   const toggleDivisao = (id: string) => {
     setExpandedDivisao((prev) => {
@@ -272,8 +337,11 @@ export default function ServicosPage() {
                 createMutation.mutate(
                   {
                     ...form,
+                    valorMensal: createBilling.valorMensal,
+                    valorCobranca: createBilling.valorCobranca,
+                    periodicidadeCobranca: createBilling.periodicidadeCobranca,
                     compraCartaoId: form.compraCartaoId === COMPRA_NONE_VALUE ? null : form.compraCartaoId,
-                    iconeId: newServicoIcone,
+                    iconeId: resolveStrongAutoIconId(form.nome, newServicoIcone),
                   },
                   {
                     onSuccess: () => {
@@ -281,7 +349,8 @@ export default function ServicosPage() {
                       setForm({
                         nome: "",
                         categoria: "streaming",
-                        valorMensal: "",
+                        valorCobranca: "",
+                        periodicidadeCobranca: "mensal",
                         dataCobranca: "",
                         formaPagamento: "cartao",
                         compraCartaoId: COMPRA_NONE_VALUE,
@@ -340,16 +409,38 @@ export default function ServicosPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Valor mensal</Label>
+                  <Label>Valor da cobrança</Label>
                   <Input
                     data-testid="input-servico-valor"
                     type="number"
                     step="0.01"
-                    value={form.valorMensal}
-                    onChange={(e) => setForm({ ...form, valorMensal: e.target.value })}
+                    value={form.valorCobranca}
+                    onChange={(e) => setForm({ ...form, valorCobranca: e.target.value })}
                     placeholder="0,00"
                     required
                   />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Periodicidade da cobrança</Label>
+                <Select
+                  value={form.periodicidadeCobranca}
+                  onValueChange={(value) => setForm({ ...form, periodicidadeCobranca: value as ServicoPeriodicidade })}
+                >
+                  <SelectTrigger data-testid="select-servico-periodicidade">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SERVICO_PERIODICIDADE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+                  <p>{createBillingResumo.primary}</p>
+                  {createBillingResumo.secondary ? <p>{createBillingResumo.secondary}</p> : null}
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -391,7 +482,7 @@ export default function ServicosPage() {
                   noneLabel="Sem vínculo com cartão"
                   context={{
                     text: form.nome,
-                    value: Number(form.valorMensal) || null,
+                    value: createBilling.valorMensalNumber || null,
                   }}
                   testId="select-servico-compra-vinculada"
                 />
@@ -520,7 +611,7 @@ export default function ServicosPage() {
                       <CardContent className="space-y-3 p-4 sm:p-5">
                         <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
                           <div className="pt-0.5 sm:pt-0 sm:self-start">
-                            <BrandIconDisplay name={s.nome} iconeId={s.iconeId} size="sm" />
+                            <BrandIconDisplay name={s.nome} iconeId={resolveServiceIconId(s)} size="sm" />
                           </div>
                           <div className="min-w-0">
                             <div className="min-w-0">
@@ -555,7 +646,7 @@ export default function ServicosPage() {
                             </div>
                           </div>
                           <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 sm:col-span-1 sm:col-start-3 sm:justify-end sm:self-start">
-                            <span className="fin-value-person whitespace-nowrap">{formatCurrencyBRL(Number(s.valorMensal))}</span>
+                            <span className="fin-value-person whitespace-nowrap text-right">{formatServicoBillingValue(s)}</span>
                             <Badge variant={s.status === "ativo" ? "default" : "secondary"} className="h-7 px-2.5 text-xs font-semibold whitespace-nowrap">
                               {s.status === "ativo" ? "Ativo" : "Cancelado"}
                             </Badge>
@@ -596,12 +687,14 @@ export default function ServicosPage() {
                               size="icon"
                               className="h-7 w-7"
                               onClick={() => {
+                                const billingView = resolveServicoBillingView(s);
                                 setEditingServico(s);
                                 setEditIcone(s.iconeId || null);
                                 setEditForm({
                                   nome: s.nome,
                                   categoria: s.categoria,
-                                  valorMensal: String(s.valorMensal),
+                                  valorCobranca: billingView.valorCobranca.toFixed(2),
+                                  periodicidadeCobranca: billingView.periodicidade,
                                   dataCobranca: String(s.dataCobranca),
                                   formaPagamento: s.formaPagamento,
                                   compraCartaoId: s.compraCartaoId ?? COMPRA_NONE_VALUE,
@@ -695,8 +788,11 @@ export default function ServicosPage() {
                 {
                   id: editingServico.id,
                   ...editForm,
+                  valorMensal: editBilling.valorMensal,
+                  valorCobranca: editBilling.valorCobranca,
+                  periodicidadeCobranca: editBilling.periodicidadeCobranca,
                   compraCartaoId: editForm.compraCartaoId === COMPRA_NONE_VALUE ? null : editForm.compraCartaoId,
-                  iconeId: editIcone,
+                  iconeId: resolveStrongAutoIconId(editForm.nome, editIcone),
                 },
                 {
                   onSuccess: () => {
@@ -742,15 +838,37 @@ export default function ServicosPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Valor mensal</Label>
+                <Label>Valor da cobrança</Label>
                 <Input
                   data-testid="input-edit-servico-valor"
                   type="number"
                   step="0.01"
-                  value={editForm.valorMensal}
-                  onChange={(e) => setEditForm({ ...editForm, valorMensal: e.target.value })}
+                  value={editForm.valorCobranca}
+                  onChange={(e) => setEditForm({ ...editForm, valorCobranca: e.target.value })}
                   required
                 />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Periodicidade da cobrança</Label>
+              <Select
+                value={editForm.periodicidadeCobranca}
+                onValueChange={(value) => setEditForm({ ...editForm, periodicidadeCobranca: value as ServicoPeriodicidade })}
+              >
+                <SelectTrigger data-testid="select-edit-servico-periodicidade">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SERVICO_PERIODICIDADE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+                <p>{editBillingResumo.primary}</p>
+                {editBillingResumo.secondary ? <p>{editBillingResumo.secondary}</p> : null}
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -792,7 +910,7 @@ export default function ServicosPage() {
                 noneLabel="Sem vínculo com cartão"
                 context={{
                   text: editForm.nome,
-                  value: Number(editForm.valorMensal) || null,
+                  value: editBilling.valorMensalNumber || null,
                 }}
                 testId="select-edit-servico-compra-vinculada"
               />

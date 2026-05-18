@@ -15,6 +15,7 @@ type CartoesGridProps = {
   getCardCompras: (cartaoId: string) => CompraCartao[];
   formatCartaoCurrency: (value: number) => string;
   onOpenCompras: (cartaoId: string) => void;
+  resolveCardIconId: (cartao: Cartao) => string | null;
 };
 
 export function CartoesGrid({
@@ -26,6 +27,7 @@ export function CartoesGrid({
   getCardCompras,
   formatCartaoCurrency,
   onOpenCompras,
+  resolveCardIconId,
 }: CartoesGridProps) {
   if (cartoes.length === 0 || cartoesTab === "compras") return null;
 
@@ -52,7 +54,7 @@ export function CartoesGrid({
             <CartaoCard key={cartao.id} contentClassName="space-y-3.5 p-4 sm:p-5">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                 <div className="min-w-0 flex items-center gap-3">
-                  <BrandIconDisplay name={cartao.nome} iconeId={cartao.iconeId} size="sm" />
+                  <BrandIconDisplay name={cartao.nome} iconeId={resolveCardIconId(cartao)} size="sm" />
                   <div className="min-w-0">
                     <p className="truncate text-base font-semibold leading-tight">{cartao.nome}</p>
                     <p className="text-xs text-muted-foreground">{totalCompras} compra(s) parcelada(s)</p>

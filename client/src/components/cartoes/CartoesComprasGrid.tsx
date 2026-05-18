@@ -41,6 +41,7 @@ type CartoesComprasGridProps = {
   onMarcarReembolso: (compraId: string) => void;
   resolveCompraIconSuggestion: (compra: CompraCartao) => PurchaseIconMatchResult;
   onSaveCompraIconRule: (descricao: string, iconId: string) => Promise<void> | void;
+  resolveCardIconId: (cartao: Cartao) => string | null;
 };
 
 const INITIAL_VISIBLE_ITEMS = 6;
@@ -70,6 +71,7 @@ export function CartoesComprasGrid({
   onMarcarReembolso,
   resolveCompraIconSuggestion,
   onSaveCompraIconRule,
+  resolveCardIconId,
 }: CartoesComprasGridProps) {
   const [pageByCard, setPageByCard] = useState<PageByCard>({});
   const [ignoredSuggestionsByCompraId, setIgnoredSuggestionsByCompraId] = useState<Record<string, boolean>>({});
@@ -140,7 +142,7 @@ export function CartoesComprasGrid({
             header={(
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-3">
-                  <BrandIconDisplay name={cartao.nome} iconeId={cartao.iconeId} size="md" />
+                  <BrandIconDisplay name={cartao.nome} iconeId={resolveCardIconId(cartao)} size="md" />
                   <div className="min-w-0">
                     <CardTitle className="text-base">{cartao.nome}</CardTitle>
                     <p className="mt-0.5 text-xs text-muted-foreground">

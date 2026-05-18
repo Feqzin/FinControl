@@ -1,12 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BrandIconDisplay, LIBRARY_ICONS } from "@/lib/brand-icons";
-import { Check, ImagePlus, Pencil, RotateCcw, Upload } from "lucide-react";
+import { Check, ImagePlus, Pencil, RotateCcw, Trash2, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import {
@@ -19,6 +29,7 @@ import {
 } from "@/services/api/official-icons";
 import {
   createUserIconLibraryItem,
+  deleteUserIconLibraryItem,
   fetchUserIconLibrary,
   updateUserIconLibraryItem,
   type UserIconLibraryItemApiModel,
@@ -98,6 +109,7 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
   const [editIconName, setEditIconName] = useState("");
   const [editCategory, setEditCategory] = useState("outro");
   const [editKeywords, setEditKeywords] = useState("");
+  const [deletingIcon, setDeletingIcon] = useState<UserIconLibraryItemApiModel | null>(null);
   const [ignoredSuggestionKey, setIgnoredSuggestionKey] = useState<string | null>(null);
   const [autoAppliedSuggestionKey, setAutoAppliedSuggestionKey] = useState<string | null>(null);
   const [exploreSearch, setExploreSearch] = useState("");
@@ -285,6 +297,32 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
     },
   });
 
+  const deletePersonalIconMutation = useMutation({
+    mutationFn: async (icon: UserIconLibraryItemApiModel) => deleteUserIconLibraryItem(icon.id),
+    onSuccess: (_result, deletedIcon) => {
+      const deletedImageUrl = deletedIcon.imageUrl ?? null;
+      setDeletingIcon(null);
+      if (deletedImageUrl && value === deletedImageUrl) {
+        onChange(null);
+      }
+      toast({
+        title: "Ícone excluído da sua biblioteca.",
+      });
+      void queryClient.invalidateQueries({ queryKey: ["/api/user-icon-library"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icon-match-rules"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/official"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Não foi possível excluir o ícone.";
+      toast({
+        title: "Erro ao excluir ícone",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -399,6 +437,11 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
       category: resolveUserIconCategory(editCategory),
       keywords: parseKeywordInput(editKeywords),
     });
+  };
+
+  const handleConfirmDeletePersonalIcon = () => {
+    if (!deletingIcon) return;
+    deletePersonalIconMutation.mutate(deletingIcon);
   };
 
   const personalOfficialIconIds = officialIconsInLibrary;
@@ -544,18 +587,32 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
                               {item.name}
                             </span>
                           </button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="mt-1 h-6 w-full text-[11px]"
-                            onClick={() => openEditPersonalIcon(item)}
-                            aria-label={`Editar ícone ${item.name}`}
-                            title={`Editar ícone ${item.name}`}
-                          >
-                            <Pencil className="mr-1 h-3 w-3" />
-                            Editar
-                          </Button>
+                          <div className="mt-1 grid grid-cols-2 gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-[11px]"
+                              onClick={() => openEditPersonalIcon(item)}
+                              aria-label={`Editar ícone ${item.name}`}
+                              title={`Editar ícone ${item.name}`}
+                            >
+                              <Pencil className="mr-1 h-3 w-3" />
+                              Editar
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-[11px] text-destructive hover:text-destructive"
+                              onClick={() => setDeletingIcon(item)}
+                              aria-label={`Excluir ícone ${item.name}`}
+                              title={`Excluir ícone ${item.name}`}
+                            >
+                              <Trash2 className="mr-1 h-3 w-3" />
+                              Excluir
+                            </Button>
+                          </div>
                         </div>
                       );
                     })}
@@ -888,6 +945,39 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={Boolean(deletingIcon)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !deletePersonalIconMutation.isPending) {
+            setDeletingIcon(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir este ícone?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ele será removido da sua biblioteca e deixará de ser usado automaticamente em compras, cartões e serviços futuros.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletePersonalIconMutation.isPending}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                handleConfirmDeletePersonalIcon();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deletePersonalIconMutation.isPending}
+            >
+              {deletePersonalIconMutation.isPending ? "Excluindo..." : "Excluir ícone"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
