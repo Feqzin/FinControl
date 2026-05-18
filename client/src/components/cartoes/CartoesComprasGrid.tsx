@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { BrandIconDisplay } from "@/lib/brand-icons";
+import { BrandIconDisplay, LIBRARY_ICONS } from "@/lib/brand-icons";
 import type { Cartao, CompraCartao, Pessoa, Servico } from "@shared/schema";
 import {
   CalendarClock,
@@ -17,6 +17,7 @@ import {
   User,
 } from "lucide-react";
 import { CartaoCard } from "@/components/cartoes/CartaoCard";
+import type { PurchaseIconMatchResult } from "@/lib/purchase-icon-matching";
 
 type CartoesComprasGridProps = {
   cartoes: Cartao[];
@@ -38,6 +39,8 @@ type CartoesComprasGridProps = {
   onEditCompra: (compra: CompraCartao) => void;
   onDeleteCompra: (compra: CompraCartao) => void;
   onMarcarReembolso: (compraId: string) => void;
+  resolveCompraIconSuggestion: (compra: CompraCartao) => PurchaseIconMatchResult;
+  onSaveCompraIconRule: (descricao: string, iconId: string) => Promise<void> | void;
 };
 
 const INITIAL_VISIBLE_ITEMS = 6;
@@ -65,8 +68,12 @@ export function CartoesComprasGrid({
   onEditCompra,
   onDeleteCompra,
   onMarcarReembolso,
+  resolveCompraIconSuggestion,
+  onSaveCompraIconRule,
 }: CartoesComprasGridProps) {
   const [pageByCard, setPageByCard] = useState<PageByCard>({});
+  const [ignoredSuggestionsByCompraId, setIgnoredSuggestionsByCompraId] = useState<Record<string, boolean>>({});
+  const [customIconByCompraId, setCustomIconByCompraId] = useState<Record<string, string>>({});
   const cartoesVisiveis = useMemo(() => {
     if (!focusedCartaoId) return cartoes;
     const focused = cartoes.find((cartao) => cartao.id === focusedCartaoId);
@@ -228,11 +235,23 @@ export function CartoesComprasGrid({
                     const aguardandoReembolso = compra.pessoaId && (!compra.statusPessoa || compra.statusPessoa === "pendente");
                     const reembolsado = compra.pessoaId && compra.statusPessoa === "pago";
                     const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
+                    const iconSuggestion = resolveCompraIconSuggestion(compra);
+                    const hasIgnoredSuggestion = Boolean(ignoredSuggestionsByCompraId[compra.id]);
+                    const shouldShowSuggestion = iconSuggestion.matched
+                      && !iconSuggestion.shouldAutoApply
+                      && iconSuggestion.shouldSuggest
+                      && !hasIgnoredSuggestion;
+                    const customIconEditorOpen = Object.prototype.hasOwnProperty.call(customIconByCompraId, compra.id);
+                    const selectedCustomIcon = customIconByCompraId[compra.id] ?? iconSuggestion.iconId ?? "kabum";
 
                     return (
                     <div key={compra.id} className="fintech-surface-subtle touch-feedback p-2 text-sm" data-testid={`compra-${compra.id}`}>
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2.5">
-                          <BrandIconDisplay name={compra.descricao} size="sm" />
+                          <BrandIconDisplay
+                            name={compra.descricao}
+                            iconeId={iconSuggestion.shouldAutoApply ? iconSuggestion.iconId : undefined}
+                            size="sm"
+                          />
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="truncate font-medium">{compra.descricao}</p>
@@ -263,6 +282,88 @@ export function CartoesComprasGrid({
                               {compra.parcelaAtual}/{compra.parcelas}x de {formatCurrency(Number(compra.valorParcela))}
                               {" · "}total: {formatCurrency(Number(compra.valorTotal))}
                             </p>
+                            {shouldShowSuggestion ? (
+                              <div className="mt-1.5 space-y-1.5 rounded-md border border-dashed border-blue-200 bg-blue-50/60 p-2 text-[11px] text-blue-900 dark:border-blue-800 dark:bg-blue-950/20 dark:text-blue-200">
+                                <p className="font-medium">
+                                  Ícone sugerido: {iconSuggestion.label ?? "Personalizado"}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 px-2 text-[11px]"
+                                    onClick={() => {
+                                      if (!iconSuggestion.iconId) return;
+                                      void onSaveCompraIconRule(compra.descricao, iconSuggestion.iconId);
+                                    }}
+                                  >
+                                    Usar este ícone
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2 text-[11px]"
+                                    onClick={() => {
+                                      setIgnoredSuggestionsByCompraId((prev) => ({ ...prev, [compra.id]: true }));
+                                    }}
+                                  >
+                                    Ignorar
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2 text-[11px]"
+                                    onClick={() => {
+                                      setCustomIconByCompraId((prev) => ({
+                                        ...prev,
+                                        [compra.id]: selectedCustomIcon,
+                                      }));
+                                    }}
+                                  >
+                                    Escolher outro
+                                  </Button>
+                                </div>
+                                {customIconEditorOpen ? (
+                                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                    <select
+                                      value={selectedCustomIcon}
+                                      onChange={(event) => {
+                                        const next = event.target.value;
+                                        setCustomIconByCompraId((prev) => ({ ...prev, [compra.id]: next }));
+                                      }}
+                                      className="h-7 min-w-[170px] rounded border bg-background px-2 text-[11px]"
+                                      aria-label="Escolher ícone da compra"
+                                    >
+                                      {LIBRARY_ICONS.map((icon) => (
+                                        <option key={icon.key} value={icon.key}>
+                                          {icon.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-6 px-2 text-[11px]"
+                                      onClick={() => {
+                                        if (!selectedCustomIcon) return;
+                                        void onSaveCompraIconRule(compra.descricao, selectedCustomIcon);
+                                        setCustomIconByCompraId((prev) => {
+                                          const next = { ...prev };
+                                          delete next[compra.id];
+                                          return next;
+                                        });
+                                      }}
+                                    >
+                                      Salvar ícone
+                                    </Button>
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
                           </div>
                           <div className="flex w-full flex-shrink-0 items-center justify-between gap-1 sm:w-auto sm:justify-end">
                             <span className="text-xs font-semibold">{formatCurrency(Number(compra.valorParcela))}</span>

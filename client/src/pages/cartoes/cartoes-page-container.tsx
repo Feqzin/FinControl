@@ -64,6 +64,8 @@ import {
   type DeleteFaturaResponse,
   uploadParcelaComprovante,
 } from "@/services/api/cartoes";
+import { createIconMatchRules, fetchIconMatchRules, type IconMatchRuleApiModel } from "@/services/api/icon-match-rules";
+import { matchPurchaseIconByDescription, type UserIconMatchRule } from "@/lib/purchase-icon-matching";
 import {
   calculateCardInvoiceForCompetency,
   compraHasInstallmentInCompetency,
@@ -638,6 +640,32 @@ export default function CartoesPage() {
     enabled: smartImportLiberado && openImport && importItems.length > 0,
     staleTime: 5 * 60_000,
   });
+  const { data: iconMatchRules = [] } = useQuery<IconMatchRuleApiModel[]>({
+    queryKey: ["/api/icon-match-rules"],
+    queryFn: fetchIconMatchRules,
+    staleTime: 5 * 60_000,
+  });
+  const saveIconMatchRuleMutation = useMutation({
+    mutationFn: async ({ descricao, iconId }: { descricao: string; iconId: string }) =>
+      createIconMatchRules({
+        iconId,
+        terms: [descricao],
+      }),
+    onSuccess: () => {
+      toast({
+        title: "Reconhecimento salvo",
+        description: "Compras com nome parecido vão usar esse ícone automaticamente.",
+      });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icon-match-rules"] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro ao salvar reconhecimento",
+        description: getErrorMessage(error),
+        variant: "destructive",
+      });
+    },
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -894,6 +922,20 @@ export default function CartoesPage() {
   };
 
   const compraSearchNormalized = compraSearch.trim().toLowerCase();
+  const normalizedIconMatchRules = useMemo<UserIconMatchRule[]>(
+    () => iconMatchRules.map((rule) => ({
+      id: rule.id,
+      iconId: rule.iconId,
+      normalizedTerm: rule.normalizedTerm,
+      originalTerm: rule.originalTerm,
+    })),
+    [iconMatchRules],
+  );
+  const resolveCompraIconSuggestion = (compra: CompraCartao) =>
+    matchPurchaseIconByDescription(compra.descricao, normalizedIconMatchRules);
+  const handleSaveCompraIconRule = async (descricao: string, iconId: string) => {
+    await saveIconMatchRuleMutation.mutateAsync({ descricao, iconId });
+  };
   const activeCartoesTab: CartoesTab = cartoesTab;
   const currentInvoiceMonthReference = format(new Date(), "yyyy-MM");
   const parcelasCompraByCompraId = useMemo(
@@ -3011,6 +3053,7 @@ export default function CartoesPage() {
           servicos={servicos}
           onOpenParcelas={setViewingCompra}
           onDeleteCompra={openDeleteCompraConfirm}
+          resolveCompraIconSuggestion={resolveCompraIconSuggestion}
         />
       ) : (
         <CartoesComprasGrid
@@ -3057,6 +3100,8 @@ export default function CartoesPage() {
           }}
           onDeleteCompra={openDeleteCompraConfirm}
           onMarcarReembolso={(compraId) => handleMarcarReembolso(compraId, true)}
+          resolveCompraIconSuggestion={resolveCompraIconSuggestion}
+          onSaveCompraIconRule={handleSaveCompraIconRule}
         />
       )}
       </div>

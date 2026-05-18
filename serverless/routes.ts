@@ -31,6 +31,7 @@ import { createSubscriptionController } from "./controllers/subscription.control
 import { createBillingController } from "./controllers/billing.controller.js";
 import { createReportsController } from "./controllers/reports.controller.js";
 import { createCompraAliasesController } from "./controllers/compra-aliases.controller.js";
+import { createIconMatchRulesController } from "./controllers/icon-match-rules.controller.js";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.js";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
 import { registerDebugDbPingRoute } from "./routes/debug-db-ping.route.js";
@@ -55,6 +56,7 @@ import { pool } from "./db.js";
 import { ENV } from "./env.js";
 import { ReportsService } from "./services/reports.service.js";
 import { CompraAliasesService } from "./services/compra-aliases.service.js";
+import { IconMatchRulesService } from "./services/icon-match-rules.service.js";
 
 function auditRoute(
   req: Request,
@@ -103,6 +105,7 @@ export function registerRoutes(app: Express): void {
   const billingController = createBillingController(new BillingService());
   const reportsController = createReportsController(new ReportsService(financialRepository));
   const compraAliasesController = createCompraAliasesController(new CompraAliasesService(storage));
+  const iconMatchRulesController = createIconMatchRulesController(new IconMatchRulesService());
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -299,6 +302,9 @@ export function registerRoutes(app: Express): void {
   app.get("/api/compra-aliases", requireAuth, compraAliasesController.list);
   app.post("/api/compra-aliases", requireAuth, compraAliasesController.create);
   app.delete("/api/compra-aliases/:id", requireAuth, compraAliasesController.remove);
+  app.get("/api/icon-match-rules", requireAuth, iconMatchRulesController.list);
+  app.post("/api/icon-match-rules", requireAuth, iconMatchRulesController.create);
+  app.delete("/api/icon-match-rules/:id", requireAuth, iconMatchRulesController.remove);
   app.get("/api/subscription/usage", requireAuth, subscriptionController.getUsage);
   app.post("/api/billing/mercadopago/webhook", webhookRateLimit, billingController.processMercadoPagoWebhook);
   app.get("/api/billing/status", requireAuth, billingController.getStatus);

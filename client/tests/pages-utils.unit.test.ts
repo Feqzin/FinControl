@@ -60,6 +60,7 @@ import {
 } from "../src/pages/pessoas/payment-timeline.utils";
 import { buildCompraAliasDraft, findPossibleExistingPurchaseMatch } from "../src/pages/cartoes/import-existing-purchase-match";
 import { buildCreateCompraAliasRequestBody } from "../src/services/api/cartoes";
+import { matchPurchaseIconByDescription } from "../src/lib/purchase-icon-matching";
 import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
 import {
   formatInvoiceMonthLong,
@@ -2944,6 +2945,48 @@ test("import parser: buildCreateCompraAliasRequestBody aceita cartaoId ausente e
   assert.equal(Object.hasOwn(body, "cardLast4"), false);
   assert.equal(Object.hasOwn(body, "valorParcela"), false);
   assert.equal(Object.hasOwn(body, "totalParcelas"), false);
+});
+
+test("icon matching: Netflix reconhece Netflix com match forte", () => {
+  const result = matchPurchaseIconByDescription("Netflix.comsaopaulobr", []);
+  assert.equal(result.matched, true);
+  assert.equal(result.iconId, "netflix");
+  assert.equal(result.shouldAutoApply, true);
+});
+
+test("icon matching: Spotify reconhece Spotify com match forte", () => {
+  const result = matchPurchaseIconByDescription("DM SPOTIFY Premium", []);
+  assert.equal(result.matched, true);
+  assert.equal(result.iconId, "spotify");
+  assert.equal(result.shouldAutoApply, true);
+});
+
+test("icon matching: KaBuM reconhece MLP KaBuM com regra pessoal", () => {
+  const result = matchPurchaseIconByDescription("MLP KaBuM KaBuM", [
+    {
+      id: "rule-1",
+      iconId: "kabum",
+      originalTerm: "mlp kabum",
+      normalizedTerm: "mlp kabum",
+    },
+  ]);
+  assert.equal(result.matched, true);
+  assert.equal(result.iconId, "kabum");
+  assert.equal(result.source, "personal_rule");
+  assert.equal(result.shouldAutoApply, true);
+});
+
+test("icon matching: match fraco não aplica automático", () => {
+  const result = matchPurchaseIconByDescription("Mercearia do bairro central", []);
+  assert.equal(result.shouldAutoApply, false);
+  assert.equal(result.shouldSuggest, false);
+});
+
+test("icon matching: compra importada recebe ícone quando match forte", () => {
+  const importedPurchaseDescription = "NETFLIX ENTRETENIMENTO";
+  const result = matchPurchaseIconByDescription(importedPurchaseDescription, []);
+  assert.equal(result.iconId, "netflix");
+  assert.equal(result.shouldAutoApply, true);
 });
 
 test("relatorios PDF: metadados usam overview quando disponível", () => {

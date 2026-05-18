@@ -5,6 +5,7 @@ import { BrandIconDisplay } from "@/lib/brand-icons";
 import type { Cartao, CompraCartao, Servico } from "@shared/schema";
 import { Eye, List, Plus, Trash2 } from "lucide-react";
 import { getNextInvoiceDate } from "@/pages/cartoes/cartoes.utils";
+import type { PurchaseIconMatchResult } from "@/lib/purchase-icon-matching";
 
 type CartoesMobileTabsProps = {
   cartoes: Cartao[];
@@ -20,6 +21,7 @@ type CartoesMobileTabsProps = {
   servicos: Servico[];
   onOpenParcelas: (compra: CompraCartao) => void;
   onDeleteCompra: (compra: CompraCartao) => void;
+  resolveCompraIconSuggestion: (compra: CompraCartao) => PurchaseIconMatchResult;
 };
 
 const INITIAL_VISIBLE_ITEMS = 6;
@@ -41,6 +43,7 @@ export function CartoesMobileTabs({
   servicos,
   onOpenParcelas,
   onDeleteCompra,
+  resolveCompraIconSuggestion,
 }: CartoesMobileTabsProps) {
   const [pageByCard, setPageByCard] = useState<PageByCard>({});
 
@@ -144,9 +147,14 @@ export function CartoesMobileTabs({
                       </p>
                       {visibleCompras.map((compra) => {
                         const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
+                        const iconSuggestion = resolveCompraIconSuggestion(compra);
                         return (
                           <div key={compra.id} className="touch-feedback flex items-center gap-3 px-4 py-3">
-                            <BrandIconDisplay name={compra.descricao} size="sm" />
+                            <BrandIconDisplay
+                              name={compra.descricao}
+                              iconeId={iconSuggestion.shouldAutoApply ? iconSuggestion.iconId : undefined}
+                              size="sm"
+                            />
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-medium">{compra.descricao}</p>
                               <p className="text-xs text-muted-foreground">

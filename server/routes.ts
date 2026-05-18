@@ -29,12 +29,14 @@ import { createPagamentosTimelineController } from "./controllers/pagamentos-tim
 import { createCloudBackupsController } from "./controllers/cloud-backups.controller";
 import { createReportsController } from "./controllers/reports.controller";
 import { createCompraAliasesController } from "./controllers/compra-aliases.controller";
+import { createIconMatchRulesController } from "./controllers/icon-match-rules.controller";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes";
 import { PagamentosTimelineService } from "./services/pagamentos-timeline.service";
 import { CloudBackupsService } from "./services/cloud-backups.service";
 import { ReportsService } from "./services/reports.service";
 import { CompraAliasesService } from "./services/compra-aliases.service";
+import { IconMatchRulesService } from "./services/icon-match-rules.service";
 import { requirePremiumFeature } from "./subscription-access";
 import { importRateLimit } from "./middleware/rate-limit";
 
@@ -71,6 +73,7 @@ export function registerRoutes(app: Express): void {
   const cloudBackupsController = createCloudBackupsController(new CloudBackupsService());
   const reportsController = createReportsController(new ReportsService(financialRepository));
   const compraAliasesController = createCompraAliasesController(new CompraAliasesService(storage));
+  const iconMatchRulesController = createIconMatchRulesController(new IconMatchRulesService());
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -92,6 +95,9 @@ export function registerRoutes(app: Express): void {
   app.get("/api/compra-aliases", requireAuth, compraAliasesController.list);
   app.post("/api/compra-aliases", requireAuth, compraAliasesController.create);
   app.delete("/api/compra-aliases/:id", requireAuth, compraAliasesController.remove);
+  app.get("/api/icon-match-rules", requireAuth, iconMatchRulesController.list);
+  app.post("/api/icon-match-rules", requireAuth, iconMatchRulesController.create);
+  app.delete("/api/icon-match-rules/:id", requireAuth, iconMatchRulesController.remove);
 
   app.get("/api/pessoas/:pessoaId/timeline-pagamentos", requireAuth, pagamentosTimelineController.listByPessoa);
   app.patch("/api/pagamentos/:sourceType/:sourceId/observacao", requireAuth, pagamentosTimelineController.updateObservacao);

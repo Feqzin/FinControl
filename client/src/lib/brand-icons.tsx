@@ -40,6 +40,7 @@ export const LIBRARY_ICONS: {
   { key: "google",      label: "Google",       category: "servicos",  info: { icon: SiGoogle,      bg: "bg-blue-500",   color: "text-white" } },
   { key: "disney",      label: "Disney+",      category: "servicos",  info: { icon: makeLetterIcon("D+"), bg: "bg-blue-800",  color: "text-white" } },
   { key: "hbo",         label: "HBO Max",      category: "servicos",  info: { icon: SiHbo,         bg: "bg-indigo-700", color: "text-white" } },
+  { key: "kabum",       label: "KaBuM",        category: "servicos",  info: { icon: makeLetterIcon("KB"), bg: "bg-blue-700", color: "text-white" } },
   { key: "paypal",      label: "PayPal",       category: "carteiras", info: { icon: SiPaypal,      bg: "bg-blue-600",   color: "text-white" } },
   { key: "picpay",      label: "PicPay",       category: "carteiras", info: { icon: SiPicpay,      bg: "bg-green-600",  color: "text-white" } },
   { key: "pagseguro",   label: "PagSeguro",    category: "carteiras", info: { icon: SiPagseguro,   bg: "bg-green-700",  color: "text-white" } },
@@ -70,6 +71,7 @@ export function getBrandIcon(name: string): BrandIconInfo {
   if (n.includes("google"))                              return getIconByKey("google");
   if (n.includes("disney"))                              return getIconByKey("disney");
   if (n.includes("hbo") || n.includes("max"))            return getIconByKey("hbo");
+  if (n.includes("kabum") || n.includes("ka bum"))       return getIconByKey("kabum");
   if (n.includes("paypal"))                              return getIconByKey("paypal");
   if (n.includes("picpay"))                              return getIconByKey("picpay");
   if (n.includes("pagseguro"))                           return getIconByKey("pagseguro");

@@ -177,6 +177,29 @@ export const insertCompraAliasSchema = createInsertSchema(compraAliases).omit({
 export type InsertCompraAlias = z.infer<typeof insertCompraAliasSchema>;
 export type CompraAlias = typeof compraAliases.$inferSelect;
 
+export const iconMatchRules = pgTable("icon_match_rules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  iconId: text("icon_id").notNull(),
+  normalizedTerm: text("normalized_term").notNull(),
+  originalTerm: text("original_term").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  iconMatchRulesUserIdIdx: index("idx_icon_match_rules_user_id").on(table.userId),
+  iconMatchRulesNormalizedTermIdx: index("idx_icon_match_rules_normalized_term").on(table.normalizedTerm),
+  iconMatchRulesCreatedAtIdx: index("idx_icon_match_rules_created_at").on(table.createdAt),
+  iconMatchRulesUpdatedAtIdx: index("idx_icon_match_rules_updated_at").on(table.updatedAt),
+}));
+
+export const insertIconMatchRuleSchema = createInsertSchema(iconMatchRules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertIconMatchRule = z.infer<typeof insertIconMatchRuleSchema>;
+export type IconMatchRule = typeof iconMatchRules.$inferSelect;
+
 export const servicos = pgTable("servicos", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
