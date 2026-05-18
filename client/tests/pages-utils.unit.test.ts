@@ -11,6 +11,11 @@ import {
 } from "../src/pages/dividas/dividas.utils";
 import { sortPessoasForView } from "../src/pages/pessoas/pessoas-sort.utils";
 import { sortServicosForView } from "../src/pages/servicos/servicos-sort.utils";
+import {
+  buildServicoPeriodicidadeResumo,
+  formatServicoBillingValue,
+  resolveServicoBillingView,
+} from "../src/pages/servicos/servico-periodicidade.utils";
 import { getDaysUntilInvoice, getNextInvoiceDate, isParcelaVencida } from "../src/pages/cartoes/cartoes.utils";
 import {
   detectInvoiceIssuerForPdfText,
@@ -75,6 +80,10 @@ import {
   matchesLegacyPurchaseDateSchedule,
   resolveDueDateFromCompetencia,
 } from "@shared/parcelas-compra-competency";
+import {
+  calculateServicoValorMensalEquivalente,
+  resolveServicoBillingFields,
+} from "@shared/servico-periodicidade";
 
 test("formatters: moeda e data em pt-BR", () => {
   assert.equal(formatCurrencyBRL(1234.56), "R$\u00a01.234,56");
@@ -555,6 +564,8 @@ function buildServicoFixture(overrides: Partial<Servico> = {}): Servico {
     nome: overrides.nome ?? "Servico teste",
     categoria: overrides.categoria ?? "streaming",
     valorMensal: overrides.valorMensal ?? "19.90",
+    periodicidadeCobranca: overrides.periodicidadeCobranca ?? null,
+    valorCobranca: overrides.valorCobranca ?? null,
     dataCobranca: overrides.dataCobranca ?? 10,
     formaPagamento: overrides.formaPagamento ?? "cartao",
     compraCartaoId: overrides.compraCartaoId ?? null,
@@ -727,6 +738,69 @@ test("servicos utils: filtro + ordenação juntos preserva ordem esperada", () =
 test("servicos utils: lista vazia retorna vazio sem erro", () => {
   const sorted = sortServicosForView([], { sortBy: "nome_az", referenceDay: 10 });
   assert.deepEqual(sorted, []);
+});
+
+test("servicos periodicidade: serviço legado sem periodicidade continua mensal", () => {
+  const servicoLegado = buildServicoFixture({
+    valorMensal: "49.90",
+    periodicidadeCobranca: null,
+    valorCobranca: null,
+  });
+
+  const billing = resolveServicoBillingView(servicoLegado);
+  assert.equal(billing.periodicidade, "mensal");
+  assert.equal(billing.valorCobranca, 49.9);
+  assert.equal(billing.valorMensalEquivalente, 49.9);
+  assert.equal(formatServicoBillingValue(servicoLegado), "R$\u00a049,90/mês");
+});
+
+test("servicos periodicidade: anual de R$ 229,82 gera equivalente mensal R$ 19,15", () => {
+  const equivalente = calculateServicoValorMensalEquivalente("229.82", "anual");
+  assert.equal(equivalente, 19.15);
+
+  const resumo = buildServicoPeriodicidadeResumo("anual", "229.82");
+  assert.equal(resumo.equivalenteMensal, 19.15);
+  assert.equal(resumo.primary.includes("por ano"), true);
+  assert.equal(resumo.secondary?.includes("R$\u00a019,15"), true);
+});
+
+test("servicos periodicidade: listagem anual mostra cobrança e equivalente mensal", () => {
+  const servicoAnual = buildServicoFixture({
+    periodicidadeCobranca: "anual",
+    valorCobranca: "229.82",
+    valorMensal: "19.15",
+  });
+
+  assert.equal(
+    formatServicoBillingValue(servicoAnual),
+    "R$\u00a0229,82/ano · equiv. R$\u00a019,15/mês",
+  );
+});
+
+test("servicos periodicidade: trimestral calcula equivalente mensal corretamente", () => {
+  const equivalente = calculateServicoValorMensalEquivalente("90.00", "trimestral");
+  assert.equal(equivalente, 30);
+});
+
+test("servicos periodicidade: payload legado com valorMensal resolve valorCobranca compatível", () => {
+  const resolved = resolveServicoBillingFields({
+    valorMensal: "59.90",
+  });
+
+  assert.equal(resolved.periodicidadeCobranca, "mensal");
+  assert.equal(resolved.valorCobranca, "59.90");
+  assert.equal(resolved.valorMensal, "59.90");
+});
+
+test("servicos periodicidade: payload novo mantém periodicidade e valor de cobrança", () => {
+  const resolved = resolveServicoBillingFields({
+    periodicidadeCobranca: "bimestral",
+    valorCobranca: "40.00",
+  });
+
+  assert.equal(resolved.periodicidadeCobranca, "bimestral");
+  assert.equal(resolved.valorCobranca, "40.00");
+  assert.equal(resolved.valorMensal, "20.00");
 });
 
 test("cartoes utils: calcula próxima fatura e dias restantes", () => {

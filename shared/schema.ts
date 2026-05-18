@@ -285,6 +285,8 @@ export const servicos = pgTable("servicos", {
   nome: text("nome").notNull(),
   categoria: text("categoria").notNull(),
   valorMensal: decimal("valor_mensal", { precision: 12, scale: 2 }).notNull(),
+  periodicidadeCobranca: text("periodicidade_cobranca"),
+  valorCobranca: decimal("valor_cobranca", { precision: 12, scale: 2 }),
   dataCobranca: integer("data_cobranca").notNull(),
   formaPagamento: text("forma_pagamento").notNull(),
   // Vínculo opcional para rastrear que o serviço está associado a uma compra no cartão.

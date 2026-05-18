@@ -7,6 +7,7 @@ import type {
   ServicoUpdateBodyInput,
 } from "../validators/core-domain.validators.js";
 import { format } from "date-fns";
+import { resolveServicoBillingFields } from "../../shared/servico-periodicidade.js";
 
 type UpdateServicoPessoaResult =
   | { error: "SERVICO_NOT_FOUND" }
@@ -44,10 +45,23 @@ export class ServicosService {
     return { ok: true as const };
   }
 
+  private shouldNormalizeServicoBilling(data: Partial<ServicoBodyInput> | Partial<ServicoUpdateBodyInput>): boolean {
+    return Object.prototype.hasOwnProperty.call(data, "valorMensal")
+      || Object.prototype.hasOwnProperty.call(data, "valorCobranca")
+      || Object.prototype.hasOwnProperty.call(data, "periodicidadeCobranca");
+  }
+
   async createServico(userId: string, data: ServicoBodyInput): Promise<CreateServicoResult> {
     const compraValidation = await this.validateCompraCartaoOwnership(data.compraCartaoId, userId);
     if (!compraValidation.ok) return { error: "COMPRA_NOT_FOUND" };
-    const created = await this.storage.createServico({ ...data, userId });
+    const billing = resolveServicoBillingFields(data);
+    const created = await this.storage.createServico({
+      ...data,
+      userId,
+      valorMensal: billing.valorMensal,
+      valorCobranca: billing.valorCobranca,
+      periodicidadeCobranca: billing.periodicidadeCobranca,
+    });
     return { created };
   }
 
@@ -58,7 +72,21 @@ export class ServicosService {
       if (!compraValidation.ok) return { error: "COMPRA_NOT_FOUND" };
     }
 
-    const updated = await this.storage.updateServico(id, userId, data);
+    if (!this.shouldNormalizeServicoBilling(data)) {
+      const updatedWithoutBilling = await this.storage.updateServico(id, userId, data);
+      return { updated: updatedWithoutBilling };
+    }
+
+    const current = await this.storage.getServico(id, userId);
+    if (!current) return { updated: undefined };
+
+    const billing = resolveServicoBillingFields(data, current);
+    const updated = await this.storage.updateServico(id, userId, {
+      ...data,
+      valorMensal: billing.valorMensal,
+      valorCobranca: billing.valorCobranca,
+      periodicidadeCobranca: billing.periodicidadeCobranca,
+    });
     return { updated };
   }
 

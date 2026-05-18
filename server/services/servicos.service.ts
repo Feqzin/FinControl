@@ -6,6 +6,7 @@ import type {
   ServicoPessoaUpdateBodyInput,
   ServicoUpdateBodyInput,
 } from "../validators/core-domain.validators";
+import { resolveServicoBillingFields } from "@shared/servico-periodicidade";
 
 type UpdateServicoPessoaResult =
   | { error: "SERVICO_NOT_FOUND" }
@@ -24,16 +25,42 @@ type CreateServicoPagamentoResult =
 export class ServicosService {
   constructor(private readonly storage: IStorage) {}
 
+  private shouldNormalizeServicoBilling(data: Partial<ServicoBodyInput> | Partial<ServicoUpdateBodyInput>): boolean {
+    return Object.prototype.hasOwnProperty.call(data, "valorMensal")
+      || Object.prototype.hasOwnProperty.call(data, "valorCobranca")
+      || Object.prototype.hasOwnProperty.call(data, "periodicidadeCobranca");
+  }
+
   async listServicos(userId: string) {
     return this.storage.getServicos(userId);
   }
 
   async createServico(userId: string, data: ServicoBodyInput) {
-    return this.storage.createServico({ ...data, userId });
+    const billing = resolveServicoBillingFields(data);
+    return this.storage.createServico({
+      ...data,
+      userId,
+      valorMensal: billing.valorMensal,
+      valorCobranca: billing.valorCobranca,
+      periodicidadeCobranca: billing.periodicidadeCobranca,
+    });
   }
 
   async updateServico(id: string, userId: string, data: ServicoUpdateBodyInput) {
-    return this.storage.updateServico(id, userId, data);
+    const current = await this.storage.getServico(id, userId);
+    if (!current) return undefined;
+
+    if (!this.shouldNormalizeServicoBilling(data)) {
+      return this.storage.updateServico(id, userId, data);
+    }
+
+    const billing = resolveServicoBillingFields(data, current);
+    return this.storage.updateServico(id, userId, {
+      ...data,
+      valorMensal: billing.valorMensal,
+      valorCobranca: billing.valorCobranca,
+      periodicidadeCobranca: billing.periodicidadeCobranca,
+    });
   }
 
   async deleteServico(id: string, userId: string) {

@@ -107,6 +107,8 @@ function buildBaseFixture(): FinancialFixture {
         nome: "Internet",
         categoria: "utilidades",
         valorMensal: "100.00",
+        periodicidadeCobranca: null,
+        valorCobranca: null,
         dataCobranca: 10,
         formaPagamento: "debito",
         status: "ativo",

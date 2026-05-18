@@ -4,7 +4,9 @@ import { apiRequest } from "@/lib/queryClient";
 export type ServicoPayload = {
   nome: string;
   categoria: string;
-  valorMensal: string;
+  valorMensal?: string;
+  valorCobranca?: string;
+  periodicidadeCobranca?: "mensal" | "anual" | "semestral" | "trimestral" | "bimestral" | "semanal";
   dataCobranca: string | number;
   formaPagamento: string;
   compraCartaoId?: string | null;
@@ -21,6 +23,7 @@ export type ServicoPessoaPayload = {
 export async function createServico(payload: ServicoPayload): Promise<void> {
   await apiRequest("POST", "/api/servicos", {
     ...payload,
+    periodicidadeCobranca: payload.periodicidadeCobranca ?? "mensal",
     dataCobranca: Number(payload.dataCobranca),
     compraCartaoId: payload.compraCartaoId ?? null,
     status: payload.status || "ativo",
@@ -31,6 +34,7 @@ export async function createServico(payload: ServicoPayload): Promise<void> {
 export async function updateServico(id: string, payload: Partial<ServicoPayload>): Promise<void> {
   await apiRequest("PATCH", `/api/servicos/${id}`, {
     ...payload,
+    ...(payload.periodicidadeCobranca !== undefined ? { periodicidadeCobranca: payload.periodicidadeCobranca } : {}),
     ...(payload.dataCobranca !== undefined ? { dataCobranca: Number(payload.dataCobranca) } : {}),
   });
 }
