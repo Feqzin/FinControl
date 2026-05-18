@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../db.js";
-import { iconMatchRules, userIconLibrary, type UserIconLibraryItem } from "@shared/schema";
+import { iconMatchRules, userIconLibrary, type UserIconLibraryItem } from "../../shared/schema.js";
 import type {
   UserIconLibraryCreateBodyInput,
   UserIconLibraryUpdateBodyInput,
