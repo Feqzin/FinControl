@@ -146,10 +146,13 @@ export class UserIconLibraryService {
       .insert(userIconLibrary)
       .values({
         userId,
+        sourceType: "upload",
+        officialIconId: null,
         name: normalized.name,
         imageUrl: normalized.imageUrl,
         storagePath: null,
         category: normalized.category,
+        tags: null,
       })
       .returning();
 

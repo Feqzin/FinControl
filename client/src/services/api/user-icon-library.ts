@@ -3,10 +3,13 @@ import { apiRequest } from "@/lib/queryClient";
 export type UserIconLibraryItemApiModel = {
   id: string;
   userId: string;
+  sourceType: "upload" | "official" | string;
+  officialIconId: string | null;
   name: string;
   imageUrl: string;
   storagePath: string | null;
   category: string | null;
+  tags: string[] | null;
   createdAt: string;
   updatedAt: string;
 };

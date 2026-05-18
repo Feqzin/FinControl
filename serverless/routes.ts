@@ -33,6 +33,7 @@ import { createReportsController } from "./controllers/reports.controller.js";
 import { createCompraAliasesController } from "./controllers/compra-aliases.controller.js";
 import { createIconMatchRulesController } from "./controllers/icon-match-rules.controller.js";
 import { createUserIconLibraryController } from "./controllers/user-icon-library.controller.js";
+import { createOfficialIconsController } from "./controllers/official-icons.controller.js";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.js";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
 import { registerDebugDbPingRoute } from "./routes/debug-db-ping.route.js";
@@ -59,6 +60,7 @@ import { ReportsService } from "./services/reports.service.js";
 import { CompraAliasesService } from "./services/compra-aliases.service.js";
 import { IconMatchRulesService } from "./services/icon-match-rules.service.js";
 import { UserIconLibraryService } from "./services/user-icon-library.service.js";
+import { OfficialIconLibraryService } from "./services/official-icons.service.js";
 
 function auditRoute(
   req: Request,
@@ -109,6 +111,7 @@ export function registerRoutes(app: Express): void {
   const compraAliasesController = createCompraAliasesController(new CompraAliasesService(storage));
   const iconMatchRulesController = createIconMatchRulesController(new IconMatchRulesService());
   const userIconLibraryController = createUserIconLibraryController(new UserIconLibraryService());
+  const officialIconsController = createOfficialIconsController(new OfficialIconLibraryService());
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -311,6 +314,14 @@ export function registerRoutes(app: Express): void {
   app.get("/api/user-icon-library", requireAuth, userIconLibraryController.list);
   app.post("/api/user-icon-library", requireAuth, userIconLibraryController.create);
   app.delete("/api/user-icon-library/:id", requireAuth, userIconLibraryController.remove);
+  app.get("/api/icons/official", requireAuth, officialIconsController.listOfficial);
+  app.get("/api/icons/packs", requireAuth, officialIconsController.listPacks);
+  app.post("/api/icons/official/:id/add-to-library", requireAuth, officialIconsController.addOfficialIconToLibrary);
+  app.post("/api/icons/packs/:id/add-to-library", requireAuth, officialIconsController.addOfficialPackToLibrary);
+  app.post("/api/admin/icons/packs", requireAuth, officialIconsController.adminCreatePack);
+  app.patch("/api/admin/icons/packs/:id", requireAuth, officialIconsController.adminUpdatePack);
+  app.post("/api/admin/icons/official", requireAuth, officialIconsController.adminCreateOfficialIcon);
+  app.patch("/api/admin/icons/official/:id", requireAuth, officialIconsController.adminUpdateOfficialIcon);
   app.get("/api/subscription/usage", requireAuth, subscriptionController.getUsage);
   app.post("/api/billing/mercadopago/webhook", webhookRateLimit, billingController.processMercadoPagoWebhook);
   app.get("/api/billing/status", requireAuth, billingController.getStatus);

@@ -6,6 +6,7 @@ import "./reports-overview-route.test";
 import "./compra-aliases-route.test";
 import "./icon-match-rules-route.test";
 import "./user-icon-library-route.test";
+import "./official-icons-route.test";
 import "./imports-reconcile-route.test";
 import "./parcelas-compra-competencia-route.test";
 import "./comprovante-upload.test";

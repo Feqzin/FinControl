@@ -203,14 +203,19 @@ export type IconMatchRule = typeof iconMatchRules.$inferSelect;
 export const userIconLibrary = pgTable("user_icon_library", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  sourceType: text("source_type").notNull().default("upload"),
+  officialIconId: varchar("official_icon_id"),
   name: text("name").notNull(),
   imageUrl: text("image_url").notNull(),
   storagePath: text("storage_path"),
   category: text("category"),
+  tags: jsonb("tags"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
   userIconLibraryUserIdIdx: index("idx_user_icon_library_user_id").on(table.userId),
+  userIconLibrarySourceTypeIdx: index("idx_user_icon_library_source_type").on(table.sourceType),
+  userIconLibraryOfficialIconIdIdx: index("idx_user_icon_library_official_icon_id").on(table.officialIconId),
   userIconLibraryCreatedAtIdx: index("idx_user_icon_library_created_at").on(table.createdAt),
   userIconLibraryUpdatedAtIdx: index("idx_user_icon_library_updated_at").on(table.updatedAt),
 }));
@@ -222,6 +227,57 @@ export const insertUserIconLibrarySchema = createInsertSchema(userIconLibrary).o
 });
 export type InsertUserIconLibrary = z.infer<typeof insertUserIconLibrarySchema>;
 export type UserIconLibraryItem = typeof userIconLibrary.$inferSelect;
+
+export const officialIconPacks = pgTable("official_icon_packs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  category: text("category"),
+  coverImageUrl: text("cover_image_url"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  officialIconPacksActiveIdx: index("idx_official_icon_packs_is_active").on(table.isActive),
+  officialIconPacksCreatedAtIdx: index("idx_official_icon_packs_created_at").on(table.createdAt),
+}));
+
+export const insertOfficialIconPackSchema = createInsertSchema(officialIconPacks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertOfficialIconPack = z.infer<typeof insertOfficialIconPackSchema>;
+export type OfficialIconPack = typeof officialIconPacks.$inferSelect;
+
+export const officialIconLibrary = pgTable("official_icon_library", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  iconKey: text("icon_key").notNull(),
+  name: text("name").notNull(),
+  imageUrl: text("image_url").notNull(),
+  storagePath: text("storage_path"),
+  category: text("category"),
+  tags: jsonb("tags"),
+  aliases: jsonb("aliases"),
+  packId: varchar("pack_id").references(() => officialIconPacks.id, { onDelete: "set null" }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  officialIconLibraryIconKeyIdx: index("idx_official_icon_library_icon_key").on(table.iconKey),
+  officialIconLibraryPackIdIdx: index("idx_official_icon_library_pack_id").on(table.packId),
+  officialIconLibraryIsActiveIdx: index("idx_official_icon_library_is_active").on(table.isActive),
+  officialIconLibraryCreatedAtIdx: index("idx_official_icon_library_created_at").on(table.createdAt),
+}));
+
+export const insertOfficialIconLibrarySchema = createInsertSchema(officialIconLibrary).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertOfficialIconLibrary = z.infer<typeof insertOfficialIconLibrarySchema>;
+export type OfficialIconLibraryItem = typeof officialIconLibrary.$inferSelect;
 
 export const servicos = pgTable("servicos", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

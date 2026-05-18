@@ -2976,6 +2976,21 @@ test("icon matching: KaBuM reconhece MLP KaBuM com regra pessoal", () => {
   assert.equal(result.shouldAutoApply, true);
 });
 
+test("icon matching: alias de ícone oficial adicionado reconhece compra por regra pessoal do usuário", () => {
+  const officialIconDataUrl = "data:image/png;base64,official-kabum";
+  const result = matchPurchaseIconByDescription("MLP KaBuM KaBuM", [
+    {
+      id: "rule-official-1",
+      iconId: officialIconDataUrl,
+      originalTerm: "mlp kabum",
+      normalizedTerm: "mlp kabum",
+    },
+  ]);
+  assert.equal(result.matched, true);
+  assert.equal(result.iconId, officialIconDataUrl);
+  assert.equal(result.source, "personal_rule");
+});
+
 test("icon matching: match fraco não aplica automático", () => {
   const result = matchPurchaseIconByDescription("Mercearia do bairro central", []);
   assert.equal(result.shouldAutoApply, false);

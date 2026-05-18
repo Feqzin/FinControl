@@ -28,6 +28,14 @@ function optionalEnv(name: string): string | undefined {
   return value ? value : undefined;
 }
 
+function parseCsvEnv(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 function parseBooleanEnv(name: string, raw: string | undefined): boolean | undefined {
   if (raw === undefined) {
     return undefined;
@@ -268,6 +276,8 @@ if (isProduction) {
 const allowLocalFilesystemStorageFallback =
   nodeEnv === "development" && allowLocalFilesystemStorageFallbackRaw === true;
 
+const officialIconAdminIdentifiers = parseCsvEnv(process.env.OFFICIAL_ICON_ADMIN_IDENTIFIERS);
+
 const demoSeed = resolveDemoSeedConfig({
   nodeEnv,
   enableDemoSeed: process.env.ENABLE_DEMO_SEED,
@@ -297,6 +307,9 @@ export const ENV = {
   },
   storage: {
     allowLocalFilesystemFallback: allowLocalFilesystemStorageFallback,
+  },
+  officialIcons: {
+    adminIdentifiers: officialIconAdminIdentifiers,
   },
   demoSeed,
 } as const;
