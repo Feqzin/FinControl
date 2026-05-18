@@ -62,6 +62,13 @@ import { buildCompraAliasDraft, findPossibleExistingPurchaseMatch } from "../src
 import { buildCreateCompraAliasRequestBody } from "../src/services/api/cartoes";
 import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
 import {
+  formatInvoiceMonthLong,
+  formatInvoiceMonthShort,
+  getInvoiceMonthStatus,
+  getVisibleInvoiceMonths,
+  groupInvoiceMonthsByYear,
+} from "../src/components/cartoes/invoice-month-selector.utils";
+import {
   canAutoRematerializeCompetency,
   diffParcelasCompetencySchedules,
   matchesLegacyPurchaseDateSchedule,
@@ -763,6 +770,58 @@ test("cartoes utils: parcela vencida somente quando pendente e data passada", ()
     }),
     false,
   );
+});
+
+test("invoice month selector: janela compacta mostra poucos meses ao redor do selecionado", () => {
+  const availableMonths = [
+    "2026-08",
+    "2026-07",
+    "2026-06",
+    "2026-05",
+    "2026-04",
+    "2026-03",
+    "2026-02",
+    "2026-01",
+  ];
+
+  const visible = getVisibleInvoiceMonths({
+    selectedMonth: "2026-05",
+    currentMonth: "2026-05",
+    availableMonths,
+    previousCount: 2,
+    nextCount: 3,
+  });
+
+  assert.deepEqual(visible, ["2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"]);
+  assert.equal(visible.length, 6);
+});
+
+test("invoice month selector: status atual/futura/fechada é identificado corretamente", () => {
+  assert.equal(getInvoiceMonthStatus("2026-05", "2026-05"), "atual");
+  assert.equal(getInvoiceMonthStatus("2026-06", "2026-05"), "futura");
+  assert.equal(getInvoiceMonthStatus("2026-04", "2026-05"), "fechada");
+});
+
+test("invoice month selector: formatação curta e longa mantém legibilidade", () => {
+  assert.equal(formatInvoiceMonthShort("2026-05", "2026-05"), "Mai");
+  assert.equal(formatInvoiceMonthShort("2027-05", "2026-05"), "Mai/27");
+  assert.equal(formatInvoiceMonthLong("2026-05"), "Maio de 2026");
+});
+
+test("invoice month selector: agrupamento por ano permite acesso a meses antigos/futuros", () => {
+  const groups = groupInvoiceMonthsByYear([
+    "2027-05",
+    "2027-04",
+    "2026-12",
+    "2026-05",
+    "2025-11",
+  ]);
+
+  assert.equal(groups.length, 3);
+  assert.equal(groups[0]?.year, "2027");
+  assert.deepEqual(groups[0]?.months, ["2027-05", "2027-04"]);
+  assert.equal(groups[2]?.year, "2025");
+  assert.deepEqual(groups[2]?.months, ["2025-11"]);
 });
 
 test("competência diagnóstico: compra com cronograma legado divergente é detectada e marcada para correção", () => {
