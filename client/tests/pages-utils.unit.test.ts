@@ -83,6 +83,7 @@ import {
   getVisibleInvoiceMonths,
   groupInvoiceMonthsByYear,
 } from "../src/components/cartoes/invoice-month-selector.utils";
+import { buildRelatoriosServicosMetrics } from "../src/pages/relatorios/relatorios-servicos-metrics.utils";
 import { resolveDashboardServicosMetrics } from "../src/pages/dashboard/dashboard-servicos-metrics.utils";
 import {
   canAutoRematerializeCompetency,
@@ -3411,4 +3412,112 @@ test("dashboard serviços: fallback compatível quando campos novos estão ausen
   assert.equal(metrics.vinculadosCartaoCobrancaRealTotal, 0);
   assert.equal(metrics.naoVinculadosCartaoEquivalenteMensalTotal, 80);
   assert.equal(metrics.naoVinculadosCartaoCobrancaRealTotal, 80);
+});
+
+test("relatórios serviços: separa média mensal e cobrança real no período para anual/trimestral", () => {
+  const activeServicos = [
+    {
+      ...buildServicoFixture({
+        id: "s-anual",
+        nome: "Distrokid",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "229.82",
+        valorMensal: "19.15",
+        compraCartaoId: "compra-1",
+      }),
+      competenciaBase: "2026-05",
+    } as Servico,
+    {
+      ...buildServicoFixture({
+        id: "s-tri",
+        nome: "Ferramenta X",
+        periodicidadeCobranca: "trimestral",
+        valorCobranca: "90.00",
+        valorMensal: "30.00",
+        compraCartaoId: null,
+      }),
+      competenciaBase: "2026-04",
+    } as Servico,
+  ];
+
+  const metrics = buildRelatoriosServicosMetrics({
+    activeServicos,
+    overviewSummary: null,
+    startDateIso: "2026-05-01",
+    endDateIso: "2026-05-31",
+  });
+
+  assert.equal(metrics.monthlyAverageTotal, 49.15);
+  assert.equal(metrics.realChargeInPeriodTotal, 229.82);
+  assert.equal(metrics.linkedCardRealChargeInPeriodTotal, 229.82);
+  assert.equal(metrics.nonLinkedCardRealChargeInPeriodTotal, 0);
+});
+
+test("relatórios serviços: usa fallback legado quando campos novos não existem no summary", () => {
+  const activeServicos = [
+    buildServicoFixture({
+      id: "s-mensal",
+      nome: "Netflix",
+      periodicidadeCobranca: null,
+      valorCobranca: null,
+      valorMensal: "50.00",
+    }),
+  ];
+
+  const metrics = buildRelatoriosServicosMetrics({
+    activeServicos,
+    overviewSummary: {
+      incomeTotal: 0,
+      expenseTotal: 0,
+      balance: 0,
+      patrimonioTotal: 0,
+      dividasAPagar: 0,
+      valoresAReceber: 0,
+      gastosFixos: 0,
+      servicosAtivosTotal: 50,
+      cartoesFaturaAtualTotal: 0,
+      cartoesLimiteComprometidoTotal: 0,
+    },
+    startDateIso: "2026-05-01",
+    endDateIso: "2026-05-31",
+  });
+
+  assert.equal(metrics.hasDetailedSummaryMetrics, false);
+  assert.equal(metrics.monthlyAverageTotal, 50);
+  assert.equal(metrics.legacyMonthlyTotal, 50);
+  assert.equal(metrics.realChargeInPeriodTotal, 50);
+});
+
+test("relatórios serviços: prioriza campos novos quando overview os fornece", () => {
+  const activeServicos = [buildServicoFixture({ id: "s-1", nome: "Servico A", valorMensal: "10.00" })];
+
+  const metrics = buildRelatoriosServicosMetrics({
+    activeServicos,
+    overviewSummary: {
+      incomeTotal: 0,
+      expenseTotal: 0,
+      balance: 0,
+      patrimonioTotal: 0,
+      dividasAPagar: 0,
+      valoresAReceber: 0,
+      gastosFixos: 0,
+      servicosAtivosTotal: 10,
+      servicosEquivalenteMensalTotal: 19.15,
+      servicosCobrancaRealPeriodoTotal: 229.82,
+      servicosVinculadosCartaoEquivalenteMensalTotal: 19.15,
+      servicosVinculadosCartaoCobrancaRealPeriodoTotal: 229.82,
+      servicosNaoVinculadosCartaoEquivalenteMensalTotal: 0,
+      servicosNaoVinculadosCartaoCobrancaRealPeriodoTotal: 0,
+      cartoesFaturaAtualTotal: 0,
+      cartoesLimiteComprometidoTotal: 0,
+    },
+    startDateIso: "2026-05-01",
+    endDateIso: "2026-05-31",
+  });
+
+  assert.equal(metrics.hasDetailedSummaryMetrics, true);
+  assert.equal(metrics.monthlyAverageTotal, 19.15);
+  assert.equal(metrics.realChargeInPeriodTotal, 229.82);
+  assert.equal(metrics.linkedCardMonthlyAverageTotal, 19.15);
+  assert.equal(metrics.linkedCardRealChargeInPeriodTotal, 229.82);
 });

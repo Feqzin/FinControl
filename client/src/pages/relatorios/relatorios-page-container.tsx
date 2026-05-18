@@ -26,6 +26,7 @@ import {
 import { ptBR } from "date-fns/locale";
 import { useRelatoriosQueries } from "@/pages/relatorios/hooks/use-relatorios-queries";
 import { buildRelatorioPdfMetadata } from "@/pages/relatorios/relatorios-pdf-utils";
+import { buildRelatoriosServicosMetrics } from "@/pages/relatorios/relatorios-servicos-metrics.utils";
 
 const RelatoriosHistoricoChart = lazy(
   () => import("@/components/charts/relatorios-historico-chart"),
@@ -133,13 +134,31 @@ export default function RelatoriosPageContainer() {
       .reduce((acc, d) => acc + Number(d.valor), 0);
     const totalPatrimonioComputed = patrimonios.reduce((acc, p) => acc + Number(p.valorAtual), 0);
     
-    const totalServicosMensalComputed = activeServicos.reduce((acc, s) => acc + Number(s.valorMensal), 0);
+    const servicosMetricsStartDateIso = periodo === "total_geral"
+      ? format(startOfMonth(new Date()), "yyyy-MM-dd")
+      : startDateIso;
+    const servicosMetricsEndDateIso = periodo === "total_geral"
+      ? format(endOfMonth(new Date()), "yyyy-MM-dd")
+      : endDateIso;
+
+    const servicosMetrics = buildRelatoriosServicosMetrics({
+      activeServicos,
+      overviewSummary,
+      startDateIso: servicosMetricsStartDateIso,
+      endDateIso: servicosMetricsEndDateIso,
+    });
 
     const totalRenda = overviewSummary?.incomeTotal ?? totalRendaComputed;
     const totalDividasPagar = overviewSummary?.dividasAPagar ?? totalDividasPagarComputed;
     const totalReceber = overviewSummary?.valoresAReceber ?? totalReceberComputed;
     const totalPatrimonio = overviewSummary?.patrimonioTotal ?? totalPatrimonioComputed;
-    const totalServicosMensal = overviewSummary?.servicosAtivosTotal ?? totalServicosMensalComputed;
+    const totalServicosMensal = servicosMetrics.legacyMonthlyTotal;
+    const totalServicosMediaMensal = servicosMetrics.monthlyAverageTotal;
+    const totalServicosCobrancaRealPeriodo = servicosMetrics.realChargeInPeriodTotal;
+    const totalServicosVinculadosCartaoMediaMensal = servicosMetrics.linkedCardMonthlyAverageTotal;
+    const totalServicosVinculadosCartaoCobrancaRealPeriodo = servicosMetrics.linkedCardRealChargeInPeriodTotal;
+    const totalServicosNaoVinculadosCartaoMediaMensal = servicosMetrics.nonLinkedCardMonthlyAverageTotal;
+    const totalServicosNaoVinculadosCartaoCobrancaRealPeriodo = servicosMetrics.nonLinkedCardRealChargeInPeriodTotal;
 
     const saldoLiquido = totalRenda - totalCartoes - (totalServicosMensal * monthsInPeriod);
 
@@ -153,9 +172,17 @@ export default function RelatoriosPageContainer() {
       totalPatrimonio,
       saldoLiquido,
       activeServicos,
-      totalServicosMensal
+      totalServicosMensal,
+      totalServicosMediaMensal,
+      totalServicosCobrancaRealPeriodo,
+      totalServicosVinculadosCartaoMediaMensal,
+      totalServicosVinculadosCartaoCobrancaRealPeriodo,
+      totalServicosNaoVinculadosCartaoMediaMensal,
+      totalServicosNaoVinculadosCartaoCobrancaRealPeriodo,
+      hasDetailedServicosMetrics: servicosMetrics.hasDetailedSummaryMetrics,
+      servicosDetalhados: servicosMetrics.detailedServices,
     };
-  }, [compras, dividas, rendas, patrimonios, servicos, interval, monthsInPeriod, overviewSummary]);
+  }, [compras, dividas, rendas, patrimonios, servicos, interval, monthsInPeriod, overviewSummary, startDateIso, endDateIso, periodo]);
 
   const chartData = useMemo(() => {
     const now = new Date();
@@ -201,12 +228,27 @@ export default function RelatoriosPageContainer() {
         ['Renda Total', formatCurrency(filteredData.totalRenda)],
         ['Total Cartões', formatCurrency(filteredData.totalCartoes)],
         ['Total Dívidas', formatCurrency(filteredData.totalDividasPagar)],
+        ['Serviços — média mensal', formatCurrency(filteredData.totalServicosMediaMensal)],
+        ['Serviços — cobrança real no período', formatCurrency(filteredData.totalServicosCobrancaRealPeriodo)],
+        ['Serviços vinculados a cartão (real no período)', formatCurrency(filteredData.totalServicosVinculadosCartaoCobrancaRealPeriodo)],
         ['Total a Receber', formatCurrency(filteredData.totalReceber)],
         ['Patrimônio Total', formatCurrency(filteredData.totalPatrimonio)],
         ['Saldo Líquido', formatCurrency(filteredData.saldoLiquido)],
       ],
       theme: 'striped'
     });
+
+    doc.setFontSize(9);
+    doc.text(
+      "Serviços: média mensal representa planejamento. Cobrança real representa o que vence no período selecionado.",
+      14,
+      (doc as any).lastAutoTable.finalY + 6,
+    );
+    doc.text(
+      "Cobranças vinculadas ao cartão já aparecem na fatura.",
+      14,
+      (doc as any).lastAutoTable.finalY + 11,
+    );
 
     // Cartões
     const cartoesBody: any[] = [];
@@ -253,20 +295,29 @@ export default function RelatoriosPageContainer() {
     });
 
     // Serviços
-    const servicosBody: any[] = filteredData.activeServicos.map(s => [
+    const servicosBody: any[] = filteredData.servicosDetalhados.map((s) => [
       s.nome,
       s.categoria,
-      formatCurrency(Number(s.valorMensal)),
-      s.formaPagamento
+      s.periodicidadeLabel,
+      formatCurrency(s.valorCobranca),
+      formatCurrency(s.equivalenteMensal),
+      s.vinculadoCartao ? "Sim" : "Não",
     ]);
     if (servicosBody.length === 0) {
-      servicosBody.push(['Sem dados no período', '', '', '']);
+      servicosBody.push(['Sem dados no período', '', '', '', '', '']);
     }
-    servicosBody.push(['Total Mensal', '', formatCurrency(filteredData.totalServicosMensal), '']);
+    servicosBody.push([
+      'Totais',
+      '',
+      '',
+      formatCurrency(filteredData.totalServicosCobrancaRealPeriodo),
+      formatCurrency(filteredData.totalServicosMediaMensal),
+      '',
+    ]);
 
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 10,
-      head: [['Serviço', 'Categoria', 'Valor Mensal', 'Pagamento']],
+      startY: (doc as any).lastAutoTable.finalY + 15,
+      head: [['Serviço', 'Categoria', 'Periodicidade', 'Cobrança', 'Equiv. mensal', 'Vinc. cartão']],
       body: servicosBody,
     });
 
@@ -574,42 +625,86 @@ export default function RelatoriosPageContainer() {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border bg-muted/20 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Média mensal de serviços</p>
+                <p className="text-sm font-semibold">{fc(filteredData.totalServicosMediaMensal)}</p>
+              </div>
+              <div className="rounded-lg border bg-muted/20 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Cobrança real no período</p>
+                <p className="text-sm font-semibold">{fc(filteredData.totalServicosCobrancaRealPeriodo)}</p>
+              </div>
+              <div className="rounded-lg border bg-muted/20 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Vinculados a cartão (real)</p>
+                <p className="text-sm font-semibold">{fc(filteredData.totalServicosVinculadosCartaoCobrancaRealPeriodo)}</p>
+              </div>
+              <div className="rounded-lg border bg-muted/20 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Não vinculados a cartão (real)</p>
+                <p className="text-sm font-semibold">{fc(filteredData.totalServicosNaoVinculadosCartaoCobrancaRealPeriodo)}</p>
+              </div>
+            </div>
+
+            <p className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-700">
+              Cobranças vinculadas ao cartão já aparecem na fatura.
+            </p>
+
             <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Serviço</TableHead>
                     <TableHead>Categoria</TableHead>
-                    <TableHead className="text-right">Valor Mensal</TableHead>
+                    <TableHead>Periodicidade</TableHead>
+                    <TableHead className="text-right">Cobrança</TableHead>
+                    <TableHead className="text-right">Equiv. mensal</TableHead>
+                    <TableHead>Vinculado cartão</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredData.activeServicos.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                         Nenhum serviço ativo
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredData.activeServicos.map((s) => (
+                    filteredData.servicosDetalhados.map((s) => (
                       <TableRow key={s.id}>
                         <TableCell className="max-w-[180px] truncate font-medium" title={s.nome}>{s.nome}</TableCell>
                         <TableCell>{s.categoria}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{s.periodicidadeLabel}</TableCell>
                         <TableCell className="fin-value-table text-right">
-                          {fc(Number(s.valorMensal))}
+                          {fc(s.valorCobranca)}
+                        </TableCell>
+                        <TableCell className="fin-value-table text-right">
+                          {fc(s.equivalenteMensal)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={s.vinculadoCartao ? "secondary" : "outline"}>
+                            {s.vinculadoCartao ? "Sim" : "Não"}
+                          </Badge>
                         </TableCell>
                       </TableRow>
                     ))
                   )}
                   <TableRow className="bg-muted/50 font-bold border-t-2">
-                    <TableCell colSpan={2} className="text-right">Total Mensal</TableCell>
+                    <TableCell colSpan={3} className="text-right">Totais</TableCell>
                     <TableCell className="fin-value-table text-right">
-                      {fc(filteredData.totalServicosMensal)}
+                      {fc(filteredData.totalServicosCobrancaRealPeriodo)}
                     </TableCell>
+                    <TableCell className="fin-value-table text-right">
+                      {fc(filteredData.totalServicosMediaMensal)}
+                    </TableCell>
+                    <TableCell />
                   </TableRow>
                 </TableBody>
               </Table>
             </div>
+            {!filteredData.hasDetailedServicosMetrics ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Modo compatibilidade: detalhamento avançado de serviços calculado localmente.
+              </p>
+            ) : null}
           </CardContent>
         </Card>
 
