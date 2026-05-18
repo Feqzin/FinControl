@@ -313,6 +313,7 @@ export function registerRoutes(app: Express): void {
   app.delete("/api/icon-match-rules/:id", requireAuth, iconMatchRulesController.remove);
   app.get("/api/user-icon-library", requireAuth, userIconLibraryController.list);
   app.post("/api/user-icon-library", requireAuth, userIconLibraryController.create);
+  app.patch("/api/user-icon-library/:id", requireAuth, userIconLibraryController.update);
   app.delete("/api/user-icon-library/:id", requireAuth, userIconLibraryController.remove);
   app.get("/api/icons/official", requireAuth, officialIconsController.listOfficial);
   app.get("/api/icons/packs", requireAuth, officialIconsController.listPacks);

@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { UserIconLibraryService } from "../services/user-icon-library.service.js";
-import { userIconLibraryCreateBody } from "../validators/user-icon-library.validators.js";
+import { userIconLibraryCreateBody, userIconLibraryUpdateBody } from "../validators/user-icon-library.validators.js";
 import { getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils.js";
 
 export function createUserIconLibraryController(service: UserIconLibraryService) {
@@ -23,6 +23,30 @@ export function createUserIconLibraryController(service: UserIconLibraryService)
         return res.status(201).json({ icon: created });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Não foi possível salvar o ícone.";
+        return sendBadRequest(res, message);
+      }
+    },
+
+    update: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const id = getParam(req, "id");
+      if (!id) {
+        return sendBadRequest(res, "Ícone obrigatório.");
+      }
+
+      const parsed = userIconLibraryUpdateBody.safeParse(req.body);
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+
+      try {
+        const updated = await service.update(userId, id, parsed.data);
+        if (!updated) {
+          return sendNotFound(res, "Ícone não encontrado.");
+        }
+        return res.json({ icon: updated });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Não foi possível atualizar o ícone.";
         return sendBadRequest(res, message);
       }
     },

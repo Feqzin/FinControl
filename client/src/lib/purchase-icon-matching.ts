@@ -154,7 +154,14 @@ export function matchPurchaseIconByDescription(
   description: string,
   userRules: UserIconMatchRule[] = [],
 ): PurchaseIconMatchResult {
-  const normalizedDescription = normalizeText(description);
+  return matchIconByText(description, userRules);
+}
+
+export function matchIconByText(
+  text: string,
+  userRules: UserIconMatchRule[] = [],
+): PurchaseIconMatchResult {
+  const normalizedDescription = normalizeText(text);
   if (!normalizedDescription) {
     return {
       matched: false,

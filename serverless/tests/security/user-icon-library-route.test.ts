@@ -11,10 +11,13 @@ import { createUserIconLibraryController } from "../../controllers/user-icon-lib
 type InMemoryIcon = {
   id: string;
   userId: string;
+  sourceType: "upload" | "official";
+  officialIconId: string | null;
   name: string;
   imageUrl: string;
   storagePath: string | null;
   category: string | null;
+  tags: string[] | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -30,19 +33,36 @@ function createInMemoryServiceFixture() {
     async list(userId: string) {
       return icons.filter((icon) => icon.userId === userId);
     },
-    async create(userId: string, payload: { imageDataUrl: string; name?: string | null; category?: string | null }) {
+    async create(userId: string, payload: {
+      imageDataUrl: string;
+      name: string;
+      category?: string | null;
+      keywords?: string[];
+    }) {
       const row: InMemoryIcon = {
         id: `icon_${seq++}`,
         userId,
+        sourceType: "upload",
+        officialIconId: null,
         name: payload.name?.trim() || "Ícone personalizado",
         imageUrl: payload.imageDataUrl,
         storagePath: null,
         category: payload.category ?? null,
+        tags: payload.keywords ?? null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
       icons.push(row);
       return row;
+    },
+    async update(userId: string, id: string, payload: { name?: string; category?: string | null; keywords?: string[] }) {
+      const icon = icons.find((entry) => entry.id === id && entry.userId === userId);
+      if (!icon) return null;
+      if (payload.name !== undefined) icon.name = payload.name;
+      if (payload.category !== undefined) icon.category = payload.category;
+      if (payload.keywords !== undefined) icon.tags = payload.keywords;
+      icon.updatedAt = new Date();
+      return icon;
     },
     async remove(userId: string, id: string) {
       const index = icons.findIndex((icon) => icon.id === id && icon.userId === userId);
@@ -86,20 +106,23 @@ function createUserIconLibraryRouteApp() {
   });
   app.get("/api/user-icon-library", requireAuth, controller.list);
   app.post("/api/user-icon-library", requireAuth, controller.create);
+  app.patch("/api/user-icon-library/:id", requireAuth, controller.update);
   app.delete("/api/user-icon-library/:id", requireAuth, controller.remove);
   return { app, fixture };
 }
 
-test("rota /api/user-icon-library em serverless exige requireAuth em GET/POST/DELETE", async () => {
+test("rota /api/user-icon-library em serverless exige requireAuth em GET/POST/PATCH/DELETE", async () => {
   const routesPath = path.resolve(process.cwd(), "serverless", "routes.ts");
   const routesSource = await readFile(routesPath, "utf8");
 
   const getPattern = /app\.get\(\s*"\/api\/user-icon-library"\s*,\s*requireAuth\s*,\s*userIconLibraryController\.list\s*\)/m;
   const postPattern = /app\.post\(\s*"\/api\/user-icon-library"\s*,\s*requireAuth\s*,\s*userIconLibraryController\.create\s*\)/m;
+  const patchPattern = /app\.patch\(\s*"\/api\/user-icon-library\/:id"\s*,\s*requireAuth\s*,\s*userIconLibraryController\.update\s*\)/m;
   const deletePattern = /app\.delete\(\s*"\/api\/user-icon-library\/:id"\s*,\s*requireAuth\s*,\s*userIconLibraryController\.remove\s*\)/m;
 
   assert.ok(getPattern.test(routesSource));
   assert.ok(postPattern.test(routesSource));
+  assert.ok(patchPattern.test(routesSource));
   assert.ok(deletePattern.test(routesSource));
 });
 
@@ -129,12 +152,14 @@ test("user icon library: listar/criar/excluir respeitam ownership por userId", a
       },
       body: JSON.stringify({
         name: "KaBuM",
+        keywords: ["kabum", "mlp kabum"],
         imageDataUrl: SAMPLE_PNG_DATA_URL,
       }),
     });
     assert.equal(createA.status, 201);
     const createBody = await createA.json();
     assert.equal(createBody.icon.userId, "user_a");
+    assert.deepEqual(createBody.icon.tags, ["kabum", "mlp kabum"]);
     const iconId = createBody.icon.id as string;
 
     const listA = await fetch(`${baseUrl}/api/user-icon-library`, {
@@ -164,5 +189,67 @@ test("user icon library: listar/criar/excluir respeitam ownership por userId", a
     });
     assert.equal(deleteOwn.status, 200);
     assert.equal(fixture.icons.length, 0);
+  });
+});
+
+test("user icon library: upload exige nome e editar respeita ownership", async () => {
+  const { app } = createUserIconLibraryRouteApp();
+  await withTestServer(app, async (baseUrl) => {
+    const invalidCreate = await fetch(`${baseUrl}/api/user-icon-library`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+      }),
+    });
+    assert.equal(invalidCreate.status, 400);
+
+    const create = await fetch(`${baseUrl}/api/user-icon-library`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Itaú",
+        category: "banco",
+        keywords: ["itau", "itaucard", "unibanco"],
+        imageDataUrl: SAMPLE_PNG_DATA_URL,
+      }),
+    });
+    assert.equal(create.status, 201);
+    const createdBody = await create.json();
+    const iconId = createdBody.icon.id as string;
+
+    const patchOtherUser = await fetch(`${baseUrl}/api/user-icon-library/${iconId}`, {
+      method: "PATCH",
+      headers: {
+        "x-test-auth": "user_b",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Itaú Uniclass",
+      }),
+    });
+    assert.equal(patchOtherUser.status, 404);
+
+    const patchOwn = await fetch(`${baseUrl}/api/user-icon-library/${iconId}`, {
+      method: "PATCH",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Itaú Uniclass",
+        keywords: ["itau", "uniclass"],
+      }),
+    });
+    assert.equal(patchOwn.status, 200);
+    const patchedBody = await patchOwn.json();
+    assert.equal(patchedBody.icon.name, "Itaú Uniclass");
+    assert.deepEqual(patchedBody.icon.tags, ["itau", "uniclass"]);
   });
 });

@@ -60,7 +60,7 @@ import {
 } from "../src/pages/pessoas/payment-timeline.utils";
 import { buildCompraAliasDraft, findPossibleExistingPurchaseMatch } from "../src/pages/cartoes/import-existing-purchase-match";
 import { buildCreateCompraAliasRequestBody } from "../src/services/api/cartoes";
-import { matchPurchaseIconByDescription } from "../src/lib/purchase-icon-matching";
+import { matchIconByText, matchPurchaseIconByDescription } from "../src/lib/purchase-icon-matching";
 import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
 import {
   formatInvoiceMonthLong,
@@ -3002,6 +3002,43 @@ test("icon matching: compra importada recebe ícone quando match forte", () => {
   const result = matchPurchaseIconByDescription(importedPurchaseDescription, []);
   assert.equal(result.iconId, "netflix");
   assert.equal(result.shouldAutoApply, true);
+});
+
+test("icon matching: ícone pessoal reconhece cartão Itaú Uniclass Visa", () => {
+  const result = matchIconByText("Itaú Uniclass Visa", [
+    {
+      id: "rule-itau-1",
+      iconId: "data:image/svg+xml;base64,itau-icon",
+      originalTerm: "itau",
+      normalizedTerm: "itau",
+    },
+    {
+      id: "rule-itau-2",
+      iconId: "data:image/svg+xml;base64,itau-icon",
+      originalTerm: "itaucard",
+      normalizedTerm: "itaucard",
+    },
+  ]);
+
+  assert.equal(result.matched, true);
+  assert.equal(result.iconId, "data:image/svg+xml;base64,itau-icon");
+  assert.equal(result.source, "personal_rule");
+  assert.equal(result.shouldAutoApply, true);
+});
+
+test("icon matching: ícone pessoal reconhece compra com itaucard/itaú", () => {
+  const result = matchIconByText("PG *ITAUCARD supermercado", [
+    {
+      id: "rule-itau-3",
+      iconId: "data:image/svg+xml;base64,itau-icon",
+      originalTerm: "itaucard",
+      normalizedTerm: "itaucard",
+    },
+  ]);
+
+  assert.equal(result.matched, true);
+  assert.equal(result.iconId, "data:image/svg+xml;base64,itau-icon");
+  assert.equal(result.shouldSuggest, true);
 });
 
 test("relatorios PDF: metadados usam overview quando disponível", () => {

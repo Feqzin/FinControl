@@ -1,11 +1,17 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../db.js";
-import { userIconLibrary, type UserIconLibraryItem } from "../../shared/schema.js";
-import type { UserIconLibraryCreateBodyInput } from "../validators/user-icon-library.validators.js";
+import { iconMatchRules, userIconLibrary, type UserIconLibraryItem } from "@shared/schema";
+import type {
+  UserIconLibraryCreateBodyInput,
+  UserIconLibraryUpdateBodyInput,
+} from "../validators/user-icon-library.validators.js";
 
 const MAX_ICON_BYTES = 512 * 1024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const JPG_SIGNATURE_PREFIX = Buffer.from([0xff, 0xd8, 0xff]);
+const MAX_KEYWORDS = 30;
+const MAX_TERM_LENGTH = 120;
+const MIN_NORMALIZED_TERM_LENGTH = 2;
 
 function startsWithSignature(buffer: Buffer, signature: Buffer): boolean {
   if (buffer.length < signature.length) return false;
@@ -55,9 +61,84 @@ function sanitizeIconName(input: string | null | undefined): string {
 }
 
 function sanitizeOptionalCategory(input: string | null | undefined): string | null {
+  if (input === null) return null;
   const trimmed = (input ?? "").trim();
   if (!trimmed) return null;
   return trimmed.slice(0, 40);
+}
+
+function normalizeIconTerm(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sanitizeKeywordList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  const unique = new Set<string>();
+  const output: string[] = [];
+
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim().replace(/\s+/g, " ");
+    if (!trimmed) continue;
+    const normalized = normalizeIconTerm(trimmed);
+    if (!normalized) continue;
+    if (unique.has(normalized)) continue;
+    unique.add(normalized);
+    output.push(trimmed.slice(0, 80));
+    if (output.length >= MAX_KEYWORDS) break;
+  }
+
+  return output;
+}
+
+function sanitizeFileNameTerm(value: string | null | undefined): string {
+  if (!value) return "";
+  return value
+    .replace(/\.[a-z0-9]{2,5}$/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_TERM_LENGTH);
+}
+
+function buildMatchTerms(
+  name: string,
+  keywords: string[],
+  originalFileName?: string | null,
+): Array<{ originalTerm: string; normalizedTerm: string }> {
+  const candidates = [
+    name,
+    ...keywords,
+    sanitizeFileNameTerm(originalFileName),
+  ];
+  const unique = new Map<string, { originalTerm: string; normalizedTerm: string }>();
+
+  for (const term of candidates) {
+    const originalTerm = String(term ?? "").trim();
+    if (!originalTerm) continue;
+    const normalizedTerm = normalizeIconTerm(originalTerm);
+    if (normalizedTerm.length < MIN_NORMALIZED_TERM_LENGTH) continue;
+    if (normalizedTerm.length > MAX_TERM_LENGTH) continue;
+    if (!unique.has(normalizedTerm)) {
+      unique.set(normalizedTerm, {
+        originalTerm: originalTerm.slice(0, MAX_TERM_LENGTH),
+        normalizedTerm,
+      });
+    }
+  }
+
+  return Array.from(unique.values());
+}
+
+function extractExistingIconKeywords(icon: Pick<UserIconLibraryItem, "tags">): string[] {
+  return sanitizeKeywordList(icon.tags);
 }
 
 function validateIconBinarySignatureOrThrow(mimeType: string, buffer: Buffer): void {
@@ -89,7 +170,13 @@ function validateIconBinarySignatureOrThrow(mimeType: string, buffer: Buffer): v
   throw new Error("Tipo de ícone não permitido. Envie PNG, JPG ou SVG.");
 }
 
-function normalizeIconDataUrl(input: UserIconLibraryCreateBodyInput): { name: string; category: string | null; imageUrl: string } {
+function normalizeIconDataUrl(input: UserIconLibraryCreateBodyInput): {
+  name: string;
+  category: string | null;
+  imageUrl: string;
+  keywords: string[];
+  originalFileName: string;
+} {
   const { mimeType, buffer } = parseBase64DataUrl(input.imageDataUrl);
   if (buffer.length > MAX_ICON_BYTES) {
     throw new Error("Ícone muito grande. Limite de 512 KB.");
@@ -97,11 +184,79 @@ function normalizeIconDataUrl(input: UserIconLibraryCreateBodyInput): { name: st
 
   validateIconBinarySignatureOrThrow(mimeType, buffer);
   const imageUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
+  const name = sanitizeIconName(input.name);
+  const keywords = sanitizeKeywordList(input.keywords);
+  const originalFileName = String(input.originalFileName ?? "").trim();
+
   return {
-    name: sanitizeIconName(input.name),
+    name,
     category: sanitizeOptionalCategory(input.category),
     imageUrl,
+    keywords,
+    originalFileName,
   };
+}
+
+async function upsertRulesForIcon(
+  userId: string,
+  iconId: string,
+  terms: Array<{ originalTerm: string; normalizedTerm: string }>,
+  previousTerms: Array<{ originalTerm: string; normalizedTerm: string }> = [],
+): Promise<void> {
+  const previousNormalizedTerms = Array.from(new Set(previousTerms.map((term) => term.normalizedTerm)));
+  if (previousNormalizedTerms.length > 0) {
+    await db
+      .delete(iconMatchRules)
+      .where(and(
+        eq(iconMatchRules.userId, userId),
+        eq(iconMatchRules.iconId, iconId),
+        inArray(iconMatchRules.normalizedTerm, previousNormalizedTerms),
+      ));
+  }
+
+  for (const term of terms) {
+    const [existingByTerm] = await db
+      .select()
+      .from(iconMatchRules)
+      .where(and(
+        eq(iconMatchRules.userId, userId),
+        eq(iconMatchRules.normalizedTerm, term.normalizedTerm),
+      ))
+      .limit(1);
+
+    if (existingByTerm) {
+      await db
+        .update(iconMatchRules)
+        .set({
+          iconId,
+          originalTerm: term.originalTerm,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(iconMatchRules.id, existingByTerm.id),
+          eq(iconMatchRules.userId, userId),
+        ));
+      continue;
+    }
+
+    await db
+      .insert(iconMatchRules)
+      .values({
+        userId,
+        iconId,
+        normalizedTerm: term.normalizedTerm,
+        originalTerm: term.originalTerm,
+      });
+  }
+}
+
+async function removeRulesForIcon(userId: string, iconId: string): Promise<void> {
+  await db
+    .delete(iconMatchRules)
+    .where(and(
+      eq(iconMatchRules.userId, userId),
+      eq(iconMatchRules.iconId, iconId),
+    ));
 }
 
 export class UserIconLibraryService {
@@ -115,6 +270,7 @@ export class UserIconLibraryService {
 
   async create(userId: string, payload: UserIconLibraryCreateBodyInput): Promise<UserIconLibraryItem> {
     const normalized = normalizeIconDataUrl(payload);
+    const nextTerms = buildMatchTerms(normalized.name, normalized.keywords, normalized.originalFileName);
 
     const [existing] = await db
       .select()
@@ -126,11 +282,14 @@ export class UserIconLibraryService {
       .limit(1);
 
     if (existing) {
+      const oldTerms = buildMatchTerms(existing.name, extractExistingIconKeywords(existing));
+
       const [updated] = await db
         .update(userIconLibrary)
         .set({
           name: normalized.name,
           category: normalized.category,
+          tags: normalized.keywords.length > 0 ? normalized.keywords : null,
           updatedAt: new Date(),
         })
         .where(and(
@@ -139,7 +298,9 @@ export class UserIconLibraryService {
         ))
         .returning();
 
-      return updated ?? existing;
+      const icon = updated ?? existing;
+      await upsertRulesForIcon(userId, icon.imageUrl, nextTerms, oldTerms);
+      return icon;
     }
 
     const [created] = await db
@@ -152,7 +313,7 @@ export class UserIconLibraryService {
         imageUrl: normalized.imageUrl,
         storagePath: null,
         category: normalized.category,
-        tags: null,
+        tags: normalized.keywords.length > 0 ? normalized.keywords : null,
       })
       .returning();
 
@@ -160,10 +321,65 @@ export class UserIconLibraryService {
       throw new Error("Não foi possível salvar o ícone.");
     }
 
+    await upsertRulesForIcon(userId, created.imageUrl, nextTerms);
     return created;
   }
 
+  async update(userId: string, id: string, payload: UserIconLibraryUpdateBodyInput): Promise<UserIconLibraryItem | null> {
+    const [existing] = await db
+      .select()
+      .from(userIconLibrary)
+      .where(and(
+        eq(userIconLibrary.id, id),
+        eq(userIconLibrary.userId, userId),
+      ))
+      .limit(1);
+
+    if (!existing) return null;
+
+    const previousKeywords = extractExistingIconKeywords(existing);
+    const nextName = payload.name !== undefined ? sanitizeIconName(payload.name) : existing.name;
+    const nextCategory = payload.category !== undefined
+      ? sanitizeOptionalCategory(payload.category)
+      : existing.category;
+    const nextKeywords = payload.keywords !== undefined
+      ? sanitizeKeywordList(payload.keywords)
+      : previousKeywords;
+
+    const previousTerms = buildMatchTerms(existing.name, previousKeywords);
+    const nextTerms = buildMatchTerms(nextName, nextKeywords);
+
+    const [updated] = await db
+      .update(userIconLibrary)
+      .set({
+        name: nextName,
+        category: nextCategory,
+        tags: nextKeywords.length > 0 ? nextKeywords : null,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(userIconLibrary.id, id),
+        eq(userIconLibrary.userId, userId),
+      ))
+      .returning();
+
+    if (!updated) return null;
+    await upsertRulesForIcon(userId, updated.imageUrl, nextTerms, previousTerms);
+    return updated;
+  }
+
   async remove(userId: string, id: string): Promise<boolean> {
+    const [existing] = await db
+      .select()
+      .from(userIconLibrary)
+      .where(and(
+        eq(userIconLibrary.id, id),
+        eq(userIconLibrary.userId, userId),
+      ))
+      .limit(1);
+
+    if (!existing) return false;
+
     const deleted = await db
       .delete(userIconLibrary)
       .where(and(
@@ -172,6 +388,9 @@ export class UserIconLibraryService {
       ))
       .returning({ id: userIconLibrary.id });
 
-    return deleted.length > 0;
+    if (deleted.length === 0) return false;
+
+    await removeRulesForIcon(userId, existing.imageUrl);
+    return true;
   }
 }

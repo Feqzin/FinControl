@@ -15,9 +15,17 @@ export type UserIconLibraryItemApiModel = {
 };
 
 export type CreateUserIconLibraryPayload = {
-  name?: string | null;
+  name: string;
   category?: string | null;
+  keywords?: string[] | string | null;
+  originalFileName?: string | null;
   imageDataUrl: string;
+};
+
+export type UpdateUserIconLibraryPayload = {
+  name?: string;
+  category?: string | null;
+  keywords?: string[] | string | null;
 };
 
 export async function fetchUserIconLibrary(): Promise<UserIconLibraryItemApiModel[]> {
@@ -32,6 +40,18 @@ export async function createUserIconLibraryItem(
   const body = await response.json();
   if (!body?.icon) {
     throw new Error("Resposta inválida ao salvar ícone.");
+  }
+  return body.icon as UserIconLibraryItemApiModel;
+}
+
+export async function updateUserIconLibraryItem(
+  iconId: string,
+  payload: UpdateUserIconLibraryPayload,
+): Promise<UserIconLibraryItemApiModel> {
+  const response = await apiRequest("PATCH", `/api/user-icon-library/${iconId}`, payload);
+  const body = await response.json();
+  if (!body?.icon) {
+    throw new Error("Resposta inválida ao atualizar ícone.");
   }
   return body.icon as UserIconLibraryItemApiModel;
 }

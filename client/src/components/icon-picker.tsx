@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BrandIconDisplay, LIBRARY_ICONS } from "@/lib/brand-icons";
-import { Check, ImagePlus, RotateCcw, Upload } from "lucide-react";
+import { Check, ImagePlus, Pencil, RotateCcw, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import {
@@ -20,8 +20,11 @@ import {
 import {
   createUserIconLibraryItem,
   fetchUserIconLibrary,
+  updateUserIconLibraryItem,
   type UserIconLibraryItemApiModel,
 } from "@/services/api/user-icon-library";
+import { fetchIconMatchRules, type IconMatchRuleApiModel } from "@/services/api/icon-match-rules";
+import { matchIconByText, type UserIconMatchRule } from "@/lib/purchase-icon-matching";
 
 interface IconPickerProps {
   value?: string | null;
@@ -38,11 +41,65 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 const CATEGORIES = ["bancos", "servicos", "carteiras"] as const;
 const ICON_UPLOAD_MAX_BYTES = 512 * 1024;
+const USER_ICON_CATEGORIES = [
+  { value: "banco", label: "Banco" },
+  { value: "servico", label: "Serviço" },
+  { value: "carteira", label: "Carteira" },
+  { value: "loja", label: "Loja" },
+  { value: "mercado", label: "Mercado" },
+  { value: "transporte", label: "Transporte" },
+  { value: "game", label: "Game" },
+  { value: "outro", label: "Outro" },
+] as const;
+const USER_ICON_CATEGORY_VALUES: Set<string> = new Set(USER_ICON_CATEGORIES.map((item) => item.value));
+
+function sanitizeIconNameInput(value: string): string {
+  return value
+    .replace(/\.[a-z0-9]{2,5}$/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+}
+
+function parseKeywordInput(value: string): string[] {
+  const unique = new Set<string>();
+  const output: string[] = [];
+  for (const raw of value.split(",")) {
+    const trimmed = raw.trim().replace(/\s+/g, " ");
+    if (!trimmed) continue;
+    const normalized = trimmed
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!normalized || unique.has(normalized)) continue;
+    unique.add(normalized);
+    output.push(trimmed.slice(0, 80));
+  }
+  return output;
+}
+
+function resolveUserIconCategory(value: string | null | undefined): string {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return USER_ICON_CATEGORY_VALUES.has(normalized) ? normalized : "outro";
+}
 
 export function IconPicker({ value, name = "", onChange, size = "md" }: IconPickerProps) {
   const [open, setOpen] = useState(false);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [uploadFileName, setUploadFileName] = useState<string>("");
+  const [uploadIconName, setUploadIconName] = useState("");
+  const [uploadCategory, setUploadCategory] = useState("outro");
+  const [uploadKeywords, setUploadKeywords] = useState("");
+  const [editingIcon, setEditingIcon] = useState<UserIconLibraryItemApiModel | null>(null);
+  const [editIconName, setEditIconName] = useState("");
+  const [editCategory, setEditCategory] = useState("outro");
+  const [editKeywords, setEditKeywords] = useState("");
+  const [ignoredSuggestionKey, setIgnoredSuggestionKey] = useState<string | null>(null);
+  const [autoAppliedSuggestionKey, setAutoAppliedSuggestionKey] = useState<string | null>(null);
   const [exploreSearch, setExploreSearch] = useState("");
   const [exploreCategory, setExploreCategory] = useState("all");
   const [explorePackId, setExplorePackId] = useState("all");
@@ -75,28 +132,112 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
     staleTime: 60_000,
   });
 
+  const { data: iconMatchRules = [] } = useQuery<IconMatchRuleApiModel[]>({
+    queryKey: ["/api/icon-match-rules"],
+    queryFn: fetchIconMatchRules,
+    enabled: open && Boolean(name.trim()),
+    staleTime: 5 * 60_000,
+  });
+
+  const normalizedUserRules = useMemo<UserIconMatchRule[]>(
+    () => iconMatchRules.map((rule) => ({
+      id: rule.id,
+      iconId: rule.iconId,
+      normalizedTerm: rule.normalizedTerm,
+      originalTerm: rule.originalTerm,
+    })),
+    [iconMatchRules],
+  );
+
+  const iconSuggestion = useMemo(
+    () => matchIconByText(name, normalizedUserRules),
+    [name, normalizedUserRules],
+  );
+
   const officialIconsInLibrary = useMemo(
     () => new Set(personalIcons.map((icon) => icon.officialIconId).filter((id): id is string => Boolean(id))),
     [personalIcons],
   );
 
+  useEffect(() => {
+    if (!open) return;
+    if (value) return;
+    if (!name.trim()) return;
+    if (!iconSuggestion.matched || !iconSuggestion.shouldAutoApply) return;
+    if (iconSuggestion.source !== "personal_rule") return;
+    if (!iconSuggestion.iconId) return;
+
+    const signature = `${name.trim().toLowerCase()}::${iconSuggestion.iconId}`;
+    if (ignoredSuggestionKey === signature) return;
+    if (autoAppliedSuggestionKey === signature) return;
+
+    onChange(iconSuggestion.iconId);
+    setAutoAppliedSuggestionKey(signature);
+  }, [
+    open,
+    value,
+    name,
+    iconSuggestion,
+    ignoredSuggestionKey,
+    autoAppliedSuggestionKey,
+    onChange,
+  ]);
+
   const uploadIconMutation = useMutation({
-    mutationFn: async (payload: { imageDataUrl: string; name?: string | null }) =>
+    mutationFn: async (payload: {
+      imageDataUrl: string;
+      name: string;
+      category?: string | null;
+      keywords?: string[];
+      originalFileName?: string | null;
+    }) =>
       createUserIconLibraryItem(payload),
     onSuccess: (icon) => {
       onChange(icon.imageUrl);
       setUploadPreview(null);
       setUploadFileName("");
+      setUploadIconName("");
+      setUploadCategory("outro");
+      setUploadKeywords("");
       setOpen(false);
       toast({
         title: "Ícone salvo na sua biblioteca.",
       });
       void queryClient.invalidateQueries({ queryKey: ["/api/user-icon-library"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icon-match-rules"] });
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Não foi possível salvar o ícone.";
       toast({
         title: "Erro ao salvar ícone",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updatePersonalIconMutation = useMutation({
+    mutationFn: async (payload: {
+      id: string;
+      name: string;
+      category?: string | null;
+      keywords?: string[];
+    }) =>
+      updateUserIconLibraryItem(payload.id, {
+        name: payload.name,
+        category: payload.category,
+        keywords: payload.keywords,
+      }),
+    onSuccess: () => {
+      setEditingIcon(null);
+      toast({ title: "Ícone atualizado com sucesso." });
+      void queryClient.invalidateQueries({ queryKey: ["/api/user-icon-library"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icon-match-rules"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Não foi possível atualizar o ícone.";
+      toast({
+        title: "Erro ao atualizar ícone",
         description: message,
         variant: "destructive",
       });
@@ -165,6 +306,7 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
       const dataUrl = ev.target?.result as string;
       setUploadPreview(dataUrl);
       setUploadFileName(file.name);
+      setUploadIconName((prev) => prev || sanitizeIconNameInput(file.name));
     };
     reader.readAsDataURL(file);
   };
@@ -181,9 +323,23 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
 
   const handleConfirmUpload = () => {
     if (!uploadPreview) return;
+    const sanitizedName = sanitizeIconNameInput(uploadIconName);
+    if (sanitizedName.length < 2) {
+      toast({
+        title: "Nome obrigatório",
+        description: "Informe um nome amigável para o ícone.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const parsedKeywords = parseKeywordInput(uploadKeywords);
     uploadIconMutation.mutate({
       imageDataUrl: uploadPreview,
-      name: uploadFileName || "Ícone personalizado",
+      name: sanitizedName,
+      category: resolveUserIconCategory(uploadCategory),
+      keywords: parsedKeywords,
+      originalFileName: uploadFileName || null,
     });
   };
 
@@ -192,6 +348,57 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
     setOpen(false);
     setUploadPreview(null);
     setUploadFileName("");
+    setUploadIconName("");
+    setUploadCategory("outro");
+    setUploadKeywords("");
+    setIgnoredSuggestionKey(null);
+    setAutoAppliedSuggestionKey(null);
+  };
+
+  const suggestionSignature = `${name.trim().toLowerCase()}::${iconSuggestion.iconId ?? ""}`;
+  const isSuggestionIgnored = ignoredSuggestionKey === suggestionSignature;
+  const shouldShowSuggestion =
+    open &&
+    !value &&
+    iconSuggestion.matched &&
+    iconSuggestion.shouldSuggest &&
+    Boolean(iconSuggestion.iconId) &&
+    !isSuggestionIgnored;
+
+  const handleUseSuggestion = () => {
+    if (!iconSuggestion.iconId) return;
+    onChange(iconSuggestion.iconId);
+    setIgnoredSuggestionKey(null);
+  };
+
+  const handleIgnoreSuggestion = () => {
+    setIgnoredSuggestionKey(suggestionSignature);
+  };
+
+  const openEditPersonalIcon = (icon: UserIconLibraryItemApiModel) => {
+    setEditingIcon(icon);
+    setEditIconName(icon.name ?? "");
+    setEditCategory(resolveUserIconCategory(icon.category));
+    setEditKeywords(Array.isArray(icon.tags) ? icon.tags.join(", ") : "");
+  };
+
+  const handleSaveEditPersonalIcon = () => {
+    if (!editingIcon) return;
+    const sanitizedName = sanitizeIconNameInput(editIconName);
+    if (sanitizedName.length < 2) {
+      toast({
+        title: "Nome obrigatório",
+        description: "Informe um nome amigável para o ícone.",
+        variant: "destructive",
+      });
+      return;
+    }
+    updatePersonalIconMutation.mutate({
+      id: editingIcon.id,
+      name: sanitizedName,
+      category: resolveUserIconCategory(editCategory),
+      keywords: parseKeywordInput(editKeywords),
+    });
   };
 
   const personalOfficialIconIds = officialIconsInLibrary;
@@ -219,6 +426,37 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
           <DialogHeader>
             <DialogTitle>Alterar Ícone</DialogTitle>
           </DialogHeader>
+
+          {shouldShowSuggestion ? (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <p className="text-xs font-semibold text-primary">
+                Ícone sugerido para este nome
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Encontramos um ícone compatível para <span className="font-medium text-foreground">{name}</span>.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleUseSuggestion}
+                >
+                  Usar este ícone
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleIgnoreSuggestion}
+                >
+                  Ignorar sugestão
+                </Button>
+                <span className="text-[11px] text-muted-foreground">
+                  Confiança: {Math.round(iconSuggestion.confidenceScore * 100)}%
+                </span>
+              </div>
+            </div>
+          ) : null}
 
           <Tabs defaultValue="biblioteca">
             <TabsList className="grid w-full grid-cols-3">
@@ -278,31 +516,47 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
                     {personalIcons.map((item) => {
                       const isSelected = value === item.imageUrl;
                       return (
-                        <button
+                        <div
                           key={item.id}
-                          type="button"
-                          onClick={() => handleSelectPersonal(item.imageUrl)}
-                          data-testid={`icon-personal-option-${item.id}`}
-                          className={`flex flex-col items-center gap-1 rounded-lg border p-2 transition-all hover:bg-accent ${
+                          className={`rounded-lg border p-2 transition-all ${
                             isSelected ? "border-primary ring-2 ring-primary/30" : "border-transparent"
                           }`}
                         >
-                          <div className="relative">
-                            <img
-                              src={item.imageUrl}
-                              alt={item.name}
-                              className="h-10 w-10 rounded-xl object-cover"
-                            />
-                            {isSelected ? (
-                              <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary">
-                                <Check className="h-2.5 w-2.5 text-primary-foreground" />
-                              </div>
-                            ) : null}
-                          </div>
-                          <span className="line-clamp-2 text-center text-[10px] leading-tight text-muted-foreground">
-                            {item.name}
-                          </span>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSelectPersonal(item.imageUrl)}
+                            data-testid={`icon-personal-option-${item.id}`}
+                            className="flex w-full flex-col items-center gap-1 rounded-md p-1 text-left transition-colors hover:bg-accent"
+                          >
+                            <div className="relative">
+                              <img
+                                src={item.imageUrl}
+                                alt={item.name}
+                                className="h-10 w-10 rounded-xl object-cover"
+                              />
+                              {isSelected ? (
+                                <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary">
+                                  <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                                </div>
+                              ) : null}
+                            </div>
+                            <span className="w-full truncate text-center text-[10px] leading-tight text-muted-foreground" title={item.name}>
+                              {item.name}
+                            </span>
+                          </button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="mt-1 h-6 w-full text-[11px]"
+                            onClick={() => openEditPersonalIcon(item)}
+                            aria-label={`Editar ícone ${item.name}`}
+                            title={`Editar ícone ${item.name}`}
+                          >
+                            <Pencil className="mr-1 h-3 w-3" />
+                            Editar
+                          </Button>
+                        </div>
                       );
                     })}
                   </div>
@@ -488,6 +742,49 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
                 data-testid="input-upload-icone"
               />
 
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-foreground">Nome do ícone</label>
+                  <Input
+                    value={uploadIconName}
+                    onChange={(event) => setUploadIconName(event.target.value)}
+                    placeholder="Ex: Itaú, KaBuM, Netflix"
+                    aria-label="Nome do ícone"
+                    maxLength={120}
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-foreground">Categoria</label>
+                  <Select value={uploadCategory} onValueChange={setUploadCategory}>
+                    <SelectTrigger aria-label="Categoria do ícone">
+                      <SelectValue placeholder="Selecione uma categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {USER_ICON_CATEGORIES.map((category) => (
+                        <SelectItem key={category.value} value={category.value}>
+                          {category.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-foreground">Palavras-chave para reconhecimento automático</label>
+                  <Input
+                    value={uploadKeywords}
+                    onChange={(event) => setUploadKeywords(event.target.value)}
+                    placeholder="Ex: itau, itaú, itaucard, unibanco"
+                    aria-label="Palavras-chave do ícone"
+                    maxLength={500}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Use palavras que costumam aparecer na fatura ou no nome da compra.
+                  </p>
+                </div>
+              </div>
+
               {uploadPreview ? (
                 <Button
                   type="button"
@@ -497,7 +794,7 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
                   disabled={uploadIconMutation.isPending}
                 >
                   <Check className="mr-2 h-4 w-4" />
-                  {uploadIconMutation.isPending ? "Salvando..." : "Salvar na biblioteca e usar este ícone"}
+                  {uploadIconMutation.isPending ? "Salvando..." : "Salvar ícone"}
                 </Button>
               ) : null}
 
@@ -515,6 +812,80 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
               ) : null}
             </TabsContent>
           </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(editingIcon)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setEditingIcon(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar ícone personalizado</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">Nome do ícone</label>
+              <Input
+                value={editIconName}
+                onChange={(event) => setEditIconName(event.target.value)}
+                placeholder="Ex: Itaú, KaBuM, Netflix"
+                aria-label="Editar nome do ícone"
+                maxLength={120}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">Categoria</label>
+              <Select value={editCategory} onValueChange={setEditCategory}>
+                <SelectTrigger aria-label="Editar categoria do ícone">
+                  <SelectValue placeholder="Selecione uma categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  {USER_ICON_CATEGORIES.map((category) => (
+                    <SelectItem key={category.value} value={category.value}>
+                      {category.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">Palavras-chave</label>
+              <Input
+                value={editKeywords}
+                onChange={(event) => setEditKeywords(event.target.value)}
+                placeholder="Ex: itau, itaú, itaucard, unibanco"
+                aria-label="Editar palavras-chave do ícone"
+                maxLength={500}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setEditingIcon(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              className="flex-1"
+              onClick={handleSaveEditPersonalIcon}
+              disabled={updatePersonalIconMutation.isPending}
+            >
+              {updatePersonalIconMutation.isPending ? "Salvando..." : "Salvar alterações"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>
