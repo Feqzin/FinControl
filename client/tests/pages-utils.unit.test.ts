@@ -65,7 +65,12 @@ import {
 } from "../src/pages/pessoas/payment-timeline.utils";
 import { buildCompraAliasDraft, findPossibleExistingPurchaseMatch } from "../src/pages/cartoes/import-existing-purchase-match";
 import { buildCreateCompraAliasRequestBody } from "../src/services/api/cartoes";
-import { matchIconByText, matchPurchaseIconByDescription } from "../src/lib/purchase-icon-matching";
+import {
+  BUILTIN_ICON_PREFERENCE_RULE_ICON_ID,
+  buildBuiltinIconDisablePreferenceTerm,
+  matchIconByText,
+  matchPurchaseIconByDescription,
+} from "../src/lib/purchase-icon-matching";
 import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
 import {
   formatInvoiceMonthLong,
@@ -3075,6 +3080,42 @@ test("icon matching: compra importada recebe ícone quando match forte", () => {
   const importedPurchaseDescription = "NETFLIX ENTRETENIMENTO";
   const result = matchPurchaseIconByDescription(importedPurchaseDescription, []);
   assert.equal(result.iconId, "netflix");
+  assert.equal(result.shouldAutoApply, true);
+});
+
+test("icon matching: desativação por usuário impede autoaplicação do ícone padrão", () => {
+  const result = matchPurchaseIconByDescription("Netflix.comsaopaulobr", [
+    {
+      id: "pref-disable-netflix",
+      iconId: BUILTIN_ICON_PREFERENCE_RULE_ICON_ID,
+      originalTerm: buildBuiltinIconDisablePreferenceTerm("netflix"),
+      normalizedTerm: "builtin icon disabled netflix",
+    },
+  ]);
+
+  assert.equal(result.iconId, null);
+  assert.equal(result.shouldAutoApply, false);
+});
+
+test("icon matching: desativação do padrão não bloqueia regra pessoal forte", () => {
+  const personalIconId = "data:image/svg+xml;base64,custom-netflix";
+  const result = matchPurchaseIconByDescription("Netflix.comsaopaulobr", [
+    {
+      id: "pref-disable-netflix",
+      iconId: BUILTIN_ICON_PREFERENCE_RULE_ICON_ID,
+      originalTerm: buildBuiltinIconDisablePreferenceTerm("netflix"),
+      normalizedTerm: "builtin icon disabled netflix",
+    },
+    {
+      id: "rule-personal-netflix",
+      iconId: personalIconId,
+      originalTerm: "netflix",
+      normalizedTerm: "netflix",
+    },
+  ]);
+
+  assert.equal(result.iconId, personalIconId);
+  assert.equal(result.source, "personal_rule");
   assert.equal(result.shouldAutoApply, true);
 });
 

@@ -12,11 +12,18 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BrandIconDisplay, LIBRARY_ICONS } from "@/lib/brand-icons";
-import { Check, ImagePlus, Pencil, RotateCcw, Trash2, Upload } from "lucide-react";
+import { Check, ImagePlus, MoreVertical, RotateCcw, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import {
@@ -34,8 +41,20 @@ import {
   updateUserIconLibraryItem,
   type UserIconLibraryItemApiModel,
 } from "@/services/api/user-icon-library";
-import { fetchIconMatchRules, type IconMatchRuleApiModel } from "@/services/api/icon-match-rules";
-import { matchIconByText, type UserIconMatchRule } from "@/lib/purchase-icon-matching";
+import {
+  createIconMatchRules,
+  deleteIconMatchRule,
+  fetchIconMatchRules,
+  type IconMatchRuleApiModel,
+} from "@/services/api/icon-match-rules";
+import {
+  BUILTIN_ICON_PREFERENCE_RULE_ICON_ID,
+  buildBuiltinIconDisablePreferenceTerm,
+  getDisabledBuiltinIconKeysFromRules,
+  matchIconByText,
+  parseBuiltinIconDisablePreferenceTerm,
+  type UserIconMatchRule,
+} from "@/lib/purchase-icon-matching";
 
 interface IconPickerProps {
   value?: string | null;
@@ -98,6 +117,13 @@ function resolveUserIconCategory(value: string | null | undefined): string {
   return USER_ICON_CATEGORY_VALUES.has(normalized) ? normalized : "outro";
 }
 
+function getItemTerms(item: Pick<UserIconLibraryItemApiModel, "name" | "tags">): string[] {
+  const terms = [item.name, ...(Array.isArray(item.tags) ? item.tags : [])]
+    .map((term) => String(term ?? "").trim())
+    .filter((term) => term.length > 0);
+  return Array.from(new Set(terms));
+}
+
 export function IconPicker({ value, name = "", onChange, size = "md" }: IconPickerProps) {
   const [open, setOpen] = useState(false);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
@@ -110,6 +136,7 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
   const [editCategory, setEditCategory] = useState("outro");
   const [editKeywords, setEditKeywords] = useState("");
   const [deletingIcon, setDeletingIcon] = useState<UserIconLibraryItemApiModel | null>(null);
+  const [iconActionLoadingKey, setIconActionLoadingKey] = useState<string | null>(null);
   const [ignoredSuggestionKey, setIgnoredSuggestionKey] = useState<string | null>(null);
   const [autoAppliedSuggestionKey, setAutoAppliedSuggestionKey] = useState<string | null>(null);
   const [exploreSearch, setExploreSearch] = useState("");
@@ -147,7 +174,7 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
   const { data: iconMatchRules = [] } = useQuery<IconMatchRuleApiModel[]>({
     queryKey: ["/api/icon-match-rules"],
     queryFn: fetchIconMatchRules,
-    enabled: open && Boolean(name.trim()),
+    enabled: open,
     staleTime: 5 * 60_000,
   });
 
@@ -164,6 +191,33 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
   const iconSuggestion = useMemo(
     () => matchIconByText(name, normalizedUserRules),
     [name, normalizedUserRules],
+  );
+
+  const iconMatchRulesByIconId = useMemo(() => {
+    const map = new Map<string, IconMatchRuleApiModel[]>();
+    for (const rule of iconMatchRules) {
+      if (rule.iconId === BUILTIN_ICON_PREFERENCE_RULE_ICON_ID) continue;
+      const rows = map.get(rule.iconId) ?? [];
+      rows.push(rule);
+      map.set(rule.iconId, rows);
+    }
+    return map;
+  }, [iconMatchRules]);
+
+  const disabledBuiltinIconRuleByKey = useMemo(() => {
+    const map = new Map<string, IconMatchRuleApiModel>();
+    for (const rule of iconMatchRules) {
+      if (rule.iconId !== BUILTIN_ICON_PREFERENCE_RULE_ICON_ID) continue;
+      const key = parseBuiltinIconDisablePreferenceTerm(rule.originalTerm);
+      if (!key) continue;
+      map.set(key, rule);
+    }
+    return map;
+  }, [iconMatchRules]);
+
+  const disabledBuiltinIconKeys = useMemo(
+    () => getDisabledBuiltinIconKeysFromRules(normalizedUserRules),
+    [normalizedUserRules],
   );
 
   const officialIconsInLibrary = useMemo(
@@ -444,6 +498,81 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
     deletePersonalIconMutation.mutate(deletingIcon);
   };
 
+  const invalidateIconQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["/api/user-icon-library"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/icon-match-rules"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/icons/official"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] }),
+    ]);
+  };
+
+  const runIconAction = async (actionKey: string, action: () => Promise<void>) => {
+    setIconActionLoadingKey(actionKey);
+    try {
+      await action();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Não foi possível concluir esta ação.";
+      toast({
+        title: "Erro ao atualizar ícone",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setIconActionLoadingKey((current) => (current === actionKey ? null : current));
+    }
+  };
+
+  const handleToggleBuiltinIconAutomation = async (iconKey: string) => {
+    const normalizedKey = iconKey.trim().toLowerCase();
+    const existingRule = disabledBuiltinIconRuleByKey.get(normalizedKey);
+    const actionKey = `builtin:${normalizedKey}:${existingRule ? "restore" : "disable"}`;
+
+    await runIconAction(actionKey, async () => {
+      if (existingRule) {
+        await deleteIconMatchRule(existingRule.id);
+        toast({ title: "Automação restaurada para este ícone padrão." });
+      } else {
+        await createIconMatchRules({
+          iconId: BUILTIN_ICON_PREFERENCE_RULE_ICON_ID,
+          terms: [buildBuiltinIconDisablePreferenceTerm(normalizedKey)],
+        });
+        toast({ title: "Automação desativada para este ícone padrão." });
+      }
+      await invalidateIconQueries();
+    });
+  };
+
+  const handleTogglePersonalIconAutomation = async (icon: UserIconLibraryItemApiModel) => {
+    const rules = iconMatchRulesByIconId.get(icon.imageUrl) ?? [];
+    const isAutomationEnabled = rules.length > 0;
+    const actionKey = `personal:${icon.id}:${isAutomationEnabled ? "disable" : "restore"}`;
+
+    await runIconAction(actionKey, async () => {
+      if (isAutomationEnabled) {
+        await Promise.all(rules.map((rule) => deleteIconMatchRule(rule.id)));
+        toast({ title: "Automação desativada para este ícone." });
+        await invalidateIconQueries();
+        return;
+      }
+
+      if (icon.sourceType === "official" && icon.officialIconId) {
+        await addOfficialIconToLibrary(icon.officialIconId);
+      } else {
+        await updateUserIconLibraryItem(icon.id, {
+          name: icon.name,
+          category: icon.category,
+          keywords: getItemTerms(icon),
+        });
+      }
+
+      toast({ title: "Automação reativada para este ícone." });
+      await invalidateIconQueries();
+    });
+  };
+
+  const isActionLoading = (actionKey: string): boolean => iconActionLoadingKey === actionKey;
+
   const personalOfficialIconIds = officialIconsInLibrary;
 
   return (
@@ -519,26 +648,63 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
                     <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
                       {items.map((item) => {
                         const isSelected = value === item.key;
+                        const normalizedBuiltinKey = item.key.trim().toLowerCase();
+                        const isBuiltinDisabled = disabledBuiltinIconKeys.has(normalizedBuiltinKey);
+                        const toggleBuiltinActionKey = `builtin:${normalizedBuiltinKey}:${isBuiltinDisabled ? "restore" : "disable"}`;
                         return (
-                          <button
+                          <div
                             key={item.key}
-                            type="button"
-                            onClick={() => handleSelectLibrary(item.key)}
-                            data-testid={`icon-option-${item.key}`}
-                            className={`flex flex-col items-center gap-1 rounded-lg border p-2 transition-all hover:bg-accent ${
+                            className={`relative rounded-lg border p-2 transition-all ${
                               isSelected ? "border-primary ring-2 ring-primary/30" : "border-transparent"
                             }`}
                           >
-                            <div className="relative">
-                              <BrandIconDisplay name={item.label} iconeId={item.key} size="md" />
-                              {isSelected ? (
-                                <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary">
-                                  <Check className="h-2.5 w-2.5 text-primary-foreground" />
-                                </div>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectLibrary(item.key)}
+                              data-testid={`icon-option-${item.key}`}
+                              className="flex w-full flex-col items-center gap-1 rounded-md p-1 pr-7 text-left transition-colors hover:bg-accent"
+                            >
+                              <div className="relative">
+                                <BrandIconDisplay name={item.label} iconeId={item.key} size="md" />
+                                {isSelected ? (
+                                  <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary">
+                                    <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                                  </div>
+                                ) : null}
+                              </div>
+                              <span className="text-center text-[10px] leading-tight text-muted-foreground">{item.label}</span>
+                              {isBuiltinDisabled ? (
+                                <span className="text-center text-[9px] font-medium text-amber-600">
+                                  Automação desativada
+                                </span>
                               ) : null}
-                            </div>
-                            <span className="text-center text-[10px] leading-tight text-muted-foreground">{item.label}</span>
-                          </button>
+                            </button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="absolute right-1 top-1 h-6 w-6"
+                                  aria-label={`Opções do ícone ${item.label}`}
+                                  title={`Opções do ícone ${item.label}`}
+                                >
+                                  <MoreVertical className="h-3.5 w-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuItem onClick={() => handleSelectLibrary(item.key)}>
+                                  Usar este ícone
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => void handleToggleBuiltinIconAutomation(item.key)}
+                                  disabled={isActionLoading(toggleBuiltinActionKey)}
+                                >
+                                  {isBuiltinDisabled ? "Restaurar automação" : "Desativar para mim"}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         );
                       })}
                     </div>
@@ -558,10 +724,13 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
                     {personalIcons.map((item) => {
                       const isSelected = value === item.imageUrl;
+                      const isAutomationEnabled = (iconMatchRulesByIconId.get(item.imageUrl)?.length ?? 0) > 0;
+                      const toggleAutomationActionKey = `personal:${item.id}:${isAutomationEnabled ? "disable" : "restore"}`;
+                      const isOfficialIcon = item.sourceType === "official";
                       return (
                         <div
                           key={item.id}
-                          className={`rounded-lg border p-2 transition-all ${
+                          className={`relative rounded-lg border p-2 transition-all ${
                             isSelected ? "border-primary ring-2 ring-primary/30" : "border-transparent"
                           }`}
                         >
@@ -569,7 +738,7 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
                             type="button"
                             onClick={() => handleSelectPersonal(item.imageUrl)}
                             data-testid={`icon-personal-option-${item.id}`}
-                            className="flex w-full flex-col items-center gap-1 rounded-md p-1 text-left transition-colors hover:bg-accent"
+                            className="flex w-full flex-col items-center gap-1 rounded-md p-1 pr-7 text-left transition-colors hover:bg-accent"
                           >
                             <div className="relative">
                               <img
@@ -586,33 +755,49 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
                             <span className="w-full truncate text-center text-[10px] leading-tight text-muted-foreground" title={item.name}>
                               {item.name}
                             </span>
+                            {!isAutomationEnabled ? (
+                              <span className="text-center text-[9px] font-medium text-amber-600">
+                                Automação desativada
+                              </span>
+                            ) : null}
                           </button>
-                          <div className="mt-1 grid grid-cols-2 gap-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 text-[11px]"
-                              onClick={() => openEditPersonalIcon(item)}
-                              aria-label={`Editar ícone ${item.name}`}
-                              title={`Editar ícone ${item.name}`}
-                            >
-                              <Pencil className="mr-1 h-3 w-3" />
-                              Editar
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 text-[11px] text-destructive hover:text-destructive"
-                              onClick={() => setDeletingIcon(item)}
-                              aria-label={`Excluir ícone ${item.name}`}
-                              title={`Excluir ícone ${item.name}`}
-                            >
-                              <Trash2 className="mr-1 h-3 w-3" />
-                              Excluir
-                            </Button>
-                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="absolute right-1 top-1 h-6 w-6"
+                                aria-label={`Opções do ícone ${item.name}`}
+                                title={`Opções do ícone ${item.name}`}
+                              >
+                                <MoreVertical className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-60">
+                              <DropdownMenuItem onClick={() => handleSelectPersonal(item.imageUrl)}>
+                                Usar este ícone
+                              </DropdownMenuItem>
+                              {!isOfficialIcon ? (
+                                <DropdownMenuItem onClick={() => openEditPersonalIcon(item)}>
+                                  Editar informações
+                                </DropdownMenuItem>
+                              ) : null}
+                              <DropdownMenuItem
+                                onClick={() => void handleTogglePersonalIconAutomation(item)}
+                                disabled={isActionLoading(toggleAutomationActionKey)}
+                              >
+                                {isAutomationEnabled ? "Desativar automação" : "Reativar automação"}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => setDeletingIcon(item)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                {isOfficialIcon ? "Remover da minha biblioteca" : "Excluir da minha biblioteca"}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       );
                     })}
@@ -956,7 +1141,9 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir este ícone?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {deletingIcon?.sourceType === "official" ? "Remover este ícone da sua biblioteca?" : "Excluir este ícone?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               Ele será removido da sua biblioteca e deixará de ser usado automaticamente em compras, cartões e serviços futuros.
             </AlertDialogDescription>
@@ -973,7 +1160,11 @@ export function IconPicker({ value, name = "", onChange, size = "md" }: IconPick
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={deletePersonalIconMutation.isPending}
             >
-              {deletePersonalIconMutation.isPending ? "Excluindo..." : "Excluir ícone"}
+              {deletePersonalIconMutation.isPending
+                ? "Excluindo..."
+                : deletingIcon?.sourceType === "official"
+                  ? "Remover da biblioteca"
+                  : "Excluir ícone"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -7,6 +7,8 @@ export type UserIconMatchRule = {
   originalTerm: string;
 };
 
+export const BUILTIN_ICON_PREFERENCE_RULE_ICON_ID = "__builtin_icon_preference__";
+
 export type IconMatchSource = "personal_rule" | "builtin_keyword";
 
 export type PurchaseIconMatchResult = {
@@ -32,6 +34,7 @@ const MIN_TERM_LENGTH = 3;
 const AUTO_APPLY_THRESHOLD = 0.9;
 const SUGGEST_THRESHOLD = 0.72;
 const MIN_MATCH_THRESHOLD = 0.62;
+const BUILTIN_ICON_DISABLE_TERM_PREFIX = "builtin-icon-disabled:";
 
 const BUILTIN_ALIASES: Record<string, string[]> = {
   netflix: ["netflix", "netflix com", "netflix.com"],
@@ -51,6 +54,7 @@ const BUILTIN_ALIASES: Record<string, string[]> = {
 };
 
 const ICON_LABEL_BY_ID = new Map<string, string>(LIBRARY_ICONS.map((icon) => [icon.key, icon.label]));
+const BUILTIN_ICON_KEYS = new Set<string>(LIBRARY_ICONS.map((icon) => normalizeBuiltinIconKey(icon.key)));
 
 function normalizeText(value: string): string {
   return value
@@ -60,6 +64,41 @@ function normalizeText(value: string): string {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeBuiltinIconKey(value: string): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
+
+function isValidBuiltinIconKey(value: string): boolean {
+  const normalized = normalizeBuiltinIconKey(value);
+  return normalized.length > 0 && BUILTIN_ICON_KEYS.has(normalized);
+}
+
+export function buildBuiltinIconDisablePreferenceTerm(iconKey: string): string {
+  return `${BUILTIN_ICON_DISABLE_TERM_PREFIX}${normalizeBuiltinIconKey(iconKey)}`;
+}
+
+export function parseBuiltinIconDisablePreferenceTerm(term: string): string | null {
+  const normalizedTerm = String(term ?? "").trim().toLowerCase();
+  if (!normalizedTerm.startsWith(BUILTIN_ICON_DISABLE_TERM_PREFIX)) return null;
+
+  const key = normalizeBuiltinIconKey(normalizedTerm.slice(BUILTIN_ICON_DISABLE_TERM_PREFIX.length));
+  if (!isValidBuiltinIconKey(key)) return null;
+  return key;
+}
+
+export function getDisabledBuiltinIconKeysFromRules(rules: UserIconMatchRule[]): Set<string> {
+  const disabled = new Set<string>();
+  for (const rule of rules) {
+    if (rule.iconId !== BUILTIN_ICON_PREFERENCE_RULE_ICON_ID) continue;
+    const key = parseBuiltinIconDisablePreferenceTerm(rule.originalTerm ?? "");
+    if (key) disabled.add(key);
+  }
+  return disabled;
 }
 
 function includesByWordBoundary(normalizedDescription: string, normalizedTerm: string): boolean {
@@ -128,11 +167,12 @@ function buildBuiltinCandidates(): Candidate[] {
   return candidates;
 }
 
-const BUILTIN_CANDIDATES = buildBuiltinCandidates();
+const ALL_BUILTIN_CANDIDATES = buildBuiltinCandidates();
 
 function buildPersonalCandidates(rules: UserIconMatchRule[]): Candidate[] {
   const candidates: Candidate[] = [];
   for (const rule of rules) {
+    if (rule.iconId === BUILTIN_ICON_PREFERENCE_RULE_ICON_ID) continue;
     const normalizedTerm = normalizeText(rule.normalizedTerm || rule.originalTerm || "");
     if (normalizedTerm.length < MIN_TERM_LENGTH) continue;
     const label = ICON_LABEL_BY_ID.get(rule.iconId) ?? "Ícone personalizado";
@@ -176,7 +216,12 @@ export function matchIconByText(
     };
   }
 
-  const candidates = [...buildPersonalCandidates(userRules), ...BUILTIN_CANDIDATES];
+  const disabledBuiltinIconKeys = getDisabledBuiltinIconKeysFromRules(userRules);
+  const builtinCandidates = disabledBuiltinIconKeys.size === 0
+    ? ALL_BUILTIN_CANDIDATES
+    : ALL_BUILTIN_CANDIDATES.filter((candidate) => !disabledBuiltinIconKeys.has(candidate.iconId));
+
+  const candidates = [...buildPersonalCandidates(userRules), ...builtinCandidates];
   let best: { candidate: Candidate; score: number } | null = null;
 
   for (const candidate of candidates) {
