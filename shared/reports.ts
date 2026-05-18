@@ -22,6 +22,15 @@ export type ReportsOverviewSummary = {
   valoresAReceber: number;
   gastosFixos: number;
   servicosAtivosTotal: number;
+  servicosEquivalenteMensalTotal?: number;
+  servicosCobrancaRealCompetenciaTotal?: number;
+  servicosCobrancaRealPeriodoTotal?: number;
+  servicosVinculadosCartaoEquivalenteMensalTotal?: number;
+  servicosVinculadosCartaoCobrancaRealTotal?: number;
+  servicosVinculadosCartaoCobrancaRealPeriodoTotal?: number;
+  servicosNaoVinculadosCartaoEquivalenteMensalTotal?: number;
+  servicosNaoVinculadosCartaoCobrancaRealTotal?: number;
+  servicosNaoVinculadosCartaoCobrancaRealPeriodoTotal?: number;
   cartoesFaturaAtualTotal: number;
   cartoesLimiteComprometidoTotal: number;
 };
