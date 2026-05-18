@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db.js";
-import { iconMatchRules, type IconMatchRule } from "../shared/schema.js";
+import { iconMatchRules, type IconMatchRule } from "../../shared/schema.js";
 import type { IconMatchRuleCreateBodyInput } from "../validators/icon-match-rules.validators.js";
 
 const MIN_NORMALIZED_TERM_LENGTH = 3;
