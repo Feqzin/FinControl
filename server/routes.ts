@@ -30,6 +30,7 @@ import { createCloudBackupsController } from "./controllers/cloud-backups.contro
 import { createReportsController } from "./controllers/reports.controller";
 import { createCompraAliasesController } from "./controllers/compra-aliases.controller";
 import { createIconMatchRulesController } from "./controllers/icon-match-rules.controller";
+import { createUserIconLibraryController } from "./controllers/user-icon-library.controller";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes";
 import { PagamentosTimelineService } from "./services/pagamentos-timeline.service";
@@ -37,6 +38,7 @@ import { CloudBackupsService } from "./services/cloud-backups.service";
 import { ReportsService } from "./services/reports.service";
 import { CompraAliasesService } from "./services/compra-aliases.service";
 import { IconMatchRulesService } from "./services/icon-match-rules.service";
+import { UserIconLibraryService } from "./services/user-icon-library.service";
 import { requirePremiumFeature } from "./subscription-access";
 import { importRateLimit } from "./middleware/rate-limit";
 
@@ -74,6 +76,7 @@ export function registerRoutes(app: Express): void {
   const reportsController = createReportsController(new ReportsService(financialRepository));
   const compraAliasesController = createCompraAliasesController(new CompraAliasesService(storage));
   const iconMatchRulesController = createIconMatchRulesController(new IconMatchRulesService());
+  const userIconLibraryController = createUserIconLibraryController(new UserIconLibraryService());
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -98,6 +101,9 @@ export function registerRoutes(app: Express): void {
   app.get("/api/icon-match-rules", requireAuth, iconMatchRulesController.list);
   app.post("/api/icon-match-rules", requireAuth, iconMatchRulesController.create);
   app.delete("/api/icon-match-rules/:id", requireAuth, iconMatchRulesController.remove);
+  app.get("/api/user-icon-library", requireAuth, userIconLibraryController.list);
+  app.post("/api/user-icon-library", requireAuth, userIconLibraryController.create);
+  app.delete("/api/user-icon-library/:id", requireAuth, userIconLibraryController.remove);
 
   app.get("/api/pessoas/:pessoaId/timeline-pagamentos", requireAuth, pagamentosTimelineController.listByPessoa);
   app.patch("/api/pagamentos/:sourceType/:sourceId/observacao", requireAuth, pagamentosTimelineController.updateObservacao);

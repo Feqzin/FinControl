@@ -32,6 +32,7 @@ import { createBillingController } from "./controllers/billing.controller.js";
 import { createReportsController } from "./controllers/reports.controller.js";
 import { createCompraAliasesController } from "./controllers/compra-aliases.controller.js";
 import { createIconMatchRulesController } from "./controllers/icon-match-rules.controller.js";
+import { createUserIconLibraryController } from "./controllers/user-icon-library.controller.js";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.js";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
 import { registerDebugDbPingRoute } from "./routes/debug-db-ping.route.js";
@@ -57,6 +58,7 @@ import { ENV } from "./env.js";
 import { ReportsService } from "./services/reports.service.js";
 import { CompraAliasesService } from "./services/compra-aliases.service.js";
 import { IconMatchRulesService } from "./services/icon-match-rules.service.js";
+import { UserIconLibraryService } from "./services/user-icon-library.service.js";
 
 function auditRoute(
   req: Request,
@@ -106,6 +108,7 @@ export function registerRoutes(app: Express): void {
   const reportsController = createReportsController(new ReportsService(financialRepository));
   const compraAliasesController = createCompraAliasesController(new CompraAliasesService(storage));
   const iconMatchRulesController = createIconMatchRulesController(new IconMatchRulesService());
+  const userIconLibraryController = createUserIconLibraryController(new UserIconLibraryService());
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -305,6 +308,9 @@ export function registerRoutes(app: Express): void {
   app.get("/api/icon-match-rules", requireAuth, iconMatchRulesController.list);
   app.post("/api/icon-match-rules", requireAuth, iconMatchRulesController.create);
   app.delete("/api/icon-match-rules/:id", requireAuth, iconMatchRulesController.remove);
+  app.get("/api/user-icon-library", requireAuth, userIconLibraryController.list);
+  app.post("/api/user-icon-library", requireAuth, userIconLibraryController.create);
+  app.delete("/api/user-icon-library/:id", requireAuth, userIconLibraryController.remove);
   app.get("/api/subscription/usage", requireAuth, subscriptionController.getUsage);
   app.post("/api/billing/mercadopago/webhook", webhookRateLimit, billingController.processMercadoPagoWebhook);
   app.get("/api/billing/status", requireAuth, billingController.getStatus);

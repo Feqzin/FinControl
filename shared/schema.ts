@@ -200,6 +200,29 @@ export const insertIconMatchRuleSchema = createInsertSchema(iconMatchRules).omit
 export type InsertIconMatchRule = z.infer<typeof insertIconMatchRuleSchema>;
 export type IconMatchRule = typeof iconMatchRules.$inferSelect;
 
+export const userIconLibrary = pgTable("user_icon_library", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  imageUrl: text("image_url").notNull(),
+  storagePath: text("storage_path"),
+  category: text("category"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  userIconLibraryUserIdIdx: index("idx_user_icon_library_user_id").on(table.userId),
+  userIconLibraryCreatedAtIdx: index("idx_user_icon_library_created_at").on(table.createdAt),
+  userIconLibraryUpdatedAtIdx: index("idx_user_icon_library_updated_at").on(table.updatedAt),
+}));
+
+export const insertUserIconLibrarySchema = createInsertSchema(userIconLibrary).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertUserIconLibrary = z.infer<typeof insertUserIconLibrarySchema>;
+export type UserIconLibraryItem = typeof userIconLibrary.$inferSelect;
+
 export const servicos = pgTable("servicos", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
