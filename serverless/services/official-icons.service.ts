@@ -17,7 +17,7 @@ import {
   type OfficialIconLibraryItem,
   type OfficialIconPack,
   type UserIconLibraryItem,
-} from "@shared/schema";
+} from "../../shared/schema.js";
 import type {
   AdminCreateOfficialIconBodyInput,
   AdminCreateOfficialIconPackBodyInput,

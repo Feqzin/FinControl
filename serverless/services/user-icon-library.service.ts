@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db.js";
-import { userIconLibrary, type UserIconLibraryItem } from "@shared/schema";
+import { userIconLibrary, type UserIconLibraryItem } from "../../shared/schema.js";
 import type { UserIconLibraryCreateBodyInput } from "../validators/user-icon-library.validators.js";
 
 const MAX_ICON_BYTES = 512 * 1024;
