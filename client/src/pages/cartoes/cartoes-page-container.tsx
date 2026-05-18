@@ -105,7 +105,7 @@ const IMPORT_ALLOWED_MIME_BY_EXTENSION: Record<string, string[]> = {
   pdf: ["application/pdf"],
 };
 
-type CartoesTab = "resumo" | "fatura" | "compras";
+type CartoesTab = "resumo" | "compras";
 type CanonicalImportStatus = "novo" | "duplicata_exata" | "possivel_duplicata" | "invalido";
 type CompraReembolsoModo = "total" | "metade" | "valor_custom" | "percentual_custom";
 type InvoiceMonthOption = { value: string; label: string };
@@ -197,8 +197,11 @@ function logItauImportDebugSnapshot(debugData: {
 }
 
 function normalizeCartoesTab(value: string | null | undefined): CartoesTab {
-  if (value === "fatura" || value === "compras" || value === "resumo") {
+  if (value === "compras" || value === "resumo") {
     return value;
+  }
+  if (value === "fatura") {
+    return "compras";
   }
   if (value === "parcelas") {
     return "compras";
@@ -945,7 +948,6 @@ export default function CartoesPage() {
     if (selectedOption) return selectedOption.label;
     return formatInvoiceCompetencyLabel(selectedInvoiceMonth);
   }, [invoiceMonthOptions, selectedInvoiceMonth]);
-  const faturaTabLabel = `Fatura de ${selectedInvoiceMonthLabel}`;
   const getCardTotalForSelectedMonth = (cartaoId: string) =>
     calculateCardInvoiceForCompetency(
       cartaoId,
@@ -2503,7 +2505,7 @@ export default function CartoesPage() {
     } finally { setImportLoading(false); }
   };
 
-  const showCompraSearch = activeCartoesTab === "compras" || activeCartoesTab === "fatura";
+  const showCompraSearch = activeCartoesTab === "compras";
   const handleCartoesTabChange = (tab: CartoesTab) => {
     setCartoesTab(tab);
     setComprasCartaoFocadoId(null);
@@ -2661,8 +2663,8 @@ export default function CartoesPage() {
             showSearch={showCompraSearch}
             invoiceMonth={selectedInvoiceMonth}
             invoiceMonthOptions={invoiceMonthOptions}
+            currentInvoiceMonth={currentInvoiceMonthReference}
             onInvoiceMonthChange={setSelectedInvoiceMonth}
-            faturaTabLabel={faturaTabLabel}
           />
         )}
       />
@@ -2982,14 +2984,12 @@ export default function CartoesPage() {
           getCardUsedLimit={getCardUsedLimit}
           getCardAvailableLimit={getCardAvailableLimit}
           getCardCompras={getCardCompras}
-          getFilteredCardCompras={getFilteredCardFaturaCompras}
           formatCartaoCurrency={formatCartaoCurrency}
           onOpenCompras={(cartaoId) => {
             setCartoesTab("compras");
             setSelectedCartao(cartaoId);
             setComprasCartaoFocadoId(cartaoId);
           }}
-          onDeleteCompra={openDeleteCompraConfirm}
         />
       </div>
 
@@ -3015,13 +3015,14 @@ export default function CartoesPage() {
       ) : (
         <CartoesComprasGrid
           cartoes={cartoes}
+          invoiceMonthLabel={selectedInvoiceMonthLabel}
           pessoas={pessoas}
           servicos={servicos}
           formatCurrency={formatCartaoCurrency}
           getCardTotal={getCardTotalForSelectedMonth}
           getCardUsedLimit={getCardUsedLimit}
           getCardAvailableLimit={getCardAvailableLimit}
-          getFilteredCardCompras={getFilteredCardCompras}
+          getFilteredCardCompras={getFilteredCardFaturaCompras}
           getDaysUntilInvoice={getDaysUntilInvoice}
           getNextInvoiceDate={getNextInvoiceDate}
           focusedCartaoId={comprasCartaoFocadoId}

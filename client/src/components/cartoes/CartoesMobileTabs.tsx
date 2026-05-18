@@ -69,10 +69,11 @@ export function CartoesMobileTabs({
       <CartaoCard className="touch-feedback" contentClassName="space-y-1 p-4">
         <div className="flex items-center gap-1.5">
           <p className="font-medium text-sm text-muted-foreground">
-            Faturas de {invoiceMonthLabel}
+            Compras da fatura de {invoiceMonthLabel}
           </p>
           <Eye className="h-3.5 w-3.5 text-muted-foreground" />
         </div>
+        <p className="text-xs text-muted-foreground">Mostrando apenas compras e parcelas desta fatura.</p>
         <p className="fin-value-kpi">{formatCurrency(totalFaturas)}</p>
       </CartaoCard>
 
@@ -104,18 +105,18 @@ export function CartoesMobileTabs({
                   <p className="text-sm font-semibold leading-tight">{cartao.nome}</p>
                   <p className="text-xs text-muted-foreground">Cartão manual</p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 flex-shrink-0 rounded-lg text-xs"
-                  onClick={() => {
-                    setSelectedCartao(selectedCartao === cartao.id ? "" : cartao.id);
-                    setOpenCompra(false);
-                  }}
-                  data-testid={`button-ver-fatura-mobile-${cartao.id}`}
-                >
-                  {selectedCartao === cartao.id ? "Fechar" : "Ver fatura"}
-                </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 flex-shrink-0 rounded-lg text-xs"
+                    onClick={() => {
+                      setSelectedCartao(selectedCartao === cartao.id ? "" : cartao.id);
+                      setOpenCompra(false);
+                    }}
+                  data-testid={`button-ver-compras-mobile-${cartao.id}`}
+                  >
+                    {selectedCartao === cartao.id ? "Fechar" : "Ver compras"}
+                  </Button>
               </div>
 
               <div className="grid grid-cols-2 divide-x divide-border/70 bg-muted/25 px-4 py-3">

@@ -21,6 +21,7 @@ import { CartaoCard } from "@/components/cartoes/CartaoCard";
 type CartoesComprasGridProps = {
   cartoes: Cartao[];
   focusedCartaoId?: string | null;
+  invoiceMonthLabel: string;
   pessoas: Pessoa[];
   servicos: Servico[];
   formatCurrency: (value: number) => string;
@@ -47,6 +48,7 @@ type PageByCard = Record<string, number>;
 export function CartoesComprasGrid({
   cartoes,
   focusedCartaoId,
+  invoiceMonthLabel,
   pessoas,
   servicos,
   formatCurrency,
@@ -92,7 +94,13 @@ export function CartoesComprasGrid({
   }, [cartoesVisiveis, getFilteredCardCompras]);
 
   return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+    <div className="space-y-3">
+      <div className="rounded-lg border border-border/50 bg-muted/20 px-4 py-3">
+        <p className="text-sm font-semibold">Compras da fatura de {invoiceMonthLabel}</p>
+        <p className="mt-1 text-xs text-muted-foreground">Mostrando apenas compras e parcelas desta fatura.</p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
       {cartoesVisiveis.map((cartao) => {
         const limite = Number(cartao.limite);
         const faturaAtual = getCardTotal(cartao.id);
@@ -208,7 +216,7 @@ export function CartoesComprasGrid({
                 <Plus className="mr-1 h-3 w-3" /> Adicionar
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">Lista geral de compras parceladas</p>
+            <p className="text-xs text-muted-foreground">Mostrando apenas compras e parcelas desta fatura</p>
 
             {cardCompras.length > 0 ? (
               <>
@@ -363,11 +371,12 @@ export function CartoesComprasGrid({
                 ) : null}
               </>
             ) : (
-              <p className="py-3 text-center text-sm text-muted-foreground">Nenhuma compra parcelada</p>
+              <p className="py-3 text-center text-sm text-muted-foreground">Nenhuma compra nesta fatura.</p>
             )}
           </CartaoCard>
         );
       })}
+      </div>
     </div>
   );
 }

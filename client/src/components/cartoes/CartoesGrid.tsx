@@ -1,13 +1,10 @@
-import { useEffect, useState } from "react";
 import type { Cartao, CompraCartao } from "@shared/schema";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Trash2 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
 import { CartaoCard } from "@/components/cartoes/CartaoCard";
 
-type CartoesTab = "resumo" | "fatura" | "compras";
+type CartoesTab = "resumo" | "compras";
 
 type CartoesGridProps = {
   cartoes: Cartao[];
@@ -16,16 +13,9 @@ type CartoesGridProps = {
   getCardUsedLimit: (cartaoId: string) => number;
   getCardAvailableLimit: (cartaoId: string) => number;
   getCardCompras: (cartaoId: string) => CompraCartao[];
-  getFilteredCardCompras: (cartaoId: string) => CompraCartao[];
   formatCartaoCurrency: (value: number) => string;
   onOpenCompras: (cartaoId: string) => void;
-  onDeleteCompra: (compra: CompraCartao) => void;
 };
-
-const INITIAL_VISIBLE_ITEMS = 8;
-const ITEMS_PER_PAGE = INITIAL_VISIBLE_ITEMS;
-
-type PageByCard = Record<string, number>;
 
 export function CartoesGrid({
   cartoes,
@@ -34,34 +24,9 @@ export function CartoesGrid({
   getCardUsedLimit,
   getCardAvailableLimit,
   getCardCompras,
-  getFilteredCardCompras,
   formatCartaoCurrency,
   onOpenCompras,
-  onDeleteCompra,
 }: CartoesGridProps) {
-  const [faturaPageByCard, setFaturaPageByCard] = useState<PageByCard>({});
-
-  useEffect(() => {
-    if (cartoesTab !== "fatura") return;
-    setFaturaPageByCard((prev) => {
-      const next: PageByCard = {};
-      let changed = false;
-      for (const cartao of cartoes) {
-        const total = getFilteredCardCompras(cartao.id).length;
-        const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
-        const nextValue = Math.min(prev[cartao.id] ?? 1, totalPages);
-        next[cartao.id] = nextValue;
-        if ((prev[cartao.id] ?? 1) !== nextValue) {
-          changed = true;
-        }
-      }
-      if (Object.keys(prev).length !== Object.keys(next).length) {
-        changed = true;
-      }
-      return changed ? next : prev;
-    });
-  }, [cartoes, cartoesTab, getFilteredCardCompras]);
-
   if (cartoes.length === 0 || cartoesTab === "compras") return null;
 
   if (cartoesTab === "resumo") {
@@ -136,127 +101,6 @@ export function CartoesGrid({
                   </div>
                 </div>
               </div>
-            </CartaoCard>
-          );
-        })}
-      </div>
-    );
-  }
-
-  if (cartoesTab === "fatura") {
-    return (
-      <div className="space-y-3">
-        {cartoes.map((cartao) => {
-          const comprasFiltradas = getFilteredCardCompras(cartao.id);
-          const currentPage = faturaPageByCard[cartao.id] ?? 1;
-          const totalPages = Math.max(1, Math.ceil(comprasFiltradas.length / ITEMS_PER_PAGE));
-          const safePage = Math.min(currentPage, totalPages);
-          const startIndex = (safePage - 1) * ITEMS_PER_PAGE;
-          const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, comprasFiltradas.length);
-          const visibleCompras = comprasFiltradas.slice(startIndex, endIndex);
-          const hasPagination = comprasFiltradas.length > ITEMS_PER_PAGE;
-          const maxVisiblePages = 5;
-          const pageWindowStart = Math.max(1, safePage - Math.floor(maxVisiblePages / 2));
-          const pageWindowEnd = Math.min(totalPages, pageWindowStart + maxVisiblePages - 1);
-          const pageNumbers = Array.from(
-            { length: Math.max(0, pageWindowEnd - pageWindowStart + 1) },
-            (_, idx) => pageWindowStart + idx,
-          );
-
-          return (
-            <CartaoCard key={cartao.id} contentClassName="space-y-3 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold">{cartao.nome}</p>
-                <Badge variant="outline">{formatCartaoCurrency(getCardTotal(cartao.id))}</Badge>
-              </div>
-              {comprasFiltradas.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Nenhuma compra nesta fatura.</p>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <span>
-                      Mostrando {startIndex + 1}–{endIndex} de {comprasFiltradas.length} compras
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {visibleCompras.map((compra) => (
-                      <div key={compra.id} className="fintech-surface-subtle touch-feedback flex items-center justify-between gap-2 p-2.5">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{compra.descricao}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {compra.parcelaAtual}/{compra.parcelas}x · {compra.dataCompra}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold">{formatCartaoCurrency(Number(compra.valorParcela))}</span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => onDeleteCompra(compra)}
-                            data-testid={`button-delete-compra-fatura-${compra.id}`}
-                            aria-label="Excluir compra da fatura"
-                            title="Excluir compra"
-                          >
-                            <Trash2 className="h-3 w-3 text-muted-foreground" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {hasPagination ? (
-                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-2.5 text-xs"
-                        disabled={safePage <= 1}
-                        onClick={() => {
-                          setFaturaPageByCard((prev) => ({
-                            ...prev,
-                            [cartao.id]: Math.max(1, (prev[cartao.id] ?? 1) - 1),
-                          }));
-                        }}
-                        data-testid={`button-paginacao-anterior-fatura-${cartao.id}`}
-                      >
-                        Anterior
-                      </Button>
-                      {pageNumbers.map((page) => (
-                        <Button
-                          key={page}
-                          variant={page === safePage ? "default" : "ghost"}
-                          size="sm"
-                          className="h-8 min-w-8 px-2 text-xs"
-                          onClick={() => {
-                            setFaturaPageByCard((prev) => ({
-                              ...prev,
-                              [cartao.id]: page,
-                            }));
-                          }}
-                          data-testid={`button-paginacao-fatura-${cartao.id}-${page}`}
-                        >
-                          {page}
-                        </Button>
-                      ))}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-2.5 text-xs"
-                        disabled={safePage >= totalPages}
-                        onClick={() => {
-                          setFaturaPageByCard((prev) => ({
-                            ...prev,
-                            [cartao.id]: Math.min(totalPages, (prev[cartao.id] ?? 1) + 1),
-                          }));
-                        }}
-                        data-testid={`button-paginacao-proxima-fatura-${cartao.id}`}
-                      >
-                        Próxima
-                      </Button>
-                    </div>
-                  ) : null}
-                </>
-              )}
             </CartaoCard>
           );
         })}
