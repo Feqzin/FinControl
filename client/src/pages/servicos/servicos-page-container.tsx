@@ -37,6 +37,10 @@ import {
   resolveServicoBillingView,
   SERVICO_PERIODICIDADE_OPTIONS,
 } from "@/pages/servicos/servico-periodicidade.utils";
+import {
+  decideLinkedCompraBillingValueFill,
+  getCompraCartaoTotalForServico,
+} from "@/pages/servicos/servico-linked-compra.utils";
 import { Plus, Repeat, Trash2, X, Check, Users, ChevronUp, Pencil, CreditCard, Unlink2 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
 import { fetchIconMatchRules, type IconMatchRuleApiModel } from "@/services/api/icon-match-rules";
@@ -216,6 +220,66 @@ export default function ServicosPage() {
     rows.push(parcela);
     parcelasByCompraId.set(parcela.compraCartaoId, rows);
   }
+
+  type ServicoFormState = {
+    compraCartaoId: string;
+    formaPagamento: string;
+    valorCobranca: string;
+    periodicidadeCobranca: ServicoPeriodicidade;
+  };
+
+  const resolveFormWithLinkedCompra = <T extends ServicoFormState>(currentForm: T, compraId: string | null): T => {
+    if (!compraId) {
+      return {
+        ...currentForm,
+        compraCartaoId: COMPRA_NONE_VALUE,
+      };
+    }
+
+    const compraSelecionada = compraById.get(compraId);
+    if (!compraSelecionada) {
+      return {
+        ...currentForm,
+        compraCartaoId: compraId,
+        formaPagamento: "cartao",
+      };
+    }
+
+    const suggestedTotal = getCompraCartaoTotalForServico(compraSelecionada);
+    const suggestedFormatted = suggestedTotal != null ? formatCurrencyBRL(suggestedTotal) : null;
+    const decision = decideLinkedCompraBillingValueFill({
+      currentValorCobranca: currentForm.valorCobranca,
+      periodicidadeCobranca: currentForm.periodicidadeCobranca,
+      suggestedValorCobranca: suggestedTotal,
+    });
+
+    let nextValorCobranca = currentForm.valorCobranca;
+    if (decision.decision === "prefill" && decision.suggestedValueInput) {
+      nextValorCobranca = decision.suggestedValueInput;
+    } else if (decision.decision === "confirm_overwrite" && decision.suggestedValueInput && suggestedFormatted) {
+      const confirmed = window.confirm(
+        `Usar o valor da compra vinculada?\n\nA compra selecionada tem valor total de ${suggestedFormatted}.`,
+      );
+      if (confirmed) {
+        nextValorCobranca = decision.suggestedValueInput;
+      }
+    }
+
+    return {
+      ...currentForm,
+      compraCartaoId: compraId,
+      formaPagamento: "cartao",
+      valorCobranca: nextValorCobranca,
+    };
+  };
+
+  const handleCreateLinkedCompraChange = (compraId: string | null) => {
+    setForm(resolveFormWithLinkedCompra(form, compraId));
+  };
+
+  const handleEditLinkedCompraChange = (compraId: string | null) => {
+    setEditForm(resolveFormWithLinkedCompra(editForm, compraId));
+  };
 
   const getOrigemPagamentoMesAtual = (servico: Servico) => {
     const vinculados = servicoPessoasByServicoId.get(servico.id) ?? [];
@@ -477,7 +541,7 @@ export default function ServicosPage() {
                   compras={compras}
                   cartoes={cartoes}
                   value={form.compraCartaoId === COMPRA_NONE_VALUE ? null : form.compraCartaoId}
-                  onValueChange={(value) => setForm({ ...form, compraCartaoId: value ?? COMPRA_NONE_VALUE })}
+                  onValueChange={handleCreateLinkedCompraChange}
                   placeholder="Sem vínculo com cartão"
                   noneLabel="Sem vínculo com cartão"
                   context={{
@@ -905,7 +969,7 @@ export default function ServicosPage() {
                 compras={compras}
                 cartoes={cartoes}
                 value={editForm.compraCartaoId === COMPRA_NONE_VALUE ? null : editForm.compraCartaoId}
-                onValueChange={(value) => setEditForm({ ...editForm, compraCartaoId: value ?? COMPRA_NONE_VALUE })}
+                onValueChange={handleEditLinkedCompraChange}
                 placeholder="Sem vínculo com cartão"
                 noneLabel="Sem vínculo com cartão"
                 context={{

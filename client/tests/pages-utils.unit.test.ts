@@ -16,6 +16,10 @@ import {
   formatServicoBillingValue,
   resolveServicoBillingView,
 } from "../src/pages/servicos/servico-periodicidade.utils";
+import {
+  decideLinkedCompraBillingValueFill,
+  getCompraCartaoTotalForServico,
+} from "../src/pages/servicos/servico-linked-compra.utils";
 import { getDaysUntilInvoice, getNextInvoiceDate, isParcelaVencida } from "../src/pages/cartoes/cartoes.utils";
 import {
   detectInvoiceIssuerForPdfText,
@@ -806,6 +810,48 @@ test("servicos periodicidade: payload novo mantém periodicidade e valor de cobr
   assert.equal(resolved.periodicidadeCobranca, "bimestral");
   assert.equal(resolved.valorCobranca, "40.00");
   assert.equal(resolved.valorMensal, "20.00");
+});
+
+test("servicos vínculo com compra: usa valor total da compra quando disponível", () => {
+  const total = getCompraCartaoTotalForServico({
+    valorTotal: "229.82",
+    valorParcela: "229.82",
+    parcelas: 1,
+  });
+
+  assert.equal(total, 229.82);
+});
+
+test("servicos vínculo com compra: fallback usa valorParcela * parcelas", () => {
+  const total = getCompraCartaoTotalForServico({
+    valorTotal: null,
+    valorParcela: "100.00",
+    parcelas: 10,
+  });
+
+  assert.equal(total, 1000);
+});
+
+test("servicos vínculo com compra: valor zerado preenche automaticamente com compra vinculada", () => {
+  const decision = decideLinkedCompraBillingValueFill({
+    currentValorCobranca: "0,00",
+    periodicidadeCobranca: "anual",
+    suggestedValorCobranca: 229.82,
+  });
+
+  assert.equal(decision.decision, "prefill");
+  assert.equal(decision.suggestedValueInput, "229.82");
+});
+
+test("servicos vínculo com compra: valor manual diferente exige confirmação para sobrescrever", () => {
+  const decision = decideLinkedCompraBillingValueFill({
+    currentValorCobranca: "120.00",
+    periodicidadeCobranca: "anual",
+    suggestedValorCobranca: 229.82,
+  });
+
+  assert.equal(decision.decision, "confirm_overwrite");
+  assert.equal(decision.suggestedValueInput, "229.82");
 });
 
 test("cartoes utils: calcula próxima fatura e dias restantes", () => {
