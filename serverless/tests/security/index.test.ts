@@ -12,3 +12,4 @@ import "./parcelas-compra-competencia-route.test";
 import "./comprovante-upload.test";
 import "./ownership.test";
 import "./errors-sanitization.test";
+import "./backup-import-servicos-periodicidade.test";
