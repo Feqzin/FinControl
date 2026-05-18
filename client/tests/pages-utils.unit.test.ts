@@ -83,6 +83,7 @@ import {
   getVisibleInvoiceMonths,
   groupInvoiceMonthsByYear,
 } from "../src/components/cartoes/invoice-month-selector.utils";
+import { resolveDashboardServicosMetrics } from "../src/pages/dashboard/dashboard-servicos-metrics.utils";
 import {
   canAutoRematerializeCompetency,
   diffParcelasCompetencySchedules,
@@ -3374,4 +3375,40 @@ test("relatorios PDF: metadados usam fallback em modo compatibilidade", () => {
   assert.equal(metadata.periodLabel.includes("31/05/2026"), true);
   assert.equal(metadata.sourceLabel, "modo compatibilidade");
   assert.equal(metadata.generatedAtLabel.length > 0, true);
+});
+
+test("dashboard serviços: usa métricas detalhadas quando disponíveis", () => {
+  const metrics = resolveDashboardServicosMetrics({
+    totalServicos: 139.15,
+    servicosEquivalenteMensalTotal: 139.15,
+    servicosCobrancaRealCompetenciaTotal: 319.82,
+    servicosVinculadosCartaoEquivalenteMensalTotal: 19.15,
+    servicosVinculadosCartaoCobrancaRealTotal: 229.82,
+    servicosNaoVinculadosCartaoEquivalenteMensalTotal: 120,
+    servicosNaoVinculadosCartaoCobrancaRealTotal: 90,
+  });
+
+  assert.equal(metrics.hasDetailedMetrics, true);
+  assert.equal(metrics.totalLegacy, 139.15);
+  assert.equal(metrics.equivalenteMensalTotal, 139.15);
+  assert.equal(metrics.cobrancaRealCompetenciaTotal, 319.82);
+  assert.equal(metrics.vinculadosCartaoEquivalenteMensalTotal, 19.15);
+  assert.equal(metrics.vinculadosCartaoCobrancaRealTotal, 229.82);
+  assert.equal(metrics.naoVinculadosCartaoEquivalenteMensalTotal, 120);
+  assert.equal(metrics.naoVinculadosCartaoCobrancaRealTotal, 90);
+});
+
+test("dashboard serviços: fallback compatível quando campos novos estão ausentes", () => {
+  const metrics = resolveDashboardServicosMetrics({
+    totalServicos: 80,
+  });
+
+  assert.equal(metrics.hasDetailedMetrics, false);
+  assert.equal(metrics.totalLegacy, 80);
+  assert.equal(metrics.equivalenteMensalTotal, 80);
+  assert.equal(metrics.cobrancaRealCompetenciaTotal, 80);
+  assert.equal(metrics.vinculadosCartaoEquivalenteMensalTotal, 0);
+  assert.equal(metrics.vinculadosCartaoCobrancaRealTotal, 0);
+  assert.equal(metrics.naoVinculadosCartaoEquivalenteMensalTotal, 80);
+  assert.equal(metrics.naoVinculadosCartaoCobrancaRealTotal, 80);
 });

@@ -10,6 +10,7 @@ import { toMoneyNumber } from "@/lib/money";
 import { calculateCardUsedLimit, groupParcelasCompraByCompraId } from "@/lib/card-limit-usage";
 import { fetchDashboardOverview, fetchFinancialSummary } from "@/services/api/dashboard";
 import { formatCurrencyBRL } from "@/utils/formatters";
+import { resolveDashboardServicosMetrics } from "@/pages/dashboard/dashboard-servicos-metrics.utils";
 
 export type DashboardAlert = {
   icon: any;
@@ -287,9 +288,20 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       pagarSemana: overviewSectionStatus,
     } as const);
 
+  const servicosMetrics = useMemo(
+    () => resolveDashboardServicosMetrics(financialSummary),
+    [financialSummary],
+  );
+
   const totalRenda = financialSummary?.totalRenda ?? 0;
   const totalPatrimonio = patrimonios.reduce((s, p) => s + toMoneyNumber(p.valorAtual), 0);
-  const totalServicos = financialSummary?.totalServicos ?? 0;
+  const totalServicos = servicosMetrics.totalLegacy;
+  const servicosEquivalenteMensalTotal = servicosMetrics.equivalenteMensalTotal;
+  const servicosCobrancaRealCompetenciaTotal = servicosMetrics.cobrancaRealCompetenciaTotal;
+  const servicosVinculadosCartaoEquivalenteMensalTotal = servicosMetrics.vinculadosCartaoEquivalenteMensalTotal;
+  const servicosVinculadosCartaoCobrancaRealTotal = servicosMetrics.vinculadosCartaoCobrancaRealTotal;
+  const servicosNaoVinculadosCartaoEquivalenteMensalTotal = servicosMetrics.naoVinculadosCartaoEquivalenteMensalTotal;
+  const servicosNaoVinculadosCartaoCobrancaRealTotal = servicosMetrics.naoVinculadosCartaoCobrancaRealTotal;
   const totalReceber = financialSummary?.totalReceberMes ?? 0;
   const totalPagar = financialSummary?.totalPagarMes ?? 0;
   const totalCartoesMes = financialSummary?.totalCartoesMes ?? 0;
@@ -469,13 +481,38 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const gastosFixosTooltip = useMemo(() => {
     const items = servicos.filter((s) => s.status === "ativo");
     if (items.length === 0) return ["Nenhum serviço ativo."];
+    const detalhamentoDisponivel = servicosMetrics.hasDetailedMetrics;
     return [
       "Serviços ativos:",
       ...items.map((s) => `• ${s.nome} — ${mask(formatCurrencyBRL(toMoneyNumber(s.valorMensal)))}/mês`),
       "---",
-      `Total: ${mask(formatCurrencyBRL(totalServicos))}`,
+      `Média mensal (planejamento): ${mask(formatCurrencyBRL(servicosEquivalenteMensalTotal))}`,
+      `Cobrança real neste mês: ${mask(formatCurrencyBRL(servicosCobrancaRealCompetenciaTotal))}`,
+      `Não vinculados a cartão (média): ${mask(formatCurrencyBRL(servicosNaoVinculadosCartaoEquivalenteMensalTotal))}`,
+      `Não vinculados a cartão (real): ${mask(formatCurrencyBRL(servicosNaoVinculadosCartaoCobrancaRealTotal))}`,
+      `Parte vinculada a cartão (média): ${mask(formatCurrencyBRL(servicosVinculadosCartaoEquivalenteMensalTotal))}`,
+      `Parte vinculada a cartão (real): ${mask(formatCurrencyBRL(servicosVinculadosCartaoCobrancaRealTotal))}`,
+      ...(servicosVinculadosCartaoCobrancaRealTotal > 0
+        ? ["Cobranças vinculadas ao cartão já aparecem na fatura. Aqui elas ajudam no planejamento."]
+        : []),
+      ...(detalhamentoDisponivel
+        ? []
+        : ["Detalhamento avançado indisponível: exibindo valores em modo compatibilidade."]),
+      "---",
+      `Total legado (compatibilidade): ${mask(formatCurrencyBRL(totalServicos))}`,
     ];
-  }, [servicos, totalServicos, visible]);
+  }, [
+    servicos,
+    servicosMetrics.hasDetailedMetrics,
+    servicosEquivalenteMensalTotal,
+    servicosCobrancaRealCompetenciaTotal,
+    servicosNaoVinculadosCartaoEquivalenteMensalTotal,
+    servicosNaoVinculadosCartaoCobrancaRealTotal,
+    servicosVinculadosCartaoEquivalenteMensalTotal,
+    servicosVinculadosCartaoCobrancaRealTotal,
+    totalServicos,
+    visible,
+  ]);
 
   const saldoMesTooltip = useMemo(
     () => [
@@ -487,7 +524,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       "SAÍDAS",
       `• Cartões: ${mask(formatCurrencyBRL(totalCartoesMes))}`,
       `• A pagar (mês): ${mask(formatCurrencyBRL(totalPagarMes))}`,
-      `• Serviços: ${mask(formatCurrencyBRL(totalServicos))}`,
+      `• Serviços (média mensal): ${mask(formatCurrencyBRL(totalServicos))}`,
       `Total saídas: ${mask(formatCurrencyBRL(totalSaidas))}`,
       "---",
       `Saldo = ${mask(formatCurrencyBRL(totalEntradas))} - ${mask(formatCurrencyBRL(totalSaidas))} = ${mask(formatCurrencyBRL(saldoPrevisto))}`,
@@ -606,6 +643,12 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     totalRenda,
     totalPatrimonio,
     totalServicos,
+    servicosEquivalenteMensalTotal,
+    servicosCobrancaRealCompetenciaTotal,
+    servicosVinculadosCartaoEquivalenteMensalTotal,
+    servicosVinculadosCartaoCobrancaRealTotal,
+    servicosNaoVinculadosCartaoEquivalenteMensalTotal,
+    servicosNaoVinculadosCartaoCobrancaRealTotal,
     totalReceber,
     totalPagar,
     totalCartoesMes,
