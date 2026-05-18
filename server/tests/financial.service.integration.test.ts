@@ -153,6 +153,12 @@ testFinancialIntegration("calculo financeiro integrado mantem consistencia entre
     assert.equal(summary.totalReceberMes, 700);
     assert.equal(summary.totalPagarMes, 300);
     assert.equal(summary.totalServicos, 120);
+    assert.equal(summary.servicosEquivalenteMensalTotal, 120);
+    assert.equal(summary.servicosCobrancaRealCompetenciaTotal, 120);
+    assert.equal(summary.servicosVinculadosCartaoEquivalenteMensalTotal, 0);
+    assert.equal(summary.servicosVinculadosCartaoCobrancaRealTotal, 0);
+    assert.equal(summary.servicosNaoVinculadosCartaoEquivalenteMensalTotal, 120);
+    assert.equal(summary.servicosNaoVinculadosCartaoCobrancaRealTotal, 120);
     assert.equal(summary.totalCartoesMes, 100);
     assert.equal(summary.totalEntradas, 2200);
     assert.equal(summary.totalSaidas, 520);

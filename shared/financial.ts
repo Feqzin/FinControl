@@ -45,6 +45,12 @@ export interface FinancialSummary {
   totalReceberMes: number;
   totalPagarMes: number;
   totalServicos: number;
+  servicosEquivalenteMensalTotal: number;
+  servicosCobrancaRealCompetenciaTotal: number;
+  servicosVinculadosCartaoEquivalenteMensalTotal: number;
+  servicosVinculadosCartaoCobrancaRealTotal: number;
+  servicosNaoVinculadosCartaoEquivalenteMensalTotal: number;
+  servicosNaoVinculadosCartaoCobrancaRealTotal: number;
   totalCartoesMes: number;
   dividaTotal: number;
   dividaTotalPendente: number;

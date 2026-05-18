@@ -1,6 +1,11 @@
 import { format } from "date-fns";
 import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Renda, Servico } from "@shared/schema";
 import type { FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
+import {
+  calculateServicoEquivalentMonthlyAmount,
+  calculateServicoRealChargeForCompetency,
+  isServicoLinkedToCardCharge,
+} from "@shared/servico-periodicidade";
 import type { FinancialRepository } from "../repositories/financial.repository";
 import { formatMoneyFixed, parseMoney, toCentsBigInt } from "../../utils/money";
 import { toErrorLog, writeTechnicalLog } from "../logger";
@@ -43,6 +48,14 @@ export type CardConsolidatedSummary = {
 
 type MoneyValue = string | number | null | undefined;
 const RECOVERABLE_CONTEXT_LOAD_ERROR_CODES = new Set(["42P01", "42703"]);
+type ServicoSummaryTotals = {
+  servicosEquivalenteMensalTotal: number;
+  servicosCobrancaRealCompetenciaTotal: number;
+  servicosVinculadosCartaoEquivalenteMensalTotal: number;
+  servicosVinculadosCartaoCobrancaRealTotal: number;
+  servicosNaoVinculadosCartaoEquivalenteMensalTotal: number;
+  servicosNaoVinculadosCartaoCobrancaRealTotal: number;
+};
 
 function toMoneyNumber(value: MoneyValue): number {
   return parseMoney(value) ?? 0;
@@ -136,6 +149,45 @@ function getMonthlyCardTotals(
   const monthlyCardObligations = getMonthlyCardObligations(cardInput, monthReference);
   const totalCartoesMes = sumMoneyBy(monthlyCardObligations, (row) => row.valor);
   return { monthlyCardObligations, totalCartoesMes };
+}
+
+function calculateServicoSummaryTotals(
+  servicos: Servico[],
+  monthReference: string,
+): ServicoSummaryTotals {
+  const ativos = servicos.filter((servico) => servico.status === "ativo");
+  const equivalenteMensalValues: MoneyValue[] = [];
+  const cobrancaRealValues: MoneyValue[] = [];
+  const vinculadosEquivalenteValues: MoneyValue[] = [];
+  const vinculadosCobrancaRealValues: MoneyValue[] = [];
+  const naoVinculadosEquivalenteValues: MoneyValue[] = [];
+  const naoVinculadosCobrancaRealValues: MoneyValue[] = [];
+
+  for (const servico of ativos) {
+    const equivalenteMensal = calculateServicoEquivalentMonthlyAmount(servico);
+    const cobrancaRealCompetencia = calculateServicoRealChargeForCompetency(servico, monthReference);
+    const vinculadoCartao = isServicoLinkedToCardCharge(servico);
+
+    equivalenteMensalValues.push(equivalenteMensal);
+    cobrancaRealValues.push(cobrancaRealCompetencia);
+
+    if (vinculadoCartao) {
+      vinculadosEquivalenteValues.push(equivalenteMensal);
+      vinculadosCobrancaRealValues.push(cobrancaRealCompetencia);
+    } else {
+      naoVinculadosEquivalenteValues.push(equivalenteMensal);
+      naoVinculadosCobrancaRealValues.push(cobrancaRealCompetencia);
+    }
+  }
+
+  return {
+    servicosEquivalenteMensalTotal: sumMoneyValues(equivalenteMensalValues),
+    servicosCobrancaRealCompetenciaTotal: sumMoneyValues(cobrancaRealValues),
+    servicosVinculadosCartaoEquivalenteMensalTotal: sumMoneyValues(vinculadosEquivalenteValues),
+    servicosVinculadosCartaoCobrancaRealTotal: sumMoneyValues(vinculadosCobrancaRealValues),
+    servicosNaoVinculadosCartaoEquivalenteMensalTotal: sumMoneyValues(naoVinculadosEquivalenteValues),
+    servicosNaoVinculadosCartaoCobrancaRealTotal: sumMoneyValues(naoVinculadosCobrancaRealValues),
+  };
 }
 
 function calculateScoreFromContext({
@@ -622,6 +674,7 @@ export class FinancialService {
     const { totalReceberMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, mesReferencia);
     const { totalCartoesMes } = getMonthlyCardTotals(cardInput, mesReferencia);
     const debtPortfolio = getDebtPortfolioSummary(debtInput);
+    const servicoSummaryTotals = calculateServicoSummaryTotals(simulated.servicos, mesReferencia);
 
     const totalRenda = sumMoneyBy(simulated.rendas.filter((r) => r.ativo), (r) => r.valor);
     const totalServicos = sumMoneyBy(simulated.servicos.filter((s) => s.status === "ativo"), (sv) => sv.valorMensal);
@@ -642,6 +695,12 @@ export class FinancialService {
       totalReceberMes: round2(totalReceberMes),
       totalPagarMes: round2(totalPagarMes),
       totalServicos: round2(totalServicos),
+      servicosEquivalenteMensalTotal: round2(servicoSummaryTotals.servicosEquivalenteMensalTotal),
+      servicosCobrancaRealCompetenciaTotal: round2(servicoSummaryTotals.servicosCobrancaRealCompetenciaTotal),
+      servicosVinculadosCartaoEquivalenteMensalTotal: round2(servicoSummaryTotals.servicosVinculadosCartaoEquivalenteMensalTotal),
+      servicosVinculadosCartaoCobrancaRealTotal: round2(servicoSummaryTotals.servicosVinculadosCartaoCobrancaRealTotal),
+      servicosNaoVinculadosCartaoEquivalenteMensalTotal: round2(servicoSummaryTotals.servicosNaoVinculadosCartaoEquivalenteMensalTotal),
+      servicosNaoVinculadosCartaoCobrancaRealTotal: round2(servicoSummaryTotals.servicosNaoVinculadosCartaoCobrancaRealTotal),
       totalCartoesMes: round2(totalCartoesMes),
       dividaTotal: round2(debtPortfolio.totalContratado),
       dividaTotalPendente: round2(debtPortfolio.totalPendente),

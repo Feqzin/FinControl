@@ -167,6 +167,12 @@ test("calcula resumo financeiro mensal com consistencia de valores", async () =>
   assert.equal(summary.totalReceberMes, 500);
   assert.equal(summary.totalPagarMes, 0);
   assert.equal(summary.totalServicos, 100);
+  assert.equal(summary.servicosEquivalenteMensalTotal, 100);
+  assert.equal(summary.servicosCobrancaRealCompetenciaTotal, 100);
+  assert.equal(summary.servicosVinculadosCartaoEquivalenteMensalTotal, 0);
+  assert.equal(summary.servicosVinculadosCartaoCobrancaRealTotal, 0);
+  assert.equal(summary.servicosNaoVinculadosCartaoEquivalenteMensalTotal, 100);
+  assert.equal(summary.servicosNaoVinculadosCartaoCobrancaRealTotal, 100);
   assert.equal(summary.totalCartoesMes, 200);
   assert.equal(summary.totalEntradas, 1500);
   assert.equal(summary.totalSaidas, 300);
@@ -179,6 +185,83 @@ test("calcula resumo financeiro mensal com consistencia de valores", async () =>
   assert.equal(summary.parcelas.pendentes, 1);
   assert.equal(summary.parcelas.valorPago, 50);
   assert.equal(summary.parcelas.valorPendente, 50);
+});
+
+test("resumo financeiro: métricas de serviços separam equivalente mensal, cobrança real e vínculo com cartão", async () => {
+  const fixture = buildBaseFixture();
+  fixture.servicos = [
+    buildServicoFixture({
+      id: "s-mensal",
+      nome: "Servico Mensal",
+      periodicidadeCobranca: "mensal",
+      valorCobranca: "50.00",
+      valorMensal: "50.00",
+      compraCartaoId: null,
+    }),
+    {
+      ...buildServicoFixture({
+        id: "s-anual",
+        nome: "Servico Anual",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "229.82",
+        valorMensal: "19.15",
+        compraCartaoId: "compra-link-1",
+      }),
+      competenciaBase: "2026-05",
+    } as Servico,
+    {
+      ...buildServicoFixture({
+        id: "s-trimestral",
+        nome: "Servico Trimestral",
+        periodicidadeCobranca: "trimestral",
+        valorCobranca: "90.00",
+        valorMensal: "30.00",
+        compraCartaoId: null,
+      }),
+      competenciaBase: "2026-04",
+    } as Servico,
+    buildServicoFixture({
+      id: "s-legado",
+      nome: "Servico Legado",
+      periodicidadeCobranca: null,
+      valorCobranca: null,
+      valorMensal: "40.00",
+      compraCartaoId: null,
+    }),
+  ];
+
+  const service = createService(fixture);
+  const summaryAbril = await service.getSummary("user-financial-unit", "2026-04");
+  const summaryMaio = await service.getSummary("user-financial-unit", "2026-05");
+
+  // Compatibilidade: campo legado segue preenchido com soma mensal antiga.
+  assert.equal(summaryAbril.totalServicos, 139.15);
+  assert.equal(summaryMaio.totalServicos, 139.15);
+
+  // Planejamento mensal (equivalente) inclui todos os ativos.
+  assert.equal(summaryAbril.servicosEquivalenteMensalTotal, 139.15);
+  assert.equal(summaryMaio.servicosEquivalenteMensalTotal, 139.15);
+
+  // Cobrança real por competência: anual cobra só no mês âncora e trimestral no intervalo.
+  // Abril: mensal(50) + trimestral(90) + legado(40) = 180
+  assert.equal(summaryAbril.servicosCobrancaRealCompetenciaTotal, 180);
+  // Maio: mensal(50) + anual(229,82) + legado(40) = 319,82
+  assert.equal(summaryMaio.servicosCobrancaRealCompetenciaTotal, 319.82);
+
+  // Vinculado ao cartão: apenas o anual.
+  assert.equal(summaryAbril.servicosVinculadosCartaoEquivalenteMensalTotal, 19.15);
+  assert.equal(summaryMaio.servicosVinculadosCartaoEquivalenteMensalTotal, 19.15);
+  assert.equal(summaryAbril.servicosVinculadosCartaoCobrancaRealTotal, 0);
+  assert.equal(summaryMaio.servicosVinculadosCartaoCobrancaRealTotal, 229.82);
+
+  // Não vinculados: mensal + trimestral + legado.
+  assert.equal(summaryAbril.servicosNaoVinculadosCartaoEquivalenteMensalTotal, 120);
+  assert.equal(summaryMaio.servicosNaoVinculadosCartaoEquivalenteMensalTotal, 120);
+  assert.equal(summaryAbril.servicosNaoVinculadosCartaoCobrancaRealTotal, 180);
+  assert.equal(summaryMaio.servicosNaoVinculadosCartaoCobrancaRealTotal, 90);
+
+  // Cartões/faturas não mudam nesta fase.
+  assert.equal(summaryAbril.totalCartoesMes, 200);
 });
 
 test("aplica simulacao de renda extra sem quebrar a consistencia", async () => {
