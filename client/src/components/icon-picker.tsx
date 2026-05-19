@@ -61,6 +61,7 @@ interface IconPickerProps {
   value?: string | null;
   name?: string;
   onChange?: (value: string | null) => void;
+  onSelectMeta?: (meta: IconPickerSelectMeta) => void;
   size?: "sm" | "md" | "lg";
   mode?: "select" | "manage";
   autoApplySuggestion?: boolean;
@@ -68,6 +69,22 @@ interface IconPickerProps {
   triggerDescription?: string;
   triggerTestId?: string;
 }
+
+export type IconPickerSelectionSource =
+  | "builtin"
+  | "personal"
+  | "suggestion"
+  | "upload"
+  | "reset"
+  | "unknown";
+
+export type IconPickerSelectMeta = {
+  displayValue: string | null;
+  persistableIconId: string | null;
+  source: IconPickerSelectionSource;
+  userIconId?: string | null;
+  officialIconId?: string | null;
+};
 
 type ManageBuiltinTarget = {
   type: "builtin";
@@ -102,6 +119,7 @@ const USER_ICON_CATEGORIES = [
 ] as const;
 const USER_ICON_CATEGORY_VALUES: Set<string> = new Set(USER_ICON_CATEGORIES.map((item) => item.value));
 const NOOP_ICON_CHANGE = (_value: string | null): void => undefined;
+const NOOP_ICON_META = (_meta: IconPickerSelectMeta): void => undefined;
 
 function sanitizeIconNameInput(value: string): string {
   return value
@@ -148,6 +166,7 @@ export function IconPicker({
   value,
   name = "",
   onChange,
+  onSelectMeta,
   size = "md",
   mode = "select",
   autoApplySuggestion = true,
@@ -157,6 +176,7 @@ export function IconPicker({
 }: IconPickerProps) {
   const isManageMode = mode === "manage";
   const safeOnChange = onChange ?? NOOP_ICON_CHANGE;
+  const safeOnSelectMeta = onSelectMeta ?? NOOP_ICON_META;
   const [open, setOpen] = useState(false);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [uploadFileName, setUploadFileName] = useState<string>("");
@@ -258,6 +278,52 @@ export function IconPicker({
     [personalIcons],
   );
 
+  const personalIconByImageUrl = useMemo(
+    () => new Map(personalIcons.map((icon) => [icon.imageUrl, icon])),
+    [personalIcons],
+  );
+
+  const personalIconById = useMemo(
+    () => new Map(personalIcons.map((icon) => [icon.id, icon])),
+    [personalIcons],
+  );
+
+  const emitSelection = (meta: IconPickerSelectMeta) => {
+    safeOnChange(meta.displayValue);
+    safeOnSelectMeta(meta);
+  };
+
+  const resolveSuggestionMeta = (iconId: string): IconPickerSelectMeta => {
+    const personalByImage = personalIconByImageUrl.get(iconId);
+    if (personalByImage) {
+      return {
+        displayValue: personalByImage.imageUrl,
+        persistableIconId: personalByImage.id,
+        source: "suggestion",
+        userIconId: personalByImage.id,
+        officialIconId: personalByImage.officialIconId ?? null,
+      };
+    }
+
+    const personalById = personalIconById.get(iconId);
+    if (personalById) {
+      return {
+        displayValue: personalById.imageUrl,
+        persistableIconId: personalById.id,
+        source: "suggestion",
+        userIconId: personalById.id,
+        officialIconId: personalById.officialIconId ?? null,
+      };
+    }
+
+    const looksLikeRemoteReference = /^data:/i.test(iconId) || /^https?:\/\//i.test(iconId);
+    return {
+      displayValue: iconId,
+      persistableIconId: looksLikeRemoteReference ? null : iconId,
+      source: "suggestion",
+    };
+  };
+
   useEffect(() => {
     if (isManageMode) return;
     if (!autoApplySuggestion) return;
@@ -272,7 +338,9 @@ export function IconPicker({
     if (ignoredSuggestionKey === signature) return;
     if (autoAppliedSuggestionKey === signature) return;
 
-    safeOnChange(iconSuggestion.iconId);
+    const suggestionMeta = resolveSuggestionMeta(iconSuggestion.iconId);
+    safeOnChange(suggestionMeta.displayValue);
+    safeOnSelectMeta(suggestionMeta);
     setAutoAppliedSuggestionKey(signature);
   }, [
     isManageMode,
@@ -283,7 +351,10 @@ export function IconPicker({
     ignoredSuggestionKey,
     autoAppliedSuggestionKey,
     autoApplySuggestion,
+    personalIconByImageUrl,
+    personalIconById,
     safeOnChange,
+    safeOnSelectMeta,
   ]);
 
   const uploadIconMutation = useMutation({
@@ -296,7 +367,13 @@ export function IconPicker({
     }) =>
       createUserIconLibraryItem(payload),
     onSuccess: (icon) => {
-      safeOnChange(icon.imageUrl);
+      emitSelection({
+        displayValue: icon.imageUrl,
+        persistableIconId: icon.id,
+        source: "upload",
+        userIconId: icon.id,
+        officialIconId: icon.officialIconId ?? null,
+      });
       setUploadPreview(null);
       setUploadFileName("");
       setUploadIconName("");
@@ -396,7 +473,11 @@ export function IconPicker({
       const deletedImageUrl = deletedIcon.imageUrl ?? null;
       setDeletingIcon(null);
       if (deletedImageUrl && value === deletedImageUrl) {
-        safeOnChange(null);
+        emitSelection({
+          displayValue: null,
+          persistableIconId: null,
+          source: "reset",
+        });
       }
       toast({
         title: "Ícone excluído da sua biblioteca.",
@@ -443,14 +524,24 @@ export function IconPicker({
   };
 
   const handleSelectLibrary = (key: string) => {
-    safeOnChange(key);
+    emitSelection({
+      displayValue: key,
+      persistableIconId: key,
+      source: "builtin",
+    });
     if (!isManageMode) {
       setOpen(false);
     }
   };
 
-  const handleSelectPersonal = (imageUrl: string) => {
-    safeOnChange(imageUrl);
+  const handleSelectPersonal = (icon: UserIconLibraryItemApiModel) => {
+    emitSelection({
+      displayValue: icon.imageUrl,
+      persistableIconId: icon.id,
+      source: "personal",
+      userIconId: icon.id,
+      officialIconId: icon.officialIconId ?? null,
+    });
     if (!isManageMode) {
       setOpen(false);
     }
@@ -479,7 +570,11 @@ export function IconPicker({
   };
 
   const handleReset = () => {
-    safeOnChange(null);
+    emitSelection({
+      displayValue: null,
+      persistableIconId: null,
+      source: "reset",
+    });
     setOpen(false);
     setUploadPreview(null);
     setUploadFileName("");
@@ -502,7 +597,7 @@ export function IconPicker({
 
   const handleUseSuggestion = () => {
     if (!iconSuggestion.iconId) return;
-    safeOnChange(iconSuggestion.iconId);
+    emitSelection(resolveSuggestionMeta(iconSuggestion.iconId));
     setIgnoredSuggestionKey(null);
   };
 
@@ -856,7 +951,7 @@ export function IconPicker({
                                 openManagePersonalActions(item);
                                 return;
                               }
-                              handleSelectPersonal(item.imageUrl);
+                              handleSelectPersonal(item);
                             }}
                             data-testid={`icon-personal-option-${item.id}`}
                             className="flex w-full flex-col items-center gap-1 rounded-md p-1 pr-7 text-left transition-colors hover:bg-accent"
@@ -907,7 +1002,7 @@ export function IconPicker({
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-60">
-                                <DropdownMenuItem onClick={() => handleSelectPersonal(item.imageUrl)}>
+                                <DropdownMenuItem onClick={() => handleSelectPersonal(item)}>
                                   Usar este ícone
                                 </DropdownMenuItem>
                                 {!isOfficialIcon ? (
@@ -1071,7 +1166,11 @@ export function IconPicker({
                                     }
                                     return;
                                   }
-                                  handleSelectPersonal(icon.imageUrl);
+                                  const existingPersonalIcon = personalIcons.find((item) =>
+                                    item.officialIconId === icon.id || item.imageUrl === icon.imageUrl);
+                                  if (existingPersonalIcon) {
+                                    handleSelectPersonal(existingPersonalIcon);
+                                  }
                                   return;
                                 }
                                 addOfficialIconMutation.mutate(icon.id);
@@ -1363,7 +1462,7 @@ export function IconPicker({
                 variant="outline"
                 className="w-full justify-start"
                 onClick={() => {
-                  handleSelectPersonal(manageActionTarget.icon.imageUrl);
+                  handleSelectPersonal(manageActionTarget.icon);
                   setManageActionTarget(null);
                 }}
               >

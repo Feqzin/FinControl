@@ -5,6 +5,13 @@ type ResolveEditCompraIconPresentationInput = {
   autoSuggestedIconId: string | null;
 };
 
+type ResolvePersistableCompraIconIdInput = {
+  iconDirty: boolean;
+  editedDisplayIconId: string | null;
+  explicitPersistableIconId?: string | null | undefined;
+  userIcons?: Array<{ id: string; imageUrl: string }>;
+};
+
 export type EditCompraIconSource = "manual" | "suggested" | "fallback";
 
 export type EditCompraIconPresentation = {
@@ -73,3 +80,47 @@ export function resolveEditCompraIconRuleTarget(
   return trimmed.length > 0 ? trimmed : null;
 }
 
+type ResolvePersistableCompraIconIdResult =
+  | { ok: true; value: string | null | undefined }
+  | { ok: false; reason: "ICON_REFERENCE_INVALID" };
+
+export function resolvePersistableCompraIconId(
+  input: ResolvePersistableCompraIconIdInput,
+): ResolvePersistableCompraIconIdResult {
+  if (!input.iconDirty) {
+    return { ok: true, value: undefined };
+  }
+
+  if (input.editedDisplayIconId === null) {
+    return { ok: true, value: null };
+  }
+
+  const explicitPersistable = typeof input.explicitPersistableIconId === "string"
+    ? input.explicitPersistableIconId.trim()
+    : "";
+  if (explicitPersistable.length > 0) {
+    return { ok: true, value: explicitPersistable };
+  }
+
+  const trimmedDisplay = input.editedDisplayIconId.trim();
+  if (!trimmedDisplay) {
+    return { ok: true, value: null };
+  }
+
+  const looksLikeRemoteReference = /^data:/i.test(trimmedDisplay) || /^https?:\/\//i.test(trimmedDisplay);
+
+  if (!looksLikeRemoteReference) {
+    return { ok: true, value: trimmedDisplay };
+  }
+
+  const matchedUserIcon = (input.userIcons ?? []).find((icon) => {
+    const normalizedImageUrl = icon.imageUrl.trim();
+    return normalizedImageUrl.length > 0 && normalizedImageUrl === trimmedDisplay;
+  });
+
+  if (!matchedUserIcon) {
+    return { ok: false, reason: "ICON_REFERENCE_INVALID" };
+  }
+
+  return { ok: true, value: matchedUserIcon.id };
+}

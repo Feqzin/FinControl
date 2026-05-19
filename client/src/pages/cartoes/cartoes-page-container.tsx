@@ -92,8 +92,10 @@ import {
 import {
   buildEditCompraIconUpdatePatch,
   resolveEditCompraIconPresentation,
+  resolvePersistableCompraIconId,
   resolveEditCompraIconRuleTarget,
 } from "@/pages/cartoes/edit-compra-icon.utils";
+import type { IconPickerSelectMeta } from "@/components/icon-picker";
 
 const IconPicker = lazy(() =>
   import("@/components/icon-picker").then((mod) => ({ default: mod.IconPicker })),
@@ -529,6 +531,7 @@ export default function CartoesPage() {
   });
   const [editCompraIcone, setEditCompraIcone] = useState<string | null>(null);
   const [editCompraIconDirty, setEditCompraIconDirty] = useState(false);
+  const [editCompraIconPersistableId, setEditCompraIconPersistableId] = useState<string | null | undefined>(undefined);
   const [applyEditCompraIconRule, setApplyEditCompraIconRule] = useState(false);
 
   const [viewingCompra, setViewingCompra] = useState<CompraCartao | null>(null);
@@ -1668,6 +1671,32 @@ export default function CartoesPage() {
 
   const handleUpdateCompra = () => {
     if (!editingCompra) return;
+    const resolvedPersistableIcon = resolvePersistableCompraIconId({
+      iconDirty: editCompraIconDirty,
+      editedDisplayIconId: editCompraIcone,
+      explicitPersistableIconId: editCompraIconPersistableId,
+      userIcons: userIconLibrary,
+    });
+    if (!resolvedPersistableIcon.ok) {
+      toast({
+        title: "Não foi possível salvar",
+        description: "Não foi possível resolver uma referência válida do ícone selecionado. Selecione novamente em “Alterar ícone”.",
+        variant: "destructive",
+      });
+      logDev("update-compra:icon-reference-invalid", {
+        compraId: editingCompra.id,
+        iconDirty: editCompraIconDirty,
+        iconPreviewKind: editCompraIcone
+          ? (editCompraIcone.startsWith("data:")
+            ? "data_url"
+            : (editCompraIcone.startsWith("http://") || editCompraIcone.startsWith("https://"))
+              ? "remote_url"
+              : "library_key")
+          : "null",
+      });
+      return;
+    }
+
     const iconRuleTarget = resolveEditCompraIconRuleTarget({
       applyRule: applyEditCompraIconRule,
       iconDirty: editCompraIconDirty,
@@ -1676,7 +1705,7 @@ export default function CartoesPage() {
     });
     const updateIconPatch = buildEditCompraIconUpdatePatch({
       iconDirty: editCompraIconDirty,
-      editedIconId: editCompraIcone,
+      editedIconId: resolvedPersistableIcon.value ?? null,
     });
     logDev("update-compra:start", {
       compraId: editingCompra.id,
@@ -1685,7 +1714,7 @@ export default function CartoesPage() {
       parcelas: editCompraForm.parcelas,
       pessoaId: editCompraForm.pessoaId || null,
       hasIconOverride: editCompraIconDirty,
-      iconKind: editCompraIconDirty
+      iconPreviewKind: editCompraIconDirty
         ? (editCompraIcone
           ? (editCompraIcone.startsWith("data:")
           ? "data_url"
@@ -1694,7 +1723,17 @@ export default function CartoesPage() {
             : "library_key")
           : "null")
         : "unchanged",
-      iconLength: editCompraIconDirty ? (editCompraIcone?.length ?? 0) : 0,
+      iconPersistableKind: editCompraIconDirty
+        ? (resolvedPersistableIcon.value
+          ? (resolvedPersistableIcon.value.startsWith("data:")
+            ? "data_url"
+            : (resolvedPersistableIcon.value.startsWith("http://") || resolvedPersistableIcon.value.startsWith("https://"))
+              ? "remote_url"
+              : "library_key")
+          : "null")
+        : "unchanged",
+      iconPreviewLength: editCompraIconDirty ? (editCompraIcone?.length ?? 0) : 0,
+      iconPersistableLength: editCompraIconDirty ? (resolvedPersistableIcon.value?.length ?? 0) : 0,
     });
     updateCompraMutation.mutate(
       {
@@ -1737,6 +1776,7 @@ export default function CartoesPage() {
           setEditingCompra(null);
           setEditCompraIcone(null);
           setEditCompraIconDirty(false);
+          setEditCompraIconPersistableId(undefined);
           setApplyEditCompraIconRule(false);
           toast({ title: "Compra atualizada" });
           logDev("update-compra:success", { compraId: editingCompra.id });
@@ -2896,6 +2936,7 @@ export default function CartoesPage() {
             setEditingCompra(null);
             setEditCompraIcone(null);
             setEditCompraIconDirty(false);
+            setEditCompraIconPersistableId(undefined);
             setApplyEditCompraIconRule(false);
           }
         }}
@@ -2917,6 +2958,12 @@ export default function CartoesPage() {
               onChange={(nextIconId) => {
                 setEditCompraIconDirty(true);
                 setEditCompraIcone(nextIconId);
+                setEditCompraIconPersistableId(undefined);
+              }}
+              onSelectMeta={(meta: IconPickerSelectMeta) => {
+                setEditCompraIconDirty(true);
+                setEditCompraIcone(meta.displayValue);
+                setEditCompraIconPersistableId(meta.persistableIconId ?? null);
               }}
               size="md"
             />
@@ -3227,6 +3274,7 @@ export default function CartoesPage() {
             setEditingCompra(compra);
             setEditCompraIcone(compra.iconeId ?? null);
             setEditCompraIconDirty(false);
+            setEditCompraIconPersistableId(undefined);
             setApplyEditCompraIconRule(false);
             setEditCompraForm({
               descricao: compra.descricao,

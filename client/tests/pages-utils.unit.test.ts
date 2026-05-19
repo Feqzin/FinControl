@@ -72,6 +72,7 @@ import { buildCreateCompraAliasRequestBody, buildUpdateCompraRequestBody } from 
 import {
   buildEditCompraIconUpdatePatch,
   resolveEditCompraIconPresentation,
+  resolvePersistableCompraIconId,
   resolveEditCompraIconRuleTarget,
 } from "../src/pages/cartoes/edit-compra-icon.utils";
 import {
@@ -3336,6 +3337,45 @@ test("editar compra ícone: regra para compras parecidas usa somente ícone manu
     persistedIconId: null,
   });
   assert.equal(fromAutoOnly, null);
+});
+
+test("editar compra ícone: resolve icone persistível para ícone padrão sem alterar valor", () => {
+  const resolved = resolvePersistableCompraIconId({
+    iconDirty: true,
+    editedDisplayIconId: "nubank",
+    explicitPersistableIconId: undefined,
+    userIcons: [],
+  });
+
+  assert.equal(resolved.ok, true);
+  if (!resolved.ok) return;
+  assert.equal(resolved.value, "nubank");
+});
+
+test("editar compra ícone: converte imageUrl pessoal para user_icon_library.id antes do PATCH", () => {
+  const resolved = resolvePersistableCompraIconId({
+    iconDirty: true,
+    editedDisplayIconId: "https://cdn.fincontrol.dev/icons/club-ifood.png",
+    explicitPersistableIconId: undefined,
+    userIcons: [{ id: "user-icon-1", imageUrl: "https://cdn.fincontrol.dev/icons/club-ifood.png" }],
+  });
+
+  assert.equal(resolved.ok, true);
+  if (!resolved.ok) return;
+  assert.equal(resolved.value, "user-icon-1");
+});
+
+test("editar compra ícone: bloqueia referência remota sem vínculo persistível", () => {
+  const resolved = resolvePersistableCompraIconId({
+    iconDirty: true,
+    editedDisplayIconId: "data:image/png;base64,abc123",
+    explicitPersistableIconId: undefined,
+    userIcons: [],
+  });
+
+  assert.equal(resolved.ok, false);
+  if (resolved.ok) return;
+  assert.equal(resolved.reason, "ICON_REFERENCE_INVALID");
 });
 
 test("icon matching: Netflix reconhece Netflix com match forte", () => {

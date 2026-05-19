@@ -18,6 +18,13 @@ function parseDryRun(value: unknown): boolean {
   return normalized === "1" || normalized === "true";
 }
 
+function isRemoteIconReference(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return /^data:/i.test(trimmed) || /^https?:\/\//i.test(trimmed);
+}
+
 export function createComprasCartaoController(service: ComprasCartaoService) {
   return {
     list: async (req: Request, res: Response) => {
@@ -54,13 +61,22 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
       const result = await service.create(userId, parsed.data);
       if ("error" in result) {
         if (result.error === "ICONE_NOT_FOUND") {
+          const iconErrorCode = isRemoteIconReference(parsed.data.iconeId)
+            ? "ICON_REFERENCE_INVALID"
+            : "ICON_OWNERSHIP_INVALID";
           auditRequest(req, {
             action: "create",
             status: "failure",
             domain: "compras_cartao",
             userId,
-            details: { reason: "icone_not_found_or_not_owned" },
+            details: { reason: "icone_not_found_or_not_owned", errorCode: iconErrorCode },
           });
+          if (iconErrorCode === "ICON_REFERENCE_INVALID") {
+            return res.status(400).json({
+              message: "Ícone selecionado não possui referência persistível válida na sua biblioteca.",
+              errorCode: iconErrorCode,
+            });
+          }
           return sendBadRequest(res, "Icone selecionado nao pertence a sua biblioteca.");
         }
 
@@ -136,14 +152,23 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
       const result = await service.update(compraId, userId, parsed.data);
       if ("error" in result) {
         if (result.error === "ICONE_NOT_FOUND") {
+          const iconErrorCode = isRemoteIconReference(parsed.data.iconeId)
+            ? "ICON_REFERENCE_INVALID"
+            : "ICON_OWNERSHIP_INVALID";
           auditRequest(req, {
             action: "update",
             status: "failure",
             domain: "compras_cartao",
             userId,
             targetId: compraId,
-            details: { reason: "icone_not_found_or_not_owned" },
+            details: { reason: "icone_not_found_or_not_owned", errorCode: iconErrorCode },
           });
+          if (iconErrorCode === "ICON_REFERENCE_INVALID") {
+            return res.status(400).json({
+              message: "Ícone selecionado não possui referência persistível válida na sua biblioteca.",
+              errorCode: iconErrorCode,
+            });
+          }
           return sendBadRequest(res, "Icone selecionado nao pertence a sua biblioteca.");
         }
 
