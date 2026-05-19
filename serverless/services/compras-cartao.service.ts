@@ -1,5 +1,5 @@
 import type { FinancialRepository } from "../repositories/financial.repository.js";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db.js";
 import { userIconLibrary, type ParcelaCompra } from "../../shared/schema.js";
 import { formatMoneyFixed, parseMoney } from "../../utils/money.js";
@@ -80,6 +80,8 @@ function normalizeOptionalIconId(value: string | null | undefined): string | nul
   return trimmed.length > 0 ? trimmed : null;
 }
 
+const UUID_LIKE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function iconRequiresOwnershipCheck(iconId: string): boolean {
   return /^data:/i.test(iconId) || /^https?:\/\//i.test(iconId);
 }
@@ -147,17 +149,100 @@ function classifyIconPersistenceError(error: unknown): {
   return null;
 }
 
-async function userOwnsIcon(userId: string, iconId: string): Promise<boolean> {
-  if (!iconRequiresOwnershipCheck(iconId)) return true;
-  const [icon] = await db
-    .select({ id: userIconLibrary.id })
+async function findOwnedUserIconByIdOrUrl(
+  userId: string,
+  iconReference: string,
+): Promise<{ id: string; imageUrl: string } | null> {
+  const trimmedReference = iconReference.trim();
+  if (!trimmedReference) return null;
+
+  const [byUrl] = await db
+    .select({ id: userIconLibrary.id, imageUrl: userIconLibrary.imageUrl })
     .from(userIconLibrary)
     .where(and(
       eq(userIconLibrary.userId, userId),
-      eq(userIconLibrary.imageUrl, iconId),
+      eq(userIconLibrary.imageUrl, trimmedReference),
     ))
     .limit(1);
-  return Boolean(icon);
+  if (byUrl) return byUrl;
+
+  const [byId] = await db
+    .select({ id: userIconLibrary.id, imageUrl: userIconLibrary.imageUrl })
+    .from(userIconLibrary)
+    .where(and(
+      eq(userIconLibrary.userId, userId),
+      eq(userIconLibrary.id, trimmedReference),
+    ))
+    .limit(1);
+  if (byId) return byId;
+
+  return null;
+}
+
+async function resolveCompraIconForPersistence(
+  userId: string,
+  iconId: string | null,
+): Promise<{ ok: true; persistedIconId: string | null } | { ok: false }> {
+  if (iconId == null) {
+    return { ok: true, persistedIconId: null };
+  }
+
+  if (iconRequiresOwnershipCheck(iconId)) {
+    const owned = await findOwnedUserIconByIdOrUrl(userId, iconId);
+    if (!owned) return { ok: false };
+    // Persistimos referência curta para evitar depender de data URL gigante.
+    return { ok: true, persistedIconId: owned.id };
+  }
+
+  if (!UUID_LIKE_PATTERN.test(iconId)) {
+    // Biblioteca padrão/global (ex.: netflix, nubank, etc).
+    return { ok: true, persistedIconId: iconId };
+  }
+
+  const ownedById = await findOwnedUserIconByIdOrUrl(userId, iconId);
+  if (ownedById) {
+    return { ok: true, persistedIconId: ownedById.id };
+  }
+
+  return { ok: false };
+}
+
+async function hydrateCompraIconIdsForOutput<T extends { iconeId?: string | null }>(
+  userId: string,
+  compras: T[],
+): Promise<T[]> {
+  const iconIdsToResolve = Array.from(
+    new Set(
+      compras
+        .map((compra) => (typeof compra.iconeId === "string" ? compra.iconeId.trim() : ""))
+        .filter((iconId) => UUID_LIKE_PATTERN.test(iconId)),
+    ),
+  );
+
+  if (iconIdsToResolve.length === 0) {
+    return compras;
+  }
+
+  const rows = await db
+    .select({ id: userIconLibrary.id, imageUrl: userIconLibrary.imageUrl })
+    .from(userIconLibrary)
+    .where(and(
+      eq(userIconLibrary.userId, userId),
+      inArray(userIconLibrary.id, iconIdsToResolve),
+    ));
+
+  if (rows.length === 0) {
+    return compras;
+  }
+
+  const imageUrlById = new Map(rows.map((row) => [row.id, row.imageUrl]));
+  return compras.map((compra) => {
+    const iconId = typeof compra.iconeId === "string" ? compra.iconeId.trim() : "";
+    if (!iconId) return compra;
+    const mappedImageUrl = imageUrlById.get(iconId);
+    if (!mappedImageUrl) return compra;
+    return { ...compra, iconeId: mappedImageUrl };
+  });
 }
 
 function normalizePercentualFixed(value: number): string {
@@ -280,15 +365,18 @@ export class ComprasCartaoService {
   constructor(private readonly repository: FinancialRepository) {}
 
   async list(userId: string) {
-    return this.repository.getComprasCartao(userId);
+    const compras = await this.repository.getComprasCartao(userId);
+    return hydrateCompraIconIdsForOutput(userId, compras);
   }
 
   async listByCartao(cartaoId: string, userId: string) {
-    return this.repository.getComprasByCartao(cartaoId, userId);
+    const compras = await this.repository.getComprasByCartao(cartaoId, userId);
+    return hydrateCompraIconIdsForOutput(userId, compras);
   }
 
   async listByPessoa(pessoaId: string, userId: string) {
-    return this.repository.getComprasByPessoa(pessoaId, userId);
+    const compras = await this.repository.getComprasByPessoa(pessoaId, userId);
+    return hydrateCompraIconIdsForOutput(userId, compras);
   }
 
   async create(userId: string, data: CompraBodyInput) {
@@ -301,7 +389,8 @@ export class ComprasCartaoService {
         const pessoa = await repository.getPessoa(pessoaId, userId);
         if (!pessoa) return { error: "PESSOA_NOT_FOUND" as const };
       }
-      if (iconeId && !await userOwnsIcon(userId, iconeId)) {
+      const iconResolution = await resolveCompraIconForPersistence(userId, iconeId);
+      if (!iconResolution.ok) {
         return { error: "ICONE_NOT_FOUND" as const };
       }
 
@@ -321,12 +410,13 @@ export class ComprasCartaoService {
       const created = await repository.createCompraCartao({
         ...data,
         userId,
-        iconeId,
+        iconeId: iconResolution.persistedIconId,
         ...normalized.patch,
       });
       await materializeParcelasCompraIfMissing(repository, created);
       await recomputeCardPurchaseAggregate(repository, created.id, userId);
-      return { created };
+      const [createdHydrated] = await hydrateCompraIconIdsForOutput(userId, [created]);
+      return { created: createdHydrated ?? created };
     });
   }
 
@@ -352,8 +442,13 @@ export class ComprasCartaoService {
         }
 
         const nextIconeId = hasIconeOverride ? normalizeOptionalIconId(data.iconeId) : undefined;
-        if (typeof nextIconeId === "string" && !await userOwnsIcon(userId, nextIconeId)) {
-          return { error: "ICONE_NOT_FOUND" as const };
+        let persistedIconeId: string | null | undefined = undefined;
+        if (hasIconeOverride) {
+          const iconResolution = await resolveCompraIconForPersistence(userId, nextIconeId ?? null);
+          if (!iconResolution.ok) {
+            return { error: "ICONE_NOT_FOUND" as const };
+          }
+          persistedIconeId = iconResolution.persistedIconId;
         }
 
         const effectiveValorTotal = data.valorTotal ?? currentCompra.valorTotal;
@@ -386,7 +481,7 @@ export class ComprasCartaoService {
 
         const updatePayload = {
           ...data,
-          ...(hasIconeOverride ? { iconeId: nextIconeId } : {}),
+          ...(hasIconeOverride ? { iconeId: persistedIconeId } : {}),
           ...normalized.patch,
         };
 
@@ -398,7 +493,8 @@ export class ComprasCartaoService {
         const refreshed = await repository.getCompraCartao(updated.id, userId);
         if (!refreshed) return { error: "NOT_FOUND" as const };
 
-        return { updated: refreshed };
+        const [hydrated] = await hydrateCompraIconIdsForOutput(userId, [refreshed]);
+        return { updated: hydrated ?? refreshed };
       });
     } catch (error) {
       if (!hasIconeOverride) throw error;

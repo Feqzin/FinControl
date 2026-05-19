@@ -70,6 +70,11 @@ import {
 import { buildCompraAliasDraft, findPossibleExistingPurchaseMatch } from "../src/pages/cartoes/import-existing-purchase-match";
 import { buildCreateCompraAliasRequestBody, buildUpdateCompraRequestBody } from "../src/services/api/cartoes";
 import {
+  buildEditCompraIconUpdatePatch,
+  resolveEditCompraIconPresentation,
+  resolveEditCompraIconRuleTarget,
+} from "../src/pages/cartoes/edit-compra-icon.utils";
+import {
   BUILTIN_ICON_PREFERENCE_RULE_ICON_ID,
   buildBuiltinIconDisablePreferenceTerm,
   matchIconByText,
@@ -3260,6 +3265,77 @@ test("cartões API: buildUpdateCompraRequestBody converte iconeId vazio para nul
     reembolsoModo: null,
   });
   assert.equal(Object.hasOwn(withoutIconOverride, "iconeId"), false);
+});
+
+test("editar compra ícone: compra sem icone manual + sugestão automática não envia iconeId no patch", () => {
+  const patch = buildEditCompraIconUpdatePatch({
+    iconDirty: false,
+    editedIconId: null,
+  });
+
+  assert.equal(Object.hasOwn(patch, "iconeId"), false);
+});
+
+test("editar compra ícone: separar manual persistido de sugestão automática no preview", () => {
+  const suggested = resolveEditCompraIconPresentation({
+    persistedIconId: null,
+    editedIconId: null,
+    iconDirty: false,
+    autoSuggestedIconId: "data:image/png;base64,club-ifood",
+  });
+  assert.equal(suggested.source, "suggested");
+  assert.equal(suggested.previewIconId, "data:image/png;base64,club-ifood");
+  assert.equal(suggested.manualIconId, null);
+
+  const manual = resolveEditCompraIconPresentation({
+    persistedIconId: "ifood",
+    editedIconId: null,
+    iconDirty: false,
+    autoSuggestedIconId: "data:image/png;base64,club-ifood",
+  });
+  assert.equal(manual.source, "manual");
+  assert.equal(manual.previewIconId, "ifood");
+  assert.equal(manual.manualIconId, "ifood");
+});
+
+test("editar compra ícone: escolher ícone manual marca patch com iconeId e limpar envia null", () => {
+  const selectedPatch = buildEditCompraIconUpdatePatch({
+    iconDirty: true,
+    editedIconId: "data:image/png;base64,club-ifood",
+  });
+  assert.equal(selectedPatch.iconeId, "data:image/png;base64,club-ifood");
+
+  const clearedPatch = buildEditCompraIconUpdatePatch({
+    iconDirty: true,
+    editedIconId: null,
+  });
+  assert.equal(clearedPatch.iconeId, null);
+});
+
+test("editar compra ícone: regra para compras parecidas usa somente ícone manual válido", () => {
+  const fromPersisted = resolveEditCompraIconRuleTarget({
+    applyRule: true,
+    iconDirty: false,
+    editedIconId: null,
+    persistedIconId: "ifood",
+  });
+  assert.equal(fromPersisted, "ifood");
+
+  const fromChanged = resolveEditCompraIconRuleTarget({
+    applyRule: true,
+    iconDirty: true,
+    editedIconId: "data:image/png;base64,club-ifood",
+    persistedIconId: null,
+  });
+  assert.equal(fromChanged, "data:image/png;base64,club-ifood");
+
+  const fromAutoOnly = resolveEditCompraIconRuleTarget({
+    applyRule: true,
+    iconDirty: false,
+    editedIconId: null,
+    persistedIconId: null,
+  });
+  assert.equal(fromAutoOnly, null);
 });
 
 test("icon matching: Netflix reconhece Netflix com match forte", () => {

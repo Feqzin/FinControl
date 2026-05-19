@@ -63,6 +63,7 @@ interface IconPickerProps {
   onChange?: (value: string | null) => void;
   size?: "sm" | "md" | "lg";
   mode?: "select" | "manage";
+  autoApplySuggestion?: boolean;
   triggerLabel?: string;
   triggerDescription?: string;
   triggerTestId?: string;
@@ -149,6 +150,7 @@ export function IconPicker({
   onChange,
   size = "md",
   mode = "select",
+  autoApplySuggestion = true,
   triggerLabel,
   triggerDescription,
   triggerTestId,
@@ -258,6 +260,7 @@ export function IconPicker({
 
   useEffect(() => {
     if (isManageMode) return;
+    if (!autoApplySuggestion) return;
     if (!open) return;
     if (value) return;
     if (!name.trim()) return;
@@ -279,6 +282,7 @@ export function IconPicker({
     iconSuggestion,
     ignoredSuggestionKey,
     autoAppliedSuggestionKey,
+    autoApplySuggestion,
     safeOnChange,
   ]);
 
