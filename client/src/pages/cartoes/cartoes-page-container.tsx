@@ -668,13 +668,6 @@ export default function CartoesPage() {
       });
       void queryClient.invalidateQueries({ queryKey: ["/api/icon-match-rules"] });
     },
-    onError: (error) => {
-      toast({
-        title: "Erro ao salvar reconhecimento",
-        description: getErrorMessage(error),
-        variant: "destructive",
-      });
-    },
   });
 
   useEffect(() => {
@@ -1691,10 +1684,20 @@ export default function CartoesPage() {
                 description: "Compras parecidas podem usar esse ícone automaticamente.",
               });
             } catch (error) {
+              logDev("icon-match-rule:create-from-compra:error", {
+                compraId: editingCompra.id,
+                hasManualIcon: Boolean(editCompraIcone),
+                iconKind: editCompraIcone.startsWith("data:")
+                  ? "data_url"
+                  : (editCompraIcone.startsWith("http://") || editCompraIcone.startsWith("https://"))
+                    ? "remote_url"
+                    : "library_key",
+                message: error instanceof Error ? error.message : String(error),
+              });
               toast({
-                title: "Compra salva, mas não foi possível salvar a regra do ícone",
-                description: getErrorMessage(error),
-                variant: "destructive",
+                title: "Compra atualizada",
+                description:
+                  "Ícone salvo na compra, mas não foi possível salvar o reconhecimento automático agora. Você pode tentar novamente depois.",
               });
             }
           }

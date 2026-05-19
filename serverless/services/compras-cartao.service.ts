@@ -7,6 +7,7 @@ import type {
   CompraBodyInput,
   CompraUpdateBodyInput,
 } from "../validators/financial.validators.js";
+import { toErrorLog, writeTechnicalLog } from "../logger.js";
 import { recomputeCardPurchaseAggregate } from "./financial-aggregate-consistency.js";
 import {
   materializeParcelasCompraIfMissing,
@@ -81,6 +82,27 @@ function normalizeOptionalIconId(value: string | null | undefined): string | nul
 
 function iconRequiresOwnershipCheck(iconId: string): boolean {
   return /^data:/i.test(iconId) || /^https?:\/\//i.test(iconId);
+}
+
+const ICON_SCHEMA_ERROR_CODES = new Set(["42P01", "42703"]);
+
+function getErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === "string" && code.trim().length > 0) return code.trim();
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause && typeof cause === "object") {
+    const causeCode = (cause as { code?: unknown }).code;
+    if (typeof causeCode === "string" && causeCode.trim().length > 0) return causeCode.trim();
+  }
+  return null;
+}
+
+function isKnownIconPersistenceError(error: unknown): boolean {
+  const code = getErrorCode(error);
+  if (code && ICON_SCHEMA_ERROR_CODES.has(code)) return true;
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? "").toLowerCase();
+  return message.includes("icone_id") || message.includes("user_icon_library");
 }
 
 async function userOwnsIcon(userId: string, iconId: string): Promise<boolean> {
@@ -267,74 +289,104 @@ export class ComprasCartaoService {
   }
 
   async update(id: string, userId: string, data: CompraUpdateBodyInput) {
-    return runFinancialTransaction(this.repository, async (repository) => {
-      const currentCompra = await repository.getCompraCartao(id, userId);
-      if (!currentCompra) return { error: "NOT_FOUND" as const };
+    const hasIconeOverride = data.iconeId !== undefined;
+    try {
+      return await runFinancialTransaction(this.repository, async (repository) => {
+        const currentCompra = await repository.getCompraCartao(id, userId);
+        if (!currentCompra) return { error: "NOT_FOUND" as const };
 
-      if (data.cartaoId) {
-        const cartao = await repository.getCartao(data.cartaoId, userId);
-        if (!cartao) return { error: "CARTAO_NOT_FOUND" as const };
-      }
+        if (data.cartaoId) {
+          const cartao = await repository.getCartao(data.cartaoId, userId);
+          if (!cartao) return { error: "CARTAO_NOT_FOUND" as const };
+        }
 
-      const requestedPessoaId = data.pessoaId === undefined
-        ? currentCompra.pessoaId
-        : normalizePessoaId(data.pessoaId);
+        const requestedPessoaId = data.pessoaId === undefined
+          ? currentCompra.pessoaId
+          : normalizePessoaId(data.pessoaId);
 
-      if (requestedPessoaId) {
-        const pessoa = await repository.getPessoa(requestedPessoaId, userId);
-        if (!pessoa) return { error: "PESSOA_NOT_FOUND" as const };
-      }
+        if (requestedPessoaId) {
+          const pessoa = await repository.getPessoa(requestedPessoaId, userId);
+          if (!pessoa) return { error: "PESSOA_NOT_FOUND" as const };
+        }
 
-      const hasIconeOverride = data.iconeId !== undefined;
-      const nextIconeId = hasIconeOverride ? normalizeOptionalIconId(data.iconeId) : undefined;
-      if (typeof nextIconeId === "string" && !await userOwnsIcon(userId, nextIconeId)) {
-        return { error: "ICONE_NOT_FOUND" as const };
-      }
+        const nextIconeId = hasIconeOverride ? normalizeOptionalIconId(data.iconeId) : undefined;
+        if (typeof nextIconeId === "string" && !await userOwnsIcon(userId, nextIconeId)) {
+          return { error: "ICONE_NOT_FOUND" as const };
+        }
 
-      const effectiveValorTotal = data.valorTotal ?? currentCompra.valorTotal;
-      const effectiveReembolsoModo = data.reembolsoModo === undefined
-        ? ((currentCompra.reembolsoModo as ReembolsoModo | null | undefined) ?? null)
-        : (data.reembolsoModo ?? null);
-      const effectiveReembolsoValorTotal = data.reembolsoValorTotal === undefined
-        ? toNullableMoneyNumber(currentCompra.reembolsoValorTotal ?? null)
-        : data.reembolsoValorTotal;
-      const effectiveReembolsoPercentual = data.reembolsoPercentual === undefined
-        ? toNullableMoneyNumber(currentCompra.reembolsoPercentual ?? null)
-        : data.reembolsoPercentual;
+        const effectiveValorTotal = data.valorTotal ?? currentCompra.valorTotal;
+        const effectiveReembolsoModo = data.reembolsoModo === undefined
+          ? ((currentCompra.reembolsoModo as ReembolsoModo | null | undefined) ?? null)
+          : (data.reembolsoModo ?? null);
+        const effectiveReembolsoValorTotal = data.reembolsoValorTotal === undefined
+          ? toNullableMoneyNumber(currentCompra.reembolsoValorTotal ?? null)
+          : data.reembolsoValorTotal;
+        const effectiveReembolsoPercentual = data.reembolsoPercentual === undefined
+          ? toNullableMoneyNumber(currentCompra.reembolsoPercentual ?? null)
+          : data.reembolsoPercentual;
 
-      const normalized = normalizeReembolsoFields({
-        pessoaId: requestedPessoaId,
-        statusPessoa: data.statusPessoa === undefined
-          ? currentCompra.statusPessoa
-          : data.statusPessoa,
-        dataPagamentoPessoa: data.dataPagamentoPessoa === undefined
-          ? currentCompra.dataPagamentoPessoa
-          : data.dataPagamentoPessoa,
-        reembolsoModo: effectiveReembolsoModo,
-        reembolsoValorTotal: effectiveReembolsoValorTotal,
-        reembolsoPercentual: effectiveReembolsoPercentual,
-        valorTotalCompra: toNullableMoneyNumber(effectiveValorTotal),
+        const normalized = normalizeReembolsoFields({
+          pessoaId: requestedPessoaId,
+          statusPessoa: data.statusPessoa === undefined
+            ? currentCompra.statusPessoa
+            : data.statusPessoa,
+          dataPagamentoPessoa: data.dataPagamentoPessoa === undefined
+            ? currentCompra.dataPagamentoPessoa
+            : data.dataPagamentoPessoa,
+          reembolsoModo: effectiveReembolsoModo,
+          reembolsoValorTotal: effectiveReembolsoValorTotal,
+          reembolsoPercentual: effectiveReembolsoPercentual,
+          valorTotalCompra: toNullableMoneyNumber(effectiveValorTotal),
+        });
+        if (!normalized.ok) {
+          return { error: "REEMBOLSO_INVALIDO" as const, message: normalized.message };
+        }
+
+        const updatePayload = {
+          ...data,
+          ...(hasIconeOverride ? { iconeId: nextIconeId } : {}),
+          ...normalized.patch,
+        };
+
+        const updated = await repository.updateCompraCartao(id, userId, updatePayload);
+        if (!updated) return { error: "NOT_FOUND" as const };
+        // Fluxo explicito para registros legados sem cronograma materializado.
+        await syncMaterializedParcelasAfterCompraUpdate(repository, updated);
+        await recomputeCardPurchaseAggregate(repository, updated.id, userId);
+        const refreshed = await repository.getCompraCartao(updated.id, userId);
+        if (!refreshed) return { error: "NOT_FOUND" as const };
+
+        return { updated: refreshed };
       });
-      if (!normalized.ok) {
-        return { error: "REEMBOLSO_INVALIDO" as const, message: normalized.message };
+    } catch (error) {
+      if (!hasIconeOverride) throw error;
+      writeTechnicalLog({
+        event: "compras_cartao.icon_update.error",
+        source: "compras-cartao.service",
+        level: "error",
+        data: {
+          userId,
+          compraId: id,
+          iconKind: typeof data.iconeId === "string"
+            ? (data.iconeId.startsWith("data:")
+              ? "data_url"
+              : (data.iconeId.startsWith("http://") || data.iconeId.startsWith("https://"))
+                ? "remote_url"
+                : "library_key")
+            : (data.iconeId === null ? "null" : "undefined"),
+          error: toErrorLog(error),
+        },
+      });
+
+      if (isKnownIconPersistenceError(error)) {
+        return {
+          error: "ICONE_UPDATE_ERROR" as const,
+          message: "Não foi possível salvar o ícone da compra agora. Verifique se as migrations de ícones estão aplicadas.",
+        };
       }
 
-      const updatePayload = {
-        ...data,
-        ...(hasIconeOverride ? { iconeId: nextIconeId } : {}),
-        ...normalized.patch,
-      };
-
-      const updated = await repository.updateCompraCartao(id, userId, updatePayload);
-      if (!updated) return { error: "NOT_FOUND" as const };
-      // Fluxo explicito para registros legados sem cronograma materializado.
-      await syncMaterializedParcelasAfterCompraUpdate(repository, updated);
-      await recomputeCardPurchaseAggregate(repository, updated.id, userId);
-      const refreshed = await repository.getCompraCartao(updated.id, userId);
-      if (!refreshed) return { error: "NOT_FOUND" as const };
-
-      return { updated: refreshed };
-    });
+      throw error;
+    }
   }
 
   async delete(id: string, userId: string) {

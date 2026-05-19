@@ -458,7 +458,18 @@ export type UpdateCompraPayload = {
   reembolsoPercentual?: string | number | null;
 };
 
-export async function updateCompraCartao(id: string, payload: UpdateCompraPayload): Promise<void> {
+function sanitizeOptionalIconId(
+  value: string | null | undefined,
+): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function buildUpdateCompraRequestBody(
+  payload: UpdateCompraPayload,
+): Record<string, unknown> {
   const parcelas = Number(payload.parcelas);
   const valorTotal = formatMoneyFixed(payload.valorTotal);
   if (!valorTotal) {
@@ -474,16 +485,26 @@ export async function updateCompraCartao(id: string, payload: UpdateCompraPayloa
     reembolsoPercentual: payload.reembolsoPercentual,
   });
 
-  await apiRequest("PATCH", `/api/compras-cartao/${id}`, {
+  const body: Record<string, unknown> = {
     descricao: payload.descricao,
     valorTotal,
     parcelas,
     valorParcela,
     pessoaId,
     statusPessoa: pessoaId ? payload.statusPessoa || "pendente" : null,
-    ...(payload.iconeId !== undefined ? { iconeId: payload.iconeId ?? null } : {}),
     ...reembolsoFields,
-  });
+  };
+
+  const sanitizedIconId = sanitizeOptionalIconId(payload.iconeId);
+  if (sanitizedIconId !== undefined) {
+    body.iconeId = sanitizedIconId;
+  }
+
+  return body;
+}
+
+export async function updateCompraCartao(id: string, payload: UpdateCompraPayload): Promise<void> {
+  await apiRequest("PATCH", `/api/compras-cartao/${id}`, buildUpdateCompraRequestBody(payload));
 }
 
 export async function deleteCompraCartao(id: string): Promise<void> {

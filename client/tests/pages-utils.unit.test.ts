@@ -68,7 +68,7 @@ import {
   toTimelineDateLabel,
 } from "../src/pages/pessoas/payment-timeline.utils";
 import { buildCompraAliasDraft, findPossibleExistingPurchaseMatch } from "../src/pages/cartoes/import-existing-purchase-match";
-import { buildCreateCompraAliasRequestBody } from "../src/services/api/cartoes";
+import { buildCreateCompraAliasRequestBody, buildUpdateCompraRequestBody } from "../src/services/api/cartoes";
 import {
   BUILTIN_ICON_PREFERENCE_RULE_ICON_ID,
   buildBuiltinIconDisablePreferenceTerm,
@@ -3215,6 +3215,51 @@ test("import parser: buildCreateCompraAliasRequestBody aceita cartaoId ausente e
   assert.equal(Object.hasOwn(body, "cardLast4"), false);
   assert.equal(Object.hasOwn(body, "valorParcela"), false);
   assert.equal(Object.hasOwn(body, "totalParcelas"), false);
+});
+
+test("cartões API: buildUpdateCompraRequestBody saneia iconeId e remove undefined", () => {
+  const body = buildUpdateCompraRequestBody({
+    descricao: "Ifood Club",
+    valorTotal: "422,79",
+    parcelas: "1",
+    pessoaId: "",
+    statusPessoa: "pendente",
+    iconeId: "  https://cdn.exemplo/icon-ifood.png  ",
+    reembolsoModo: null,
+    reembolsoValorTotal: undefined,
+    reembolsoPercentual: undefined,
+  });
+
+  assert.equal(body.descricao, "Ifood Club");
+  assert.equal(body.valorTotal, "422.79");
+  assert.equal(body.parcelas, 1);
+  assert.equal(body.pessoaId, null);
+  assert.equal(body.iconeId, "https://cdn.exemplo/icon-ifood.png");
+  assert.equal(Object.hasOwn(body, "reembolsoValorTotal"), true);
+  assert.equal(Object.hasOwn(body, "reembolsoPercentual"), true);
+});
+
+test("cartões API: buildUpdateCompraRequestBody converte iconeId vazio para null e omite quando undefined", () => {
+  const withEmptyIcon = buildUpdateCompraRequestBody({
+    descricao: "Netflix",
+    valorTotal: "59,90",
+    parcelas: "1",
+    pessoaId: "",
+    statusPessoa: "pendente",
+    iconeId: "   ",
+    reembolsoModo: null,
+  });
+  assert.equal(withEmptyIcon.iconeId, null);
+
+  const withoutIconOverride = buildUpdateCompraRequestBody({
+    descricao: "Spotify",
+    valorTotal: "21,90",
+    parcelas: "1",
+    pessoaId: "",
+    statusPessoa: "pendente",
+    reembolsoModo: null,
+  });
+  assert.equal(Object.hasOwn(withoutIconOverride, "iconeId"), false);
 });
 
 test("icon matching: Netflix reconhece Netflix com match forte", () => {

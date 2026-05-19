@@ -186,6 +186,21 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
           return sendBadRequest(res, errorMessage);
         }
 
+        if (result.error === "ICONE_UPDATE_ERROR") {
+          const errorMessage = "message" in result && typeof result.message === "string"
+            ? result.message
+            : "Não foi possível salvar o ícone da compra.";
+          auditRequest(req, {
+            action: "update",
+            status: "failure",
+            domain: "compras_cartao",
+            userId,
+            targetId: compraId,
+            details: { reason: "icone_update_error" },
+          });
+          return sendBadRequest(res, errorMessage);
+        }
+
         auditRequest(req, {
           action: "update",
           status: "failure",

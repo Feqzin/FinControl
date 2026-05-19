@@ -114,6 +114,7 @@ test("update recompõe compra pai quando parcelas_compra existem", async () => {
       Object.assign(compra, data);
       return compra;
     },
+    updateParcelaCompra: async () => undefined,
     getCompraCartao: async () => compra,
     getParcelasCompra: async () => parcelasCompra,
   };
@@ -160,6 +161,7 @@ test("update materializa parcelas_compra ausentes em compra legado antes da reco
       Object.assign(compra, data);
       return compra;
     },
+    updateParcelaCompra: async () => undefined,
     getCompraCartao: async () => compra,
     getParcelasCompra: async () => parcelasCompra,
     createParcelasCompraBulk: async (rows: Array<Omit<ParcelaCompra, "id">>) => {
@@ -202,4 +204,44 @@ test("create retorna CARTAO_NOT_FOUND quando cartao nao existe", async () => {
   });
 
   assert.deepEqual(result, { error: "CARTAO_NOT_FOUND" });
+});
+
+test("update com override de icone trata erro de persistencia conhecido sem derrubar com 500", async () => {
+  const compra: CompraCartao = {
+    id: "compra-icon-1",
+    userId: "user-compras-unit",
+    cartaoId: "cartao-1",
+    descricao: "Compra com icone",
+    valorTotal: "100.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "100.00",
+    dataCompra: "2026-04-20",
+    pessoaId: null,
+    statusPessoa: null,
+    dataPagamentoPessoa: null,
+    iconeId: null,
+  };
+
+  const repository = {
+    getCompraCartao: async () => compra,
+    updateCompraCartao: async () => {
+      const error = new Error("column \"icone_id\" of relation \"compras_cartao\" does not exist");
+      (error as Error & { code?: string }).code = "42703";
+      throw error;
+    },
+    getParcelasCompra: async () => [] as ParcelaCompra[],
+    getCartao: async () => ({ id: "cartao-1" }),
+  };
+
+  const service = new ComprasCartaoService(repository as any);
+  const result = await service.update("compra-icon-1", "user-compras-unit", {
+    descricao: "Compra com icone atualizado",
+    iconeId: "netflix",
+  });
+
+  assert.deepEqual(result, {
+    error: "ICONE_UPDATE_ERROR",
+    message: "Não foi possível salvar o ícone da compra agora. Verifique se as migrations de ícones estão aplicadas.",
+  });
 });
