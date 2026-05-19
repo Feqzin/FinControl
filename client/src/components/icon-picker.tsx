@@ -673,7 +673,7 @@ export function IconPicker({
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[85vh] w-[min(95vw,900px)] max-w-4xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{isManageMode ? "Biblioteca de ícones" : "Alterar Ícone"}</DialogTitle>
           </DialogHeader>

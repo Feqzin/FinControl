@@ -373,7 +373,10 @@ export function EditarCompraCartaoDialog({
 }: EditarCompraCartaoDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent
+        overlayClassName="z-40"
+        className="z-[41] max-h-[90vh] w-[min(95vw,720px)] max-w-[720px] overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle>Editar Compra</DialogTitle>
         </DialogHeader>
@@ -382,7 +385,7 @@ export function EditarCompraCartaoDialog({
             event.preventDefault();
             onSubmit();
           }}
-          className="space-y-4"
+          className="min-w-0 space-y-4"
         >
           <div className="space-y-2">
             <Label>Descrição</Label>
@@ -462,8 +465,8 @@ export function EditarCompraCartaoDialog({
                 O ícone manual aparece na lista de compras e não é sobrescrito pelo reconhecimento automático.
               </p>
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
+            <div className="min-w-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 flex items-center gap-2">
                 <BrandIconDisplay
                   name={form.descricao || "Compra"}
                   iconeId={iconPreviewId}
@@ -474,7 +477,7 @@ export function EditarCompraCartaoDialog({
                   <p className="truncate text-xs text-muted-foreground">{iconPreviewHint || "Sem ícone manual salvo"}</p>
                 </div>
               </div>
-              <div className="w-full sm:w-auto">
+              <div className="min-w-0 w-full sm:w-auto">
                 {iconPicker}
               </div>
             </div>
