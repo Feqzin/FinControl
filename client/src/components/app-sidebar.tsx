@@ -1,4 +1,5 @@
 import { useLocation, Link } from "wouter";
+import { lazy, Suspense, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/theme-provider";
 import { useUIPreferences } from "@/context/ui-preferences";
@@ -13,6 +14,7 @@ import {
   SidebarFooter, SidebarHeader,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
@@ -23,6 +25,10 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+
+const IconPicker = lazy(() =>
+  import("@/components/icon-picker").then((mod) => ({ default: mod.IconPicker })),
+);
 
 const mainItems = [
   { title: "Painel", url: "/", icon: LayoutDashboard },
@@ -51,6 +57,7 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const { theme, toggle } = useTheme();
   const { prefs, togglePage } = useUIPreferences();
+  const [showManagePages, setShowManagePages] = useState(false);
 
   const filteredMainItems = mainItems.filter(item => item.url === "/" || !prefs.hiddenPages.includes(item.url));
   const filteredPlanejamentoItems = planejamentoItems.filter(item => !prefs.hiddenPages.includes(item.url));
@@ -123,24 +130,51 @@ export function AppSidebar() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Gerenciar Telas</DialogTitle>
-              <DialogDescription>Escolha quais telas deseja visualizar no menu lateral.</DialogDescription>
+              <DialogTitle>Personalizar</DialogTitle>
+              <DialogDescription>Ajuste rapidamente sua biblioteca e o menu lateral.</DialogDescription>
             </DialogHeader>
-            <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-2">
-              {allManageablePages.map((page) => (
-                <div key={page.url} className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-lg transition-colors">
-                  <span className="text-sm font-medium">{page.title}</span>
-                  <Switch
-                    checked={!prefs.hiddenPages.includes(page.url)}
-                    onCheckedChange={() => togglePage(page.url)}
-                  />
-                </div>
-              ))}
+
+            <div className="space-y-2">
+              <Suspense fallback={<Skeleton className="h-14 w-full" />}>
+                <IconPicker
+                  mode="manage"
+                  triggerLabel="Biblioteca de ícones"
+                  triggerDescription="Upload, edição, exclusão e automação"
+                  triggerTestId="button-open-global-icon-library"
+                />
+              </Suspense>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => setShowManagePages((current) => !current)}
+                data-testid="button-toggle-manage-pages"
+              >
+                {showManagePages ? "Ocultar gestão de telas" : "Gerenciar telas do menu"}
+              </Button>
             </div>
-            <div className="flex items-center gap-2 p-3 mt-4 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <p className="text-xs font-medium">Ocultar uma tela não exclui seus dados.</p>
-            </div>
+
+            {showManagePages ? (
+              <div className="space-y-1 max-h-[50vh] overflow-y-auto pr-2">
+                {allManageablePages.map((page) => (
+                  <div key={page.url} className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-lg transition-colors">
+                    <span className="text-sm font-medium">{page.title}</span>
+                    <Switch
+                      checked={!prefs.hiddenPages.includes(page.url)}
+                      onCheckedChange={() => togglePage(page.url)}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {showManagePages ? (
+              <div className="flex items-center gap-2 p-3 mt-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <p className="text-xs font-medium">Ocultar uma tela não exclui seus dados.</p>
+              </div>
+            ) : null}
           </DialogContent>
         </Dialog>
 
