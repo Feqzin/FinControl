@@ -17,6 +17,7 @@ test("create registra compra parcelada quando cartao existe", async () => {
     pessoaId: null,
     statusPessoa: null,
     dataPagamentoPessoa: null,
+    iconeId: null,
   };
   const createdParcelas: ParcelaCompra[] = [];
 
@@ -76,6 +77,7 @@ test("update recompõe compra pai quando parcelas_compra existem", async () => {
     pessoaId: "pessoa-1",
     statusPessoa: "pendente",
     dataPagamentoPessoa: null,
+    iconeId: null,
   };
 
   const parcelasCompra: ParcelaCompra[] = [
@@ -147,6 +149,7 @@ test("update materializa parcelas_compra ausentes em compra legado antes da reco
     pessoaId: null,
     statusPessoa: null,
     dataPagamentoPessoa: null,
+    iconeId: null,
   };
 
   const parcelasCompra: ParcelaCompra[] = [];

@@ -409,6 +409,7 @@ export type CompraPayload = {
   parcelas: string | number;
   dataCompra: string;
   pessoaId?: string | null;
+  iconeId?: string | null;
   reembolsoModo?: ReembolsoModo | null;
   reembolsoValorTotal?: string | number | null;
   reembolsoPercentual?: string | number | null;
@@ -434,6 +435,7 @@ export async function createCompraCartao(payload: CompraPayload): Promise<void> 
     cartaoId: payload.cartaoId,
     descricao: payload.descricao,
     valorTotal,
+    iconeId: payload.iconeId ?? null,
     pessoaId,
     statusPessoa: pessoaId ? "pendente" : null,
     ...reembolsoFields,
@@ -450,6 +452,7 @@ export type UpdateCompraPayload = {
   parcelas: string | number;
   pessoaId?: string | null;
   statusPessoa?: string | null;
+  iconeId?: string | null;
   reembolsoModo?: ReembolsoModo | null;
   reembolsoValorTotal?: string | number | null;
   reembolsoPercentual?: string | number | null;
@@ -478,6 +481,7 @@ export async function updateCompraCartao(id: string, payload: UpdateCompraPayloa
     valorParcela,
     pessoaId,
     statusPessoa: pessoaId ? payload.statusPessoa || "pendente" : null,
+    ...(payload.iconeId !== undefined ? { iconeId: payload.iconeId ?? null } : {}),
     ...reembolsoFields,
   });
 }

@@ -65,7 +65,9 @@ import {
   uploadParcelaComprovante,
 } from "@/services/api/cartoes";
 import { createIconMatchRules, fetchIconMatchRules, type IconMatchRuleApiModel } from "@/services/api/icon-match-rules";
+import { fetchUserIconLibrary, type UserIconLibraryItemApiModel } from "@/services/api/user-icon-library";
 import { matchIconByText, matchPurchaseIconByDescription, type UserIconMatchRule } from "@/lib/purchase-icon-matching";
+import { LIBRARY_ICONS } from "@/lib/brand-icons";
 import {
   calculateCardInvoiceForCompetency,
   compraHasInstallmentInCompetency,
@@ -520,6 +522,8 @@ export default function CartoesPage() {
     reembolsoValorTotal: "",
     reembolsoPercentual: "",
   });
+  const [editCompraIcone, setEditCompraIcone] = useState<string | null>(null);
+  const [applyEditCompraIconRule, setApplyEditCompraIconRule] = useState(false);
 
   const [viewingCompra, setViewingCompra] = useState<CompraCartao | null>(null);
   const [editingParcelaId, setEditingParcelaId] = useState<string | null>(null);
@@ -643,6 +647,12 @@ export default function CartoesPage() {
   const { data: iconMatchRules = [] } = useQuery<IconMatchRuleApiModel[]>({
     queryKey: ["/api/icon-match-rules"],
     queryFn: fetchIconMatchRules,
+    staleTime: 5 * 60_000,
+  });
+  const { data: userIconLibrary = [] } = useQuery<UserIconLibraryItemApiModel[]>({
+    queryKey: ["/api/user-icon-library", "edit-compra"],
+    queryFn: fetchUserIconLibrary,
+    enabled: Boolean(editingCompra),
     staleTime: 5 * 60_000,
   });
   const saveIconMatchRuleMutation = useMutation({
@@ -931,8 +941,40 @@ export default function CartoesPage() {
     })),
     [iconMatchRules],
   );
+  const iconLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const icon of LIBRARY_ICONS) {
+      map.set(icon.key, icon.label);
+    }
+    for (const icon of userIconLibrary) {
+      if (icon.imageUrl) {
+        map.set(icon.imageUrl, icon.name || "Ícone personalizado");
+      }
+    }
+    return map;
+  }, [userIconLibrary]);
+
+  const resolveIconLabel = (iconId: string | null | undefined): string => {
+    if (!iconId) return "Ícone automático";
+    if (iconLabelById.has(iconId)) return iconLabelById.get(iconId) ?? "Ícone personalizado";
+    if (iconId.startsWith("data:")) return "Ícone personalizado";
+    return "Ícone da biblioteca";
+  };
+
   const resolveCompraIconSuggestion = (compra: CompraCartao) =>
-    matchPurchaseIconByDescription(compra.descricao, normalizedIconMatchRules);
+    compra.iconeId
+      ? {
+        matched: true,
+        iconId: compra.iconeId,
+        label: resolveIconLabel(compra.iconeId),
+        confidenceScore: 1,
+        confidenceLevel: "alta" as const,
+        shouldAutoApply: true,
+        shouldSuggest: false,
+        source: null,
+        matchedTerm: null,
+      }
+      : matchPurchaseIconByDescription(compra.descricao, normalizedIconMatchRules);
   const resolveStrongAutoIconId = (text: string, explicitIconId?: string | null) => {
     if (explicitIconId) return explicitIconId;
     const match = matchIconByText(text, normalizedIconMatchRules);
@@ -944,6 +986,13 @@ export default function CartoesPage() {
   const handleSaveCompraIconRule = async (descricao: string, iconId: string) => {
     await saveIconMatchRuleMutation.mutateAsync({ descricao, iconId });
   };
+  const editCompraIconPreviewId = editingCompra
+    ? (editCompraIcone ?? resolveStrongAutoIconId(editCompraForm.descricao || editingCompra.descricao, null))
+    : null;
+  const editCompraIconPreviewLabel = resolveIconLabel(editCompraIconPreviewId);
+  const editCompraIconPreviewHint = editCompraIcone
+    ? "Ícone manual selecionado para esta compra"
+    : "Sem ícone manual salvo (usando automático)";
   const activeCartoesTab: CartoesTab = cartoesTab;
   const currentInvoiceMonthReference = format(new Date(), "yyyy-MM");
   const parcelasCompraByCompraId = useMemo(
@@ -1626,14 +1675,32 @@ export default function CartoesPage() {
         id: editingCompra.id,
         data: {
           ...editCompraForm,
+          iconeId: editCompraIcone,
           reembolsoModo: editCompraForm.pessoaId ? editCompraForm.reembolsoModo : null,
           reembolsoValorTotal: editCompraForm.pessoaId ? editCompraForm.reembolsoValorTotal : null,
           reembolsoPercentual: editCompraForm.pessoaId ? editCompraForm.reembolsoPercentual : null,
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: async () => {
+          if (applyEditCompraIconRule && editCompraIcone && editCompraForm.descricao.trim().length > 0) {
+            try {
+              await handleSaveCompraIconRule(editCompraForm.descricao, editCompraIcone);
+              toast({
+                title: "Reconhecimento salvo",
+                description: "Compras parecidas podem usar esse ícone automaticamente.",
+              });
+            } catch (error) {
+              toast({
+                title: "Compra salva, mas não foi possível salvar a regra do ícone",
+                description: getErrorMessage(error),
+                variant: "destructive",
+              });
+            }
+          }
           setEditingCompra(null);
+          setEditCompraIcone(null);
+          setApplyEditCompraIconRule(false);
           toast({ title: "Compra atualizada" });
           logDev("update-compra:success", { compraId: editingCompra.id });
         },
@@ -2790,12 +2857,29 @@ export default function CartoesPage() {
         onOpenChange={(open) => {
           if (!open) {
             setEditingCompra(null);
+            setEditCompraIcone(null);
+            setApplyEditCompraIconRule(false);
           }
         }}
         form={editCompraForm}
         setForm={setEditCompraForm}
         pessoas={pessoas}
         formatCurrency={formatCartaoCurrency}
+        iconPreviewId={editCompraIconPreviewId}
+        iconPreviewLabel={editCompraIconPreviewLabel}
+        iconPreviewHint={editCompraIconPreviewHint}
+        applyIconToSimilarPurchases={applyEditCompraIconRule}
+        onApplyIconToSimilarPurchasesChange={setApplyEditCompraIconRule}
+        iconPicker={(
+          <Suspense fallback={<Skeleton className="h-14 w-full sm:w-44" />}>
+            <IconPicker
+              value={editCompraIconPreviewId}
+              name={editCompraForm.descricao}
+              onChange={setEditCompraIcone}
+              size="md"
+            />
+          </Suspense>
+        )}
         onSubmit={handleUpdateCompra}
         isPending={updateCompraMutation.isPending}
       />
@@ -3099,6 +3183,8 @@ export default function CartoesPage() {
           onOpenParcelas={setViewingCompra}
           onEditCompra={(compra) => {
             setEditingCompra(compra);
+            setEditCompraIcone(compra.iconeId ?? null);
+            setApplyEditCompraIconRule(false);
             setEditCompraForm({
               descricao: compra.descricao,
               valorTotal: String(compra.valorTotal),

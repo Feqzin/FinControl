@@ -127,6 +127,7 @@ test("recomputeCardPurchaseAggregate recalcula parcelaAtual e totais", async () 
     pessoaId: "pessoa-1",
     statusPessoa: "pendente",
     dataPagamentoPessoa: null,
+    iconeId: null,
   };
 
   const parcelasCompra: ParcelaCompra[] = [

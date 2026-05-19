@@ -128,6 +128,7 @@ export const comprasCartao = pgTable("compras_cartao", {
   reembolsoModo: text("reembolso_modo"),
   reembolsoValorTotal: decimal("reembolso_valor_total", { precision: 12, scale: 2 }),
   reembolsoPercentual: decimal("reembolso_percentual", { precision: 7, scale: 4 }),
+  iconeId: text("icone_id"),
 }, (table) => ({
   comprasUserIdIdx: index("idx_compras_cartao_user_id").on(table.userId),
   comprasCartaoIdIdx: index("idx_compras_cartao_cartao_id").on(table.cartaoId),

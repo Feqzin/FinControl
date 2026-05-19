@@ -296,6 +296,7 @@ function buildCompraCartaoViewFixture(overrides: Partial<CompraCartao> = {}): Co
     pessoaId: overrides.pessoaId ?? "pessoa-a",
     statusPessoa: overrides.statusPessoa ?? "pendente",
     dataPagamentoPessoa: overrides.dataPagamentoPessoa ?? null,
+    iconeId: overrides.iconeId ?? null,
     reembolsoModo: overrides.reembolsoModo ?? null,
     reembolsoValorTotal: overrides.reembolsoValorTotal ?? null,
     reembolsoPercentual: overrides.reembolsoPercentual ?? null,
@@ -2869,6 +2870,7 @@ function buildCompraCartaoFixture(overrides: Partial<CompraCartao> = {}): Compra
     pessoaId: overrides.pessoaId ?? null,
     statusPessoa: overrides.statusPessoa ?? null,
     dataPagamentoPessoa: overrides.dataPagamentoPessoa ?? null,
+    iconeId: overrides.iconeId ?? null,
   };
 }
 

@@ -53,6 +53,17 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
 
       const result = await service.create(userId, parsed.data);
       if ("error" in result) {
+        if (result.error === "ICONE_NOT_FOUND") {
+          auditRequest(req, {
+            action: "create",
+            status: "failure",
+            domain: "compras_cartao",
+            userId,
+            details: { reason: "icone_not_found_or_not_owned" },
+          });
+          return sendBadRequest(res, "Icone selecionado nao pertence a sua biblioteca.");
+        }
+
         if (result.error === "PESSOA_NOT_FOUND") {
           auditRequest(req, {
             action: "create",
@@ -124,6 +135,18 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
 
       const result = await service.update(compraId, userId, parsed.data);
       if ("error" in result) {
+        if (result.error === "ICONE_NOT_FOUND") {
+          auditRequest(req, {
+            action: "update",
+            status: "failure",
+            domain: "compras_cartao",
+            userId,
+            targetId: compraId,
+            details: { reason: "icone_not_found_or_not_owned" },
+          });
+          return sendBadRequest(res, "Icone selecionado nao pertence a sua biblioteca.");
+        }
+
         if (result.error === "CARTAO_NOT_FOUND") {
           auditRequest(req, {
             action: "update",

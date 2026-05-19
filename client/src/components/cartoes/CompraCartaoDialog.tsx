@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { BrandIconDisplay } from "@/lib/brand-icons";
+import type { ReactNode } from "react";
 import { parseMoney, toCents } from "@/lib/money";
 
 type PessoaOption = {
@@ -343,6 +345,12 @@ type EditarCompraCartaoDialogProps = {
   setForm: (next: EditCompraForm) => void;
   pessoas: PessoaOption[];
   formatCurrency: (value: number) => string;
+  iconPicker?: ReactNode;
+  iconPreviewId?: string | null;
+  iconPreviewLabel?: string;
+  iconPreviewHint?: string;
+  applyIconToSimilarPurchases?: boolean;
+  onApplyIconToSimilarPurchasesChange?: (checked: boolean) => void;
   onSubmit: () => void;
   isPending: boolean;
 };
@@ -354,6 +362,12 @@ export function EditarCompraCartaoDialog({
   setForm,
   pessoas,
   formatCurrency,
+  iconPicker,
+  iconPreviewId,
+  iconPreviewLabel,
+  iconPreviewHint,
+  applyIconToSimilarPurchases,
+  onApplyIconToSimilarPurchasesChange,
   onSubmit,
   isPending,
 }: EditarCompraCartaoDialogProps) {
@@ -440,6 +454,42 @@ export function EditarCompraCartaoDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+            <div className="space-y-1">
+              <Label>Ícone da compra</Label>
+              <p className="text-xs text-muted-foreground">
+                O ícone manual aparece na lista de compras e não é sobrescrito pelo reconhecimento automático.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <BrandIconDisplay
+                  name={form.descricao || "Compra"}
+                  iconeId={iconPreviewId}
+                  size="md"
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{iconPreviewLabel || "Ícone automático"}</p>
+                  <p className="truncate text-xs text-muted-foreground">{iconPreviewHint || "Sem ícone manual salvo"}</p>
+                </div>
+              </div>
+              <div className="w-full sm:w-auto">
+                {iconPicker}
+              </div>
+            </div>
+            {onApplyIconToSimilarPurchasesChange ? (
+              <label className="flex cursor-pointer items-start gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-input text-primary"
+                  checked={Boolean(applyIconToSimilarPurchases)}
+                  onChange={(event) => onApplyIconToSimilarPurchasesChange(event.target.checked)}
+                  data-testid="checkbox-edit-compra-icon-rule"
+                />
+                <span>Usar esse ícone para compras parecidas no futuro</span>
+              </label>
+            ) : null}
           </div>
           {form.pessoaId ? (
             <ReembolsoPessoaSection

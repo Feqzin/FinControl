@@ -159,6 +159,7 @@ test("listagem de parcelas_compra e read-only quando nao existe cronograma", asy
     pessoaId: "pessoa-1",
     statusPessoa: "pendente",
     dataPagamentoPessoa: null,
+    iconeId: null,
   };
   let createCalled = false;
 

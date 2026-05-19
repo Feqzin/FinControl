@@ -1,5 +1,7 @@
 import type { FinancialRepository } from "../repositories/financial.repository.js";
-import type { ParcelaCompra } from "../../shared/schema.js";
+import { and, eq } from "drizzle-orm";
+import { db } from "../db.js";
+import { userIconLibrary, type ParcelaCompra } from "../../shared/schema.js";
 import { formatMoneyFixed, parseMoney } from "../../utils/money.js";
 import type {
   CompraBodyInput,
@@ -69,6 +71,29 @@ function normalizePessoaId(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeOptionalIconId(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function iconRequiresOwnershipCheck(iconId: string): boolean {
+  return /^data:/i.test(iconId) || /^https?:\/\//i.test(iconId);
+}
+
+async function userOwnsIcon(userId: string, iconId: string): Promise<boolean> {
+  if (!iconRequiresOwnershipCheck(iconId)) return true;
+  const [icon] = await db
+    .select({ id: userIconLibrary.id })
+    .from(userIconLibrary)
+    .where(and(
+      eq(userIconLibrary.userId, userId),
+      eq(userIconLibrary.imageUrl, iconId),
+    ))
+    .limit(1);
+  return Boolean(icon);
 }
 
 function normalizePercentualFixed(value: number): string {
@@ -207,9 +232,13 @@ export class ComprasCartaoService {
       const cartao = await repository.getCartao(data.cartaoId, userId);
       if (!cartao) return { error: "CARTAO_NOT_FOUND" as const };
       const pessoaId = normalizePessoaId(data.pessoaId);
+      const iconeId = normalizeOptionalIconId(data.iconeId);
       if (pessoaId) {
         const pessoa = await repository.getPessoa(pessoaId, userId);
         if (!pessoa) return { error: "PESSOA_NOT_FOUND" as const };
+      }
+      if (iconeId && !await userOwnsIcon(userId, iconeId)) {
+        return { error: "ICONE_NOT_FOUND" as const };
       }
 
       const normalized = normalizeReembolsoFields({
@@ -228,6 +257,7 @@ export class ComprasCartaoService {
       const created = await repository.createCompraCartao({
         ...data,
         userId,
+        iconeId,
         ...normalized.patch,
       });
       await materializeParcelasCompraIfMissing(repository, created);
@@ -253,6 +283,12 @@ export class ComprasCartaoService {
       if (requestedPessoaId) {
         const pessoa = await repository.getPessoa(requestedPessoaId, userId);
         if (!pessoa) return { error: "PESSOA_NOT_FOUND" as const };
+      }
+
+      const hasIconeOverride = data.iconeId !== undefined;
+      const nextIconeId = hasIconeOverride ? normalizeOptionalIconId(data.iconeId) : undefined;
+      if (typeof nextIconeId === "string" && !await userOwnsIcon(userId, nextIconeId)) {
+        return { error: "ICONE_NOT_FOUND" as const };
       }
 
       const effectiveValorTotal = data.valorTotal ?? currentCompra.valorTotal;
@@ -285,6 +321,7 @@ export class ComprasCartaoService {
 
       const updatePayload = {
         ...data,
+        ...(hasIconeOverride ? { iconeId: nextIconeId } : {}),
         ...normalized.patch,
       };
 
