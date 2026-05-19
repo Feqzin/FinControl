@@ -242,6 +242,7 @@ test("update com override de icone trata erro de persistencia conhecido sem derr
 
   assert.deepEqual(result, {
     error: "ICONE_UPDATE_ERROR",
-    message: "Não foi possível salvar o ícone da compra agora. Verifique se as migrations de ícones estão aplicadas.",
+    reason: "ICON_COLUMN_MISSING",
+    message: "Não foi possível salvar o ícone manual porque a coluna compras_cartao.icone_id não está disponível.",
   });
 });

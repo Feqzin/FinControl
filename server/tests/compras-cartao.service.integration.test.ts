@@ -388,3 +388,164 @@ testComprasIntegration("create/update de compra com reembolso parcial preserva c
     await db.delete(users).where(and(eq(users.id, user.id)));
   }
 });
+
+testComprasIntegration("update de compra aceita ícone padrão, ícone pessoal do usuário e limpeza com null", async () => {
+  const { db } = await import("../db");
+  const { ComprasCartaoService } = await import("../services/compras-cartao.service");
+  const { financialRepository } = await import("../repositories/financial.repository");
+  const { users, cartoes, comprasCartao, userIconLibrary } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new ComprasCartaoService(financialRepository);
+  const username = `it_compras_icon_ok_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Compras Icon OK Integration",
+  }).returning();
+
+  const [cartao] = await db.insert(cartoes).values({
+    userId: user.id,
+    nome: "Cartao Icon IT",
+    limite: "5000.00",
+    melhorDiaCompra: 8,
+    diaVencimento: 18,
+    iconeId: null,
+  }).returning();
+
+  const [compra] = await db.insert(comprasCartao).values({
+    userId: user.id,
+    cartaoId: cartao.id,
+    descricao: "Ifood Club",
+    valorTotal: "29.90",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "29.90",
+    dataCompra: "2026-05-10",
+    pessoaId: null,
+    statusPessoa: null,
+    dataPagamentoPessoa: null,
+    iconeId: null,
+  }).returning();
+
+  const ownIconUrl = "https://cdn.fincontrol.dev/icons/club-ifood.png";
+  await db.insert(userIconLibrary).values({
+    userId: user.id,
+    sourceType: "upload",
+    officialIconId: null,
+    name: "Club Ifood",
+    imageUrl: ownIconUrl,
+    storagePath: null,
+    category: "servico",
+    tags: ["ifood", "club ifood"],
+  });
+
+  try {
+    const updatedBuiltin = await service.update(compra.id, user.id, {
+      descricao: "Ifood Club",
+      iconeId: "ifood",
+    });
+    if ("error" in updatedBuiltin) {
+      assert.fail(`Nao deveria falhar ao salvar ícone padrão: ${updatedBuiltin.error}`);
+    }
+    assert.equal(updatedBuiltin.updated.iconeId, "ifood");
+
+    const updatedPersonal = await service.update(compra.id, user.id, {
+      descricao: "Ifood Club",
+      iconeId: ownIconUrl,
+    });
+    if ("error" in updatedPersonal) {
+      assert.fail(`Nao deveria falhar ao salvar ícone pessoal: ${updatedPersonal.error}`);
+    }
+    assert.equal(updatedPersonal.updated.iconeId, ownIconUrl);
+
+    const clearedIcon = await service.update(compra.id, user.id, {
+      descricao: "Ifood Club",
+      iconeId: null,
+    });
+    if ("error" in clearedIcon) {
+      assert.fail(`Nao deveria falhar ao limpar ícone: ${clearedIcon.error}`);
+    }
+    assert.equal(clearedIcon.updated.iconeId, null);
+
+    const [persisted] = await db.select().from(comprasCartao).where(and(
+      eq(comprasCartao.userId, user.id),
+      eq(comprasCartao.id, compra.id),
+    ));
+    assert.equal(persisted?.iconeId ?? null, null);
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testComprasIntegration("update de compra bloqueia uso de ícone pessoal de outro usuário", async () => {
+  const { db } = await import("../db");
+  const { ComprasCartaoService } = await import("../services/compras-cartao.service");
+  const { financialRepository } = await import("../repositories/financial.repository");
+  const { users, cartoes, comprasCartao, userIconLibrary } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const service = new ComprasCartaoService(financialRepository);
+  const suffix = `${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [userA] = await db.insert(users).values({
+    username: `it_compras_icon_a_${suffix}`,
+    password: "hash_fake",
+    nomeCompleto: "Compras Icon A",
+  }).returning();
+
+  const [userB] = await db.insert(users).values({
+    username: `it_compras_icon_b_${suffix}`,
+    password: "hash_fake",
+    nomeCompleto: "Compras Icon B",
+  }).returning();
+
+  const [cartaoA] = await db.insert(cartoes).values({
+    userId: userA.id,
+    nome: "Cartao A",
+    limite: "5000.00",
+    melhorDiaCompra: 8,
+    diaVencimento: 18,
+    iconeId: null,
+  }).returning();
+
+  const [compraA] = await db.insert(comprasCartao).values({
+    userId: userA.id,
+    cartaoId: cartaoA.id,
+    descricao: "Compra A",
+    valorTotal: "50.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "50.00",
+    dataCompra: "2026-05-10",
+    pessoaId: null,
+    statusPessoa: null,
+    dataPagamentoPessoa: null,
+    iconeId: null,
+  }).returning();
+
+  const iconFromUserB = "https://cdn.fincontrol.dev/icons/private-user-b.png";
+  await db.insert(userIconLibrary).values({
+    userId: userB.id,
+    sourceType: "upload",
+    officialIconId: null,
+    name: "Icone Privado B",
+    imageUrl: iconFromUserB,
+    storagePath: null,
+    category: "outro",
+    tags: ["privado-b"],
+  });
+
+  try {
+    const result = await service.update(compraA.id, userA.id, {
+      descricao: "Compra A",
+      iconeId: iconFromUserB,
+    });
+
+    assert.deepEqual(result, { error: "ICONE_NOT_FOUND" });
+  } finally {
+    await db.delete(users).where(eq(users.id, userA.id));
+    await db.delete(users).where(eq(users.id, userB.id));
+  }
+});

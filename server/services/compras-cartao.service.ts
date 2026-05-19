@@ -84,7 +84,10 @@ function iconRequiresOwnershipCheck(iconId: string): boolean {
   return /^data:/i.test(iconId) || /^https?:\/\//i.test(iconId);
 }
 
-const ICON_SCHEMA_ERROR_CODES = new Set(["42P01", "42703"]);
+type IconUpdateFailureReason =
+  | "ICON_TABLE_MISSING"
+  | "ICON_COLUMN_MISSING"
+  | "ICON_PERSISTENCE_FAILED";
 
 function getErrorCode(error: unknown): string | null {
   if (!error || typeof error !== "object") return null;
@@ -98,11 +101,50 @@ function getErrorCode(error: unknown): string | null {
   return null;
 }
 
-function isKnownIconPersistenceError(error: unknown): boolean {
+function classifyIconPersistenceError(error: unknown): {
+  reason: IconUpdateFailureReason;
+  message: string;
+} | null {
   const code = getErrorCode(error);
-  if (code && ICON_SCHEMA_ERROR_CODES.has(code)) return true;
   const message = error instanceof Error ? error.message.toLowerCase() : String(error ?? "").toLowerCase();
-  return message.includes("icone_id") || message.includes("user_icon_library");
+  if (code === "42P01") {
+    if (message.includes("user_icon_library")) {
+      return {
+        reason: "ICON_TABLE_MISSING",
+        message: "Não foi possível validar o ícone manual porque a tabela user_icon_library não está disponível.",
+      };
+    }
+    if (message.includes("compras_cartao")) {
+      return {
+        reason: "ICON_TABLE_MISSING",
+        message: "Não foi possível salvar o ícone manual porque a tabela compras_cartao não está disponível.",
+      };
+    }
+  }
+
+  if (code === "42703") {
+    if (message.includes("icone_id") && message.includes("compras_cartao")) {
+      return {
+        reason: "ICON_COLUMN_MISSING",
+        message: "Não foi possível salvar o ícone manual porque a coluna compras_cartao.icone_id não está disponível.",
+      };
+    }
+    if (message.includes("image_url") && message.includes("user_icon_library")) {
+      return {
+        reason: "ICON_COLUMN_MISSING",
+        message: "Não foi possível validar o ícone manual porque a coluna user_icon_library.image_url não está disponível.",
+      };
+    }
+  }
+
+  if (message.includes("icone_id") || message.includes("user_icon_library")) {
+    return {
+      reason: "ICON_PERSISTENCE_FAILED",
+      message: "Não foi possível salvar o ícone manual da compra agora. Tente novamente em instantes.",
+    };
+  }
+
+  return null;
 }
 
 async function userOwnsIcon(userId: string, iconId: string): Promise<boolean> {
@@ -378,10 +420,12 @@ export class ComprasCartaoService {
         },
       });
 
-      if (isKnownIconPersistenceError(error)) {
+      const iconPersistenceFailure = classifyIconPersistenceError(error);
+      if (iconPersistenceFailure) {
         return {
           error: "ICONE_UPDATE_ERROR" as const,
-          message: "Não foi possível salvar o ícone da compra agora. Verifique se as migrations de ícones estão aplicadas.",
+          reason: iconPersistenceFailure.reason,
+          message: iconPersistenceFailure.message,
         };
       }
 

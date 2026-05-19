@@ -190,15 +190,18 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
           const errorMessage = "message" in result && typeof result.message === "string"
             ? result.message
             : "Não foi possível salvar o ícone da compra.";
+          const errorCode = "reason" in result && typeof result.reason === "string"
+            ? result.reason
+            : "ICON_PERSISTENCE_FAILED";
           auditRequest(req, {
             action: "update",
             status: "failure",
             domain: "compras_cartao",
             userId,
             targetId: compraId,
-            details: { reason: "icone_update_error" },
+            details: { reason: "icone_update_error", errorCode },
           });
-          return sendBadRequest(res, errorMessage);
+          return res.status(400).json({ message: errorMessage, errorCode });
         }
 
         auditRequest(req, {

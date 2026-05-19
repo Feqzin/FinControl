@@ -1662,6 +1662,15 @@ export default function CartoesPage() {
       valorTotal: editCompraForm.valorTotal,
       parcelas: editCompraForm.parcelas,
       pessoaId: editCompraForm.pessoaId || null,
+      hasIconOverride: editCompraIcone !== null,
+      iconKind: editCompraIcone
+        ? (editCompraIcone.startsWith("data:")
+          ? "data_url"
+          : (editCompraIcone.startsWith("http://") || editCompraIcone.startsWith("https://"))
+            ? "remote_url"
+            : "library_key")
+        : "null",
+      iconLength: editCompraIcone?.length ?? 0,
     });
     updateCompraMutation.mutate(
       {
