@@ -316,7 +316,11 @@ export function registerRoutes(app: Express): void {
   app.patch("/api/user-icon-library/:id", requireAuth, userIconLibraryController.update);
   app.delete("/api/user-icon-library/:id", requireAuth, userIconLibraryController.remove);
   app.get("/api/icons/official", requireAuth, officialIconsController.listOfficial);
+  app.get("/api/icons/community", requireAuth, officialIconsController.listCommunity);
   app.get("/api/icons/packs", requireAuth, officialIconsController.listPacks);
+  app.post("/api/icons/community/publish", requireAuth, officialIconsController.publishCommunityIcon);
+  app.post("/api/icons/community/:id/add-to-library", requireAuth, officialIconsController.addCommunityIconToLibrary);
+  app.patch("/api/icons/community/:id/unpublish", requireAuth, officialIconsController.unpublishCommunityIcon);
   app.post("/api/icons/official/:id/add-to-library", requireAuth, officialIconsController.addOfficialIconToLibrary);
   app.post("/api/icons/packs/:id/add-to-library", requireAuth, officialIconsController.addOfficialPackToLibrary);
   app.post("/api/admin/icons/packs", requireAuth, officialIconsController.adminCreatePack);

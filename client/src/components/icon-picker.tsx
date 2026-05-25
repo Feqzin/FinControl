@@ -13,27 +13,24 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BrandIconDisplay, LIBRARY_ICONS } from "@/lib/brand-icons";
-import { Check, ImagePlus, MoreVertical, RotateCcw, Settings2, Upload } from "lucide-react";
+import { Check, ImagePlus, RotateCcw, Settings2, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import {
+  addCommunityIconToLibrary,
   addOfficialIconToLibrary,
   addOfficialPackToLibrary,
+  fetchCommunityIcons,
   fetchOfficialIconPacks,
   fetchOfficialIcons,
+  publishCommunityIcon,
   type OfficialIconApiModel,
   type OfficialIconPackApiModel,
+  unpublishCommunityIcon,
 } from "@/services/api/official-icons";
 import {
   createUserIconLibraryItem,
@@ -95,9 +92,16 @@ type ManageBuiltinTarget = {
 type ManagePersonalTarget = {
   type: "personal";
   icon: UserIconLibraryItemApiModel;
+  publication: OfficialIconApiModel | null;
 };
 
-type ManageActionTarget = ManageBuiltinTarget | ManagePersonalTarget;
+type ManageExploreTarget = {
+  type: "explore";
+  icon: OfficialIconApiModel;
+  alreadyAdded: boolean;
+};
+
+type ManageActionTarget = ManageBuiltinTarget | ManagePersonalTarget | ManageExploreTarget;
 
 const CATEGORY_LABELS: Record<string, string> = {
   bancos: "Bancos",
@@ -193,6 +197,7 @@ export function IconPicker({
   const [autoAppliedSuggestionKey, setAutoAppliedSuggestionKey] = useState<string | null>(null);
   const [exploreSearch, setExploreSearch] = useState("");
   const [exploreCategory, setExploreCategory] = useState("all");
+  const [exploreOrigin, setExploreOrigin] = useState<"all" | "official" | "community">("all");
   const [explorePackId, setExplorePackId] = useState("all");
   const [manageActionTarget, setManageActionTarget] = useState<ManageActionTarget | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -213,13 +218,43 @@ export function IconPicker({
   });
 
   const { data: officialIcons = [], isLoading: isLoadingOfficialIcons } = useQuery<OfficialIconApiModel[]>({
-    queryKey: ["/api/icons/official", exploreSearch, exploreCategory, explorePackId],
-    queryFn: () =>
-      fetchOfficialIcons({
+    queryKey: ["/api/icons/explore", exploreSearch, exploreCategory, explorePackId, exploreOrigin],
+    queryFn: async () => {
+      const query = {
         search: exploreSearch || undefined,
         category: exploreCategory !== "all" ? exploreCategory : undefined,
-        packId: explorePackId !== "all" ? explorePackId : undefined,
-      }),
+      };
+
+      if (exploreOrigin === "community") {
+        return fetchCommunityIcons(query);
+      }
+
+      if (exploreOrigin === "official") {
+        return fetchOfficialIcons({
+          ...query,
+          origin: "official",
+          packId: explorePackId !== "all" ? explorePackId : undefined,
+        });
+      }
+
+      const [officialList, communityList] = await Promise.all([
+        fetchOfficialIcons({
+          ...query,
+          origin: "official",
+          packId: explorePackId !== "all" ? explorePackId : undefined,
+        }),
+        fetchCommunityIcons(query),
+      ]);
+
+      return [...officialList, ...communityList];
+    },
+    enabled: open,
+    staleTime: 60_000,
+  });
+
+  const { data: myCommunityPublications = [] } = useQuery<OfficialIconApiModel[]>({
+    queryKey: ["/api/icons/community", "mine"],
+    queryFn: () => fetchCommunityIcons(),
     enabled: open,
     staleTime: 60_000,
   });
@@ -277,6 +312,16 @@ export function IconPicker({
     () => new Set(personalIcons.map((icon) => icon.officialIconId).filter((id): id is string => Boolean(id))),
     [personalIcons],
   );
+
+  const communityPublicationBySourceUserIconId = useMemo(() => {
+    const map = new Map<string, OfficialIconApiModel>();
+    for (const publication of myCommunityPublications) {
+      const sourceUserIconId = publication.sourceUserIconId?.trim();
+      if (!sourceUserIconId) continue;
+      map.set(sourceUserIconId, publication);
+    }
+    return map;
+  }, [myCommunityPublications]);
 
   const personalIconByImageUrl = useMemo(
     () => new Map(personalIcons.map((icon) => [icon.imageUrl, icon])),
@@ -357,6 +402,12 @@ export function IconPicker({
     safeOnSelectMeta,
   ]);
 
+  useEffect(() => {
+    if (exploreOrigin !== "community") return;
+    if (explorePackId === "all") return;
+    setExplorePackId("all");
+  }, [exploreOrigin, explorePackId]);
+
   const uploadIconMutation = useMutation({
     mutationFn: async (payload: {
       imageDataUrl: string;
@@ -434,12 +485,73 @@ export function IconPicker({
       });
       void queryClient.invalidateQueries({ queryKey: ["/api/user-icon-library"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/official"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] });
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Não foi possível adicionar o ícone.";
       toast({
         title: "Erro ao adicionar ícone",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const addCommunityIconMutation = useMutation({
+    mutationFn: async (iconId: string) => addCommunityIconToLibrary(iconId),
+    onSuccess: (result) => {
+      toast({
+        title: result.alreadyInLibrary ? "Ícone já estava na sua biblioteca." : "Ícone publicado adicionado à sua biblioteca.",
+      });
+      void queryClient.invalidateQueries({ queryKey: ["/api/user-icon-library"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/official"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/community"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Não foi possível adicionar o ícone publicado.";
+      toast({
+        title: "Erro ao adicionar ícone",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const publishCommunityIconMutation = useMutation({
+    mutationFn: async (userIconId: string) => publishCommunityIcon(userIconId),
+    onSuccess: (result) => {
+      toast({
+        title: result.alreadyPublished ? "Publicação atualizada em Explorar ícones." : "Ícone publicado em Explorar ícones.",
+      });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/official"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/community"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Não foi possível publicar o ícone.";
+      toast({
+        title: "Erro ao publicar ícone",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const unpublishCommunityIconMutation = useMutation({
+    mutationFn: async (publicationId: string) => unpublishCommunityIcon(publicationId),
+    onSuccess: () => {
+      toast({ title: "Ícone despublicado com sucesso." });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/official"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/community"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Não foi possível despublicar o ícone.";
+      toast({
+        title: "Erro ao despublicar ícone",
         description: message,
         variant: "destructive",
       });
@@ -455,6 +567,7 @@ export function IconPicker({
       });
       void queryClient.invalidateQueries({ queryKey: ["/api/user-icon-library"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/official"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] });
     },
     onError: (error) => {
@@ -485,6 +598,8 @@ export function IconPicker({
       void queryClient.invalidateQueries({ queryKey: ["/api/user-icon-library"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icon-match-rules"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/official"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/community"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] });
     },
     onError: (error) => {
@@ -641,6 +756,8 @@ export function IconPicker({
       queryClient.invalidateQueries({ queryKey: ["/api/user-icon-library"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/icon-match-rules"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/icons/official"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/icons/community"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] }),
     ]);
   };
@@ -709,6 +826,29 @@ export function IconPicker({
     });
   };
 
+  const handlePublishPersonalIcon = async (icon: UserIconLibraryItemApiModel) => {
+    const actionKey = `personal:${icon.id}:publish`;
+    await runIconAction(actionKey, async () => {
+      await publishCommunityIconMutation.mutateAsync(icon.id);
+      await invalidateIconQueries();
+    });
+  };
+
+  const handleUnpublishPersonalIcon = async (publicationId: string, iconId: string) => {
+    const actionKey = `personal:${iconId}:unpublish`;
+    await runIconAction(actionKey, async () => {
+      await unpublishCommunityIconMutation.mutateAsync(publicationId);
+      await invalidateIconQueries();
+    });
+  };
+
+  const findPersonalIconFromExploreCard = (icon: OfficialIconApiModel): UserIconLibraryItemApiModel | null => {
+    const byOfficialId = personalIcons.find((item) => item.officialIconId === icon.id);
+    if (byOfficialId) return byOfficialId;
+    const byImage = personalIcons.find((item) => item.imageUrl === icon.imageUrl);
+    return byImage ?? null;
+  };
+
   const isActionLoading = (actionKey: string): boolean => iconActionLoadingKey === actionKey;
 
   const personalOfficialIconIds = officialIconsInLibrary;
@@ -727,8 +867,19 @@ export function IconPicker({
     setManageActionTarget({ type: "builtin", iconKey, label });
   };
 
-  const openManagePersonalActions = (icon: UserIconLibraryItemApiModel) => {
-    setManageActionTarget({ type: "personal", icon });
+  const openManagePersonalActions = (
+    icon: UserIconLibraryItemApiModel,
+    publication: OfficialIconApiModel | null = null,
+  ) => {
+    setManageActionTarget({ type: "personal", icon, publication });
+  };
+
+  const openExploreActions = (icon: OfficialIconApiModel, alreadyAdded: boolean) => {
+    setManageActionTarget({
+      type: "explore",
+      icon,
+      alreadyAdded,
+    });
   };
 
   return (
@@ -824,7 +975,6 @@ export function IconPicker({
                         const isSelected = value === item.key;
                         const normalizedBuiltinKey = item.key.trim().toLowerCase();
                         const isBuiltinDisabled = disabledBuiltinIconKeys.has(normalizedBuiltinKey);
-                        const toggleBuiltinActionKey = `builtin:${normalizedBuiltinKey}:${isBuiltinDisabled ? "restore" : "disable"}`;
                         return (
                           <div
                             key={item.key}
@@ -843,15 +993,9 @@ export function IconPicker({
                             ) : null}
                             <button
                               type="button"
-                              onClick={() => {
-                                if (isManageMode) {
-                                  openManageBuiltinActions(item.key, item.label);
-                                  return;
-                                }
-                                handleSelectLibrary(item.key);
-                              }}
+                              onClick={() => openManageBuiltinActions(item.key, item.label)}
                               data-testid={`icon-option-${item.key}`}
-                              className="flex w-full flex-col items-center gap-1 rounded-md p-1 pr-7 text-left transition-colors hover:bg-accent"
+                              className="flex w-full flex-col items-center gap-1 rounded-md p-1 text-left transition-colors hover:bg-accent"
                             >
                               <div className="relative">
                                 <BrandIconDisplay name={item.label} iconeId={item.key} size="md" />
@@ -863,48 +1007,6 @@ export function IconPicker({
                               </div>
                               <span className="text-center text-[10px] leading-tight text-muted-foreground">{item.label}</span>
                             </button>
-                            {isManageMode ? (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="absolute right-1 top-1 h-6 w-6"
-                                aria-label={`Opções do ícone ${item.label}`}
-                                title={`Opções do ícone ${item.label}`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  openManageBuiltinActions(item.key, item.label);
-                                }}
-                              >
-                                <MoreVertical className="h-3.5 w-3.5" />
-                              </Button>
-                            ) : (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="absolute right-1 top-1 h-6 w-6"
-                                    aria-label={`Opções do ícone ${item.label}`}
-                                    title={`Opções do ícone ${item.label}`}
-                                  >
-                                    <MoreVertical className="h-3.5 w-3.5" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-56">
-                                  <DropdownMenuItem onClick={() => handleSelectLibrary(item.key)}>
-                                    Usar este ícone
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => void handleToggleBuiltinIconAutomation(item.key)}
-                                    disabled={isActionLoading(toggleBuiltinActionKey)}
-                                  >
-                                    {isBuiltinDisabled ? "Restaurar automação" : "Desativar para mim"}
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
                           </div>
                         );
                       })}
@@ -926,8 +1028,7 @@ export function IconPicker({
                     {personalIcons.map((item) => {
                       const isSelected = value === item.imageUrl;
                       const isAutomationEnabled = (iconMatchRulesByIconId.get(item.imageUrl)?.length ?? 0) > 0;
-                      const toggleAutomationActionKey = `personal:${item.id}:${isAutomationEnabled ? "disable" : "restore"}`;
-                      const isOfficialIcon = item.sourceType === "official";
+                      const publication = communityPublicationBySourceUserIconId.get(item.id) ?? null;
                       return (
                         <div
                           key={item.id}
@@ -946,15 +1047,9 @@ export function IconPicker({
                           ) : null}
                           <button
                             type="button"
-                            onClick={() => {
-                              if (isManageMode) {
-                                openManagePersonalActions(item);
-                                return;
-                              }
-                              handleSelectPersonal(item);
-                            }}
+                            onClick={() => openManagePersonalActions(item, publication)}
                             data-testid={`icon-personal-option-${item.id}`}
-                            className="flex w-full flex-col items-center gap-1 rounded-md p-1 pr-7 text-left transition-colors hover:bg-accent"
+                            className="flex w-full flex-col items-center gap-1 rounded-md p-1 text-left transition-colors hover:bg-accent"
                           >
                             <div className="relative">
                               <img
@@ -972,60 +1067,6 @@ export function IconPicker({
                               {item.name}
                             </span>
                           </button>
-                          {isManageMode ? (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="absolute right-1 top-1 h-6 w-6"
-                              aria-label={`Opções do ícone ${item.name}`}
-                              title={`Opções do ícone ${item.name}`}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openManagePersonalActions(item);
-                              }}
-                            >
-                              <MoreVertical className="h-3.5 w-3.5" />
-                            </Button>
-                          ) : (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="absolute right-1 top-1 h-6 w-6"
-                                  aria-label={`Opções do ícone ${item.name}`}
-                                  title={`Opções do ícone ${item.name}`}
-                                >
-                                  <MoreVertical className="h-3.5 w-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-60">
-                                <DropdownMenuItem onClick={() => handleSelectPersonal(item)}>
-                                  Usar este ícone
-                                </DropdownMenuItem>
-                                {!isOfficialIcon ? (
-                                  <DropdownMenuItem onClick={() => openEditPersonalIcon(item)}>
-                                    Editar informações
-                                  </DropdownMenuItem>
-                                ) : null}
-                                <DropdownMenuItem
-                                  onClick={() => void handleTogglePersonalIconAutomation(item)}
-                                  disabled={isActionLoading(toggleAutomationActionKey)}
-                                >
-                                  {isAutomationEnabled ? "Desativar automação" : "Reativar automação"}
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onClick={() => setDeletingIcon(item)}
-                                  className="text-destructive focus:text-destructive"
-                                >
-                                  {isOfficialIcon ? "Remover da minha biblioteca" : "Excluir da minha biblioteca"}
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
                         </div>
                       );
                     })}
@@ -1049,16 +1090,26 @@ export function IconPicker({
             </TabsContent>
 
             <TabsContent value="explorar" className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
                 <Input
                   value={exploreSearch}
                   onChange={(event) => setExploreSearch(event.target.value)}
-                  placeholder="Buscar ícone oficial"
-                  aria-label="Buscar ícone oficial"
+                  placeholder="Buscar ícone"
+                  aria-label="Buscar ícone"
                   className="sm:col-span-2"
                 />
+                <Select value={exploreOrigin} onValueChange={(value) => setExploreOrigin(value as "all" | "official" | "community")}>
+                  <SelectTrigger aria-label="Filtrar origem dos ícones">
+                    <SelectValue placeholder="Origem" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="official">Oficiais</SelectItem>
+                    <SelectItem value="community">Comunidade</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Select value={exploreCategory} onValueChange={setExploreCategory}>
-                  <SelectTrigger aria-label="Filtrar categoria de ícones oficiais">
+                  <SelectTrigger aria-label="Filtrar categoria de ícones">
                     <SelectValue placeholder="Categoria" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1075,7 +1126,7 @@ export function IconPicker({
               </div>
 
               <Select value={explorePackId} onValueChange={setExplorePackId}>
-                <SelectTrigger aria-label="Filtrar pack oficial">
+                <SelectTrigger aria-label="Filtrar pack" disabled={exploreOrigin === "community"}>
                   <SelectValue placeholder="Pack oficial" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1088,7 +1139,7 @@ export function IconPicker({
                 </SelectContent>
               </Select>
 
-              {officialPacks.length > 0 ? (
+              {exploreOrigin !== "community" && officialPacks.length > 0 ? (
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Packs disponíveis
@@ -1124,7 +1175,7 @@ export function IconPicker({
 
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Ícones oficiais
+                  Ícones disponíveis
                 </p>
                 {isLoadingOfficialIcons ? (
                   <p className="text-xs text-muted-foreground">Carregando ícones oficiais...</p>
@@ -1134,8 +1185,14 @@ export function IconPicker({
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
                     {officialIcons.map((icon) => {
                       const alreadyAdded = icon.alreadyInLibrary || personalOfficialIconIds.has(icon.id);
+                      const isCommunity = icon.sourceType === "community";
                       return (
-                        <div key={icon.id} className="rounded-lg border p-2">
+                        <button
+                          key={icon.id}
+                          type="button"
+                          className="rounded-lg border p-2 text-left transition-colors hover:bg-accent"
+                          onClick={() => openExploreActions(icon, alreadyAdded)}
+                        >
                           <div className="flex items-center gap-2">
                             <img
                               src={icon.imageUrl}
@@ -1149,37 +1206,15 @@ export function IconPicker({
                               </p>
                             </div>
                           </div>
-                          <div className="mt-2 space-y-1">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant={alreadyAdded ? "outline" : "default"}
-                              className="h-7 w-full text-xs"
-                              disabled={addOfficialIconMutation.isPending && addOfficialIconMutation.variables === icon.id}
-                              onClick={() => {
-                                if (alreadyAdded) {
-                                  if (isManageMode) {
-                                    const existingPersonalIcon = personalIcons.find((item) =>
-                                      item.officialIconId === icon.id || item.imageUrl === icon.imageUrl);
-                                    if (existingPersonalIcon) {
-                                      openManagePersonalActions(existingPersonalIcon);
-                                    }
-                                    return;
-                                  }
-                                  const existingPersonalIcon = personalIcons.find((item) =>
-                                    item.officialIconId === icon.id || item.imageUrl === icon.imageUrl);
-                                  if (existingPersonalIcon) {
-                                    handleSelectPersonal(existingPersonalIcon);
-                                  }
-                                  return;
-                                }
-                                addOfficialIconMutation.mutate(icon.id);
-                              }}
-                            >
-                              {alreadyAdded ? "Na sua biblioteca" : "Adicionar à minha biblioteca"}
-                            </Button>
+                          <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+                            <span className="text-muted-foreground">
+                              {isCommunity ? (icon.ownerLabel || "Publicado por usuário") : "Catálogo oficial"}
+                            </span>
+                            <Badge variant={alreadyAdded ? "secondary" : "outline"} className="h-5 px-1.5 text-[10px]">
+                              {alreadyAdded ? "Na sua biblioteca" : "Disponível"}
+                            </Badge>
                           </div>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -1423,7 +1458,11 @@ export function IconPicker({
             <DialogTitle>
               {manageActionTarget?.type === "builtin"
                 ? manageActionTarget.label
-                : manageActionTarget?.icon.name ?? "Ações do ícone"}
+                : manageActionTarget?.type === "personal"
+                  ? manageActionTarget.icon.name
+                  : manageActionTarget?.type === "explore"
+                    ? manageActionTarget.icon.name
+                    : "Ações do ícone"}
             </DialogTitle>
           </DialogHeader>
 
@@ -1495,6 +1534,38 @@ export function IconPicker({
                   ? "Desativar automação"
                   : "Reativar automação"}
               </Button>
+              {manageActionTarget.icon.sourceType !== "official" ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-start"
+                    disabled={isActionLoading(`personal:${manageActionTarget.icon.id}:publish`)}
+                    onClick={async () => {
+                      await handlePublishPersonalIcon(manageActionTarget.icon);
+                      setManageActionTarget(null);
+                    }}
+                  >
+                    {manageActionTarget.publication ? "Atualizar publicação" : "Publicar em Explorar ícones"}
+                  </Button>
+                  {manageActionTarget.publication ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full justify-start"
+                      disabled={isActionLoading(`personal:${manageActionTarget.icon.id}:unpublish`)}
+                      onClick={async () => {
+                        const publicationId = manageActionTarget.publication?.id;
+                        if (!publicationId) return;
+                        await handleUnpublishPersonalIcon(publicationId, manageActionTarget.icon.id);
+                        setManageActionTarget(null);
+                      }}
+                    >
+                      Despublicar
+                    </Button>
+                  ) : null}
+                </>
+              ) : null}
               <Button
                 type="button"
                 variant="destructive"
@@ -1508,6 +1579,99 @@ export function IconPicker({
                   ? "Remover da minha biblioteca"
                   : "Excluir da minha biblioteca"}
               </Button>
+            </div>
+          ) : manageActionTarget?.type === "explore" ? (
+            <div className="space-y-2">
+              {manageActionTarget.alreadyAdded ? (
+                <Badge variant="secondary" className="w-fit">
+                  Na sua biblioteca
+                </Badge>
+              ) : null}
+              {manageActionTarget.icon.sourceType === "community" ? (
+                <p className="text-xs text-muted-foreground">
+                  {manageActionTarget.icon.ownerLabel || "Publicado por usuário"}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">Catálogo oficial</p>
+              )}
+
+              {!manageActionTarget.alreadyAdded ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start"
+                  disabled={
+                    manageActionTarget.icon.sourceType === "community"
+                      ? addCommunityIconMutation.isPending && addCommunityIconMutation.variables === manageActionTarget.icon.id
+                      : addOfficialIconMutation.isPending && addOfficialIconMutation.variables === manageActionTarget.icon.id
+                  }
+                  onClick={async () => {
+                    try {
+                      if (manageActionTarget.icon.sourceType === "community") {
+                        await addCommunityIconMutation.mutateAsync(manageActionTarget.icon.id);
+                      } else {
+                        await addOfficialIconMutation.mutateAsync(manageActionTarget.icon.id);
+                      }
+                      setManageActionTarget(null);
+                    } catch {
+                      // handled by mutation onError
+                    }
+                  }}
+                >
+                  Adicionar à minha biblioteca
+                </Button>
+              ) : null}
+
+              {manageActionTarget.alreadyAdded ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    const personalIcon = findPersonalIconFromExploreCard(manageActionTarget.icon);
+                    if (!personalIcon) {
+                      setManageActionTarget(null);
+                      return;
+                    }
+                    openManagePersonalActions(
+                      personalIcon,
+                      communityPublicationBySourceUserIconId.get(personalIcon.id) ?? null,
+                    );
+                  }}
+                >
+                  Gerenciar na minha biblioteca
+                </Button>
+              ) : null}
+
+              {!isManageMode ? (
+                <Button
+                  type="button"
+                  className="w-full justify-start"
+                  onClick={async () => {
+                    try {
+                      const existingPersonalIcon = findPersonalIconFromExploreCard(manageActionTarget.icon);
+                      if (existingPersonalIcon) {
+                        handleSelectPersonal(existingPersonalIcon);
+                        setManageActionTarget(null);
+                        return;
+                      }
+
+                      if (manageActionTarget.icon.sourceType === "community") {
+                        const result = await addCommunityIconMutation.mutateAsync(manageActionTarget.icon.id);
+                        handleSelectPersonal(result.icon);
+                      } else {
+                        const result = await addOfficialIconMutation.mutateAsync(manageActionTarget.icon.id);
+                        handleSelectPersonal(result.icon);
+                      }
+                      setManageActionTarget(null);
+                    } catch {
+                      // handled by mutation onError
+                    }
+                  }}
+                >
+                  Usar este ícone
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </DialogContent>

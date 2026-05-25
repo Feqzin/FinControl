@@ -10,6 +10,9 @@ const optionalTrimmedField = queryStringField
 const optionalCategoryField = queryStringField
   .pipe(z.string().trim().max(60).optional());
 
+const optionalOriginField = queryStringField
+  .pipe(z.enum(["all", "official", "community"]).optional());
+
 const nonEmptyTrimmed = z.string().trim().min(1);
 
 const iconTextArray = z
@@ -23,6 +26,7 @@ export const officialIconsListQuerySchema = z.object({
   search: optionalTrimmedField,
   category: optionalCategoryField,
   packId: optionalTrimmedField,
+  origin: optionalOriginField,
 });
 
 export const addOfficialIconParamsSchema = z.object({
@@ -30,6 +34,14 @@ export const addOfficialIconParamsSchema = z.object({
 });
 
 export const addOfficialPackParamsSchema = z.object({
+  id: nonEmptyTrimmed.max(128),
+});
+
+export const publishCommunityIconBodySchema = z.object({
+  userIconId: nonEmptyTrimmed.max(128),
+});
+
+export const communityIconParamsSchema = z.object({
   id: nonEmptyTrimmed.max(128),
 });
 
@@ -73,6 +85,8 @@ export const adminUpdateOfficialIconBodySchema = adminOfficialIconBodyBaseSchema
 export type OfficialIconsListQueryInput = z.infer<typeof officialIconsListQuerySchema>;
 export type AddOfficialIconParamsInput = z.infer<typeof addOfficialIconParamsSchema>;
 export type AddOfficialPackParamsInput = z.infer<typeof addOfficialPackParamsSchema>;
+export type PublishCommunityIconBodyInput = z.infer<typeof publishCommunityIconBodySchema>;
+export type CommunityIconParamsInput = z.infer<typeof communityIconParamsSchema>;
 export type AdminCreateOfficialIconPackBodyInput = z.infer<typeof adminCreateOfficialIconPackBodySchema>;
 export type AdminUpdateOfficialIconPackBodyInput = z.infer<typeof adminUpdateOfficialIconPackBodySchema>;
 export type AdminCreateOfficialIconBodyInput = z.infer<typeof adminCreateOfficialIconBodySchema>;

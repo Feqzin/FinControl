@@ -1,6 +1,14 @@
 import type { Request, Response } from "express";
 import { ENV } from "../env";
-import { OfficialIconLibraryService, OfficialIconNotFoundError, OfficialIconPackNotFoundError } from "../services/official-icons.service";
+import {
+  CommunityIconPublicationNotFoundError,
+  CommunityIconPublicationOwnershipError,
+  CommunityIconPublishConflictError,
+  OfficialIconLibraryService,
+  OfficialIconNotFoundError,
+  OfficialIconPackNotFoundError,
+  UserIconOwnershipError,
+} from "../services/official-icons.service";
 import {
   addOfficialIconParamsSchema,
   addOfficialPackParamsSchema,
@@ -8,7 +16,9 @@ import {
   adminCreateOfficialIconPackBodySchema,
   adminUpdateOfficialIconBodySchema,
   adminUpdateOfficialIconPackBodySchema,
+  communityIconParamsSchema,
   officialIconsListQuerySchema,
+  publishCommunityIconBodySchema,
 } from "../validators/official-icons.validators";
 import { getUserId, sendBadRequest } from "./controller-utils";
 
@@ -33,8 +43,30 @@ function ensureAdmin(req: Request, res: Response): boolean {
 }
 
 function mapServiceErrorToResponse(res: Response, error: unknown): Response | null {
-  if (error instanceof OfficialIconNotFoundError || error instanceof OfficialIconPackNotFoundError) {
-    return res.status(404).json({ message: error.message });
+  const errorName = error instanceof Error ? error.name : "";
+  const errorMessage = error instanceof Error ? error.message : "Erro interno";
+
+  if (
+    error instanceof OfficialIconNotFoundError
+    || error instanceof OfficialIconPackNotFoundError
+    || errorName === "OfficialIconNotFoundError"
+    || errorName === "OfficialIconPackNotFoundError"
+  ) {
+    return res.status(404).json({ message: errorMessage });
+  }
+  if (error instanceof CommunityIconPublicationNotFoundError || errorName === "CommunityIconPublicationNotFoundError") {
+    return res.status(404).json({ message: errorMessage });
+  }
+  if (error instanceof CommunityIconPublicationOwnershipError || errorName === "CommunityIconPublicationOwnershipError") {
+    return res.status(403).json({ message: errorMessage });
+  }
+  if (
+    error instanceof UserIconOwnershipError
+    || error instanceof CommunityIconPublishConflictError
+    || errorName === "UserIconOwnershipError"
+    || errorName === "CommunityIconPublishConflictError"
+  ) {
+    return res.status(400).json({ message: errorMessage });
   }
   if (error instanceof Error) {
     return res.status(400).json({ message: error.message });
@@ -58,6 +90,16 @@ export function createOfficialIconsController(service: OfficialIconLibraryServic
       const userId = getUserId(req);
       const packs = await service.listOfficialPacks(userId);
       return res.json({ packs });
+    },
+
+    listCommunity: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const parsed = officialIconsListQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+      const icons = await service.listCommunityIcons(userId, parsed.data);
+      return res.json({ icons });
     },
 
     addOfficialIconToLibrary: async (req: Request, res: Response) => {
@@ -85,6 +127,50 @@ export function createOfficialIconsController(service: OfficialIconLibraryServic
         return res.status(201).json(result);
       } catch (error) {
         return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao adicionar pack." });
+      }
+    },
+
+    addCommunityIconToLibrary: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const parsed = communityIconParamsSchema.safeParse(req.params);
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+      try {
+        const result = await service.addCommunityIconToLibrary(userId, parsed.data.id);
+        return res.status(201).json(result);
+      } catch (error) {
+        return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao adicionar ícone publicado." });
+      }
+    },
+
+    publishCommunityIcon: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const parsed = publishCommunityIconBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+      try {
+        const result = await service.publishCommunityIcon(userId, parsed.data);
+        return res.status(201).json(result);
+      } catch (error) {
+        return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao publicar ícone." });
+      }
+    },
+
+    unpublishCommunityIcon: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const params = communityIconParamsSchema.safeParse(req.params);
+      if (!params.success) {
+        return sendBadRequest(res, params.error.message);
+      }
+      try {
+        const result = await service.unpublishCommunityIcon(userId, params.data.id, {
+          canManageAny: isOfficialIconAdmin(req),
+        });
+        return res.json({ publication: result });
+      } catch (error) {
+        return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao despublicar ícone." });
       }
     },
 

@@ -23,6 +23,7 @@ import type {
   AdminCreateOfficialIconPackBodyInput,
   AdminUpdateOfficialIconBodyInput,
   AdminUpdateOfficialIconPackBodyInput,
+  PublishCommunityIconBodyInput,
   OfficialIconsListQueryInput,
 } from "../validators/official-icons.validators";
 
@@ -31,13 +32,22 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 const JPG_SIGNATURE_PREFIX = Buffer.from([0xff, 0xd8, 0xff]);
 const MIN_NORMALIZED_TERM_LENGTH = 3;
 const MAX_NORMALIZED_TERM_LENGTH = 140;
+const COMMUNITY_ICON_KEY_PREFIX = "community:";
 
 export class OfficialIconNotFoundError extends Error {}
 export class OfficialIconPackNotFoundError extends Error {}
+export class CommunityIconPublicationNotFoundError extends Error {}
+export class CommunityIconPublicationOwnershipError extends Error {}
+export class UserIconOwnershipError extends Error {}
+export class CommunityIconPublishConflictError extends Error {}
 
 export type OfficialIconListItemView = {
   id: string;
   iconKey: string;
+  sourceType: "official" | "community";
+  sourceUserIconId: string | null;
+  ownerUserId: string | null;
+  ownerLabel: string | null;
   name: string;
   imageUrl: string;
   storagePath: string | null;
@@ -73,6 +83,30 @@ type OfficialIconLike = {
   tags: unknown;
   aliases: unknown;
 };
+
+type OfficialIconOrigin = "official" | "community" | "all";
+
+function buildCommunityIconKey(ownerUserId: string, sourceUserIconId: string): string {
+  return `${COMMUNITY_ICON_KEY_PREFIX}${ownerUserId}:${sourceUserIconId}`;
+}
+
+function parseCommunityIconKey(iconKey: string): { ownerUserId: string; sourceUserIconId: string } | null {
+  const normalized = String(iconKey ?? "").trim();
+  if (!normalized.startsWith(COMMUNITY_ICON_KEY_PREFIX)) {
+    return null;
+  }
+  const payload = normalized.slice(COMMUNITY_ICON_KEY_PREFIX.length);
+  const delimiterIndex = payload.indexOf(":");
+  if (delimiterIndex <= 0) return null;
+  const ownerUserId = payload.slice(0, delimiterIndex).trim();
+  const sourceUserIconId = payload.slice(delimiterIndex + 1).trim();
+  if (!ownerUserId || !sourceUserIconId) return null;
+  return { ownerUserId, sourceUserIconId };
+}
+
+function resolveIconOrigin(iconKey: string): "official" | "community" {
+  return parseCommunityIconKey(iconKey) ? "community" : "official";
+}
 
 function startsWithSignature(buffer: Buffer, signature: Buffer): boolean {
   if (buffer.length < signature.length) return false;
@@ -279,7 +313,17 @@ export class OfficialIconLibraryService {
     return upserts;
   }
 
-  private async loadActiveOfficialIconById(id: string): Promise<OfficialIconLike> {
+  private async loadActiveOfficialIconById(
+    id: string,
+    options: { origin?: OfficialIconOrigin } = {},
+  ): Promise<OfficialIconLike> {
+    const origin = options.origin ?? "all";
+    const originFilter = origin === "community"
+      ? sql`${officialIconLibrary.iconKey} like ${`${COMMUNITY_ICON_KEY_PREFIX}%`}`
+      : origin === "official"
+        ? sql`${officialIconLibrary.iconKey} not like ${`${COMMUNITY_ICON_KEY_PREFIX}%`}`
+        : undefined;
+
     const [row] = await db
       .select({
         id: officialIconLibrary.id,
@@ -297,6 +341,7 @@ export class OfficialIconLibraryService {
         eq(officialIconLibrary.id, id),
         eq(officialIconLibrary.isActive, true),
         or(isNull(officialIconLibrary.packId), eq(officialIconPacks.isActive, true)),
+        ...(originFilter ? [originFilter] : []),
       ))
       .limit(1);
 
@@ -308,6 +353,13 @@ export class OfficialIconLibraryService {
   }
 
   async listOfficialIcons(userId: string, query: OfficialIconsListQueryInput): Promise<OfficialIconListItemView[]> {
+    const origin = query.origin ?? "official";
+    const originFilter = origin === "community"
+      ? sql`${officialIconLibrary.iconKey} like ${`${COMMUNITY_ICON_KEY_PREFIX}%`}`
+      : origin === "official"
+        ? sql`${officialIconLibrary.iconKey} not like ${`${COMMUNITY_ICON_KEY_PREFIX}%`}`
+        : undefined;
+
     const rows = await db
       .select({
         id: officialIconLibrary.id,
@@ -320,6 +372,7 @@ export class OfficialIconLibraryService {
         aliases: officialIconLibrary.aliases,
         packId: officialIconLibrary.packId,
         packName: officialIconPacks.name,
+        createdBy: officialIconLibrary.createdBy,
         createdAt: officialIconLibrary.createdAt,
         updatedAt: officialIconLibrary.updatedAt,
       })
@@ -328,6 +381,7 @@ export class OfficialIconLibraryService {
       .where(and(
         eq(officialIconLibrary.isActive, true),
         or(isNull(officialIconLibrary.packId), eq(officialIconPacks.isActive, true)),
+        ...(originFilter ? [originFilter] : []),
       ))
       .orderBy(asc(officialIconLibrary.name), desc(officialIconLibrary.createdAt));
 
@@ -336,6 +390,10 @@ export class OfficialIconLibraryService {
     const packId = (query.packId ?? "").trim();
 
     let icons = rows.map<OfficialIconListItemView>((row) => ({
+      sourceType: resolveIconOrigin(row.iconKey),
+      sourceUserIconId: parseCommunityIconKey(row.iconKey)?.sourceUserIconId ?? null,
+      ownerUserId: parseCommunityIconKey(row.iconKey)?.ownerUserId ?? row.createdBy ?? null,
+      ownerLabel: resolveIconOrigin(row.iconKey) === "community" ? "Publicado por usuário" : null,
       id: row.id,
       iconKey: row.iconKey,
       name: row.name,
@@ -447,12 +505,16 @@ export class OfficialIconLibraryService {
     }));
   }
 
-  async addOfficialIconToLibrary(userId: string, officialIconId: string): Promise<{
+  private async addOfficialLibraryIconToUserLibrary(
+    userId: string,
+    officialIconId: string,
+    sourceType: "official" | "community",
+  ): Promise<{
     icon: UserIconLibraryItem;
     alreadyInLibrary: boolean;
     createdMatchRules: number;
   }> {
-    const officialIcon = await this.loadActiveOfficialIconById(officialIconId);
+    const officialIcon = await this.loadActiveOfficialIconById(officialIconId, { origin: sourceType });
 
     const [existing] = await db
       .select()
@@ -467,7 +529,7 @@ export class OfficialIconLibraryService {
       const [updated] = await db
         .update(userIconLibrary)
         .set({
-          sourceType: "official",
+          sourceType,
           name: officialIcon.name,
           imageUrl: officialIcon.imageUrl,
           storagePath: officialIcon.storagePath,
@@ -496,7 +558,7 @@ export class OfficialIconLibraryService {
         .insert(userIconLibrary)
         .values({
           userId,
-          sourceType: "official",
+          sourceType,
           officialIconId,
           name: officialIcon.name,
           imageUrl: officialIcon.imageUrl,
@@ -546,6 +608,151 @@ export class OfficialIconLibraryService {
       alreadyInLibrary: false,
       createdMatchRules,
     };
+  }
+
+  async addOfficialIconToLibrary(userId: string, officialIconId: string): Promise<{
+    icon: UserIconLibraryItem;
+    alreadyInLibrary: boolean;
+    createdMatchRules: number;
+  }> {
+    return this.addOfficialLibraryIconToUserLibrary(userId, officialIconId, "official");
+  }
+
+  async addCommunityIconToLibrary(userId: string, communityIconId: string): Promise<{
+    icon: UserIconLibraryItem;
+    alreadyInLibrary: boolean;
+    createdMatchRules: number;
+  }> {
+    return this.addOfficialLibraryIconToUserLibrary(userId, communityIconId, "community");
+  }
+
+  async publishCommunityIcon(
+    userId: string,
+    payload: PublishCommunityIconBodyInput,
+  ): Promise<{ publication: OfficialIconLibraryItem; alreadyPublished: boolean }> {
+    const [sourceIcon] = await db
+      .select()
+      .from(userIconLibrary)
+      .where(and(
+        eq(userIconLibrary.id, payload.userIconId),
+        eq(userIconLibrary.userId, userId),
+      ))
+      .limit(1);
+
+    if (!sourceIcon) {
+      throw new UserIconOwnershipError("Ícone pessoal não encontrado.");
+    }
+
+    if (sourceIcon.sourceType === "official" && sourceIcon.officialIconId) {
+      throw new CommunityIconPublishConflictError("Esse ícone já pertence ao catálogo explorável.");
+    }
+
+    const iconKey = buildCommunityIconKey(userId, sourceIcon.id);
+    const snapshotTags = sanitizeStringArray(sourceIcon.tags);
+    const snapshotAliases = snapshotTags;
+
+    const [existingPublication] = await db
+      .select()
+      .from(officialIconLibrary)
+      .where(eq(officialIconLibrary.iconKey, iconKey))
+      .limit(1);
+
+    if (existingPublication) {
+      const [updated] = await db
+        .update(officialIconLibrary)
+        .set({
+          name: sourceIcon.name,
+          imageUrl: sourceIcon.imageUrl,
+          storagePath: sourceIcon.storagePath,
+          category: sourceIcon.category,
+          tags: snapshotTags,
+          aliases: snapshotAliases,
+          isActive: true,
+          createdBy: userId,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(officialIconLibrary.id, existingPublication.id),
+          eq(officialIconLibrary.iconKey, iconKey),
+        ))
+        .returning();
+
+      if (!updated) {
+        throw new Error("Não foi possível atualizar a publicação do ícone.");
+      }
+
+      return { publication: updated, alreadyPublished: true };
+    }
+
+    const [created] = await db
+      .insert(officialIconLibrary)
+      .values({
+        iconKey,
+        name: sourceIcon.name,
+        imageUrl: sourceIcon.imageUrl,
+        storagePath: sourceIcon.storagePath,
+        category: sourceIcon.category,
+        tags: snapshotTags,
+        aliases: snapshotAliases,
+        packId: null,
+        isActive: true,
+        createdBy: userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    if (!created) {
+      throw new Error("Não foi possível publicar o ícone.");
+    }
+
+    return { publication: created, alreadyPublished: false };
+  }
+
+  async listCommunityIcons(userId: string, query: OfficialIconsListQueryInput): Promise<OfficialIconListItemView[]> {
+    return this.listOfficialIcons(userId, {
+      ...query,
+      origin: "community",
+    });
+  }
+
+  async unpublishCommunityIcon(
+    userId: string,
+    communityIconId: string,
+    options: { canManageAny?: boolean } = {},
+  ): Promise<OfficialIconLibraryItem> {
+    const [existing] = await db
+      .select()
+      .from(officialIconLibrary)
+      .where(and(
+        eq(officialIconLibrary.id, communityIconId),
+        sql`${officialIconLibrary.iconKey} like ${`${COMMUNITY_ICON_KEY_PREFIX}%`}`,
+      ))
+      .limit(1);
+
+    if (!existing) {
+      throw new CommunityIconPublicationNotFoundError("Publicação comunitária não encontrada.");
+    }
+
+    const ownership = parseCommunityIconKey(existing.iconKey)?.ownerUserId ?? existing.createdBy ?? null;
+    if (ownership !== userId && !options.canManageAny) {
+      throw new CommunityIconPublicationOwnershipError("Você não pode despublicar este ícone.");
+    }
+
+    const [updated] = await db
+      .update(officialIconLibrary)
+      .set({
+        isActive: false,
+        updatedAt: new Date(),
+      })
+      .where(eq(officialIconLibrary.id, communityIconId))
+      .returning();
+
+    if (!updated) {
+      throw new CommunityIconPublicationNotFoundError("Publicação comunitária não encontrada.");
+    }
+
+    return updated;
   }
 
   async addOfficialPackToLibrary(userId: string, packId: string): Promise<{
