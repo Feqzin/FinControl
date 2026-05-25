@@ -975,6 +975,7 @@ export function IconPicker({
                         const isSelected = value === item.key;
                         const normalizedBuiltinKey = item.key.trim().toLowerCase();
                         const isBuiltinDisabled = disabledBuiltinIconKeys.has(normalizedBuiltinKey);
+                        const automationLabel = isBuiltinDisabled ? "Automação desativada" : "Automação ativa";
                         return (
                           <div
                             key={item.key}
@@ -982,22 +983,19 @@ export function IconPicker({
                               isSelected ? "border-primary ring-2 ring-primary/30" : "border-transparent"
                             }`}
                           >
-                            {isBuiltinDisabled ? (
-                              <Badge
-                                variant="secondary"
-                                className="absolute left-1 top-1 z-10 h-5 rounded-sm px-1 text-[10px]"
-                                title="Automação desativada"
-                              >
-                                Off
-                              </Badge>
-                            ) : null}
                             <button
                               type="button"
                               onClick={() => openManageBuiltinActions(item.key, item.label)}
                               data-testid={`icon-option-${item.key}`}
+                              title={`${item.label} · ${automationLabel}`}
+                              aria-label={`${item.label}. ${automationLabel}. Abrir ações do ícone.`}
                               className="flex w-full flex-col items-center gap-1 rounded-md p-1 text-left transition-colors hover:bg-accent"
                             >
-                              <div className="relative">
+                              <div
+                                className={`relative transition ${
+                                  isBuiltinDisabled ? "opacity-50 grayscale saturate-0" : ""
+                                }`}
+                              >
                                 <BrandIconDisplay name={item.label} iconeId={item.key} size="md" />
                                 {isSelected ? (
                                   <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary">
@@ -1005,7 +1003,13 @@ export function IconPicker({
                                   </div>
                                 ) : null}
                               </div>
-                              <span className="text-center text-[10px] leading-tight text-muted-foreground">{item.label}</span>
+                              <span
+                                className={`text-center text-[10px] leading-tight text-muted-foreground ${
+                                  isBuiltinDisabled ? "opacity-75" : ""
+                                }`}
+                              >
+                                {item.label}
+                              </span>
                             </button>
                           </div>
                         );
@@ -1029,6 +1033,8 @@ export function IconPicker({
                       const isSelected = value === item.imageUrl;
                       const isAutomationEnabled = (iconMatchRulesByIconId.get(item.imageUrl)?.length ?? 0) > 0;
                       const publication = communityPublicationBySourceUserIconId.get(item.id) ?? null;
+                      const isAutomationDisabled = !isAutomationEnabled;
+                      const automationLabel = isAutomationDisabled ? "Automação desativada" : "Automação ativa";
                       return (
                         <div
                           key={item.id}
@@ -1036,26 +1042,21 @@ export function IconPicker({
                             isSelected ? "border-primary ring-2 ring-primary/30" : "border-transparent"
                           }`}
                         >
-                          {!isAutomationEnabled ? (
-                            <Badge
-                              variant="secondary"
-                              className="absolute left-1 top-1 z-10 h-5 rounded-sm px-1 text-[10px]"
-                              title="Automação desativada"
-                            >
-                              Off
-                            </Badge>
-                          ) : null}
                           <button
                             type="button"
                             onClick={() => openManagePersonalActions(item, publication)}
                             data-testid={`icon-personal-option-${item.id}`}
+                            title={`${item.name} · ${automationLabel}`}
+                            aria-label={`${item.name}. ${automationLabel}. Abrir ações do ícone.`}
                             className="flex w-full flex-col items-center gap-1 rounded-md p-1 text-left transition-colors hover:bg-accent"
                           >
                             <div className="relative">
                               <img
                                 src={item.imageUrl}
                                 alt={item.name}
-                                className="h-10 w-10 rounded-xl object-cover"
+                                className={`h-10 w-10 rounded-xl object-cover transition ${
+                                  isAutomationDisabled ? "opacity-50 grayscale saturate-0" : ""
+                                }`}
                               />
                               {isSelected ? (
                                 <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary">
@@ -1063,7 +1064,12 @@ export function IconPicker({
                                 </div>
                               ) : null}
                             </div>
-                            <span className="w-full truncate text-center text-[10px] leading-tight text-muted-foreground" title={item.name}>
+                            <span
+                              className={`w-full truncate text-center text-[10px] leading-tight text-muted-foreground ${
+                                isAutomationDisabled ? "opacity-75" : ""
+                              }`}
+                              title={item.name}
+                            >
                               {item.name}
                             </span>
                           </button>
