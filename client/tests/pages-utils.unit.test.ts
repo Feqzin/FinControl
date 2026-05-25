@@ -110,6 +110,12 @@ import {
   isServicoLinkedToCardCharge,
   resolveServicoBillingFields,
 } from "@shared/servico-periodicidade";
+import {
+  ICON_CATEGORIES,
+  getIconCategoryFilterValues,
+  matchesIconCategory,
+  resolveIconCategoryValue,
+} from "@shared/icon-categories";
 
 test("formatters: moeda e data em pt-BR", () => {
   assert.equal(formatCurrencyBRL(1234.56), "R$\u00a01.234,56");
@@ -3637,6 +3643,29 @@ test("icon matching: ícone pessoal reconhece compra com itaucard/itaú", () => 
   assert.equal(result.matched, true);
   assert.equal(result.iconId, "data:image/svg+xml;base64,itau-icon");
   assert.equal(result.shouldSuggest, true);
+});
+
+test("icon categories: lista amigável contém novas categorias e mantém 'Outro' por último", () => {
+  const values = ICON_CATEGORIES.map((category) => category.value);
+  assert.equal(values.includes("delivery"), true);
+  assert.equal(values.includes("farmacia"), true);
+  assert.equal(values.includes("imposto"), true);
+  assert.equal(values[values.length - 1], "outro");
+});
+
+test("icon categories: compatibilidade com categorias legadas mantém filtros funcionais", () => {
+  assert.equal(resolveIconCategoryValue("marketplaces"), "loja");
+  assert.equal(resolveIconCategoryValue("supermercados"), "mercado");
+  assert.equal(resolveIconCategoryValue("games"), "game");
+
+  const lojaFilterValues = getIconCategoryFilterValues("loja");
+  assert.equal(lojaFilterValues.includes("loja"), true);
+  assert.equal(lojaFilterValues.includes("marketplaces"), true);
+
+  assert.equal(matchesIconCategory("marketplaces", "loja"), true);
+  assert.equal(matchesIconCategory("supermercados", "mercado"), true);
+  assert.equal(matchesIconCategory("categoria-desconhecida", "loja"), false);
+  assert.equal(matchesIconCategory("categoria-desconhecida", "all"), true);
 });
 
 test("relatorios PDF: metadados usam overview quando disponível", () => {

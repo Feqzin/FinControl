@@ -106,7 +106,7 @@ function createInMemoryServiceFixture() {
       officialIconId: null,
       name: "Club Ifood",
       imageUrl: "data:image/png;base64,ifood-club",
-      category: "servico",
+      category: "delivery",
       tags: ["ifood", "club ifood"],
     },
     {
@@ -575,6 +575,7 @@ test("community icons: usuário publica ícone próprio e outro usuário consegu
     assert.equal(publish.status, 201);
     const publishBody = await publish.json();
     assert.equal(publishBody.alreadyPublished, false);
+    assert.equal(publishBody.publication.category, "delivery");
 
     const communityList = await fetch(`${baseUrl}/api/icons/community`, {
       headers: { "x-test-auth": "user_b" },
@@ -699,6 +700,7 @@ test("official icons: usuário comum não cria ícone oficial; admin cria quando
       body: JSON.stringify({
         iconKey: "novo-icone",
         name: "Novo ícone",
+        category: "farmacia",
         imageUrl: "data:image/png;base64,novo",
       }),
     });

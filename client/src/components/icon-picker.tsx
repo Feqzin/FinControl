@@ -53,6 +53,11 @@ import {
   parseBuiltinIconDisablePreferenceTerm,
   type UserIconMatchRule,
 } from "@/lib/purchase-icon-matching";
+import {
+  ICON_CATEGORIES as USER_ICON_CATEGORIES,
+  matchesIconCategory,
+  resolveIconCategoryValue,
+} from "@shared/icon-categories";
 
 interface IconPickerProps {
   value?: string | null;
@@ -111,17 +116,6 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 const CATEGORIES = ["bancos", "servicos", "carteiras"] as const;
 const ICON_UPLOAD_MAX_BYTES = 512 * 1024;
-const USER_ICON_CATEGORIES = [
-  { value: "banco", label: "Banco" },
-  { value: "servico", label: "Serviço" },
-  { value: "carteira", label: "Carteira" },
-  { value: "loja", label: "Loja" },
-  { value: "mercado", label: "Mercado" },
-  { value: "transporte", label: "Transporte" },
-  { value: "game", label: "Game" },
-  { value: "outro", label: "Outro" },
-] as const;
-const USER_ICON_CATEGORY_VALUES: Set<string> = new Set(USER_ICON_CATEGORIES.map((item) => item.value));
 const NOOP_ICON_CHANGE = (_value: string | null): void => undefined;
 const NOOP_ICON_META = (_meta: IconPickerSelectMeta): void => undefined;
 
@@ -155,8 +149,7 @@ function parseKeywordInput(value: string): string[] {
 }
 
 function resolveUserIconCategory(value: string | null | undefined): string {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  return USER_ICON_CATEGORY_VALUES.has(normalized) ? normalized : "outro";
+  return resolveIconCategoryValue(value);
 }
 
 function getItemTerms(item: Pick<UserIconLibraryItemApiModel, "name" | "tags">): string[] {
@@ -222,19 +215,22 @@ export function IconPicker({
     queryFn: async () => {
       const query = {
         search: exploreSearch || undefined,
-        category: exploreCategory !== "all" ? exploreCategory : undefined,
       };
+      const filterBySelectedCategory = (icons: OfficialIconApiModel[]): OfficialIconApiModel[] =>
+        icons.filter((icon) => matchesIconCategory(icon.category, exploreCategory));
 
       if (exploreOrigin === "community") {
-        return fetchCommunityIcons(query);
+        const communityIcons = await fetchCommunityIcons(query);
+        return filterBySelectedCategory(communityIcons);
       }
 
       if (exploreOrigin === "official") {
-        return fetchOfficialIcons({
+        const onlyOfficialIcons = await fetchOfficialIcons({
           ...query,
           origin: "official",
           packId: explorePackId !== "all" ? explorePackId : undefined,
         });
+        return filterBySelectedCategory(onlyOfficialIcons);
       }
 
       const [officialList, communityList] = await Promise.all([
@@ -246,7 +242,7 @@ export function IconPicker({
         fetchCommunityIcons(query),
       ]);
 
-      return [...officialList, ...communityList];
+      return filterBySelectedCategory([...officialList, ...communityList]);
     },
     enabled: open,
     staleTime: 60_000,
@@ -1120,13 +1116,11 @@ export function IconPicker({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todas categorias</SelectItem>
-                    <SelectItem value="bancos">Bancos</SelectItem>
-                    <SelectItem value="servicos">Serviços</SelectItem>
-                    <SelectItem value="carteiras">Carteiras</SelectItem>
-                    <SelectItem value="marketplaces">Marketplaces</SelectItem>
-                    <SelectItem value="transporte">Transporte</SelectItem>
-                    <SelectItem value="supermercados">Supermercados</SelectItem>
-                    <SelectItem value="games">Games</SelectItem>
+                    {USER_ICON_CATEGORIES.map((category) => (
+                      <SelectItem key={category.value} value={category.value}>
+                        {category.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

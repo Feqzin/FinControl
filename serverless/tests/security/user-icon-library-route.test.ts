@@ -215,7 +215,7 @@ test("user icon library: upload exige nome e editar respeita ownership", async (
       },
       body: JSON.stringify({
         name: "Itaú",
-        category: "banco",
+        category: "farmacia",
         keywords: ["itau", "itaucard", "unibanco"],
         imageDataUrl: SAMPLE_PNG_DATA_URL,
       }),
@@ -223,6 +223,7 @@ test("user icon library: upload exige nome e editar respeita ownership", async (
     assert.equal(create.status, 201);
     const createdBody = await create.json();
     const iconId = createdBody.icon.id as string;
+    assert.equal(createdBody.icon.category, "farmacia");
 
     const patchOtherUser = await fetch(`${baseUrl}/api/user-icon-library/${iconId}`, {
       method: "PATCH",
@@ -244,12 +245,14 @@ test("user icon library: upload exige nome e editar respeita ownership", async (
       },
       body: JSON.stringify({
         name: "Itaú Uniclass",
+        category: "imposto",
         keywords: ["itau", "uniclass"],
       }),
     });
     assert.equal(patchOwn.status, 200);
     const patchedBody = await patchOwn.json();
     assert.equal(patchedBody.icon.name, "Itaú Uniclass");
+    assert.equal(patchedBody.icon.category, "imposto");
     assert.deepEqual(patchedBody.icon.tags, ["itau", "uniclass"]);
   });
 });
