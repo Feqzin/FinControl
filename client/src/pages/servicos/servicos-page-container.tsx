@@ -44,7 +44,14 @@ import {
 import { Plus, Repeat, Trash2, X, Check, Users, ChevronUp, Pencil, CreditCard, Unlink2 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
 import { fetchIconMatchRules, type IconMatchRuleApiModel } from "@/services/api/icon-match-rules";
-import { matchIconByText, type UserIconMatchRule } from "@/lib/purchase-icon-matching";
+import { type UserIconMatchRule } from "@/lib/purchase-icon-matching";
+import { fetchUserIconLibrary, type UserIconLibraryItemApiModel } from "@/services/api/user-icon-library";
+import type { IconPickerSelectMeta } from "@/components/icon-picker";
+import {
+  resolveEntityIconIdForSave,
+  resolveEntityIconReference,
+  resolveEntityIconSuggestion,
+} from "@/lib/entity-icon-suggestion";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import type { Servico } from "@shared/schema";
 import { resolveServicoBillingFields, type ServicoPeriodicidade } from "@shared/servico-periodicidade";
@@ -104,7 +111,11 @@ export default function ServicosPage() {
   });
   const [editingServico, setEditingServico] = useState<Servico | null>(null);
   const [editIcone, setEditIcone] = useState<string | null>(null);
+  const [editIconPersistableId, setEditIconPersistableId] = useState<string | null>(null);
+  const [editIconManualSelection, setEditIconManualSelection] = useState(false);
   const [newServicoIcone, setNewServicoIcone] = useState<string | null>(null);
+  const [newServicoIconPersistableId, setNewServicoIconPersistableId] = useState<string | null>(null);
+  const [newServicoIconManualSelection, setNewServicoIconManualSelection] = useState(false);
   const [editForm, setEditForm] = useState({
     nome: "",
     categoria: "streaming",
@@ -135,6 +146,11 @@ export default function ServicosPage() {
     queryFn: fetchIconMatchRules,
     staleTime: 5 * 60_000,
   });
+  const { data: userIconLibrary = [] } = useQuery<UserIconLibraryItemApiModel[]>({
+    queryKey: ["/api/user-icon-library", "servicos"],
+    queryFn: fetchUserIconLibrary,
+    staleTime: 5 * 60_000,
+  });
 
   const normalizedIconMatchRules = useMemo<UserIconMatchRule[]>(
     () => iconMatchRules.map((rule) => ({
@@ -146,15 +162,44 @@ export default function ServicosPage() {
     [iconMatchRules],
   );
 
-  const resolveStrongAutoIconId = (text: string, explicitIconId?: string | null) => {
-    if (explicitIconId) return explicitIconId;
-    const match = matchIconByText(text, normalizedIconMatchRules);
-    if (!match.matched || !match.shouldAutoApply || !match.iconId) return null;
-    return match.iconId;
-  };
+  const resolveStrongAutoIconSuggestion = (text: string) =>
+    resolveEntityIconSuggestion({
+      name: text,
+      userRules: normalizedIconMatchRules,
+      userIcons: userIconLibrary,
+    });
 
-  const resolveServiceIconId = (servico: Servico) =>
-    resolveStrongAutoIconId(servico.nome, servico.iconeId ?? null);
+  const newServicoStrongIconSuggestion = useMemo(
+    () => resolveStrongAutoIconSuggestion(form.nome),
+    [form.nome, normalizedIconMatchRules, userIconLibrary],
+  );
+  const editServicoStrongIconSuggestion = useMemo(
+    () => resolveStrongAutoIconSuggestion(editForm.nome),
+    [editForm.nome, normalizedIconMatchRules, userIconLibrary],
+  );
+
+  const newServicoPreviewIconId = newServicoIconManualSelection
+    ? newServicoIcone
+    : (newServicoStrongIconSuggestion.shouldAutoApply ? newServicoStrongIconSuggestion.displayIconId : null);
+  const editServicoPreviewIconId = editIconManualSelection
+    ? editIcone
+    : (editServicoStrongIconSuggestion.shouldAutoApply ? editServicoStrongIconSuggestion.displayIconId : null);
+
+  const showNewServicoMediumSuggestion = !newServicoIconManualSelection
+    && !newServicoStrongIconSuggestion.shouldAutoApply
+    && newServicoStrongIconSuggestion.shouldSuggest
+    && Boolean(newServicoStrongIconSuggestion.persistableIconId);
+  const showEditServicoMediumSuggestion = !editIconManualSelection
+    && !editServicoStrongIconSuggestion.shouldAutoApply
+    && editServicoStrongIconSuggestion.shouldSuggest
+    && Boolean(editServicoStrongIconSuggestion.persistableIconId);
+
+  const resolveServiceIconId = (servico: Servico) => {
+    const explicitDisplay = resolveEntityIconReference(servico.iconeId ?? null, userIconLibrary).displayIconId;
+    if (explicitDisplay) return explicitDisplay;
+    const suggestion = resolveStrongAutoIconSuggestion(servico.nome);
+    return suggestion.shouldAutoApply ? suggestion.displayIconId : null;
+  };
 
   const createBilling = useMemo(
     () =>
@@ -385,7 +430,17 @@ export default function ServicosPage() {
             <h1 className="fintech-page-title">Serviços e Assinaturas</h1>
             <p className="fintech-page-subtitle">Gerencie seus gastos recorrentes e divisões</p>
           </div>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog
+          open={open}
+          onOpenChange={(nextOpen) => {
+            setOpen(nextOpen);
+            if (!nextOpen) {
+              setNewServicoIcone(null);
+              setNewServicoIconPersistableId(null);
+              setNewServicoIconManualSelection(false);
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button className="w-full xl:w-auto" data-testid="button-add-servico">
               <Plus className="w-4 h-4 mr-2" /> Novo serviço
@@ -405,7 +460,12 @@ export default function ServicosPage() {
                     valorCobranca: createBilling.valorCobranca,
                     periodicidadeCobranca: createBilling.periodicidadeCobranca,
                     compraCartaoId: form.compraCartaoId === COMPRA_NONE_VALUE ? null : form.compraCartaoId,
-                    iconeId: resolveStrongAutoIconId(form.nome, newServicoIcone),
+                    iconeId: resolveEntityIconIdForSave({
+                      isManualSelection: newServicoIconManualSelection,
+                      manualPersistableIconId: newServicoIconPersistableId
+                        ?? resolveEntityIconReference(newServicoIcone, userIconLibrary).persistableIconId,
+                      autoSuggestion: newServicoStrongIconSuggestion,
+                    }),
                   },
                   {
                     onSuccess: () => {
@@ -420,6 +480,8 @@ export default function ServicosPage() {
                         compraCartaoId: COMPRA_NONE_VALUE,
                       });
                       setNewServicoIcone(null);
+                      setNewServicoIconPersistableId(null);
+                      setNewServicoIconManualSelection(false);
                       toast({ title: "Serviço adicionado" });
                     },
                     onError: (e: Error) => {
@@ -443,8 +505,54 @@ export default function ServicosPage() {
               <div className="space-y-2">
                 <Label>Ícone</Label>
                 <Suspense fallback={<Skeleton className="h-14 w-full" />}>
-                  <IconPicker value={newServicoIcone} name={form.nome} onChange={setNewServicoIcone} size="sm" />
+                  <IconPicker
+                    value={newServicoPreviewIconId}
+                    name={form.nome}
+                    autoApplySuggestion={false}
+                    onChange={(nextIconId) => {
+                      setNewServicoIcone(nextIconId);
+                      if (nextIconId === null) {
+                        setNewServicoIconPersistableId(null);
+                        setNewServicoIconManualSelection(false);
+                      }
+                    }}
+                    onSelectMeta={(meta: IconPickerSelectMeta) => {
+                      if (meta.source === "reset") {
+                        setNewServicoIcone(null);
+                        setNewServicoIconPersistableId(null);
+                        setNewServicoIconManualSelection(false);
+                        return;
+                      }
+
+                      setNewServicoIcone(meta.displayValue);
+                      setNewServicoIconPersistableId(meta.persistableIconId ?? null);
+                      setNewServicoIconManualSelection(true);
+                    }}
+                    size="sm"
+                  />
                 </Suspense>
+                {newServicoIconManualSelection ? (
+                  <p className="text-xs text-muted-foreground">Ícone manual selecionado.</p>
+                ) : newServicoStrongIconSuggestion.shouldAutoApply ? (
+                  <p className="text-xs text-emerald-600">Ícone aplicado automaticamente por palavra-chave.</p>
+                ) : null}
+                {showNewServicoMediumSuggestion ? (
+                  <div className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+                    <p>Ícone sugerido: {newServicoStrongIconSuggestion.label ?? "Biblioteca"}</p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-auto px-0 text-xs"
+                      onClick={() => {
+                        setNewServicoIcone(newServicoStrongIconSuggestion.displayIconId);
+                        setNewServicoIconPersistableId(newServicoStrongIconSuggestion.persistableIconId);
+                        setNewServicoIconManualSelection(true);
+                      }}
+                    >
+                      Usar este ícone
+                    </Button>
+                  </div>
+                ) : null}
               </div>
               <div className="space-y-2">
                 <Label>Nome do serviço</Label>
@@ -752,8 +860,11 @@ export default function ServicosPage() {
                               className="h-7 w-7"
                               onClick={() => {
                                 const billingView = resolveServicoBillingView(s);
+                                const resolvedIcon = resolveEntityIconReference(s.iconeId ?? null, userIconLibrary);
                                 setEditingServico(s);
-                                setEditIcone(s.iconeId || null);
+                                setEditIcone(resolvedIcon.displayIconId);
+                                setEditIconPersistableId(resolvedIcon.persistableIconId);
+                                setEditIconManualSelection(Boolean(s.iconeId));
                                 setEditForm({
                                   nome: s.nome,
                                   categoria: s.categoria,
@@ -837,6 +948,8 @@ export default function ServicosPage() {
           if (!value) {
             setEditingServico(null);
             setEditIcone(null);
+            setEditIconPersistableId(null);
+            setEditIconManualSelection(false);
           }
         }}
       >
@@ -856,11 +969,19 @@ export default function ServicosPage() {
                   valorCobranca: editBilling.valorCobranca,
                   periodicidadeCobranca: editBilling.periodicidadeCobranca,
                   compraCartaoId: editForm.compraCartaoId === COMPRA_NONE_VALUE ? null : editForm.compraCartaoId,
-                  iconeId: resolveStrongAutoIconId(editForm.nome, editIcone),
+                  iconeId: resolveEntityIconIdForSave({
+                    isManualSelection: editIconManualSelection,
+                    manualPersistableIconId: editIconPersistableId
+                      ?? resolveEntityIconReference(editIcone, userIconLibrary).persistableIconId,
+                    autoSuggestion: editServicoStrongIconSuggestion,
+                  }),
                 },
                 {
                   onSuccess: () => {
                     setEditingServico(null);
+                    setEditIcone(null);
+                    setEditIconPersistableId(null);
+                    setEditIconManualSelection(false);
                     toast({ title: "Serviço atualizado" });
                   },
                   onError: (e: Error) =>
@@ -873,8 +994,54 @@ export default function ServicosPage() {
             <div className="space-y-2">
               <Label>Ícone</Label>
               <Suspense fallback={<Skeleton className="h-14 w-full" />}>
-                <IconPicker value={editIcone} name={editForm.nome} onChange={setEditIcone} size="sm" />
+                <IconPicker
+                  value={editServicoPreviewIconId}
+                  name={editForm.nome}
+                  autoApplySuggestion={false}
+                  onChange={(nextIconId) => {
+                    setEditIcone(nextIconId);
+                    if (nextIconId === null) {
+                      setEditIconPersistableId(null);
+                      setEditIconManualSelection(false);
+                    }
+                  }}
+                  onSelectMeta={(meta: IconPickerSelectMeta) => {
+                    if (meta.source === "reset") {
+                      setEditIcone(null);
+                      setEditIconPersistableId(null);
+                      setEditIconManualSelection(false);
+                      return;
+                    }
+
+                    setEditIcone(meta.displayValue);
+                    setEditIconPersistableId(meta.persistableIconId ?? null);
+                    setEditIconManualSelection(true);
+                  }}
+                  size="sm"
+                />
               </Suspense>
+              {editIconManualSelection ? (
+                <p className="text-xs text-muted-foreground">Ícone manual selecionado.</p>
+              ) : editServicoStrongIconSuggestion.shouldAutoApply ? (
+                <p className="text-xs text-emerald-600">Ícone aplicado automaticamente por palavra-chave.</p>
+              ) : null}
+              {showEditServicoMediumSuggestion ? (
+                <div className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+                  <p>Ícone sugerido: {editServicoStrongIconSuggestion.label ?? "Biblioteca"}</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-auto px-0 text-xs"
+                    onClick={() => {
+                      setEditIcone(editServicoStrongIconSuggestion.displayIconId);
+                      setEditIconPersistableId(editServicoStrongIconSuggestion.persistableIconId);
+                      setEditIconManualSelection(true);
+                    }}
+                  >
+                    Usar este ícone
+                  </Button>
+                </div>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label>Nome do serviço</Label>

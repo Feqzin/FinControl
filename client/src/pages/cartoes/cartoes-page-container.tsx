@@ -66,8 +66,13 @@ import {
 } from "@/services/api/cartoes";
 import { createIconMatchRules, fetchIconMatchRules, type IconMatchRuleApiModel } from "@/services/api/icon-match-rules";
 import { fetchUserIconLibrary, type UserIconLibraryItemApiModel } from "@/services/api/user-icon-library";
-import { matchIconByText, matchPurchaseIconByDescription, type UserIconMatchRule } from "@/lib/purchase-icon-matching";
+import { matchPurchaseIconByDescription, type UserIconMatchRule } from "@/lib/purchase-icon-matching";
 import { LIBRARY_ICONS } from "@/lib/brand-icons";
+import {
+  resolveEntityIconIdForSave,
+  resolveEntityIconReference,
+  resolveEntityIconSuggestion,
+} from "@/lib/entity-icon-suggestion";
 import {
   calculateCardInvoiceForCompetency,
   compraHasInstallmentInCompetency,
@@ -507,7 +512,11 @@ export default function CartoesPage() {
   const [editingCard, setEditingCard] = useState<Cartao | null>(null);
   const [editCardForm, setEditCardForm] = useState({ nome: "", limite: "", melhorDiaCompra: "", diaVencimento: "" });
   const [editCardIcone, setEditCardIcone] = useState<string | null>(null);
+  const [editCardIconPersistableId, setEditCardIconPersistableId] = useState<string | null>(null);
+  const [editCardIconManualSelection, setEditCardIconManualSelection] = useState(false);
   const [newCardIcone, setNewCardIcone] = useState<string | null>(null);
+  const [newCardIconPersistableId, setNewCardIconPersistableId] = useState<string | null>(null);
+  const [newCardIconManualSelection, setNewCardIconManualSelection] = useState(false);
 
   const [editingCompra, setEditingCompra] = useState<CompraCartao | null>(null);
   const [editCompraForm, setEditCompraForm] = useState<{
@@ -661,7 +670,6 @@ export default function CartoesPage() {
   const { data: userIconLibrary = [] } = useQuery<UserIconLibraryItemApiModel[]>({
     queryKey: ["/api/user-icon-library", "edit-compra"],
     queryFn: fetchUserIconLibrary,
-    enabled: Boolean(editingCompra),
     staleTime: 5 * 60_000,
   });
   const saveIconMatchRuleMutation = useMutation({
@@ -949,6 +957,7 @@ export default function CartoesPage() {
       map.set(icon.key, icon.label);
     }
     for (const icon of userIconLibrary) {
+      map.set(icon.id, icon.name || "Ícone personalizado");
       if (icon.imageUrl) {
         map.set(icon.imageUrl, icon.name || "Ícone personalizado");
       }
@@ -963,12 +972,22 @@ export default function CartoesPage() {
     return "Ícone da biblioteca";
   };
 
+  const resolveDisplayIconId = (iconId: string | null | undefined): string | null =>
+    resolveEntityIconReference(iconId, userIconLibrary).displayIconId;
+
+  const resolveStrongAutoIconSuggestion = (text: string) =>
+    resolveEntityIconSuggestion({
+      name: text,
+      userRules: normalizedIconMatchRules,
+      userIcons: userIconLibrary,
+    });
+
   const resolveCompraIconSuggestion = (compra: CompraCartao) =>
     compra.iconeId
       ? {
         matched: true,
-        iconId: compra.iconeId,
-        label: resolveIconLabel(compra.iconeId),
+        iconId: resolveDisplayIconId(compra.iconeId) ?? compra.iconeId,
+        label: resolveIconLabel(resolveDisplayIconId(compra.iconeId) ?? compra.iconeId),
         confidenceScore: 1,
         confidenceLevel: "alta" as const,
         shouldAutoApply: true,
@@ -979,12 +998,38 @@ export default function CartoesPage() {
       : matchPurchaseIconByDescription(compra.descricao, normalizedIconMatchRules);
   const resolveStrongAutoIconId = (text: string, explicitIconId?: string | null) => {
     if (explicitIconId) return explicitIconId;
-    const match = matchIconByText(text, normalizedIconMatchRules);
-    if (!match.matched || !match.shouldAutoApply || !match.iconId) return null;
-    return match.iconId;
+    const suggestion = resolveStrongAutoIconSuggestion(text);
+    if (!suggestion.shouldAutoApply) return null;
+    return suggestion.displayIconId;
   };
-  const resolveCardAutoIconId = (cartao: Cartao) =>
-    resolveStrongAutoIconId(cartao.nome, cartao.iconeId ?? null);
+  const resolveCardAutoIconId = (cartao: Cartao) => {
+    const explicitDisplay = resolveDisplayIconId(cartao.iconeId);
+    if (explicitDisplay) return explicitDisplay;
+    const suggestion = resolveStrongAutoIconSuggestion(cartao.nome);
+    return suggestion.shouldAutoApply ? suggestion.displayIconId : null;
+  };
+  const newCardStrongIconSuggestion = useMemo(
+    () => resolveStrongAutoIconSuggestion(cardForm.nome),
+    [cardForm.nome, normalizedIconMatchRules, userIconLibrary],
+  );
+  const editCardStrongIconSuggestion = useMemo(
+    () => resolveStrongAutoIconSuggestion(editCardForm.nome),
+    [editCardForm.nome, normalizedIconMatchRules, userIconLibrary],
+  );
+  const newCardPreviewIconId = newCardIconManualSelection
+    ? newCardIcone
+    : (newCardStrongIconSuggestion.shouldAutoApply ? newCardStrongIconSuggestion.displayIconId : null);
+  const editCardPreviewIconId = editCardIconManualSelection
+    ? editCardIcone
+    : (editCardStrongIconSuggestion.shouldAutoApply ? editCardStrongIconSuggestion.displayIconId : null);
+  const showNewCardMediumSuggestion = !newCardIconManualSelection
+    && !newCardStrongIconSuggestion.shouldAutoApply
+    && newCardStrongIconSuggestion.shouldSuggest
+    && Boolean(newCardStrongIconSuggestion.persistableIconId);
+  const showEditCardMediumSuggestion = !editCardIconManualSelection
+    && !editCardStrongIconSuggestion.shouldAutoApply
+    && editCardStrongIconSuggestion.shouldSuggest
+    && Boolean(editCardStrongIconSuggestion.persistableIconId);
   const handleSaveCompraIconRule = async (descricao: string, iconId: string) => {
     await saveIconMatchRuleMutation.mutateAsync({ descricao, iconId });
   };
@@ -1589,7 +1634,12 @@ export default function CartoesPage() {
   };
 
   const handleCreateCard = () => {
-    const nextIconeId = resolveStrongAutoIconId(cardForm.nome, newCardIcone);
+    const nextIconeId = resolveEntityIconIdForSave({
+      isManualSelection: newCardIconManualSelection,
+      manualPersistableIconId: newCardIconPersistableId
+        ?? resolveEntityIconReference(newCardIcone, userIconLibrary).persistableIconId,
+      autoSuggestion: newCardStrongIconSuggestion,
+    });
     createCardMutation.mutate(
       {
         ...cardForm,
@@ -1600,6 +1650,8 @@ export default function CartoesPage() {
           setOpenCard(false);
           setCardForm({ nome: "", limite: "", melhorDiaCompra: "", diaVencimento: "" });
           setNewCardIcone(null);
+          setNewCardIconPersistableId(null);
+          setNewCardIconManualSelection(false);
           toast({ title: "Cartao adicionado" });
         },
         onError: (error) => {
@@ -1616,7 +1668,12 @@ export default function CartoesPage() {
 
   const handleUpdateCard = () => {
     if (!editingCard) return;
-    const nextIconeId = resolveStrongAutoIconId(editCardForm.nome, editCardIcone);
+    const nextIconeId = resolveEntityIconIdForSave({
+      isManualSelection: editCardIconManualSelection,
+      manualPersistableIconId: editCardIconPersistableId
+        ?? resolveEntityIconReference(editCardIcone, userIconLibrary).persistableIconId,
+      autoSuggestion: editCardStrongIconSuggestion,
+    });
     updateCardMutation.mutate(
       {
         id: editingCard.id,
@@ -1625,6 +1682,9 @@ export default function CartoesPage() {
       {
         onSuccess: () => {
           setEditingCard(null);
+          setEditCardIcone(null);
+          setEditCardIconPersistableId(null);
+          setEditCardIconManualSelection(false);
           toast({ title: "Cartao atualizado" });
         },
         onError: (error) => {
@@ -2878,14 +2938,71 @@ export default function CartoesPage() {
 
       <CartaoFormDialog
         open={openCard}
-        onOpenChange={setOpenCard}
+        onOpenChange={(open) => {
+          setOpenCard(open);
+          if (!open) {
+            setNewCardIcone(null);
+            setNewCardIconPersistableId(null);
+            setNewCardIconManualSelection(false);
+          }
+        }}
         title="Novo Cartao"
         form={cardForm}
         setForm={setCardForm}
         iconPicker={(
-          <Suspense fallback={<Skeleton className="h-14 w-full" />}>
-            <IconPicker value={newCardIcone} name={cardForm.nome} onChange={setNewCardIcone} size="md" />
-          </Suspense>
+          <div className="space-y-2">
+            <Suspense fallback={<Skeleton className="h-14 w-full" />}>
+              <IconPicker
+                value={newCardPreviewIconId}
+                name={cardForm.nome}
+                autoApplySuggestion={false}
+                onChange={(nextIconId) => {
+                  setNewCardIcone(nextIconId);
+                  if (nextIconId === null) {
+                    setNewCardIconPersistableId(null);
+                    setNewCardIconManualSelection(false);
+                  }
+                }}
+                onSelectMeta={(meta: IconPickerSelectMeta) => {
+                  if (meta.source === "reset") {
+                    setNewCardIcone(null);
+                    setNewCardIconPersistableId(null);
+                    setNewCardIconManualSelection(false);
+                    return;
+                  }
+
+                  setNewCardIcone(meta.displayValue);
+                  setNewCardIconPersistableId(meta.persistableIconId ?? null);
+                  setNewCardIconManualSelection(true);
+                }}
+                size="md"
+              />
+            </Suspense>
+            {newCardIconManualSelection ? (
+              <p className="text-xs text-muted-foreground">Ícone manual selecionado.</p>
+            ) : newCardStrongIconSuggestion.shouldAutoApply ? (
+              <p className="text-xs text-emerald-600">Ícone aplicado automaticamente por palavra-chave.</p>
+            ) : null}
+            {showNewCardMediumSuggestion ? (
+              <div className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+                <p>
+                  Ícone sugerido: {newCardStrongIconSuggestion.label ?? "Biblioteca"}
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-auto px-0 text-xs"
+                  onClick={() => {
+                    setNewCardIcone(newCardStrongIconSuggestion.displayIconId);
+                    setNewCardIconPersistableId(newCardStrongIconSuggestion.persistableIconId);
+                    setNewCardIconManualSelection(true);
+                  }}
+                >
+                  Usar este ícone
+                </Button>
+              </div>
+            ) : null}
+          </div>
         )}
         onSubmit={handleCreateCard}
         isPending={createCardMutation.isPending}
@@ -2906,15 +3023,67 @@ export default function CartoesPage() {
           if (!open) {
             setEditingCard(null);
             setEditCardIcone(null);
+            setEditCardIconPersistableId(null);
+            setEditCardIconManualSelection(false);
           }
         }}
         title="Editar Cartao"
         form={editCardForm}
         setForm={setEditCardForm}
         iconPicker={(
-          <Suspense fallback={<Skeleton className="h-14 w-full" />}>
-            <IconPicker value={editCardIcone} name={editCardForm.nome} onChange={setEditCardIcone} size="md" />
-          </Suspense>
+          <div className="space-y-2">
+            <Suspense fallback={<Skeleton className="h-14 w-full" />}>
+              <IconPicker
+                value={editCardPreviewIconId}
+                name={editCardForm.nome}
+                autoApplySuggestion={false}
+                onChange={(nextIconId) => {
+                  setEditCardIcone(nextIconId);
+                  if (nextIconId === null) {
+                    setEditCardIconPersistableId(null);
+                    setEditCardIconManualSelection(false);
+                  }
+                }}
+                onSelectMeta={(meta: IconPickerSelectMeta) => {
+                  if (meta.source === "reset") {
+                    setEditCardIcone(null);
+                    setEditCardIconPersistableId(null);
+                    setEditCardIconManualSelection(false);
+                    return;
+                  }
+
+                  setEditCardIcone(meta.displayValue);
+                  setEditCardIconPersistableId(meta.persistableIconId ?? null);
+                  setEditCardIconManualSelection(true);
+                }}
+                size="md"
+              />
+            </Suspense>
+            {editCardIconManualSelection ? (
+              <p className="text-xs text-muted-foreground">Ícone manual selecionado.</p>
+            ) : editCardStrongIconSuggestion.shouldAutoApply ? (
+              <p className="text-xs text-emerald-600">Ícone aplicado automaticamente por palavra-chave.</p>
+            ) : null}
+            {showEditCardMediumSuggestion ? (
+              <div className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+                <p>
+                  Ícone sugerido: {editCardStrongIconSuggestion.label ?? "Biblioteca"}
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-auto px-0 text-xs"
+                  onClick={() => {
+                    setEditCardIcone(editCardStrongIconSuggestion.displayIconId);
+                    setEditCardIconPersistableId(editCardStrongIconSuggestion.persistableIconId);
+                    setEditCardIconManualSelection(true);
+                  }}
+                >
+                  Usar este ícone
+                </Button>
+              </div>
+            ) : null}
+          </div>
         )}
         onSubmit={handleUpdateCard}
         isPending={updateCardMutation.isPending}
@@ -3255,6 +3424,7 @@ export default function CartoesPage() {
           getNextInvoiceDate={getNextInvoiceDate}
           focusedCartaoId={comprasCartaoFocadoId}
           onEditCartao={(cartao) => {
+            const resolvedIcon = resolveEntityIconReference(cartao.iconeId ?? null, userIconLibrary);
             setEditingCard(cartao);
             setEditCardForm({
               nome: cartao.nome,
@@ -3262,7 +3432,9 @@ export default function CartoesPage() {
               melhorDiaCompra: String(cartao.melhorDiaCompra),
               diaVencimento: String(cartao.diaVencimento),
             });
-            setEditCardIcone(cartao.iconeId || null);
+            setEditCardIcone(resolvedIcon.displayIconId);
+            setEditCardIconPersistableId(resolvedIcon.persistableIconId);
+            setEditCardIconManualSelection(Boolean(cartao.iconeId));
           }}
           onDeleteCartao={handleDeleteCard}
           onAddCompra={(cartaoId) => {

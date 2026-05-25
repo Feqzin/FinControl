@@ -81,6 +81,11 @@ import {
   matchIconByText,
   matchPurchaseIconByDescription,
 } from "../src/lib/purchase-icon-matching";
+import {
+  resolveEntityIconIdForSave,
+  resolveEntityIconReference,
+  resolveEntityIconSuggestion,
+} from "../src/lib/entity-icon-suggestion";
 import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
 import {
   formatInvoiceMonthLong,
@@ -3376,6 +3381,132 @@ test("editar compra ícone: bloqueia referência remota sem vínculo persistíve
   assert.equal(resolved.ok, false);
   if (resolved.ok) return;
   assert.equal(resolved.reason, "ICON_REFERENCE_INVALID");
+});
+
+test("entity icon suggestion: Novo Cartão aplica ícone por palavra-chave forte com referência persistível", () => {
+  const suggestion = resolveEntityIconSuggestion({
+    name: "C6 Bank",
+    userRules: [
+      {
+        id: "rule-c6",
+        iconId: "https://cdn.fincontrol.dev/icons/c6.png",
+        normalizedTerm: "c6 bank",
+        originalTerm: "c6 bank",
+      },
+    ],
+    userIcons: [
+      {
+        id: "user-icon-c6",
+        userId: "user-1",
+        sourceType: "upload",
+        officialIconId: null,
+        name: "C6 Bank",
+        imageUrl: "https://cdn.fincontrol.dev/icons/c6.png",
+        storagePath: null,
+        category: "banco",
+        tags: ["c6", "c6 bank"],
+        createdAt: "2026-05-01T00:00:00.000Z",
+        updatedAt: "2026-05-01T00:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.equal(suggestion.shouldAutoApply, true);
+  assert.equal(suggestion.displayIconId, "https://cdn.fincontrol.dev/icons/c6.png");
+  assert.equal(suggestion.persistableIconId, "user-icon-c6");
+});
+
+test("entity icon suggestion: Novo Cartão com Nubank usa chave estável da biblioteca padrão", () => {
+  const suggestion = resolveEntityIconSuggestion({
+    name: "Nubank Ultravioleta",
+    userRules: [],
+    userIcons: [],
+  });
+
+  assert.equal(suggestion.shouldAutoApply, true);
+  assert.equal(suggestion.displayIconId, "nubank");
+  assert.equal(suggestion.persistableIconId, "nubank");
+});
+
+test("entity icon suggestion: Novo Serviço com Netflix aplica automaticamente ícone padrão", () => {
+  const suggestion = resolveEntityIconSuggestion({
+    name: "Netflix Assinatura",
+    userRules: [],
+    userIcons: [],
+  });
+
+  assert.equal(suggestion.shouldAutoApply, true);
+  assert.equal(suggestion.displayIconId, "netflix");
+  assert.equal(suggestion.persistableIconId, "netflix");
+});
+
+test("entity icon suggestion: match médio sugere sem autoaplicar", () => {
+  const suggestion = resolveEntityIconSuggestion({
+    name: "cartao bank c6 platinum",
+    userRules: [
+      {
+        id: "rule-c6-medium",
+        iconId: "https://cdn.fincontrol.dev/icons/c6.png",
+        normalizedTerm: "c6 bank",
+        originalTerm: "c6 bank",
+      },
+    ],
+    userIcons: [
+      {
+        id: "user-icon-c6",
+        userId: "user-1",
+        sourceType: "upload",
+        officialIconId: null,
+        name: "C6 Bank",
+        imageUrl: "https://cdn.fincontrol.dev/icons/c6.png",
+        storagePath: null,
+        category: "banco",
+        tags: ["c6", "c6 bank"],
+        createdAt: "2026-05-01T00:00:00.000Z",
+        updatedAt: "2026-05-01T00:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.equal(suggestion.shouldAutoApply, false);
+  assert.equal(suggestion.shouldSuggest, true);
+  assert.equal(suggestion.persistableIconId, "user-icon-c6");
+});
+
+test("entity icon suggestion: ícone manual não deve ser sobrescrito no save", () => {
+  const autoSuggestion = resolveEntityIconSuggestion({
+    name: "Nubank Ultravioleta",
+    userRules: [],
+    userIcons: [],
+  });
+  const savedIconId = resolveEntityIconIdForSave({
+    isManualSelection: true,
+    manualPersistableIconId: "user-icon-manual",
+    autoSuggestion,
+  });
+
+  assert.equal(savedIconId, "user-icon-manual");
+});
+
+test("entity icon suggestion: limpar ícone manual permite voltar para auto matching", () => {
+  const autoSuggestion = resolveEntityIconSuggestion({
+    name: "Nubank Ultravioleta",
+    userRules: [],
+    userIcons: [],
+  });
+  const savedIconId = resolveEntityIconIdForSave({
+    isManualSelection: false,
+    manualPersistableIconId: null,
+    autoSuggestion,
+  });
+
+  assert.equal(savedIconId, "nubank");
+});
+
+test("entity icon reference: referência remota sem vínculo não vira iconeId persistível", () => {
+  const resolved = resolveEntityIconReference("data:image/png;base64,abc123", []);
+  assert.equal(resolved.displayIconId, "data:image/png;base64,abc123");
+  assert.equal(resolved.persistableIconId, null);
 });
 
 test("icon matching: Netflix reconhece Netflix com match forte", () => {
