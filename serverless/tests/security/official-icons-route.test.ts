@@ -158,6 +158,7 @@ function createInMemoryServiceFixture() {
     sourceUserIconId: parseCommunitySourceUserIconId(icon.iconKey),
     ownerUserId: isCommunityIconKey(icon.iconKey) ? icon.createdBy : null,
     ownerLabel: isCommunityIconKey(icon.iconKey) ? resolvePublicOwnerLabel(icon.createdBy) : null,
+    ownerPublicCode: isCommunityIconKey(icon.iconKey) && icon.createdBy ? `USR-${icon.createdBy.toUpperCase()}` : null,
     name: icon.name,
     imageUrl: icon.imageUrl,
     storagePath: null,
@@ -297,6 +298,7 @@ function createInMemoryServiceFixture() {
             ...pack,
             ownerUserId: null,
             ownerLabel: pack.sourceType === "community" ? resolvePublicOwnerLabel(pack.ownerUserId) : null,
+            ownerPublicCode: pack.sourceType === "community" && pack.ownerUserId ? `USR-${pack.ownerUserId.toUpperCase()}` : null,
             isPublished: pack.isActive,
             iconsCount: totalIcons,
             addedIconsCount,
@@ -892,7 +894,9 @@ test("community packs: usuário cria pack com ícones próprios e outro usuário
     assert.equal(listBody.packs.some((pack: { id: string }) => pack.id === packId), true);
     const listedPack = listBody.packs.find((pack: { id: string }) => pack.id === packId);
     assert.equal(listedPack?.ownerLabel, "Fernando");
+    assert.equal(listedPack?.ownerPublicCode, "USR-USER_A");
     assert.equal(String(listedPack?.ownerLabel ?? "").includes("@"), false);
+    assert.equal(JSON.stringify(listedPack).includes("example.com"), false);
 
     const detailsAsUserB = await fetch(`${baseUrl}/api/icons/community/packs/${packId}`, {
       headers: { "x-test-auth": "user_b" },
@@ -900,7 +904,9 @@ test("community packs: usuário cria pack com ícones próprios e outro usuário
     assert.equal(detailsAsUserB.status, 200);
     const detailsBody = await detailsAsUserB.json();
     assert.equal(detailsBody?.pack?.ownerLabel, "Fernando");
+    assert.equal(detailsBody?.pack?.ownerPublicCode, "USR-USER_A");
     assert.equal(String(detailsBody?.pack?.ownerLabel ?? "").includes("@"), false);
+    assert.equal(JSON.stringify(detailsBody?.pack ?? {}).includes("example.com"), false);
 
     const addPack = await fetch(`${baseUrl}/api/icons/community/packs/${packId}/add-to-library`, {
       method: "POST",
@@ -951,7 +957,9 @@ test("community packs: fallback público usa parte segura do username sem expor 
     const listBody = await listAsUserA.json();
     const listedPack = listBody.packs.find((pack: { id: string }) => pack.id === packId);
     assert.equal(listedPack?.ownerLabel, "elza.finance");
+    assert.equal(listedPack?.ownerPublicCode, "USR-USER_B");
     assert.equal(String(listedPack?.ownerLabel ?? "").includes("@"), false);
+    assert.equal(JSON.stringify(listedPack).includes("example.com"), false);
   });
 });
 

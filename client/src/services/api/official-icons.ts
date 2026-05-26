@@ -7,6 +7,7 @@ export type OfficialIconApiModel = {
   sourceUserIconId?: string | null;
   ownerUserId?: string | null;
   ownerLabel?: string | null;
+  ownerPublicCode?: string | null;
   name: string;
   imageUrl: string;
   storagePath: string | null;
@@ -29,6 +30,7 @@ export type OfficialIconPackApiModel = {
   sourceType: "official" | "community";
   ownerUserId: string | null;
   ownerLabel: string | null;
+  ownerPublicCode: string | null;
   isPublished: boolean;
   iconsCount: number;
   addedIconsCount: number;

@@ -101,7 +101,8 @@ function isMissingUsersOptionalColumnsError(error: unknown): boolean {
       combined.includes("\"trial_ends_at\"") ||
       combined.includes("\"trial_used_at\"") ||
       combined.includes("\"reset_token\"") ||
-      combined.includes("\"reset_token_expiry\"")
+      combined.includes("\"reset_token_expiry\"") ||
+      combined.includes("\"public_code\"")
     );
 
   if (referencesUsersOptionalColumnsInFailedQuery) return true;
@@ -115,7 +116,8 @@ function isMissingUsersOptionalColumnsError(error: unknown): boolean {
       combined.includes("trial_ends_at") ||
       combined.includes("trial_used_at") ||
       combined.includes("reset_token") ||
-      combined.includes("reset_token_expiry")
+      combined.includes("reset_token_expiry") ||
+      combined.includes("public_code")
     );
 
   return referencesMissingColumn;
@@ -132,6 +134,7 @@ function toUserWithOptionalDefaults(user: {
     id: user.id,
     username: user.username,
     password: user.password,
+    publicCode: null,
     nomeCompleto: null,
     subscriptionTier:
       (user.subscriptionTier as string | undefined) ??

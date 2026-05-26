@@ -168,7 +168,8 @@ export class DatabaseStorage implements IStorage {
         combined.includes("trial_ends_at") ||
         combined.includes("trial_used_at") ||
         combined.includes("reset_token") ||
-        combined.includes("reset_token_expiry")
+        combined.includes("reset_token_expiry") ||
+        combined.includes("public_code")
       )
     );
   }
@@ -184,6 +185,7 @@ export class DatabaseStorage implements IStorage {
       id: user.id,
       username: user.username,
       password: user.password,
+      publicCode: null,
       nomeCompleto: null,
       subscriptionTier:
       user.subscriptionTier ??

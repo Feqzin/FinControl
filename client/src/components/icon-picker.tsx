@@ -1633,7 +1633,7 @@ export function IconPicker({
                             </p>
                             <p className="text-xs text-muted-foreground">
                               {pack.sourceType === "community"
-                                ? `Publicado por: ${pack.ownerLabel || "Usuário"}`
+                                ? `Publicado por: ${pack.ownerLabel || "Usuário"}${pack.ownerPublicCode ? ` · ID: ${pack.ownerPublicCode}` : ""}`
                                 : "Catálogo oficial"}
                             </p>
                             <div className="mt-2 flex items-center gap-2">
@@ -1707,7 +1707,9 @@ export function IconPicker({
                             </div>
                             <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
                               <span className="text-muted-foreground">
-                                {isCommunity ? (icon.ownerLabel || "Publicado por usuário") : "Catálogo oficial"}
+                                {isCommunity
+                                  ? `Publicado por: ${icon.ownerLabel || "Usuário"}${icon.ownerPublicCode ? ` · ID: ${icon.ownerPublicCode}` : ""}`
+                                  : "Catálogo oficial"}
                               </span>
                               <Badge variant={alreadyAdded ? "secondary" : "outline"} className="h-5 px-1.5 text-[10px]">
                                 {alreadyAdded ? "Na sua biblioteca" : "Disponível"}
@@ -2131,7 +2133,7 @@ export function IconPicker({
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
                 {packDetailsTarget.sourceType === "community"
-                  ? `Publicado por: ${packDetailsTarget.ownerLabel || "Usuário"}`
+                  ? `Publicado por: ${packDetailsTarget.ownerLabel || "Usuário"}${packDetailsTarget.ownerPublicCode ? ` · ID: ${packDetailsTarget.ownerPublicCode}` : ""}`
                   : "Catálogo oficial"}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -2450,7 +2452,7 @@ export function IconPicker({
               ) : null}
               {manageActionTarget.icon.sourceType === "community" ? (
                 <p className="text-xs text-muted-foreground">
-                  {manageActionTarget.icon.ownerLabel || "Publicado por usuário"}
+                  {`Publicado por: ${manageActionTarget.icon.ownerLabel || "Usuário"}${manageActionTarget.icon.ownerPublicCode ? ` · ID: ${manageActionTarget.icon.ownerPublicCode}` : ""}`}
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">Catálogo oficial</p>
@@ -2538,7 +2540,7 @@ export function IconPicker({
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">
                 {manageActionTarget.pack.sourceType === "community"
-                  ? `Publicado por: ${manageActionTarget.pack.ownerLabel || "Usuário"}`
+                  ? `Publicado por: ${manageActionTarget.pack.ownerLabel || "Usuário"}${manageActionTarget.pack.ownerPublicCode ? ` · ID: ${manageActionTarget.pack.ownerPublicCode}` : ""}`
                   : "Catálogo oficial"}
               </p>
               <Button

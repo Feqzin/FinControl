@@ -30,7 +30,7 @@ import type {
   OfficialIconsListQueryInput,
   UpdateCommunityPackBodyInput,
 } from "../validators/official-icons.validators.js";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const MAX_ICON_BYTES = 512 * 1024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -57,6 +57,7 @@ export type OfficialIconListItemView = {
   sourceUserIconId: string | null;
   ownerUserId: string | null;
   ownerLabel: string | null;
+  ownerPublicCode: string | null;
   name: string;
   imageUrl: string;
   storagePath: string | null;
@@ -79,6 +80,7 @@ export type OfficialIconPackView = {
   sourceType: "official" | "community";
   ownerUserId: string | null;
   ownerLabel: string | null;
+  ownerPublicCode: string | null;
   isPublished: boolean;
   iconsCount: number;
   addedIconsCount: number;
@@ -256,6 +258,56 @@ function resolvePublicAuthorLabel(user: { nomeCompleto: string | null; username:
   return "Usuário";
 }
 
+function buildFallbackPublicCodeFromUserId(userId: string): string {
+  const hash = createHash("sha256").update(userId).digest("hex").slice(0, 8).toUpperCase();
+  return `USR-${hash}`;
+}
+
+function resolvePublicCode(
+  value: string | null | undefined,
+  userId: string,
+): string {
+  const trimmed = sanitizeOptionalText(value, 24);
+  if (trimmed) return trimmed;
+  return buildFallbackPublicCodeFromUserId(userId);
+}
+
+function isMissingUsersPublicCodeColumnError(error: unknown): boolean {
+  const messages: string[] = [];
+  const queue: unknown[] = [error];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+
+    if (typeof current === "string") {
+      messages.push(current.toLowerCase());
+      continue;
+    }
+
+    if (typeof current === "object") {
+      const maybeError = current as { message?: unknown; code?: unknown; cause?: unknown };
+      if (typeof maybeError.message === "string") {
+        messages.push(maybeError.message.toLowerCase());
+      }
+      if (typeof maybeError.code === "string") {
+        messages.push(maybeError.code.toLowerCase());
+      }
+      if (maybeError.cause !== undefined) {
+        queue.push(maybeError.cause);
+      }
+    }
+  }
+
+  const combined = messages.join(" | ");
+  return combined.includes("42703") && combined.includes("public_code");
+}
+
+type PublicUserProfile = {
+  displayName: string;
+  publicCode: string;
+};
+
 function normalizeIconTerm(value: string): string {
   return value
     .toLowerCase()
@@ -319,6 +371,82 @@ function iconMatchesSearch(icon: OfficialIconListItemView, normalizedSearch: str
 }
 
 export class OfficialIconLibraryService {
+  private async getPublicUserProfilesByIds(userIds: string[]): Promise<Map<string, PublicUserProfile>> {
+    const uniqueUserIds = Array.from(
+      new Set(
+        userIds
+          .map((value) => String(value ?? "").trim())
+          .filter((value) => value.length > 0),
+      ),
+    );
+
+    if (uniqueUserIds.length === 0) {
+      return new Map();
+    }
+
+    const profiles = new Map<string, PublicUserProfile>();
+    const assignProfiles = (
+      rows: Array<{ id: string; username: string | null; nomeCompleto: string | null; publicCode?: string | null }>,
+    ): void => {
+      for (const row of rows) {
+        profiles.set(row.id, {
+          displayName: resolvePublicAuthorLabel(row),
+          publicCode: resolvePublicCode(row.publicCode ?? null, row.id),
+        });
+      }
+    };
+
+    try {
+      const rows = await db
+        .select({
+          id: users.id,
+          username: users.username,
+          nomeCompleto: users.nomeCompleto,
+          publicCode: users.publicCode,
+        })
+        .from(users)
+        .where(inArray(users.id, uniqueUserIds));
+      assignProfiles(rows);
+    } catch (error) {
+      if (!isMissingUsersPublicCodeColumnError(error)) throw error;
+      const fallbackRows = await db
+        .select({
+          id: users.id,
+          username: users.username,
+          nomeCompleto: users.nomeCompleto,
+        })
+        .from(users)
+        .where(inArray(users.id, uniqueUserIds));
+      assignProfiles(fallbackRows);
+    }
+
+    for (const userId of uniqueUserIds) {
+      if (profiles.has(userId)) continue;
+      profiles.set(userId, {
+        displayName: "Usuário",
+        publicCode: buildFallbackPublicCodeFromUserId(userId),
+      });
+    }
+
+    return profiles;
+  }
+
+  private async getPublicUserProfile(userId: string | null | undefined): Promise<PublicUserProfile> {
+    const normalizedUserId = String(userId ?? "").trim();
+    if (!normalizedUserId) {
+      return {
+        displayName: "Usuário",
+        publicCode: buildFallbackPublicCodeFromUserId("anonymous"),
+      };
+    }
+
+    const profiles = await this.getPublicUserProfilesByIds([normalizedUserId]);
+    return profiles.get(normalizedUserId) ?? {
+      displayName: "Usuário",
+      publicCode: buildFallbackPublicCodeFromUserId(normalizedUserId),
+    };
+  }
+
   private async upsertMatchRulesForOfficialIcon(userId: string, iconId: string, icon: OfficialIconLike): Promise<number> {
     const terms = buildOfficialIconTerms(icon);
     if (terms.length === 0) return 0;
@@ -442,25 +570,35 @@ export class OfficialIconLibraryService {
     const normalizedCategory = (query.category ?? "").trim().toLowerCase();
     const packId = (query.packId ?? "").trim();
 
-    let icons = rows.map<OfficialIconListItemView>((row) => ({
-      sourceType: resolveIconOrigin(row.iconKey),
-      sourceUserIconId: parseCommunityIconKey(row.iconKey)?.sourceUserIconId ?? null,
-      ownerUserId: parseCommunityIconKey(row.iconKey)?.ownerUserId ?? row.createdBy ?? null,
-      ownerLabel: resolveIconOrigin(row.iconKey) === "community" ? "Publicado por usuário" : null,
-      id: row.id,
-      iconKey: row.iconKey,
-      name: row.name,
-      imageUrl: row.imageUrl,
-      storagePath: row.storagePath ?? null,
-      category: row.category ?? null,
-      tags: sanitizeStringArray(row.tags),
-      aliases: sanitizeStringArray(row.aliases),
-      packId: row.packId ?? null,
-      packName: row.packName ?? null,
-      alreadyInLibrary: false,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    }));
+    const ownerUserIdByIconId = new Map<string, string | null>();
+    let icons = rows.map<OfficialIconListItemView>((row) => {
+      const sourceType = resolveIconOrigin(row.iconKey);
+      const ownerUserId = sourceType === "community"
+        ? (parseCommunityIconKey(row.iconKey)?.ownerUserId ?? row.createdBy ?? null)
+        : null;
+      ownerUserIdByIconId.set(row.id, ownerUserId);
+
+      return {
+        sourceType,
+        sourceUserIconId: parseCommunityIconKey(row.iconKey)?.sourceUserIconId ?? null,
+        ownerUserId: null,
+        ownerLabel: sourceType === "community" ? "Usuário" : null,
+        ownerPublicCode: sourceType === "community" ? null : null,
+        id: row.id,
+        iconKey: row.iconKey,
+        name: row.name,
+        imageUrl: row.imageUrl,
+        storagePath: row.storagePath ?? null,
+        category: row.category ?? null,
+        tags: sanitizeStringArray(row.tags),
+        aliases: sanitizeStringArray(row.aliases),
+        packId: row.packId ?? null,
+        packName: row.packName ?? null,
+        alreadyInLibrary: false,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      };
+    });
 
     if (normalizedCategory) {
       icons = icons.filter((icon) => (icon.category ?? "").trim().toLowerCase() === normalizedCategory);
@@ -471,6 +609,32 @@ export class OfficialIconLibraryService {
     if (normalizedSearch) {
       icons = icons.filter((icon) => iconMatchesSearch(icon, normalizedSearch));
     }
+
+    const ownerUserIds = Array.from(
+      new Set(
+        icons
+          .map((icon) => ownerUserIdByIconId.get(icon.id))
+          .filter((value): value is string => typeof value === "string" && value.trim().length > 0),
+      ),
+    );
+    const ownerProfilesByUserId = await this.getPublicUserProfilesByIds(ownerUserIds);
+    icons = icons.map((icon) => {
+      if (icon.sourceType !== "community") return icon;
+      const ownerUserId = ownerUserIdByIconId.get(icon.id);
+      if (!ownerUserId) {
+        return {
+          ...icon,
+          ownerLabel: "Usuário",
+          ownerPublicCode: null,
+        };
+      }
+      const profile = ownerProfilesByUserId.get(ownerUserId);
+      return {
+        ...icon,
+        ownerLabel: profile?.displayName ?? "Usuário",
+        ownerPublicCode: profile?.publicCode ?? buildFallbackPublicCodeFromUserId(ownerUserId),
+      };
+    });
 
     const officialIds = icons.map((icon) => icon.id);
     if (officialIds.length === 0) {
@@ -582,29 +746,19 @@ export class OfficialIconLibraryService {
         ),
       ),
     );
-    const ownerLabelByUserId = new Map<string, string>();
-    if (ownerUserIds.length > 0) {
-      const ownerRows = await db
-        .select({
-          id: users.id,
-          username: users.username,
-          nomeCompleto: users.nomeCompleto,
-        })
-        .from(users)
-        .where(inArray(users.id, ownerUserIds));
-
-      for (const owner of ownerRows) {
-        ownerLabelByUserId.set(owner.id, resolvePublicAuthorLabel(owner));
-      }
-    }
+    const ownerProfilesByUserId = await this.getPublicUserProfilesByIds(ownerUserIds);
 
     let list = packs.map((pack) => {
       const sourceType = sourceByPackId.get(pack.id) ?? (parseCommunityPackId(pack.id) ? "community" : "official");
       const ownerUserId = sourceType === "community"
         ? ownerByPackId.get(pack.id) ?? parseCommunityPackId(pack.id)?.ownerUserId ?? null
         : null;
+      const ownerProfile = ownerUserId ? ownerProfilesByUserId.get(ownerUserId) : undefined;
       const ownerLabel = sourceType === "community"
-        ? (ownerUserId ? ownerLabelByUserId.get(ownerUserId) ?? "Usuário" : "Usuário")
+        ? ownerProfile?.displayName ?? "Usuário"
+        : null;
+      const ownerPublicCode = sourceType === "community"
+        ? (ownerProfile?.publicCode ?? (ownerUserId ? buildFallbackPublicCodeFromUserId(ownerUserId) : null))
         : null;
 
       return {
@@ -616,6 +770,7 @@ export class OfficialIconLibraryService {
         sourceType,
         ownerUserId: null,
         ownerLabel,
+        ownerPublicCode,
         isPublished: Boolean(pack.isActive),
         iconsCount: iconCountByPackId.get(pack.id) ?? 0,
         addedIconsCount: addedCountByPackId.get(pack.id) ?? 0,
@@ -640,6 +795,7 @@ export class OfficialIconLibraryService {
         pack.description ?? "",
         pack.category ?? "",
         pack.ownerLabel ?? "",
+        pack.ownerPublicCode ?? "",
       ].join(" ")).includes(normalizedSearch));
     }
 
@@ -1055,14 +1211,7 @@ export class OfficialIconLibraryService {
     const communityPacks = await this.listOfficialPacks(userId, { origin: "community" });
     let createdPackView = communityPacks.find((item) => item.id === packId);
     if (!createdPackView) {
-      const [owner] = await db
-        .select({
-          username: users.username,
-          nomeCompleto: users.nomeCompleto,
-        })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
+      const owner = await this.getPublicUserProfile(userId);
 
       createdPackView = {
         id: createdPack.id,
@@ -1072,7 +1221,8 @@ export class OfficialIconLibraryService {
         coverImageUrl: createdPack.coverImageUrl ?? null,
         sourceType: "community",
         ownerUserId: null,
-        ownerLabel: resolvePublicAuthorLabel(owner),
+        ownerLabel: owner.displayName,
+        ownerPublicCode: owner.publicCode,
         isPublished: Boolean(createdPack.isActive),
         iconsCount: snapshots.length,
         addedIconsCount: 0,
