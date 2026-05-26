@@ -21,13 +21,17 @@ import { Check, ImagePlus, RotateCcw, Settings2, Trash2, Upload } from "lucide-r
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import {
+  addCommunityPackToLibrary,
   addCommunityIconToLibrary,
   addOfficialIconToLibrary,
   addOfficialPackToLibrary,
+  createCommunityIconPack,
+  fetchCommunityIconPackDetails,
+  fetchIconPacks,
   fetchCommunityIcons,
-  fetchOfficialIconPacks,
   fetchOfficialIcons,
   publishCommunityIcon,
+  unpublishCommunityIconPack,
   type OfficialIconApiModel,
   type OfficialIconPackApiModel,
   unpublishCommunityIcon,
@@ -120,7 +124,12 @@ type ManageExploreTarget = {
   alreadyAdded: boolean;
 };
 
-type ManageActionTarget = ManageBuiltinTarget | ManagePersonalTarget | ManageExploreTarget;
+type ManagePackTarget = {
+  type: "pack";
+  pack: OfficialIconPackApiModel;
+};
+
+type ManageActionTarget = ManageBuiltinTarget | ManagePersonalTarget | ManageExploreTarget | ManagePackTarget;
 
 type IconUploadMode = "individual" | "batch";
 
@@ -192,8 +201,17 @@ export function IconPicker({
   const [exploreSearch, setExploreSearch] = useState("");
   const [exploreCategory, setExploreCategory] = useState("all");
   const [exploreOrigin, setExploreOrigin] = useState<"all" | "official" | "community">("all");
+  const [exploreType, setExploreType] = useState<"all" | "icons" | "packs">("all");
   const [explorePackId, setExplorePackId] = useState("all");
   const [manageActionTarget, setManageActionTarget] = useState<ManageActionTarget | null>(null);
+  const [createPackOpen, setCreatePackOpen] = useState(false);
+  const [newPackName, setNewPackName] = useState("");
+  const [newPackDescription, setNewPackDescription] = useState("");
+  const [newPackCategory, setNewPackCategory] = useState("outro");
+  const [newPackPublish, setNewPackPublish] = useState(true);
+  const [newPackSelectedIconIds, setNewPackSelectedIconIds] = useState<string[]>([]);
+  const [packDetailsOpen, setPackDetailsOpen] = useState(false);
+  const [packDetailsTarget, setPackDetailsTarget] = useState<OfficialIconPackApiModel | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -205,8 +223,20 @@ export function IconPicker({
   });
 
   const { data: officialPacks = [] } = useQuery<OfficialIconPackApiModel[]>({
-    queryKey: ["/api/icons/packs"],
-    queryFn: fetchOfficialIconPacks,
+    queryKey: ["/api/icons/packs", "all"],
+    queryFn: () => fetchIconPacks(),
+    enabled: open,
+    staleTime: 60_000,
+  });
+
+  const { data: explorePacks = [], isLoading: isLoadingExplorePacks } = useQuery<OfficialIconPackApiModel[]>({
+    queryKey: ["/api/icons/packs", "explore", exploreSearch, exploreCategory, exploreOrigin],
+    queryFn: () =>
+      fetchIconPacks({
+        search: exploreSearch || undefined,
+        category: exploreCategory !== "all" ? exploreCategory : undefined,
+        origin: exploreOrigin,
+      }),
     enabled: open,
     staleTime: 60_000,
   });
@@ -216,6 +246,7 @@ export function IconPicker({
     queryFn: async () => {
       const query = {
         search: exploreSearch || undefined,
+        packId: explorePackId !== "all" ? explorePackId : undefined,
       };
       const filterBySelectedCategory = (icons: OfficialIconApiModel[]): OfficialIconApiModel[] =>
         icons.filter((icon) => matchesIconCategory(icon.category, exploreCategory));
@@ -229,7 +260,6 @@ export function IconPicker({
         const onlyOfficialIcons = await fetchOfficialIcons({
           ...query,
           origin: "official",
-          packId: explorePackId !== "all" ? explorePackId : undefined,
         });
         return filterBySelectedCategory(onlyOfficialIcons);
       }
@@ -238,14 +268,35 @@ export function IconPicker({
         fetchOfficialIcons({
           ...query,
           origin: "official",
-          packId: explorePackId !== "all" ? explorePackId : undefined,
         }),
         fetchCommunityIcons(query),
       ]);
 
       return filterBySelectedCategory([...officialList, ...communityList]);
     },
-    enabled: open,
+    enabled: open && exploreType !== "packs",
+    staleTime: 60_000,
+  });
+
+  const { data: activePackDetails, isLoading: isLoadingPackDetails } = useQuery<{
+    pack: OfficialIconPackApiModel;
+    icons: OfficialIconApiModel[];
+  }>({
+    queryKey: ["/api/icons/packs/details", packDetailsTarget?.id, packDetailsTarget?.sourceType],
+    queryFn: async () => {
+      if (!packDetailsTarget) {
+        throw new Error("Pack não selecionado.");
+      }
+      if (packDetailsTarget.sourceType === "community") {
+        return fetchCommunityIconPackDetails(packDetailsTarget.id);
+      }
+      const icons = await fetchOfficialIcons({
+        packId: packDetailsTarget.id,
+        origin: "official",
+      });
+      return { pack: packDetailsTarget, icons };
+    },
+    enabled: open && packDetailsOpen && Boolean(packDetailsTarget),
     staleTime: 60_000,
   });
 
@@ -313,6 +364,7 @@ export function IconPicker({
   const communityPublicationBySourceUserIconId = useMemo(() => {
     const map = new Map<string, OfficialIconApiModel>();
     for (const publication of myCommunityPublications) {
+      if (publication.packId) continue;
       const sourceUserIconId = publication.sourceUserIconId?.trim();
       if (!sourceUserIconId) continue;
       map.set(sourceUserIconId, publication);
@@ -549,6 +601,7 @@ export function IconPicker({
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/official"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/community/packs"] });
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Não foi possível adicionar o ícone.";
@@ -620,8 +673,11 @@ export function IconPicker({
     },
   });
 
-  const addOfficialPackMutation = useMutation({
-    mutationFn: async (packId: string) => addOfficialPackToLibrary(packId),
+  const addPackToLibraryMutation = useMutation({
+    mutationFn: async (pack: OfficialIconPackApiModel) =>
+      pack.sourceType === "community"
+        ? addCommunityPackToLibrary(pack.id)
+        : addOfficialPackToLibrary(pack.id),
     onSuccess: (result) => {
       toast({
         title: "Pack adicionado à sua biblioteca.",
@@ -636,6 +692,58 @@ export function IconPicker({
       const message = error instanceof Error ? error.message : "Não foi possível adicionar o pack.";
       toast({
         title: "Erro ao adicionar pack",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createCommunityPackMutation = useMutation({
+    mutationFn: async (payload: {
+      name: string;
+      description?: string | null;
+      category?: string | null;
+      userIconIds: string[];
+      publish?: boolean;
+    }) => createCommunityIconPack(payload),
+    onSuccess: () => {
+      toast({
+        title: "Pack criado com sucesso.",
+      });
+      setCreatePackOpen(false);
+      setNewPackName("");
+      setNewPackDescription("");
+      setNewPackCategory("outro");
+      setNewPackPublish(true);
+      setNewPackSelectedIconIds([]);
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/community/packs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/community"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Não foi possível criar o pack.";
+      toast({
+        title: "Erro ao criar pack",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const unpublishCommunityPackMutation = useMutation({
+    mutationFn: async (packId: string) => unpublishCommunityIconPack(packId),
+    onSuccess: () => {
+      toast({ title: "Pack despublicado com sucesso." });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/community/packs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/community"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Não foi possível despublicar o pack.";
+      toast({
+        title: "Erro ao despublicar pack",
         description: message,
         variant: "destructive",
       });
@@ -1036,6 +1144,7 @@ export function IconPicker({
       queryClient.invalidateQueries({ queryKey: ["/api/icon-match-rules"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/icons/official"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/icons/community"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/icons/community/packs"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] }),
     ]);
@@ -1158,6 +1267,54 @@ export function IconPicker({
       type: "explore",
       icon,
       alreadyAdded,
+    });
+  };
+
+  const openPackDetails = (pack: OfficialIconPackApiModel) => {
+    setPackDetailsTarget(pack);
+    setPackDetailsOpen(true);
+  };
+
+  const openPackActions = (pack: OfficialIconPackApiModel) => {
+    setManageActionTarget({
+      type: "pack",
+      pack,
+    });
+  };
+
+  const toggleCreatePackIconSelection = (iconId: string) => {
+    setNewPackSelectedIconIds((current) =>
+      current.includes(iconId)
+        ? current.filter((id) => id !== iconId)
+        : [...current, iconId],
+    );
+  };
+
+  const handleCreatePack = () => {
+    const trimmedName = newPackName.trim();
+    if (trimmedName.length < 2) {
+      toast({
+        title: "Nome do pack obrigatório",
+        description: "Informe um nome com pelo menos 2 caracteres.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (newPackSelectedIconIds.length === 0) {
+      toast({
+        title: "Selecione ícones para o pack",
+        description: "Escolha ao menos um ícone da sua biblioteca.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    createCommunityPackMutation.mutate({
+      name: trimmedName,
+      description: newPackDescription.trim() || null,
+      category: resolveUserIconCategory(newPackCategory),
+      userIconIds: newPackSelectedIconIds,
+      publish: newPackPublish,
     });
   };
 
@@ -1299,9 +1456,20 @@ export function IconPicker({
               })}
 
               <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Meus ícones
-                </p>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Meus ícones
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setCreatePackOpen(true)}
+                    data-testid="button-criar-pack"
+                  >
+                    Criar pack
+                  </Button>
+                </div>
                 {isLoadingPersonalIcons ? (
                   <p className="text-xs text-muted-foreground">Carregando ícones personalizados...</p>
                 ) : personalIcons.length === 0 ? (
@@ -1374,15 +1542,25 @@ export function IconPicker({
               ) : null}
             </TabsContent>
 
-            <TabsContent value="explorar" className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+                        <TabsContent value="explorar" className="mt-4 space-y-4">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
                 <Input
                   value={exploreSearch}
                   onChange={(event) => setExploreSearch(event.target.value)}
-                  placeholder="Buscar ícone"
-                  aria-label="Buscar ícone"
+                  placeholder="Buscar ícone ou pack"
+                  aria-label="Buscar ícone ou pack"
                   className="sm:col-span-2"
                 />
+                <Select value={exploreType} onValueChange={(value) => setExploreType(value as "all" | "icons" | "packs")}>
+                  <SelectTrigger aria-label="Filtrar tipo de conteúdo">
+                    <SelectValue placeholder="Tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Ícones e packs</SelectItem>
+                    <SelectItem value="icons">Somente ícones</SelectItem>
+                    <SelectItem value="packs">Somente packs</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Select value={exploreOrigin} onValueChange={(value) => setExploreOrigin(value as "all" | "official" | "community")}>
                   <SelectTrigger aria-label="Filtrar origem dos ícones">
                     <SelectValue placeholder="Origem" />
@@ -1408,101 +1586,140 @@ export function IconPicker({
                 </Select>
               </div>
 
-              <Select value={explorePackId} onValueChange={setExplorePackId}>
-                <SelectTrigger aria-label="Filtrar pack" disabled={exploreOrigin === "community"}>
-                  <SelectValue placeholder="Pack oficial" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os packs</SelectItem>
-                  {officialPacks.map((pack) => (
-                    <SelectItem key={pack.id} value={pack.id}>
-                      {pack.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {exploreType !== "packs" ? (
+                <Select value={explorePackId} onValueChange={setExplorePackId}>
+                  <SelectTrigger aria-label="Filtrar pack">
+                    <SelectValue placeholder="Pack" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os packs</SelectItem>
+                    {officialPacks
+                      .filter((pack) => exploreOrigin === "all" || pack.sourceType === exploreOrigin)
+                      .map((pack) => (
+                        <SelectItem key={pack.id} value={pack.id}>
+                          {pack.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              ) : null}
 
-              {exploreOrigin !== "community" && officialPacks.length > 0 ? (
+              {exploreType !== "icons" ? (
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Packs disponíveis
                   </p>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {officialPacks.map((pack) => {
-                      const allAlreadyAdded = pack.iconsCount > 0 && pack.addedIconsCount >= pack.iconsCount;
-                      return (
-                        <div key={pack.id} className="rounded-lg border p-3">
-                          <p className="text-sm font-medium">{pack.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {pack.description || "Sem descrição"}
-                          </p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {pack.addedIconsCount}/{pack.iconsCount} na sua biblioteca
-                          </p>
-                          <Button
+                  {isLoadingExplorePacks ? (
+                    <p className="text-xs text-muted-foreground">Carregando packs...</p>
+                  ) : explorePacks.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Nenhum pack encontrado para esse filtro.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {explorePacks.map((pack) => {
+                        const allAlreadyAdded = pack.iconsCount > 0 && pack.addedIconsCount >= pack.iconsCount;
+                        return (
+                          <button
+                            key={pack.id}
                             type="button"
-                            size="sm"
-                            variant={allAlreadyAdded ? "outline" : "default"}
-                            className="mt-2 w-full"
-                            disabled={allAlreadyAdded || addOfficialPackMutation.isPending}
-                            onClick={() => addOfficialPackMutation.mutate(pack.id)}
+                            className="rounded-lg border p-3 text-left transition-colors hover:bg-accent"
+                            onClick={() => openPackDetails(pack)}
                           >
-                            {allAlreadyAdded ? "Na sua biblioteca" : "Adicionar pack"}
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                            <p className="text-sm font-medium">{pack.name}</p>
+                            <p className="line-clamp-2 text-xs text-muted-foreground">
+                              {pack.description || "Sem descrição"}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {pack.category ? getIconCategoryLabel(pack.category) : "Sem categoria"} · {pack.iconsCount} ícone(s)
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {pack.sourceType === "community"
+                                ? `Publicado por: ${pack.ownerLabel || "Usuário"}`
+                                : "Catálogo oficial"}
+                            </p>
+                            <div className="mt-2 flex items-center gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={allAlreadyAdded ? "outline" : "default"}
+                                disabled={allAlreadyAdded || addPackToLibraryMutation.isPending}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  addPackToLibraryMutation.mutate(pack);
+                                }}
+                              >
+                                {allAlreadyAdded ? "Na sua biblioteca" : "Adicionar pack à minha biblioteca"}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  openPackActions(pack);
+                                }}
+                              >
+                                Ações
+                              </Button>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ) : null}
 
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Ícones disponíveis
-                </p>
-                {isLoadingOfficialIcons ? (
-                  <p className="text-xs text-muted-foreground">Carregando ícones oficiais...</p>
-                ) : officialIcons.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Nenhum ícone oficial encontrado para esse filtro.</p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-                    {officialIcons.map((icon) => {
-                      const alreadyAdded = icon.alreadyInLibrary || personalOfficialIconIds.has(icon.id);
-                      const isCommunity = icon.sourceType === "community";
-                      return (
-                        <button
-                          key={icon.id}
-                          type="button"
-                          className="rounded-lg border p-2 text-left transition-colors hover:bg-accent"
-                          onClick={() => openExploreActions(icon, alreadyAdded)}
-                        >
-                          <div className="flex items-center gap-2">
-                            <img
-                              src={icon.imageUrl}
-                              alt={icon.name}
-                              className="h-9 w-9 rounded-lg object-cover"
-                            />
-                            <div className="min-w-0">
-                              <p className="truncate text-xs font-medium">{icon.name}</p>
-                              <p className="truncate text-[10px] text-muted-foreground">
-                                {icon.category ? getIconCategoryLabel(icon.category) : (icon.packName || "Sem categoria")}
-                              </p>
+              {exploreType !== "packs" ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Ícones disponíveis
+                  </p>
+                  {isLoadingOfficialIcons ? (
+                    <p className="text-xs text-muted-foreground">Carregando ícones...</p>
+                  ) : officialIcons.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Nenhum ícone encontrado para esse filtro.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                      {officialIcons.map((icon) => {
+                        const alreadyAdded = icon.alreadyInLibrary || personalOfficialIconIds.has(icon.id);
+                        const isCommunity = icon.sourceType === "community";
+                        return (
+                          <button
+                            key={icon.id}
+                            type="button"
+                            className="rounded-lg border p-2 text-left transition-colors hover:bg-accent"
+                            onClick={() => openExploreActions(icon, alreadyAdded)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <img
+                                src={icon.imageUrl}
+                                alt={icon.name}
+                                className="h-9 w-9 rounded-lg object-cover"
+                              />
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-medium">{icon.name}</p>
+                                <p className="truncate text-[10px] text-muted-foreground">
+                                  {icon.category ? getIconCategoryLabel(icon.category) : (icon.packName || "Sem categoria")}
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                          <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
-                            <span className="text-muted-foreground">
-                              {isCommunity ? (icon.ownerLabel || "Publicado por usuário") : "Catálogo oficial"}
-                            </span>
-                            <Badge variant={alreadyAdded ? "secondary" : "outline"} className="h-5 px-1.5 text-[10px]">
-                              {alreadyAdded ? "Na sua biblioteca" : "Disponível"}
-                            </Badge>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+                            <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+                              <span className="text-muted-foreground">
+                                {isCommunity ? (icon.ownerLabel || "Publicado por usuário") : "Catálogo oficial"}
+                              </span>
+                              <Badge variant={alreadyAdded ? "secondary" : "outline"} className="h-5 px-1.5 text-[10px]">
+                                {alreadyAdded ? "Na sua biblioteca" : "Disponível"}
+                              </Badge>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </TabsContent>
 
             <TabsContent value="upload" className="mt-4 space-y-4">
@@ -1771,6 +1988,210 @@ export function IconPicker({
       </Dialog>
 
       <Dialog
+        open={createPackOpen}
+        onOpenChange={(nextOpen) => {
+          setCreatePackOpen(nextOpen);
+          if (!nextOpen) {
+            setNewPackName("");
+            setNewPackDescription("");
+            setNewPackCategory("outro");
+            setNewPackPublish(true);
+            setNewPackSelectedIconIds([]);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] w-[min(95vw,780px)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Criar pack</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">Nome do pack</label>
+                <Input
+                  value={newPackName}
+                  onChange={(event) => setNewPackName(event.target.value)}
+                  placeholder="Ex: Bancos BR"
+                  maxLength={120}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">Categoria</label>
+                <Select value={newPackCategory} onValueChange={setNewPackCategory}>
+                  <SelectTrigger aria-label="Categoria do pack">
+                    <SelectValue placeholder="Categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {USER_ICON_CATEGORIES.map((category) => (
+                      <SelectItem key={category.value} value={category.value}>
+                        {category.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">Descrição (opcional)</label>
+              <Input
+                value={newPackDescription}
+                onChange={(event) => setNewPackDescription(event.target.value)}
+                placeholder="Ex: Ícones úteis para bancos brasileiros"
+                maxLength={280}
+              />
+            </div>
+
+            <label className="flex items-center gap-2 text-xs text-foreground">
+              <input
+                type="checkbox"
+                checked={newPackPublish}
+                onChange={(event) => setNewPackPublish(event.target.checked)}
+              />
+              Publicar em Explorar ícones
+            </label>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Selecione os ícones do pack
+              </p>
+              {personalIcons.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Você ainda não tem ícones na sua biblioteca.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                  {personalIcons.map((item) => {
+                    const selected = newPackSelectedIconIds.includes(item.id);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`rounded-lg border p-2 text-left transition-colors ${
+                          selected ? "border-primary ring-1 ring-primary/30" : "border-border hover:bg-accent"
+                        }`}
+                        onClick={() => toggleCreatePackIconSelection(item.id)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={item.imageUrl}
+                            alt={item.name}
+                            className="h-8 w-8 rounded-lg object-cover"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-medium">{item.name}</p>
+                            <p className="truncate text-[10px] text-muted-foreground">
+                              {item.category ? getIconCategoryLabel(item.category) : "Sem categoria"}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setCreatePackOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              className="flex-1"
+              onClick={handleCreatePack}
+              disabled={createCommunityPackMutation.isPending}
+            >
+              {createCommunityPackMutation.isPending ? "Salvando..." : "Criar pack"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={packDetailsOpen}
+        onOpenChange={(nextOpen) => {
+          setPackDetailsOpen(nextOpen);
+          if (!nextOpen) {
+            setPackDetailsTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] w-[min(95vw,860px)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{packDetailsTarget?.name || "Pack"}</DialogTitle>
+          </DialogHeader>
+
+          {packDetailsTarget ? (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                {packDetailsTarget.sourceType === "community"
+                  ? `Publicado por: ${packDetailsTarget.ownerLabel || "Usuário"}`
+                  : "Catálogo oficial"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {packDetailsTarget.description || "Sem descrição"}
+              </p>
+
+              {isLoadingPackDetails ? (
+                <p className="text-xs text-muted-foreground">Carregando ícones do pack...</p>
+              ) : activePackDetails?.icons?.length ? (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                  {activePackDetails.icons.map((icon) => {
+                    const alreadyAdded = icon.alreadyInLibrary || personalOfficialIconIds.has(icon.id);
+                    return (
+                      <button
+                        key={icon.id}
+                        type="button"
+                        className="rounded-lg border p-2 text-left transition-colors hover:bg-accent"
+                        onClick={() => openExploreActions(icon, alreadyAdded)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={icon.imageUrl}
+                            alt={icon.name}
+                            className="h-8 w-8 rounded-lg object-cover"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-medium">{icon.name}</p>
+                            <p className="truncate text-[10px] text-muted-foreground">
+                              {icon.category ? getIconCategoryLabel(icon.category) : "Sem categoria"}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Nenhum ícone ativo neste pack.</p>
+              )}
+
+              <Button
+                type="button"
+                className="w-full"
+                variant={packDetailsTarget.iconsCount > 0 && packDetailsTarget.addedIconsCount >= packDetailsTarget.iconsCount ? "outline" : "default"}
+                disabled={
+                  (packDetailsTarget.iconsCount > 0 && packDetailsTarget.addedIconsCount >= packDetailsTarget.iconsCount)
+                  || addPackToLibraryMutation.isPending
+                }
+                onClick={() => addPackToLibraryMutation.mutate(packDetailsTarget)}
+              >
+                {packDetailsTarget.iconsCount > 0 && packDetailsTarget.addedIconsCount >= packDetailsTarget.iconsCount
+                  ? "Na sua biblioteca"
+                  : "Adicionar pack à minha biblioteca"}
+              </Button>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={Boolean(editingIcon)}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
@@ -1900,6 +2321,8 @@ export function IconPicker({
                   ? manageActionTarget.icon.name
                   : manageActionTarget?.type === "explore"
                     ? manageActionTarget.icon.name
+                    : manageActionTarget?.type === "pack"
+                      ? manageActionTarget.pack.name
                     : "Ações do ícone"}
             </DialogTitle>
           </DialogHeader>
@@ -2111,9 +2534,64 @@ export function IconPicker({
                 </Button>
               ) : null}
             </div>
+          ) : manageActionTarget?.type === "pack" ? (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                {manageActionTarget.pack.sourceType === "community"
+                  ? `Publicado por: ${manageActionTarget.pack.ownerLabel || "Usuário"}`
+                  : "Catálogo oficial"}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => {
+                  openPackDetails(manageActionTarget.pack);
+                  setManageActionTarget(null);
+                }}
+              >
+                Ver detalhes do pack
+              </Button>
+              <Button
+                type="button"
+                variant={manageActionTarget.pack.iconsCount > 0 && manageActionTarget.pack.addedIconsCount >= manageActionTarget.pack.iconsCount ? "outline" : "default"}
+                className="w-full justify-start"
+                disabled={
+                  (manageActionTarget.pack.iconsCount > 0 && manageActionTarget.pack.addedIconsCount >= manageActionTarget.pack.iconsCount)
+                  || addPackToLibraryMutation.isPending
+                }
+                onClick={() => {
+                  addPackToLibraryMutation.mutate(manageActionTarget.pack);
+                  setManageActionTarget(null);
+                }}
+              >
+                {manageActionTarget.pack.iconsCount > 0 && manageActionTarget.pack.addedIconsCount >= manageActionTarget.pack.iconsCount
+                  ? "Na sua biblioteca"
+                  : "Adicionar pack à minha biblioteca"}
+              </Button>
+              {manageActionTarget.pack.sourceType === "community" ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="w-full justify-start"
+                  disabled={unpublishCommunityPackMutation.isPending}
+                  onClick={async () => {
+                    try {
+                      await unpublishCommunityPackMutation.mutateAsync(manageActionTarget.pack.id);
+                      setManageActionTarget(null);
+                    } catch {
+                      // handled by mutation onError
+                    }
+                  }}
+                >
+                  Despublicar pack
+                </Button>
+              ) : null}
+            </div>
           ) : null}
         </DialogContent>
       </Dialog>
     </>
   );
 }
+

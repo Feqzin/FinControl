@@ -23,9 +23,13 @@ import type {
   AdminCreateOfficialIconPackBodyInput,
   AdminUpdateOfficialIconBodyInput,
   AdminUpdateOfficialIconPackBodyInput,
+  CreateCommunityPackBodyInput,
+  OfficialIconPacksListQueryInput,
   PublishCommunityIconBodyInput,
   OfficialIconsListQueryInput,
+  UpdateCommunityPackBodyInput,
 } from "../validators/official-icons.validators";
+import { randomUUID } from "node:crypto";
 
 const MAX_ICON_BYTES = 512 * 1024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -33,11 +37,15 @@ const JPG_SIGNATURE_PREFIX = Buffer.from([0xff, 0xd8, 0xff]);
 const MIN_NORMALIZED_TERM_LENGTH = 3;
 const MAX_NORMALIZED_TERM_LENGTH = 140;
 const COMMUNITY_ICON_KEY_PREFIX = "community:";
+const COMMUNITY_PACK_ID_PREFIX = "community_pack:";
+const COMMUNITY_PACK_ICON_SEGMENT = ":pack:";
 
 export class OfficialIconNotFoundError extends Error {}
 export class OfficialIconPackNotFoundError extends Error {}
 export class CommunityIconPublicationNotFoundError extends Error {}
 export class CommunityIconPublicationOwnershipError extends Error {}
+export class CommunityPackNotFoundError extends Error {}
+export class CommunityPackOwnershipError extends Error {}
 export class UserIconOwnershipError extends Error {}
 export class CommunityIconPublishConflictError extends Error {}
 
@@ -67,10 +75,19 @@ export type OfficialIconPackView = {
   description: string | null;
   category: string | null;
   coverImageUrl: string | null;
+  sourceType: "official" | "community";
+  ownerUserId: string | null;
+  ownerLabel: string | null;
+  isPublished: boolean;
   iconsCount: number;
   addedIconsCount: number;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type CommunityIconPackDetailsView = {
+  pack: OfficialIconPackView;
+  icons: OfficialIconListItemView[];
 };
 
 type OfficialIconLike = {
@@ -90,6 +107,14 @@ function buildCommunityIconKey(ownerUserId: string, sourceUserIconId: string): s
   return `${COMMUNITY_ICON_KEY_PREFIX}${ownerUserId}:${sourceUserIconId}`;
 }
 
+function buildCommunityPackId(ownerUserId: string): string {
+  return `${COMMUNITY_PACK_ID_PREFIX}${ownerUserId}:${randomUUID()}`;
+}
+
+function buildCommunityPackIconKey(ownerUserId: string, sourceUserIconId: string, packId: string): string {
+  return `${COMMUNITY_ICON_KEY_PREFIX}${ownerUserId}:${sourceUserIconId}${COMMUNITY_PACK_ICON_SEGMENT}${packId}`;
+}
+
 function parseCommunityIconKey(iconKey: string): { ownerUserId: string; sourceUserIconId: string } | null {
   const normalized = String(iconKey ?? "").trim();
   if (!normalized.startsWith(COMMUNITY_ICON_KEY_PREFIX)) {
@@ -99,9 +124,21 @@ function parseCommunityIconKey(iconKey: string): { ownerUserId: string; sourceUs
   const delimiterIndex = payload.indexOf(":");
   if (delimiterIndex <= 0) return null;
   const ownerUserId = payload.slice(0, delimiterIndex).trim();
-  const sourceUserIconId = payload.slice(delimiterIndex + 1).trim();
+  const sourcePayload = payload.slice(delimiterIndex + 1).trim();
+  const sourceUserIconId = sourcePayload.split(COMMUNITY_PACK_ICON_SEGMENT)[0]?.trim() ?? "";
   if (!ownerUserId || !sourceUserIconId) return null;
   return { ownerUserId, sourceUserIconId };
+}
+
+function parseCommunityPackId(packId: string): { ownerUserId: string } | null {
+  const normalized = String(packId ?? "").trim();
+  if (!normalized.startsWith(COMMUNITY_PACK_ID_PREFIX)) return null;
+  const payload = normalized.slice(COMMUNITY_PACK_ID_PREFIX.length);
+  const delimiterIndex = payload.indexOf(":");
+  if (delimiterIndex <= 0) return null;
+  const ownerUserId = payload.slice(0, delimiterIndex).trim();
+  if (!ownerUserId) return null;
+  return { ownerUserId };
 }
 
 function resolveIconOrigin(iconKey: string): "official" | "community" {
@@ -444,7 +481,10 @@ export class OfficialIconLibraryService {
     }));
   }
 
-  async listOfficialPacks(userId: string): Promise<OfficialIconPackView[]> {
+  async listOfficialPacks(
+    userId: string,
+    query: OfficialIconPacksListQueryInput = {},
+  ): Promise<OfficialIconPackView[]> {
     const packs = await db
       .select()
       .from(officialIconPacks)
@@ -480,6 +520,19 @@ export class OfficialIconLibraryService {
       ))
       .groupBy(officialIconLibrary.packId);
 
+    const packOwnershipRows = await db
+      .select({
+        packId: officialIconLibrary.packId,
+        iconKey: officialIconLibrary.iconKey,
+        createdBy: officialIconLibrary.createdBy,
+      })
+      .from(officialIconLibrary)
+      .where(and(
+        eq(officialIconLibrary.isActive, true),
+        inArray(officialIconLibrary.packId, packIds),
+      ))
+      .orderBy(asc(officialIconLibrary.createdAt));
+
     const iconCountByPackId = new Map<string, number>();
     for (const row of iconCounts) {
       if (!row.packId) continue;
@@ -492,17 +545,63 @@ export class OfficialIconLibraryService {
       addedCountByPackId.set(row.packId, Number(row.count) || 0);
     }
 
-    return packs.map((pack) => ({
-      id: pack.id,
-      name: pack.name,
-      description: pack.description ?? null,
-      category: pack.category ?? null,
-      coverImageUrl: pack.coverImageUrl ?? null,
-      iconsCount: iconCountByPackId.get(pack.id) ?? 0,
-      addedIconsCount: addedCountByPackId.get(pack.id) ?? 0,
-      createdAt: pack.createdAt,
-      updatedAt: pack.updatedAt,
-    }));
+    const sourceByPackId = new Map<string, "official" | "community">();
+    const ownerByPackId = new Map<string, string | null>();
+    for (const row of packOwnershipRows) {
+      const packId = row.packId ?? "";
+      if (!packId) continue;
+      const parsedCommunity = parseCommunityIconKey(row.iconKey);
+      if (parsedCommunity) {
+        sourceByPackId.set(packId, "community");
+        ownerByPackId.set(packId, parsedCommunity.ownerUserId || row.createdBy || null);
+      } else if (!sourceByPackId.has(packId)) {
+        sourceByPackId.set(packId, "official");
+      }
+    }
+
+    let list = packs.map((pack) => {
+      const sourceType = sourceByPackId.get(pack.id) ?? (parseCommunityPackId(pack.id) ? "community" : "official");
+      const ownerUserId = sourceType === "community"
+        ? ownerByPackId.get(pack.id) ?? parseCommunityPackId(pack.id)?.ownerUserId ?? null
+        : null;
+
+      return {
+        id: pack.id,
+        name: pack.name,
+        description: pack.description ?? null,
+        category: pack.category ?? null,
+        coverImageUrl: pack.coverImageUrl ?? null,
+        sourceType,
+        ownerUserId,
+        ownerLabel: sourceType === "community" ? "Publicado por usuário" : null,
+        isPublished: Boolean(pack.isActive),
+        iconsCount: iconCountByPackId.get(pack.id) ?? 0,
+        addedIconsCount: addedCountByPackId.get(pack.id) ?? 0,
+        createdAt: pack.createdAt,
+        updatedAt: pack.updatedAt,
+      } satisfies OfficialIconPackView;
+    });
+
+    const normalizedSearch = normalizeIconTerm(query.search ?? "");
+    const normalizedCategory = (query.category ?? "").trim().toLowerCase();
+    const origin = query.origin ?? "all";
+
+    if (origin !== "all") {
+      list = list.filter((pack) => pack.sourceType === origin);
+    }
+    if (normalizedCategory) {
+      list = list.filter((pack) => (pack.category ?? "").trim().toLowerCase() === normalizedCategory);
+    }
+    if (normalizedSearch) {
+      list = list.filter((pack) => normalizeIconTerm([
+        pack.name,
+        pack.description ?? "",
+        pack.category ?? "",
+        pack.ownerLabel ?? "",
+      ].join(" ")).includes(normalizedSearch));
+    }
+
+    return list;
   }
 
   private async addOfficialLibraryIconToUserLibrary(
@@ -755,6 +854,256 @@ export class OfficialIconLibraryService {
     return updated;
   }
 
+  private async resolvePackSourceAndOwner(packId: string): Promise<{
+    sourceType: "official" | "community";
+    ownerUserId: string | null;
+  }> {
+    const rows = await db
+      .select({
+        iconKey: officialIconLibrary.iconKey,
+        createdBy: officialIconLibrary.createdBy,
+      })
+      .from(officialIconLibrary)
+      .where(eq(officialIconLibrary.packId, packId))
+      .orderBy(asc(officialIconLibrary.createdAt));
+
+    for (const row of rows) {
+      const parsedCommunity = parseCommunityIconKey(row.iconKey);
+      if (parsedCommunity) {
+        return {
+          sourceType: "community",
+          ownerUserId: parsedCommunity.ownerUserId || row.createdBy || null,
+        };
+      }
+    }
+
+    const parsedPackId = parseCommunityPackId(packId);
+    if (parsedPackId) {
+      return {
+        sourceType: "community",
+        ownerUserId: parsedPackId.ownerUserId,
+      };
+    }
+
+    return {
+      sourceType: "official",
+      ownerUserId: null,
+    };
+  }
+
+  private async assertCommunityPackOwnership(
+    userId: string,
+    packId: string,
+    options: { canManageAny?: boolean } = {},
+  ): Promise<OfficialIconPack> {
+    const [pack] = await db
+      .select()
+      .from(officialIconPacks)
+      .where(eq(officialIconPacks.id, packId))
+      .limit(1);
+
+    if (!pack) {
+      throw new CommunityPackNotFoundError("Pack comunitário não encontrado.");
+    }
+
+    const metadata = await this.resolvePackSourceAndOwner(packId);
+    if (metadata.sourceType !== "community") {
+      throw new CommunityPackNotFoundError("Pack comunitário não encontrado.");
+    }
+
+    if (metadata.ownerUserId !== userId && !options.canManageAny) {
+      throw new CommunityPackOwnershipError("Você não pode alterar este pack.");
+    }
+
+    return pack;
+  }
+
+  async listCommunityPacks(
+    userId: string,
+    query: OfficialIconPacksListQueryInput = {},
+  ): Promise<OfficialIconPackView[]> {
+    return this.listOfficialPacks(userId, {
+      ...query,
+      origin: "community",
+    });
+  }
+
+  async getCommunityPackDetails(
+    userId: string,
+    packId: string,
+  ): Promise<CommunityIconPackDetailsView> {
+    const packs = await this.listCommunityPacks(userId, { origin: "community" });
+    const pack = packs.find((item) => item.id === packId) ?? null;
+    if (!pack) {
+      throw new CommunityPackNotFoundError("Pack comunitário não encontrado.");
+    }
+
+    const icons = await this.listCommunityIcons(userId, {
+      origin: "community",
+      packId,
+    });
+
+    return { pack, icons };
+  }
+
+  async createCommunityPack(
+    userId: string,
+    payload: CreateCommunityPackBodyInput,
+  ): Promise<CommunityIconPackDetailsView> {
+    const iconIds = Array.from(new Set(payload.userIconIds.map((id) => id.trim()).filter(Boolean)));
+    if (iconIds.length === 0) {
+      throw new UserIconOwnershipError("Selecione ao menos um ícone pessoal para criar o pack.");
+    }
+
+    const sourceIcons = await db
+      .select()
+      .from(userIconLibrary)
+      .where(and(
+        eq(userIconLibrary.userId, userId),
+        inArray(userIconLibrary.id, iconIds),
+      ));
+
+    if (sourceIcons.length !== iconIds.length) {
+      throw new UserIconOwnershipError("Você só pode criar pack com ícones da sua biblioteca.");
+    }
+
+    const publish = payload.publish ?? true;
+    const now = new Date();
+    const packId = buildCommunityPackId(userId);
+    const [createdPack] = await db
+      .insert(officialIconPacks)
+      .values({
+        id: packId,
+        name: payload.name.trim(),
+        description: sanitizeOptionalText(payload.description, 280),
+        category: sanitizeOptionalText(payload.category, 60),
+        coverImageUrl: sourceIcons[0]?.imageUrl ?? null,
+        isActive: publish,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    if (!createdPack) {
+      throw new Error("Não foi possível criar o pack comunitário.");
+    }
+
+    const snapshots = sourceIcons.map((sourceIcon) => {
+      const snapshotTags = sanitizeStringArray(sourceIcon.tags);
+      return {
+        iconKey: buildCommunityPackIconKey(userId, sourceIcon.id, packId),
+        name: sourceIcon.name,
+        imageUrl: sourceIcon.imageUrl,
+        storagePath: sourceIcon.storagePath,
+        category: sanitizeOptionalText(sourceIcon.category, 60),
+        tags: snapshotTags,
+        aliases: snapshotTags,
+        packId,
+        isActive: publish,
+        createdBy: userId,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+
+    if (snapshots.length > 0) {
+      await db.insert(officialIconLibrary).values(snapshots);
+    }
+
+    const communityPacks = await this.listOfficialPacks(userId, { origin: "community" });
+    const createdPackView = communityPacks.find((item) => item.id === packId)
+      ?? ({
+        id: createdPack.id,
+        name: createdPack.name,
+        description: createdPack.description ?? null,
+        category: createdPack.category ?? null,
+        coverImageUrl: createdPack.coverImageUrl ?? null,
+        sourceType: "community",
+        ownerUserId: userId,
+        ownerLabel: "Publicado por usuário",
+        isPublished: Boolean(createdPack.isActive),
+        iconsCount: snapshots.length,
+        addedIconsCount: 0,
+        createdAt: createdPack.createdAt,
+        updatedAt: createdPack.updatedAt,
+      });
+
+    const icons = await this.listCommunityIcons(userId, { packId, origin: "community" });
+    return {
+      pack: createdPackView,
+      icons,
+    };
+  }
+
+  async addCommunityPackToLibrary(userId: string, packId: string): Promise<{
+    packId: string;
+    totalIcons: number;
+    addedCount: number;
+    alreadyInLibraryCount: number;
+    createdMatchRules: number;
+  }> {
+    const metadata = await this.resolvePackSourceAndOwner(packId);
+    if (metadata.sourceType !== "community") {
+      throw new CommunityPackNotFoundError("Pack comunitário não encontrado.");
+    }
+    return this.addOfficialPackToLibrary(userId, packId);
+  }
+
+  async updateCommunityPack(
+    userId: string,
+    packId: string,
+    payload: UpdateCommunityPackBodyInput,
+    options: { canManageAny?: boolean } = {},
+  ): Promise<OfficialIconPack> {
+    await this.assertCommunityPackOwnership(userId, packId, options);
+
+    const updates: Partial<typeof officialIconPacks.$inferInsert> = {
+      updatedAt: new Date(),
+    };
+    if (payload.name !== undefined) updates.name = payload.name.trim();
+    if (payload.description !== undefined) updates.description = sanitizeOptionalText(payload.description, 280);
+    if (payload.category !== undefined) updates.category = sanitizeOptionalText(payload.category, 60);
+    if (payload.publish !== undefined) updates.isActive = payload.publish;
+
+    const [updated] = await db
+      .update(officialIconPacks)
+      .set(updates)
+      .where(eq(officialIconPacks.id, packId))
+      .returning();
+
+    if (!updated) {
+      throw new CommunityPackNotFoundError("Pack comunitário não encontrado.");
+    }
+
+    if (payload.publish !== undefined) {
+      await db
+        .update(officialIconLibrary)
+        .set({
+          isActive: payload.publish,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(officialIconLibrary.packId, packId),
+          sql`${officialIconLibrary.iconKey} like ${`${COMMUNITY_ICON_KEY_PREFIX}%`}`,
+        ));
+    }
+
+    return updated;
+  }
+
+  async unpublishCommunityPack(
+    userId: string,
+    packId: string,
+    options: { canManageAny?: boolean } = {},
+  ): Promise<OfficialIconPack> {
+    return this.updateCommunityPack(
+      userId,
+      packId,
+      { publish: false },
+      options,
+    );
+  }
+
   async addOfficialPackToLibrary(userId: string, packId: string): Promise<{
     packId: string;
     totalIcons: number;
@@ -772,7 +1121,7 @@ export class OfficialIconLibraryService {
       .limit(1);
 
     if (!pack) {
-      throw new OfficialIconPackNotFoundError("Pack oficial não encontrado.");
+      throw new OfficialIconPackNotFoundError("Pack não encontrado.");
     }
 
     const icons = await db
@@ -798,7 +1147,8 @@ export class OfficialIconLibraryService {
     let createdMatchRules = 0;
 
     for (const icon of icons) {
-      const added = await this.addOfficialIconToLibrary(userId, icon.id);
+      const sourceType = resolveIconOrigin(icon.iconKey);
+      const added = await this.addOfficialLibraryIconToUserLibrary(userId, icon.id, sourceType);
       if (added.alreadyInLibrary) {
         alreadyInLibraryCount += 1;
       } else {

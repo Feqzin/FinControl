@@ -29,6 +29,12 @@ export const officialIconsListQuerySchema = z.object({
   origin: optionalOriginField,
 });
 
+export const officialIconPacksListQuerySchema = z.object({
+  search: optionalTrimmedField,
+  category: optionalCategoryField,
+  origin: optionalOriginField,
+});
+
 export const addOfficialIconParamsSchema = z.object({
   id: nonEmptyTrimmed.max(128),
 });
@@ -44,6 +50,27 @@ export const publishCommunityIconBodySchema = z.object({
 export const communityIconParamsSchema = z.object({
   id: nonEmptyTrimmed.max(128),
 });
+
+const communityPackIconIdsSchema = z
+  .array(nonEmptyTrimmed.max(128))
+  .min(1)
+  .max(50)
+  .transform((ids) => Array.from(new Set(ids.map((id) => id.trim()))));
+
+export const createCommunityPackBodySchema = z.object({
+  name: nonEmptyTrimmed.max(120),
+  description: z.string().trim().max(280).optional().nullable(),
+  category: z.string().trim().max(60).optional().nullable(),
+  userIconIds: communityPackIconIdsSchema,
+  publish: z.boolean().optional(),
+});
+
+export const updateCommunityPackBodySchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  description: z.string().trim().max(280).optional().nullable(),
+  category: z.string().trim().max(60).optional().nullable(),
+  publish: z.boolean().optional(),
+}).refine((value) => Object.keys(value).length > 0, "Nenhum campo informado para atualização.");
 
 export const adminCreateOfficialIconPackBodySchema = z.object({
   name: nonEmptyTrimmed.max(120),
@@ -83,10 +110,13 @@ export const adminUpdateOfficialIconBodySchema = adminOfficialIconBodyBaseSchema
   .refine((value: Record<string, unknown>) => Object.keys(value).length > 0, "Nenhum campo informado para atualização.");
 
 export type OfficialIconsListQueryInput = z.infer<typeof officialIconsListQuerySchema>;
+export type OfficialIconPacksListQueryInput = z.infer<typeof officialIconPacksListQuerySchema>;
 export type AddOfficialIconParamsInput = z.infer<typeof addOfficialIconParamsSchema>;
 export type AddOfficialPackParamsInput = z.infer<typeof addOfficialPackParamsSchema>;
 export type PublishCommunityIconBodyInput = z.infer<typeof publishCommunityIconBodySchema>;
 export type CommunityIconParamsInput = z.infer<typeof communityIconParamsSchema>;
+export type CreateCommunityPackBodyInput = z.infer<typeof createCommunityPackBodySchema>;
+export type UpdateCommunityPackBodyInput = z.infer<typeof updateCommunityPackBodySchema>;
 export type AdminCreateOfficialIconPackBodyInput = z.infer<typeof adminCreateOfficialIconPackBodySchema>;
 export type AdminUpdateOfficialIconPackBodyInput = z.infer<typeof adminUpdateOfficialIconPackBodySchema>;
 export type AdminCreateOfficialIconBodyInput = z.infer<typeof adminCreateOfficialIconBodySchema>;

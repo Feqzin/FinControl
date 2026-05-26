@@ -26,6 +26,10 @@ export type OfficialIconPackApiModel = {
   description: string | null;
   category: string | null;
   coverImageUrl: string | null;
+  sourceType: "official" | "community";
+  ownerUserId: string | null;
+  ownerLabel: string | null;
+  isPublished: boolean;
   iconsCount: number;
   addedIconsCount: number;
   createdAt: string;
@@ -65,6 +69,32 @@ export type FetchOfficialIconsQuery = {
   origin?: "all" | "official" | "community";
 };
 
+export type FetchOfficialIconPacksQuery = {
+  search?: string;
+  category?: string;
+  origin?: "all" | "official" | "community";
+};
+
+export type CreateCommunityIconPackPayload = {
+  name: string;
+  description?: string | null;
+  category?: string | null;
+  userIconIds: string[];
+  publish?: boolean;
+};
+
+export type UpdateCommunityIconPackPayload = {
+  name?: string;
+  description?: string | null;
+  category?: string | null;
+  publish?: boolean;
+};
+
+export type CommunityIconPackDetailsApiModel = {
+  pack: OfficialIconPackApiModel;
+  icons: OfficialIconApiModel[];
+};
+
 function toQueryString(query: FetchOfficialIconsQuery): string {
   const params = new URLSearchParams();
   if (query.search?.trim()) params.set("search", query.search.trim());
@@ -83,6 +113,12 @@ export async function fetchOfficialIcons(query: FetchOfficialIconsQuery = {}): P
 
 export async function fetchOfficialIconPacks(): Promise<OfficialIconPackApiModel[]> {
   const response = await apiRequest("GET", "/api/icons/packs");
+  const body = await response.json();
+  return Array.isArray(body?.packs) ? body.packs : [];
+}
+
+export async function fetchIconPacks(query: FetchOfficialIconPacksQuery = {}): Promise<OfficialIconPackApiModel[]> {
+  const response = await apiRequest("GET", `/api/icons/packs${toQueryString(query)}`);
   const body = await response.json();
   return Array.isArray(body?.packs) ? body.packs : [];
 }
@@ -122,5 +158,39 @@ export async function unpublishCommunityIcon(publicationId: string): Promise<{
   publication: OfficialIconApiModel;
 }> {
   const response = await apiRequest("PATCH", `/api/icons/community/${publicationId}/unpublish`);
+  return response.json();
+}
+
+export async function createCommunityIconPack(payload: CreateCommunityIconPackPayload): Promise<CommunityIconPackDetailsApiModel> {
+  const response = await apiRequest("POST", "/api/icons/community/packs", payload);
+  return response.json();
+}
+
+export async function fetchCommunityIconPacks(query: FetchOfficialIconPacksQuery = {}): Promise<OfficialIconPackApiModel[]> {
+  const response = await apiRequest("GET", `/api/icons/community/packs${toQueryString(query)}`);
+  const body = await response.json();
+  return Array.isArray(body?.packs) ? body.packs : [];
+}
+
+export async function fetchCommunityIconPackDetails(packId: string): Promise<CommunityIconPackDetailsApiModel> {
+  const response = await apiRequest("GET", `/api/icons/community/packs/${packId}`);
+  return response.json();
+}
+
+export async function addCommunityPackToLibrary(packId: string): Promise<AddOfficialPackToLibraryResult> {
+  const response = await apiRequest("POST", `/api/icons/community/packs/${packId}/add-to-library`);
+  return response.json();
+}
+
+export async function updateCommunityIconPack(
+  packId: string,
+  payload: UpdateCommunityIconPackPayload,
+): Promise<{ pack: OfficialIconPackApiModel }> {
+  const response = await apiRequest("PATCH", `/api/icons/community/packs/${packId}`, payload);
+  return response.json();
+}
+
+export async function unpublishCommunityIconPack(packId: string): Promise<{ pack: OfficialIconPackApiModel }> {
+  const response = await apiRequest("PATCH", `/api/icons/community/packs/${packId}/unpublish`);
   return response.json();
 }

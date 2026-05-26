@@ -29,6 +29,8 @@ type InMemoryPack = {
   description: string | null;
   category: string | null;
   coverImageUrl: string | null;
+  sourceType: "official" | "community";
+  ownerUserId: string | null;
   isActive: boolean;
 };
 
@@ -65,6 +67,8 @@ function createInMemoryServiceFixture() {
       description: "Ícones oficiais de bancos",
       category: "bancos",
       coverImageUrl: null,
+      sourceType: "official",
+      ownerUserId: null,
       isActive: true,
     },
   ];
@@ -220,8 +224,14 @@ function createInMemoryServiceFixture() {
   };
 
   const service = {
-    async listOfficialIcons(userId: string, query?: { origin?: "official" | "community" | "all" }) {
+    async listOfficialIcons(
+      userId: string,
+      query?: { origin?: "official" | "community" | "all"; packId?: string; search?: string; category?: string },
+    ) {
       const origin = query?.origin ?? "official";
+      const normalizedSearch = String(query?.search ?? "").trim().toLowerCase();
+      const normalizedCategory = String(query?.category ?? "").trim().toLowerCase();
+      const packId = String(query?.packId ?? "").trim();
       return officialIcons
         .filter((icon) => icon.isActive)
         .filter((icon) => {
@@ -229,26 +239,42 @@ function createInMemoryServiceFixture() {
           if (origin === "official") return !isCommunityIconKey(icon.iconKey);
           return true;
         })
+        .filter((icon) => (!packId ? true : icon.packId === packId))
+        .filter((icon) => (!normalizedCategory ? true : String(icon.category ?? "").toLowerCase() === normalizedCategory))
+        .filter((icon) => {
+          if (!normalizedSearch) return true;
+          const haystack = `${icon.name} ${icon.category ?? ""} ${icon.tags.join(" ")} ${icon.aliases.join(" ")}`.toLowerCase();
+          return haystack.includes(normalizedSearch);
+        })
         .map((icon) => mapListItem(icon, userId));
     },
-    async listCommunityIcons(userId: string) {
-      return service.listOfficialIcons(userId, { origin: "community" });
+    async listCommunityIcons(userId: string, query?: { packId?: string; search?: string; category?: string }) {
+      return service.listOfficialIcons(userId, { ...query, origin: "community" });
     },
-    async listOfficialPacks(userId: string) {
+    async listOfficialPacks(userId: string, query?: { origin?: "all" | "official" | "community"; category?: string; search?: string }) {
+      const origin = query?.origin ?? "all";
+      const normalizedCategory = String(query?.category ?? "").trim().toLowerCase();
+      const normalizedSearch = String(query?.search ?? "").trim().toLowerCase();
       return packs
         .filter((pack) => pack.isActive)
+        .filter((pack) => (origin === "all" ? true : pack.sourceType === origin))
+        .filter((pack) => (!normalizedCategory ? true : String(pack.category ?? "").toLowerCase() === normalizedCategory))
+        .filter((pack) => (!normalizedSearch
+          ? true
+          : `${pack.name} ${pack.description ?? ""} ${pack.category ?? ""}`.toLowerCase().includes(normalizedSearch)))
         .map((pack) => {
           const totalIcons = officialIcons.filter((icon) =>
-            icon.isActive && icon.packId === pack.id && !isCommunityIconKey(icon.iconKey)).length;
+            icon.isActive && icon.packId === pack.id).length;
           const addedIconsCount = userIcons.filter((icon) =>
             icon.userId === userId
             && icon.officialIconId
             && officialIcons.some((official) =>
               official.id === icon.officialIconId
-              && official.packId === pack.id
-              && !isCommunityIconKey(official.iconKey))).length;
+              && official.packId === pack.id)).length;
           return {
             ...pack,
+            ownerLabel: pack.sourceType === "community" ? "Publicado por usuário" : null,
+            isPublished: pack.isActive,
             iconsCount: totalIcons,
             addedIconsCount,
             createdAt: new Date(),
@@ -337,6 +363,134 @@ function createInMemoryServiceFixture() {
         updatedAt: new Date(),
       };
     },
+    async listCommunityPacks(userId: string, query?: { category?: string; search?: string }) {
+      return service.listOfficialPacks(userId, {
+        ...query,
+        origin: "community",
+      });
+    },
+    async getCommunityPackDetails(userId: string, packId: string) {
+      const pack = packs.find((item) => item.id === packId && item.isActive && item.sourceType === "community");
+      if (!pack) {
+        const error = new Error("Pack comunitário não encontrado.");
+        error.name = "CommunityPackNotFoundError";
+        throw error;
+      }
+      const list = await service.listOfficialPacks(userId, { origin: "community" });
+      const packView = list.find((item) => item.id === pack.id);
+      if (!packView) {
+        const error = new Error("Pack comunitário não encontrado.");
+        error.name = "CommunityPackNotFoundError";
+        throw error;
+      }
+      const icons = await service.listCommunityIcons(userId, { packId });
+      return { pack: packView, icons };
+    },
+    async createCommunityPack(
+      userId: string,
+      payload: { name: string; userIconIds: string[]; description?: string | null; category?: string | null; publish?: boolean },
+    ) {
+      const uniqueIconIds = Array.from(new Set(payload.userIconIds));
+      const selectedIcons = userIcons.filter((icon) => icon.userId === userId && uniqueIconIds.includes(icon.id));
+      if (selectedIcons.length !== uniqueIconIds.length) {
+        const error = new Error("Você só pode criar pack com ícones da sua biblioteca.");
+        error.name = "UserIconOwnershipError";
+        throw error;
+      }
+
+      const publish = payload.publish ?? true;
+      const packId = `community_pack:${userId}:${packs.length + 1}`;
+      packs.push({
+        id: packId,
+        name: payload.name,
+        description: payload.description ?? null,
+        category: payload.category ?? null,
+        coverImageUrl: selectedIcons[0]?.imageUrl ?? null,
+        sourceType: "community",
+        ownerUserId: userId,
+        isActive: publish,
+      });
+
+      for (const source of selectedIcons) {
+        officialIcons.push({
+          id: `community_pack_icon_${officialSeq++}`,
+          iconKey: `${COMMUNITY_PREFIX}${userId}:${source.id}:pack:${packId}`,
+          name: source.name,
+          imageUrl: source.imageUrl,
+          category: source.category,
+          tags: [...source.tags],
+          aliases: [...source.tags],
+          packId,
+          packName: payload.name,
+          isActive: publish,
+          createdBy: userId,
+        });
+      }
+
+      return service.getCommunityPackDetails(userId, packId);
+    },
+    async addCommunityPackToLibrary(userId: string, packId: string) {
+      const pack = packs.find((item) => item.id === packId && item.isActive && item.sourceType === "community");
+      if (!pack) {
+        const error = new Error("Pack comunitário não encontrado.");
+        error.name = "CommunityPackNotFoundError";
+        throw error;
+      }
+      const icons = officialIcons.filter((icon) => icon.isActive && icon.packId === packId && isCommunityIconKey(icon.iconKey));
+      let addedCount = 0;
+      let alreadyInLibraryCount = 0;
+      let createdMatchRules = 0;
+      for (const icon of icons) {
+        const result = await service.addCommunityIconToLibrary(userId, icon.id);
+        if (result.alreadyInLibrary) alreadyInLibraryCount += 1;
+        else addedCount += 1;
+        createdMatchRules += result.createdMatchRules;
+      }
+      return {
+        packId,
+        totalIcons: icons.length,
+        addedCount,
+        alreadyInLibraryCount,
+        createdMatchRules,
+      };
+    },
+    async updateCommunityPack(
+      userId: string,
+      packId: string,
+      payload: { name?: string; description?: string | null; category?: string | null; publish?: boolean },
+      options?: { canManageAny?: boolean },
+    ) {
+      const pack = packs.find((item) => item.id === packId && item.sourceType === "community");
+      if (!pack) {
+        const error = new Error("Pack comunitário não encontrado.");
+        error.name = "CommunityPackNotFoundError";
+        throw error;
+      }
+      if (pack.ownerUserId !== userId && !options?.canManageAny) {
+        const error = new Error("Você não pode alterar este pack.");
+        error.name = "CommunityPackOwnershipError";
+        throw error;
+      }
+      if (payload.name !== undefined) pack.name = payload.name;
+      if (payload.description !== undefined) pack.description = payload.description;
+      if (payload.category !== undefined) pack.category = payload.category;
+      if (payload.publish !== undefined) {
+        pack.isActive = payload.publish;
+        for (const icon of officialIcons) {
+          if (icon.packId === packId && isCommunityIconKey(icon.iconKey)) {
+            icon.isActive = payload.publish;
+          }
+        }
+      }
+      return {
+        ...pack,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    },
+    async unpublishCommunityPack(userId: string, packId: string, options?: { canManageAny?: boolean }) {
+      return service.updateCommunityPack(userId, packId, { publish: false }, options);
+    },
     async addOfficialPackToLibrary(userId: string, packId: string) {
       const pack = packs.find((item) => item.id === packId && item.isActive);
       if (!pack) {
@@ -369,6 +523,8 @@ function createInMemoryServiceFixture() {
         description: null,
         category: null,
         coverImageUrl: null,
+        sourceType: "official",
+        ownerUserId: null,
         isActive: true,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -485,8 +641,14 @@ function createOfficialIconsRouteApp() {
   app.get("/api/icons/official", requireAuth, controller.listOfficial);
   app.get("/api/icons/community", requireAuth, controller.listCommunity);
   app.get("/api/icons/packs", requireAuth, controller.listPacks);
+  app.get("/api/icons/community/packs", requireAuth, controller.listCommunityPacks);
+  app.get("/api/icons/community/packs/:id", requireAuth, controller.getCommunityPackDetails);
   app.post("/api/icons/community/publish", requireAuth, controller.publishCommunityIcon);
+  app.post("/api/icons/community/packs", requireAuth, controller.createCommunityPack);
   app.post("/api/icons/community/:id/add-to-library", requireAuth, controller.addCommunityIconToLibrary);
+  app.post("/api/icons/community/packs/:id/add-to-library", requireAuth, controller.addCommunityPackToLibrary);
+  app.patch("/api/icons/community/packs/:id", requireAuth, controller.updateCommunityPack);
+  app.patch("/api/icons/community/packs/:id/unpublish", requireAuth, controller.unpublishCommunityPack);
   app.patch("/api/icons/community/:id/unpublish", requireAuth, controller.unpublishCommunityIcon);
   app.post("/api/icons/official/:id/add-to-library", requireAuth, controller.addOfficialIconToLibrary);
   app.post("/api/icons/packs/:id/add-to-library", requireAuth, controller.addOfficialPackToLibrary);
@@ -505,8 +667,14 @@ test("rotas /api/icons/* e /api/admin/icons/* em serverless exigem requireAuth",
   const patterns = [
     /app\.get\(\s*"\/api\/icons\/official"\s*,\s*requireAuth\s*,\s*officialIconsController\.listOfficial\s*\)/m,
     /app\.get\(\s*"\/api\/icons\/community"\s*,\s*requireAuth\s*,\s*officialIconsController\.listCommunity\s*\)/m,
+    /app\.get\(\s*"\/api\/icons\/community\/packs"\s*,\s*requireAuth\s*,\s*officialIconsController\.listCommunityPacks\s*\)/m,
+    /app\.get\(\s*"\/api\/icons\/community\/packs\/:id"\s*,\s*requireAuth\s*,\s*officialIconsController\.getCommunityPackDetails\s*\)/m,
     /app\.post\(\s*"\/api\/icons\/community\/publish"\s*,\s*requireAuth\s*,\s*officialIconsController\.publishCommunityIcon\s*\)/m,
+    /app\.post\(\s*"\/api\/icons\/community\/packs"\s*,\s*requireAuth\s*,\s*officialIconsController\.createCommunityPack\s*\)/m,
     /app\.post\(\s*"\/api\/icons\/community\/:id\/add-to-library"\s*,\s*requireAuth\s*,\s*officialIconsController\.addCommunityIconToLibrary\s*\)/m,
+    /app\.post\(\s*"\/api\/icons\/community\/packs\/:id\/add-to-library"\s*,\s*requireAuth\s*,\s*officialIconsController\.addCommunityPackToLibrary\s*\)/m,
+    /app\.patch\(\s*"\/api\/icons\/community\/packs\/:id"\s*,\s*requireAuth\s*,\s*officialIconsController\.updateCommunityPack\s*\)/m,
+    /app\.patch\(\s*"\/api\/icons\/community\/packs\/:id\/unpublish"\s*,\s*requireAuth\s*,\s*officialIconsController\.unpublishCommunityPack\s*\)/m,
     /app\.patch\(\s*"\/api\/icons\/community\/:id\/unpublish"\s*,\s*requireAuth\s*,\s*officialIconsController\.unpublishCommunityIcon\s*\)/m,
     /app\.get\(\s*"\/api\/icons\/packs"\s*,\s*requireAuth\s*,\s*officialIconsController\.listPacks\s*\)/m,
     /app\.post\(\s*"\/api\/icons\/official\/:id\/add-to-library"\s*,\s*requireAuth\s*,\s*officialIconsController\.addOfficialIconToLibrary\s*\)/m,
@@ -668,6 +836,123 @@ test("community icons: despublicar não apaga cópias já adicionadas por outros
     const userBCopy = fixture.userIcons.find((icon) =>
       icon.userId === "user_b" && icon.officialIconId === publishBody.publication.id);
     assert.ok(userBCopy);
+  });
+});
+
+test("community packs: usuário cria pack com ícones próprios e outro usuário adiciona sem duplicar", async () => {
+  const { app, fixture } = createOfficialIconsRouteApp();
+  await withTestServer(app, async (baseUrl) => {
+    const createPack = await fetch(`${baseUrl}/api/icons/community/packs`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Bancos da Comunidade",
+        category: "banco",
+        userIconIds: ["user-upload-a"],
+        publish: true,
+      }),
+    });
+
+    assert.equal(createPack.status, 201);
+    const createBody = await createPack.json();
+    const packId = createBody?.pack?.id as string;
+    assert.equal(typeof packId, "string");
+
+    const listAsUserB = await fetch(`${baseUrl}/api/icons/community/packs`, {
+      headers: { "x-test-auth": "user_b" },
+    });
+    assert.equal(listAsUserB.status, 200);
+    const listBody = await listAsUserB.json();
+    assert.equal(listBody.packs.some((pack: { id: string }) => pack.id === packId), true);
+
+    const addPack = await fetch(`${baseUrl}/api/icons/community/packs/${packId}/add-to-library`, {
+      method: "POST",
+      headers: { "x-test-auth": "user_b" },
+    });
+    assert.equal(addPack.status, 201);
+    const addPackBody = await addPack.json();
+    assert.equal(addPackBody.addedCount > 0, true);
+
+    const addPackAgain = await fetch(`${baseUrl}/api/icons/community/packs/${packId}/add-to-library`, {
+      method: "POST",
+      headers: { "x-test-auth": "user_b" },
+    });
+    assert.equal(addPackAgain.status, 201);
+    const addPackAgainBody = await addPackAgain.json();
+    assert.equal(addPackAgainBody.addedCount, 0);
+    assert.equal(addPackAgainBody.alreadyInLibraryCount >= addPackBody.addedCount, true);
+
+    const bCopies = fixture.userIcons.filter((icon) => icon.userId === "user_b" && icon.sourceType === "community");
+    assert.equal(bCopies.length > 0, true);
+  });
+});
+
+test("community packs: ownership impede criar com ícone de outro usuário e despublicar/editar pack alheio", async () => {
+  const { app, fixture } = createOfficialIconsRouteApp();
+  await withTestServer(app, async (baseUrl) => {
+    const createForeignPack = await fetch(`${baseUrl}/api/icons/community/packs`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_b",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Pack Inválido",
+        userIconIds: ["user-upload-a"],
+        publish: true,
+      }),
+    });
+    assert.equal(createForeignPack.status, 400);
+
+    const createOwnPack = await fetch(`${baseUrl}/api/icons/community/packs`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Pack do User A",
+        userIconIds: ["user-upload-a"],
+        publish: true,
+      }),
+    });
+    assert.equal(createOwnPack.status, 201);
+    const createOwnBody = await createOwnPack.json();
+    const packId = createOwnBody?.pack?.id as string;
+
+    const updateForeign = await fetch(`${baseUrl}/api/icons/community/packs/${packId}`, {
+      method: "PATCH",
+      headers: {
+        "x-test-auth": "user_b",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ name: "Hack Pack" }),
+    });
+    assert.equal(updateForeign.status, 403);
+
+    const unpublishForeign = await fetch(`${baseUrl}/api/icons/community/packs/${packId}/unpublish`, {
+      method: "PATCH",
+      headers: { "x-test-auth": "user_b" },
+    });
+    assert.equal(unpublishForeign.status, 403);
+
+    const addByUserB = await fetch(`${baseUrl}/api/icons/community/packs/${packId}/add-to-library`, {
+      method: "POST",
+      headers: { "x-test-auth": "user_b" },
+    });
+    assert.equal(addByUserB.status, 201);
+
+    const unpublishOwn = await fetch(`${baseUrl}/api/icons/community/packs/${packId}/unpublish`, {
+      method: "PATCH",
+      headers: { "x-test-auth": "user_a" },
+    });
+    assert.equal(unpublishOwn.status, 200);
+
+    const bCopies = fixture.userIcons.filter((icon) => icon.userId === "user_b" && icon.sourceType === "community");
+    assert.equal(bCopies.length > 0, true);
   });
 });
 

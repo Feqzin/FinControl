@@ -4,6 +4,8 @@ import {
   CommunityIconPublicationNotFoundError,
   CommunityIconPublicationOwnershipError,
   CommunityIconPublishConflictError,
+  CommunityPackNotFoundError,
+  CommunityPackOwnershipError,
   OfficialIconLibraryService,
   OfficialIconNotFoundError,
   OfficialIconPackNotFoundError,
@@ -17,8 +19,11 @@ import {
   adminUpdateOfficialIconBodySchema,
   adminUpdateOfficialIconPackBodySchema,
   communityIconParamsSchema,
+  createCommunityPackBodySchema,
+  officialIconPacksListQuerySchema,
   officialIconsListQuerySchema,
   publishCommunityIconBodySchema,
+  updateCommunityPackBodySchema,
 } from "../validators/official-icons.validators.js";
 import { getUserId, sendBadRequest } from "./controller-utils.js";
 
@@ -49,15 +54,22 @@ function mapServiceErrorToResponse(res: Response, error: unknown): Response | nu
   if (
     error instanceof OfficialIconNotFoundError
     || error instanceof OfficialIconPackNotFoundError
+    || error instanceof CommunityPackNotFoundError
     || errorName === "OfficialIconNotFoundError"
     || errorName === "OfficialIconPackNotFoundError"
+    || errorName === "CommunityPackNotFoundError"
   ) {
     return res.status(404).json({ message: errorMessage });
   }
   if (error instanceof CommunityIconPublicationNotFoundError || errorName === "CommunityIconPublicationNotFoundError") {
     return res.status(404).json({ message: errorMessage });
   }
-  if (error instanceof CommunityIconPublicationOwnershipError || errorName === "CommunityIconPublicationOwnershipError") {
+  if (
+    error instanceof CommunityIconPublicationOwnershipError
+    || error instanceof CommunityPackOwnershipError
+    || errorName === "CommunityIconPublicationOwnershipError"
+    || errorName === "CommunityPackOwnershipError"
+  ) {
     return res.status(403).json({ message: errorMessage });
   }
   if (
@@ -88,8 +100,40 @@ export function createOfficialIconsController(service: OfficialIconLibraryServic
 
     listPacks: async (req: Request, res: Response) => {
       const userId = getUserId(req);
-      const packs = await service.listOfficialPacks(userId);
+      const parsed = officialIconPacksListQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+      const packs = await service.listOfficialPacks(userId, parsed.data);
       return res.json({ packs });
+    },
+
+    listCommunityPacks: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const parsed = officialIconPacksListQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+      try {
+        const packs = await service.listCommunityPacks(userId, parsed.data);
+        return res.json({ packs });
+      } catch (error) {
+        return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao listar packs comunitários." });
+      }
+    },
+
+    getCommunityPackDetails: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const params = addOfficialPackParamsSchema.safeParse(req.params);
+      if (!params.success) {
+        return sendBadRequest(res, params.error.message);
+      }
+      try {
+        const details = await service.getCommunityPackDetails(userId, params.data.id);
+        return res.json(details);
+      } catch (error) {
+        return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao carregar pack comunitário." });
+      }
     },
 
     listCommunity: async (req: Request, res: Response) => {
@@ -155,6 +199,70 @@ export function createOfficialIconsController(service: OfficialIconLibraryServic
         return res.status(201).json(result);
       } catch (error) {
         return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao publicar ícone." });
+      }
+    },
+
+    createCommunityPack: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const parsed = createCommunityPackBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+      try {
+        const result = await service.createCommunityPack(userId, parsed.data);
+        return res.status(201).json(result);
+      } catch (error) {
+        return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao criar pack comunitário." });
+      }
+    },
+
+    addCommunityPackToLibrary: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const parsed = addOfficialPackParamsSchema.safeParse(req.params);
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+      try {
+        const result = await service.addCommunityPackToLibrary(userId, parsed.data.id);
+        return res.status(201).json(result);
+      } catch (error) {
+        return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao adicionar pack comunitário." });
+      }
+    },
+
+    updateCommunityPack: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const params = addOfficialPackParamsSchema.safeParse(req.params);
+      if (!params.success) {
+        return sendBadRequest(res, params.error.message);
+      }
+      const parsed = updateCommunityPackBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+      try {
+        const pack = await service.updateCommunityPack(userId, params.data.id, parsed.data, {
+          canManageAny: isOfficialIconAdmin(req),
+        });
+        return res.json({ pack });
+      } catch (error) {
+        return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao atualizar pack comunitário." });
+      }
+    },
+
+    unpublishCommunityPack: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const params = addOfficialPackParamsSchema.safeParse(req.params);
+      if (!params.success) {
+        return sendBadRequest(res, params.error.message);
+      }
+      try {
+        const pack = await service.unpublishCommunityPack(userId, params.data.id, {
+          canManageAny: isOfficialIconAdmin(req),
+        });
+        return res.json({ pack });
+      } catch (error) {
+        return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao despublicar pack comunitário." });
       }
     },
 
