@@ -13,6 +13,7 @@ import {
   iconMatchRules,
   officialIconLibrary,
   officialIconPacks,
+  users,
   userIconLibrary,
   type OfficialIconLibraryItem,
   type OfficialIconPack,
@@ -238,6 +239,21 @@ function sanitizeOptionalText(value: string | null | undefined, maxLength: numbe
   const trimmed = (value ?? "").trim();
   if (!trimmed) return null;
   return trimmed.slice(0, maxLength);
+}
+
+function resolvePublicAuthorLabel(user: { nomeCompleto: string | null; username: string | null } | null | undefined): string {
+  const displayName = sanitizeOptionalText(user?.nomeCompleto, 80);
+  if (displayName) return displayName;
+
+  const username = sanitizeOptionalText(user?.username, 120);
+  if (username) {
+    const safeUsername = username.includes("@")
+      ? sanitizeOptionalText(username.split("@")[0] ?? "", 60)
+      : username;
+    if (safeUsername) return safeUsername;
+  }
+
+  return "Usuário";
 }
 
 function normalizeIconTerm(value: string): string {
@@ -559,10 +575,36 @@ export class OfficialIconLibraryService {
       }
     }
 
+    const ownerUserIds = Array.from(
+      new Set(
+        Array.from(ownerByPackId.values()).filter(
+          (value): value is string => typeof value === "string" && value.trim().length > 0,
+        ),
+      ),
+    );
+    const ownerLabelByUserId = new Map<string, string>();
+    if (ownerUserIds.length > 0) {
+      const ownerRows = await db
+        .select({
+          id: users.id,
+          username: users.username,
+          nomeCompleto: users.nomeCompleto,
+        })
+        .from(users)
+        .where(inArray(users.id, ownerUserIds));
+
+      for (const owner of ownerRows) {
+        ownerLabelByUserId.set(owner.id, resolvePublicAuthorLabel(owner));
+      }
+    }
+
     let list = packs.map((pack) => {
       const sourceType = sourceByPackId.get(pack.id) ?? (parseCommunityPackId(pack.id) ? "community" : "official");
       const ownerUserId = sourceType === "community"
         ? ownerByPackId.get(pack.id) ?? parseCommunityPackId(pack.id)?.ownerUserId ?? null
+        : null;
+      const ownerLabel = sourceType === "community"
+        ? (ownerUserId ? ownerLabelByUserId.get(ownerUserId) ?? "Usuário" : "Usuário")
         : null;
 
       return {
@@ -572,8 +614,8 @@ export class OfficialIconLibraryService {
         category: pack.category ?? null,
         coverImageUrl: pack.coverImageUrl ?? null,
         sourceType,
-        ownerUserId,
-        ownerLabel: sourceType === "community" ? "Publicado por usuário" : null,
+        ownerUserId: null,
+        ownerLabel,
         isPublished: Boolean(pack.isActive),
         iconsCount: iconCountByPackId.get(pack.id) ?? 0,
         addedIconsCount: addedCountByPackId.get(pack.id) ?? 0,
@@ -1011,22 +1053,33 @@ export class OfficialIconLibraryService {
     }
 
     const communityPacks = await this.listOfficialPacks(userId, { origin: "community" });
-    const createdPackView = communityPacks.find((item) => item.id === packId)
-      ?? ({
+    let createdPackView = communityPacks.find((item) => item.id === packId);
+    if (!createdPackView) {
+      const [owner] = await db
+        .select({
+          username: users.username,
+          nomeCompleto: users.nomeCompleto,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      createdPackView = {
         id: createdPack.id,
         name: createdPack.name,
         description: createdPack.description ?? null,
         category: createdPack.category ?? null,
         coverImageUrl: createdPack.coverImageUrl ?? null,
         sourceType: "community",
-        ownerUserId: userId,
-        ownerLabel: "Publicado por usuário",
+        ownerUserId: null,
+        ownerLabel: resolvePublicAuthorLabel(owner),
         isPublished: Boolean(createdPack.isActive),
         iconsCount: snapshots.length,
         addedIconsCount: 0,
         createdAt: createdPack.createdAt,
         updatedAt: createdPack.updatedAt,
-      });
+      };
+    }
 
     const icons = await this.listCommunityIcons(userId, { packId, origin: "community" });
     return {

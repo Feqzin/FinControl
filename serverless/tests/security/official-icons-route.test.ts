@@ -59,6 +59,28 @@ function parseCommunitySourceUserIconId(iconKey: string): string | null {
   return chunks.slice(1).join(":") || null;
 }
 
+const testPublicUsersById: Record<string, { nomeCompleto: string | null; username: string | null }> = {
+  user_a: { nomeCompleto: "Fernando", username: "fernando.publico@example.com" },
+  user_b: { nomeCompleto: null, username: "elza.finance@example.com" },
+  admin_user: { nomeCompleto: "Admin", username: "admin@example.com" },
+};
+
+function resolvePublicOwnerLabel(ownerUserId: string | null | undefined): string {
+  if (!ownerUserId) return "Usuário";
+  const profile = testPublicUsersById[ownerUserId];
+  if (!profile) return "Usuário";
+
+  const nomeCompleto = String(profile.nomeCompleto ?? "").trim();
+  if (nomeCompleto) return nomeCompleto;
+
+  const username = String(profile.username ?? "").trim();
+  if (!username) return "Usuário";
+  if (!username.includes("@")) return username;
+
+  const localPart = username.split("@")[0]?.trim() ?? "";
+  return localPart || "Usuário";
+}
+
 function createInMemoryServiceFixture() {
   const packs: InMemoryPack[] = [
     {
@@ -135,7 +157,7 @@ function createInMemoryServiceFixture() {
     sourceType: isCommunityIconKey(icon.iconKey) ? "community" : "official",
     sourceUserIconId: parseCommunitySourceUserIconId(icon.iconKey),
     ownerUserId: isCommunityIconKey(icon.iconKey) ? icon.createdBy : null,
-    ownerLabel: isCommunityIconKey(icon.iconKey) ? "Publicado por usuário" : null,
+    ownerLabel: isCommunityIconKey(icon.iconKey) ? resolvePublicOwnerLabel(icon.createdBy) : null,
     name: icon.name,
     imageUrl: icon.imageUrl,
     storagePath: null,
@@ -273,7 +295,8 @@ function createInMemoryServiceFixture() {
               && official.packId === pack.id)).length;
           return {
             ...pack,
-            ownerLabel: pack.sourceType === "community" ? "Publicado por usuário" : null,
+            ownerUserId: null,
+            ownerLabel: pack.sourceType === "community" ? resolvePublicOwnerLabel(pack.ownerUserId) : null,
             isPublished: pack.isActive,
             iconsCount: totalIcons,
             addedIconsCount,
@@ -867,6 +890,17 @@ test("community packs: usuário cria pack com ícones próprios e outro usuário
     assert.equal(listAsUserB.status, 200);
     const listBody = await listAsUserB.json();
     assert.equal(listBody.packs.some((pack: { id: string }) => pack.id === packId), true);
+    const listedPack = listBody.packs.find((pack: { id: string }) => pack.id === packId);
+    assert.equal(listedPack?.ownerLabel, "Fernando");
+    assert.equal(String(listedPack?.ownerLabel ?? "").includes("@"), false);
+
+    const detailsAsUserB = await fetch(`${baseUrl}/api/icons/community/packs/${packId}`, {
+      headers: { "x-test-auth": "user_b" },
+    });
+    assert.equal(detailsAsUserB.status, 200);
+    const detailsBody = await detailsAsUserB.json();
+    assert.equal(detailsBody?.pack?.ownerLabel, "Fernando");
+    assert.equal(String(detailsBody?.pack?.ownerLabel ?? "").includes("@"), false);
 
     const addPack = await fetch(`${baseUrl}/api/icons/community/packs/${packId}/add-to-library`, {
       method: "POST",
@@ -887,6 +921,37 @@ test("community packs: usuário cria pack com ícones próprios e outro usuário
 
     const bCopies = fixture.userIcons.filter((icon) => icon.userId === "user_b" && icon.sourceType === "community");
     assert.equal(bCopies.length > 0, true);
+  });
+});
+
+test("community packs: fallback público usa parte segura do username sem expor email", async () => {
+  const { app } = createOfficialIconsRouteApp();
+  await withTestServer(app, async (baseUrl) => {
+    const createPack = await fetch(`${baseUrl}/api/icons/community/packs`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_b",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Pack da Elza",
+        category: "mercado",
+        userIconIds: ["user-upload-b"],
+        publish: true,
+      }),
+    });
+    assert.equal(createPack.status, 201);
+    const createBody = await createPack.json();
+    const packId = createBody?.pack?.id as string;
+
+    const listAsUserA = await fetch(`${baseUrl}/api/icons/community/packs`, {
+      headers: { "x-test-auth": "user_a" },
+    });
+    assert.equal(listAsUserA.status, 200);
+    const listBody = await listAsUserA.json();
+    const listedPack = listBody.packs.find((pack: { id: string }) => pack.id === packId);
+    assert.equal(listedPack?.ownerLabel, "elza.finance");
+    assert.equal(String(listedPack?.ownerLabel ?? "").includes("@"), false);
   });
 });
 
