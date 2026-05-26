@@ -111,9 +111,12 @@ import {
   resolveServicoBillingFields,
 } from "@shared/servico-periodicidade";
 import {
+  ICON_CATEGORY_OPTIONS,
   ICON_CATEGORIES,
   getIconCategoryFilterValues,
+  isVisibleIconCategory,
   matchesIconCategory,
+  normalizeIconCategoryForDisplay,
   resolveIconCategoryValue,
 } from "@shared/icon-categories";
 import {
@@ -3655,16 +3658,30 @@ test("icon matching: ícone pessoal reconhece compra com itaucard/itaú", () => 
   assert.equal(result.shouldSuggest, true);
 });
 
-test("icon categories: lista amigável contém novas categorias e mantém 'Outro' por último", () => {
-  const values = ICON_CATEGORIES.map((category) => category.value);
-  assert.equal(values.includes("delivery"), true);
-  assert.equal(values.includes("farmacia"), true);
-  assert.equal(values.includes("imposto"), true);
-  assert.equal(values.includes("carteira"), false);
-  assert.equal(values.includes("assinatura"), false);
-  assert.equal(values.includes("educacao"), false);
-  assert.equal(values.includes("telefonia"), false);
-  assert.equal(values[values.length - 1], "outro");
+test("icon categories: lista visível final bate exatamente com o catálogo aprovado", () => {
+  const values = ICON_CATEGORY_OPTIONS.map((category) => category.value);
+  assert.deepEqual(values, [
+    "banco",
+    "servico",
+    "loja",
+    "mercado",
+    "delivery",
+    "farmacia",
+    "transporte",
+    "game",
+    "streaming",
+    "saude",
+    "imposto",
+    "seguro",
+    "internet",
+    "energia",
+    "viagem",
+    "alimentacao",
+    "casa",
+    "pet",
+    "outro",
+  ]);
+  assert.deepEqual(ICON_CATEGORIES.map((category) => category.value), values);
 });
 
 test("icon categories: compatibilidade com categorias legadas mantém filtros funcionais", () => {
@@ -3689,6 +3706,22 @@ test("icon categories: compatibilidade com categorias legadas mantém filtros fu
   assert.equal(matchesIconCategory("telefonia", "internet"), true);
   assert.equal(matchesIconCategory("categoria-desconhecida", "loja"), false);
   assert.equal(matchesIconCategory("categoria-desconhecida", "all"), true);
+});
+
+test("icon categories: categorias removidas não são visíveis e são normalizadas para exibição", () => {
+  assert.equal(isVisibleIconCategory("carteira"), false);
+  assert.equal(isVisibleIconCategory("assinatura"), false);
+  assert.equal(isVisibleIconCategory("educacao"), false);
+  assert.equal(isVisibleIconCategory("telefonia"), false);
+  assert.equal(isVisibleIconCategory("banco"), true);
+  assert.equal(isVisibleIconCategory("servico"), true);
+  assert.equal(isVisibleIconCategory("internet"), true);
+
+  assert.equal(normalizeIconCategoryForDisplay("carteira"), "banco");
+  assert.equal(normalizeIconCategoryForDisplay("carteiras"), "banco");
+  assert.equal(normalizeIconCategoryForDisplay("assinatura"), "servico");
+  assert.equal(normalizeIconCategoryForDisplay("educacao"), "servico");
+  assert.equal(normalizeIconCategoryForDisplay("telefonia"), "internet");
 });
 
 test("icon batch upload utils: sugere nome amigável a partir do arquivo", () => {

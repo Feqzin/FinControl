@@ -55,7 +55,8 @@ import {
   type UserIconMatchRule,
 } from "@/lib/purchase-icon-matching";
 import {
-  ICON_CATEGORIES as USER_ICON_CATEGORIES,
+  ICON_CATEGORY_OPTIONS as USER_ICON_CATEGORIES,
+  getIconCategoryLabel,
   matchesIconCategory,
   resolveIconCategoryValue,
 } from "@shared/icon-categories";
@@ -1484,7 +1485,7 @@ export function IconPicker({
                             <div className="min-w-0">
                               <p className="truncate text-xs font-medium">{icon.name}</p>
                               <p className="truncate text-[10px] text-muted-foreground">
-                                {icon.category || icon.packName || "Sem categoria"}
+                                {icon.category ? getIconCategoryLabel(icon.category) : (icon.packName || "Sem categoria")}
                               </p>
                             </div>
                           </div>
