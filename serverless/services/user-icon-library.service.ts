@@ -13,6 +13,25 @@ const JPG_SIGNATURE_PREFIX = Buffer.from([0xff, 0xd8, 0xff]);
 const MAX_KEYWORDS = 30;
 const MAX_TERM_LENGTH = 120;
 const MIN_NORMALIZED_TERM_LENGTH = 2;
+const TECHNICAL_FILE_TOKENS = new Set([
+  "logo",
+  "icon",
+  "icone",
+  "png",
+  "jpg",
+  "jpeg",
+  "svg",
+  "webp",
+  "final",
+  "copy",
+  "copia",
+  "download",
+  "image",
+  "img",
+]);
+const KNOWN_NUMERIC_BRANDS = new Set(["99"]);
+const PURE_NUMBER_REGEX = /^\d+$/;
+const SIMPLE_ALNUM_REGEX = /^[a-z0-9]+$/;
 
 function startsWithSignature(buffer: Buffer, signature: Buffer): boolean {
   if (buffer.length < signature.length) return false;
@@ -116,12 +135,38 @@ function mergeKeywordLists(primary: string[], secondary: string[]): string[] {
 
 function sanitizeFileNameTerm(value: string | null | undefined): string {
   if (!value) return "";
-  return value
+
+  const rawTokens = value
     .replace(/\.[a-z0-9]{2,5}$/i, "")
     .replace(/[_-]+/g, " ")
+    .replace(/[()[\]{}.,;:!?/\\|@#$%^&*+=~`"'<>\u2013\u2014]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, MAX_TERM_LENGTH);
+    .split(" ")
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  const sanitizedTokens: string[] = [];
+  const unique = new Set<string>();
+  for (const token of rawTokens) {
+    const normalized = normalizeIconTerm(token).replace(/\s+/g, "");
+    if (!normalized) continue;
+    if (normalized.length < 2) continue;
+    if (TECHNICAL_FILE_TOKENS.has(normalized)) continue;
+    if (PURE_NUMBER_REGEX.test(normalized) && !KNOWN_NUMERIC_BRANDS.has(normalized)) continue;
+    if (!SIMPLE_ALNUM_REGEX.test(normalized)) continue;
+
+    const digitCount = (normalized.match(/\d/g) ?? []).length;
+    const letterCount = (normalized.match(/[a-z]/g) ?? []).length;
+    const isLikelyHash = normalized.length >= 8 && digitCount >= 4 && letterCount >= 4;
+    if (isLikelyHash) continue;
+    if (unique.has(normalized)) continue;
+
+    unique.add(normalized);
+    sanitizedTokens.push(token);
+  }
+
+  return sanitizedTokens.join(" ").slice(0, MAX_TERM_LENGTH).trim();
 }
 
 function buildMatchTerms(

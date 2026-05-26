@@ -60,6 +60,7 @@ import {
   resolveIconCategoryValue,
 } from "@shared/icon-categories";
 import {
+  buildIconKeywordsFromNameAndFilename,
   ICON_ALLOWED_MIME_TYPES,
   ICON_BATCH_UPLOAD_MAX_ITEMS,
   ICON_UPLOAD_MAX_BYTES,
@@ -789,9 +790,15 @@ export function IconPicker({
     }
     try {
       const dataUrl = await readFileAsDataUrl(file);
+      const suggestedName = sanitizeIconNameInput(file.name);
+      const suggestedKeywords = buildIconKeywordsFromNameAndFilename({
+        name: suggestedName,
+        originalFileName: file.name,
+      });
       setUploadPreview(dataUrl);
       setUploadFileName(file.name);
-      setUploadIconName((prev) => prev || sanitizeIconNameInput(file.name));
+      setUploadIconName((prev) => prev || suggestedName);
+      setUploadKeywords((prev) => prev || suggestedKeywords.join(", "));
     } catch {
       toast({
         title: "Falha ao ler arquivo",

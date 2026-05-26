@@ -117,6 +117,7 @@ import {
   resolveIconCategoryValue,
 } from "@shared/icon-categories";
 import {
+  buildIconKeywordsFromNameAndFilename,
   ICON_ALLOWED_MIME_TYPES,
   ICON_BATCH_UPLOAD_MAX_ITEMS,
   ICON_UPLOAD_MAX_BYTES,
@@ -3695,19 +3696,72 @@ test("icon batch upload utils: sugere nome amigável a partir do arquivo", () =>
   assert.equal(suggestBatchIconNameFromFileName("kabum-icone.png"), "Kabum Icone");
 });
 
-test("icon batch upload utils: merge de palavras-chave herda base, item, nome e arquivo sem duplicar", () => {
+test("icon batch upload utils: LinkedIn_145807.png não gera keyword numérica pura", () => {
+  const keywords = buildIconKeywordsFromNameAndFilename({
+    name: "LinkedIn",
+    originalFileName: "LinkedIn_145807.png",
+  });
+  assert.equal(keywords.includes("LinkedIn"), true);
+  assert.equal(keywords.includes("145807"), false);
+});
+
+test("icon batch upload utils: Itau_Unibanco_logo_2023.svg remove token técnico e ano", () => {
+  const keywords = buildIconKeywordsFromNameAndFilename({
+    name: "Itau Unibanco",
+    originalFileName: "Itau_Unibanco_logo_2023.svg",
+  });
+  assert.equal(keywords.includes("Itau"), true);
+  assert.equal(keywords.includes("Unibanco"), true);
+  assert.equal(keywords.some((entry) => entry.toLowerCase() === "logo"), false);
+  assert.equal(keywords.includes("2023"), false);
+});
+
+test("icon batch upload utils: C6_Bank_logo.png preserva marca com número útil", () => {
+  const keywords = buildIconKeywordsFromNameAndFilename({
+    name: "C6 Bank",
+    originalFileName: "C6_Bank_logo.png",
+  });
+  assert.equal(keywords.includes("C6"), true);
+  assert.equal(keywords.includes("Bank"), true);
+  assert.equal(keywords.includes("C6 Bank"), true);
+});
+
+test("icon batch upload utils: 99pay_icon_1080.png mantém 99pay e remove 1080", () => {
+  const keywords = buildIconKeywordsFromNameAndFilename({
+    name: "99pay",
+    originalFileName: "99pay_icon_1080.png",
+  });
+  assert.equal(keywords.includes("99pay"), true);
+  assert.equal(keywords.includes("1080"), false);
+});
+
+test("icon batch upload utils: merge de palavras-chave herda base, item, nome e arquivo sem lixo", () => {
   const merged = mergeBatchUploadKeywords({
     defaultKeywords: ["kabum", "mercado livre"],
     itemKeywords: "kabum, games",
     iconName: "KaBuM",
-    originalFileName: "MLP_KaBuM_logo.svg",
+    originalFileName: "MLP_KaBuM_logo_2024.svg",
   });
 
   assert.equal(merged.includes("kabum"), true);
   assert.equal(merged.includes("mercado livre"), true);
   assert.equal(merged.includes("games"), true);
-  assert.equal(merged.includes("MLP KaBuM logo"), true);
-  assert.equal(merged.length, 4);
+  assert.equal(merged.some((entry) => entry.includes("logo")), false);
+  assert.equal(merged.includes("2024"), false);
+});
+
+test("icon batch upload utils: mantém palavras-base do usuário e deduplica termos úteis", () => {
+  const merged = mergeBatchUploadKeywords({
+    defaultKeywords: "LinkedIn, linkedin",
+    itemKeywords: "linkedin, vagas",
+    iconName: "LinkedIn",
+    originalFileName: "LinkedIn_145807_logo.png",
+  });
+
+  assert.equal(merged.includes("LinkedIn"), true);
+  assert.equal(merged.includes("vagas"), true);
+  assert.equal(merged.includes("145807"), false);
+  assert.equal(merged.filter((entry) => entry.toLowerCase() === "linkedin").length, 1);
 });
 
 test("icon batch upload utils: parse keywords remove duplicadas e espaços extras", () => {
