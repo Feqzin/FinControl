@@ -1,6 +1,10 @@
 import type { Request, Response } from "express";
 import { UserIconLibraryService } from "../services/user-icon-library.service.js";
-import { userIconLibraryCreateBody, userIconLibraryUpdateBody } from "../validators/user-icon-library.validators.js";
+import {
+  userIconLibraryBatchCreateBody,
+  userIconLibraryCreateBody,
+  userIconLibraryUpdateBody,
+} from "../validators/user-icon-library.validators.js";
 import { getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils.js";
 
 export function createUserIconLibraryController(service: UserIconLibraryService) {
@@ -25,6 +29,17 @@ export function createUserIconLibraryController(service: UserIconLibraryService)
         const message = error instanceof Error ? error.message : "Não foi possível salvar o ícone.";
         return sendBadRequest(res, message);
       }
+    },
+
+    createBatch: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const parsed = userIconLibraryBatchCreateBody.safeParse(req.body);
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+
+      const result = await service.createBatch(userId, parsed.data);
+      return res.status(200).json(result);
     },
 
     update: async (req: Request, res: Response) => {

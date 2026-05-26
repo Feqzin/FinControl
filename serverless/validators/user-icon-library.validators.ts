@@ -47,5 +47,22 @@ export const userIconLibraryUpdateBody = z.object({
   "Nenhum campo informado para atualização.",
 );
 
+const userIconLibraryBatchItemBody = z.object({
+  name: z.string().trim().min(2, "Nome do ícone obrigatório.").max(120),
+  category: categoryField.optional(),
+  keywords: keywordsField.optional(),
+  originalFileName: z.string().trim().max(140).optional().nullable(),
+  imageDataUrl: nonEmptyTrimmed.max(1_500_000, "Imagem muito grande."),
+});
+
+export const userIconLibraryBatchCreateBody = z.object({
+  defaultCategory: categoryField.optional(),
+  defaultKeywords: keywordsField.optional(),
+  icons: z.array(userIconLibraryBatchItemBody)
+    .min(1, "Informe pelo menos um ícone.")
+    .max(30, "O limite por lote é de 30 ícones."),
+});
+
 export type UserIconLibraryCreateBodyInput = z.infer<typeof userIconLibraryCreateBody>;
 export type UserIconLibraryUpdateBodyInput = z.infer<typeof userIconLibraryUpdateBody>;
+export type UserIconLibraryBatchCreateBodyInput = z.infer<typeof userIconLibraryBatchCreateBody>;

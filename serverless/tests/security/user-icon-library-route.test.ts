@@ -55,6 +55,49 @@ function createInMemoryServiceFixture() {
       icons.push(row);
       return row;
     },
+    async createBatch(userId: string, payload: {
+      defaultCategory?: string | null;
+      defaultKeywords?: string[];
+      icons: Array<{
+        imageDataUrl: string;
+        name: string;
+        category?: string | null;
+        keywords?: string[];
+        originalFileName?: string | null;
+      }>;
+    }) {
+      const created: InMemoryIcon[] = [];
+      const failed: Array<{ requestIndex: number; originalFileName: string; reason: string }> = [];
+
+      for (const [requestIndex, item] of payload.icons.entries()) {
+        const name = item.name?.trim() ?? "";
+        if (!name || name.length < 2) {
+          failed.push({
+            requestIndex,
+            originalFileName: item.originalFileName ?? `icone_${requestIndex + 1}`,
+            reason: "Nome do ícone obrigatório.",
+          });
+          continue;
+        }
+        if (!String(item.imageDataUrl ?? "").startsWith("data:image/")) {
+          failed.push({
+            requestIndex,
+            originalFileName: item.originalFileName ?? `icone_${requestIndex + 1}`,
+            reason: "Formato de imagem inválido.",
+          });
+          continue;
+        }
+        const icon = await service.create(userId, {
+          imageDataUrl: item.imageDataUrl,
+          name,
+          category: item.category ?? payload.defaultCategory ?? null,
+          keywords: [...(payload.defaultKeywords ?? []), ...(item.keywords ?? [])],
+        });
+        created.push(icon);
+      }
+
+      return { created, failed };
+    },
     async update(userId: string, id: string, payload: { name?: string; category?: string | null; keywords?: string[] }) {
       const icon = icons.find((entry) => entry.id === id && entry.userId === userId);
       if (!icon) return null;
@@ -106,22 +149,25 @@ function createUserIconLibraryRouteApp() {
   });
   app.get("/api/user-icon-library", requireAuth, controller.list);
   app.post("/api/user-icon-library", requireAuth, controller.create);
+  app.post("/api/user-icon-library/batch", requireAuth, controller.createBatch);
   app.patch("/api/user-icon-library/:id", requireAuth, controller.update);
   app.delete("/api/user-icon-library/:id", requireAuth, controller.remove);
   return { app, fixture };
 }
 
-test("rota /api/user-icon-library em serverless exige requireAuth em GET/POST/PATCH/DELETE", async () => {
+test("rota /api/user-icon-library em serverless exige requireAuth em GET/POST/BATCH/PATCH/DELETE", async () => {
   const routesPath = path.resolve(process.cwd(), "serverless", "routes.ts");
   const routesSource = await readFile(routesPath, "utf8");
 
   const getPattern = /app\.get\(\s*"\/api\/user-icon-library"\s*,\s*requireAuth\s*,\s*userIconLibraryController\.list\s*\)/m;
   const postPattern = /app\.post\(\s*"\/api\/user-icon-library"\s*,\s*requireAuth\s*,\s*userIconLibraryController\.create\s*\)/m;
+  const postBatchPattern = /app\.post\(\s*"\/api\/user-icon-library\/batch"\s*,\s*requireAuth\s*,\s*userIconLibraryController\.createBatch\s*\)/m;
   const patchPattern = /app\.patch\(\s*"\/api\/user-icon-library\/:id"\s*,\s*requireAuth\s*,\s*userIconLibraryController\.update\s*\)/m;
   const deletePattern = /app\.delete\(\s*"\/api\/user-icon-library\/:id"\s*,\s*requireAuth\s*,\s*userIconLibraryController\.remove\s*\)/m;
 
   assert.ok(getPattern.test(routesSource));
   assert.ok(postPattern.test(routesSource));
+  assert.ok(postBatchPattern.test(routesSource));
   assert.ok(patchPattern.test(routesSource));
   assert.ok(deletePattern.test(routesSource));
 });
@@ -254,5 +300,51 @@ test("user icon library: upload exige nome e editar respeita ownership", async (
     assert.equal(patchedBody.icon.name, "Itaú Uniclass");
     assert.equal(patchedBody.icon.category, "imposto");
     assert.deepEqual(patchedBody.icon.tags, ["itau", "uniclass"]);
+  });
+});
+
+test("user icon library: batch exige auth e permite falha parcial sem rollback global", async () => {
+  const { app, fixture } = createUserIconLibraryRouteApp();
+  await withTestServer(app, async (baseUrl) => {
+    const withoutAuth = await fetch(`${baseUrl}/api/user-icon-library/batch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        icons: [{ name: "KaBuM", imageDataUrl: SAMPLE_PNG_DATA_URL }],
+      }),
+    });
+    assert.equal(withoutAuth.status, 401);
+
+    const withPartialFailure = await fetch(`${baseUrl}/api/user-icon-library/batch`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        defaultCategory: "loja",
+        defaultKeywords: ["kabum"],
+        icons: [
+          {
+            name: "KaBuM",
+            originalFileName: "kabum.png",
+            imageDataUrl: SAMPLE_PNG_DATA_URL,
+          },
+          {
+            name: "Invalido",
+            originalFileName: "ruim.svg",
+            imageDataUrl: "not-a-data-url",
+          },
+        ],
+      }),
+    });
+
+    assert.equal(withPartialFailure.status, 200);
+    const body = await withPartialFailure.json();
+    assert.equal(body.created.length, 1);
+    assert.equal(body.failed.length, 1);
+    assert.equal(body.failed[0].requestIndex, 1);
+    assert.equal(fixture.icons.length, 1);
+    assert.equal(fixture.icons[0]?.userId, "user_a");
   });
 });

@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BrandIconDisplay, LIBRARY_ICONS } from "@/lib/brand-icons";
-import { Check, ImagePlus, RotateCcw, Settings2, Upload } from "lucide-react";
+import { Check, ImagePlus, RotateCcw, Settings2, Trash2, Upload } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import {
@@ -33,6 +33,7 @@ import {
   unpublishCommunityIcon,
 } from "@/services/api/official-icons";
 import {
+  createUserIconLibraryBatch,
   createUserIconLibraryItem,
   deleteUserIconLibraryItem,
   fetchUserIconLibrary,
@@ -58,6 +59,17 @@ import {
   matchesIconCategory,
   resolveIconCategoryValue,
 } from "@shared/icon-categories";
+import {
+  ICON_ALLOWED_MIME_TYPES,
+  ICON_BATCH_UPLOAD_MAX_ITEMS,
+  ICON_UPLOAD_MAX_BYTES,
+  mergeBatchUploadKeywords,
+  parseKeywordInput,
+  readFileAsDataUrl,
+  sanitizeIconNameInput,
+  suggestBatchIconNameFromFileName,
+  isIconMimeTypeAllowed,
+} from "@/components/icon-picker-upload-batch.utils";
 
 interface IconPickerProps {
   value?: string | null;
@@ -108,6 +120,18 @@ type ManageExploreTarget = {
 
 type ManageActionTarget = ManageBuiltinTarget | ManagePersonalTarget | ManageExploreTarget;
 
+type IconUploadMode = "individual" | "batch";
+
+type BatchUploadDraftItem = {
+  id: string;
+  originalFileName: string;
+  previewDataUrl: string | null;
+  iconName: string;
+  category: string;
+  keywords: string;
+  error: string | null;
+};
+
 const CATEGORY_LABELS: Record<string, string> = {
   bancos: "Bancos",
   servicos: "Serviços",
@@ -115,38 +139,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const CATEGORIES = ["bancos", "servicos", "carteiras"] as const;
-const ICON_UPLOAD_MAX_BYTES = 512 * 1024;
 const NOOP_ICON_CHANGE = (_value: string | null): void => undefined;
 const NOOP_ICON_META = (_meta: IconPickerSelectMeta): void => undefined;
-
-function sanitizeIconNameInput(value: string): string {
-  return value
-    .replace(/\.[a-z0-9]{2,5}$/i, "")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 120);
-}
-
-function parseKeywordInput(value: string): string[] {
-  const unique = new Set<string>();
-  const output: string[] = [];
-  for (const raw of value.split(",")) {
-    const trimmed = raw.trim().replace(/\s+/g, " ");
-    if (!trimmed) continue;
-    const normalized = trimmed
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (!normalized || unique.has(normalized)) continue;
-    unique.add(normalized);
-    output.push(trimmed.slice(0, 80));
-  }
-  return output;
-}
 
 function resolveUserIconCategory(value: string | null | undefined): string {
   return resolveIconCategoryValue(value);
@@ -175,11 +169,16 @@ export function IconPicker({
   const safeOnChange = onChange ?? NOOP_ICON_CHANGE;
   const safeOnSelectMeta = onSelectMeta ?? NOOP_ICON_META;
   const [open, setOpen] = useState(false);
+  const [uploadMode, setUploadMode] = useState<IconUploadMode>("individual");
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [uploadFileName, setUploadFileName] = useState<string>("");
   const [uploadIconName, setUploadIconName] = useState("");
   const [uploadCategory, setUploadCategory] = useState("outro");
   const [uploadKeywords, setUploadKeywords] = useState("");
+  const [batchDefaultCategory, setBatchDefaultCategory] = useState("outro");
+  const [batchDefaultKeywords, setBatchDefaultKeywords] = useState("");
+  const [batchDraftItems, setBatchDraftItems] = useState<BatchUploadDraftItem[]>([]);
+  const [batchReadInProgress, setBatchReadInProgress] = useState(false);
   const [editingIcon, setEditingIcon] = useState<UserIconLibraryItemApiModel | null>(null);
   const [editIconName, setEditIconName] = useState("");
   const [editCategory, setEditCategory] = useState("outro");
@@ -445,6 +444,71 @@ export function IconPicker({
     },
   });
 
+  const uploadBatchMutation = useMutation({
+    mutationFn: async (payload: {
+      requests: Array<{
+        sourceItemId: string;
+        body: {
+          imageDataUrl: string;
+          name: string;
+          category?: string | null;
+          keywords?: string[];
+          originalFileName?: string | null;
+        };
+      }>;
+      defaultCategory: string;
+      defaultKeywords: string[];
+    }) => {
+      const result = await createUserIconLibraryBatch({
+        defaultCategory: payload.defaultCategory,
+        defaultKeywords: payload.defaultKeywords,
+        icons: payload.requests.map((request) => request.body),
+      });
+      return result;
+    },
+    onSuccess: (result, variables) => {
+      const failedByIndex = new Map(result.failed.map((entry) => [entry.requestIndex, entry.reason]));
+      const requestIndexByItemId = new Map(
+        variables.requests.map((request, index) => [request.sourceItemId, index] as const),
+      );
+
+      setBatchDraftItems((current) => {
+        const next: BatchUploadDraftItem[] = [];
+        for (const item of current) {
+          const requestIndex = requestIndexByItemId.get(item.id);
+          if (requestIndex === undefined) {
+            next.push(item);
+            continue;
+          }
+          const failedReason = failedByIndex.get(requestIndex);
+          if (failedReason) {
+            next.push({
+              ...item,
+              error: failedReason,
+            });
+          }
+        }
+        return next;
+      });
+
+      const createdCount = result.created.length;
+      const failedCount = result.failed.length;
+      toast({
+        title: `${createdCount} ícones salvos. ${failedCount} falharam.`,
+      });
+      void queryClient.invalidateQueries({ queryKey: ["/api/user-icon-library"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icon-match-rules"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Não foi possível salvar o lote de ícones.";
+      toast({
+        title: "Erro ao salvar lote",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const updatePersonalIconMutation = useMutation({
     mutationFn: async (payload: {
       id: string;
@@ -608,12 +672,110 @@ export function IconPicker({
     },
   });
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) return;
+
+    if (uploadMode === "batch") {
+      const selectedFiles = files.slice(0, ICON_BATCH_UPLOAD_MAX_ITEMS);
+      if (files.length > ICON_BATCH_UPLOAD_MAX_ITEMS) {
+        toast({
+          title: "Limite por lote atingido",
+          description: `Somente os primeiros ${ICON_BATCH_UPLOAD_MAX_ITEMS} arquivos foram considerados.`,
+          variant: "destructive",
+        });
+      }
+
+      setBatchReadInProgress(true);
+      const inheritedCategory = resolveUserIconCategory(batchDefaultCategory);
+      const inheritedKeywords = parseKeywordInput(batchDefaultKeywords);
+      const createdItems = await Promise.all(
+        selectedFiles.map(async (file, index): Promise<BatchUploadDraftItem> => {
+          const suggestedName = suggestBatchIconNameFromFileName(file.name);
+          const mergedKeywords = mergeBatchUploadKeywords({
+            defaultKeywords: inheritedKeywords,
+            iconName: suggestedName,
+            originalFileName: file.name,
+          });
+
+          if (!isIconMimeTypeAllowed(file.type)) {
+            return {
+              id: `${Date.now()}-${index}-${file.name}`,
+              originalFileName: file.name,
+              previewDataUrl: null,
+              iconName: suggestedName,
+              category: inheritedCategory,
+              keywords: mergedKeywords.join(", "),
+              error: "Tipo de arquivo inválido. Use PNG, JPG ou SVG.",
+            };
+          }
+
+          if (file.size > ICON_UPLOAD_MAX_BYTES) {
+            return {
+              id: `${Date.now()}-${index}-${file.name}`,
+              originalFileName: file.name,
+              previewDataUrl: null,
+              iconName: suggestedName,
+              category: inheritedCategory,
+              keywords: mergedKeywords.join(", "),
+              error: "Arquivo muito grande. Limite de 512 KB.",
+            };
+          }
+
+          try {
+            const dataUrl = await readFileAsDataUrl(file);
+            return {
+              id: `${Date.now()}-${index}-${file.name}`,
+              originalFileName: file.name,
+              previewDataUrl: dataUrl,
+              iconName: suggestedName,
+              category: inheritedCategory,
+              keywords: mergedKeywords.join(", "),
+              error: null,
+            };
+          } catch {
+            return {
+              id: `${Date.now()}-${index}-${file.name}`,
+              originalFileName: file.name,
+              previewDataUrl: null,
+              iconName: suggestedName,
+              category: inheritedCategory,
+              keywords: mergedKeywords.join(", "),
+              error: "Falha ao ler o arquivo.",
+            };
+          }
+        }),
+      );
+
+      let exceededAvailableSlots = false;
+      setBatchDraftItems((current) => {
+        const availableSlots = Math.max(0, ICON_BATCH_UPLOAD_MAX_ITEMS - current.length);
+        if (availableSlots === 0) {
+          exceededAvailableSlots = createdItems.length > 0;
+          return current;
+        }
+        if (createdItems.length > availableSlots) {
+          exceededAvailableSlots = true;
+        }
+        return [...current, ...createdItems.slice(0, availableSlots)];
+      });
+      if (exceededAvailableSlots) {
+        toast({
+          title: "Limite do lote atingido",
+          description: `Você pode manter até ${ICON_BATCH_UPLOAD_MAX_ITEMS} ícones no lote por vez.`,
+          variant: "destructive",
+        });
+      }
+      setBatchReadInProgress(false);
+      event.target.value = "";
+      return;
+    }
+
+    const file = files[0];
     if (!file) return;
-    const allowed = ["image/png", "image/jpeg", "image/jpg", "image/svg+xml"];
-    if (!allowed.includes(file.type)) {
+    if (!isIconMimeTypeAllowed(file.type)) {
       toast({ title: "Formato inválido", description: "Use PNG, JPG ou SVG", variant: "destructive" });
+      event.target.value = "";
       return;
     }
     if (file.size > ICON_UPLOAD_MAX_BYTES) {
@@ -622,16 +784,23 @@ export function IconPicker({
         description: "Use um ícone de até 512 KB.",
         variant: "destructive",
       });
+      event.target.value = "";
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const dataUrl = ev.target?.result as string;
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
       setUploadPreview(dataUrl);
       setUploadFileName(file.name);
       setUploadIconName((prev) => prev || sanitizeIconNameInput(file.name));
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      toast({
+        title: "Falha ao ler arquivo",
+        description: "Não foi possível processar este ícone.",
+        variant: "destructive",
+      });
+    } finally {
+      event.target.value = "";
+    }
   };
 
   const handleSelectLibrary = (key: string) => {
@@ -680,6 +849,109 @@ export function IconPicker({
     });
   };
 
+  const handleBatchDraftUpdate = (id: string, patch: Partial<BatchUploadDraftItem>) => {
+    setBatchDraftItems((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    );
+  };
+
+  const handleBatchDraftRemove = (id: string) => {
+    setBatchDraftItems((current) => current.filter((item) => item.id !== id));
+  };
+
+  const handleConfirmBatchUpload = () => {
+    if (batchDraftItems.length === 0) {
+      toast({
+        title: "Selecione arquivos para o lote",
+        description: "Adicione pelo menos um ícone para continuar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const inheritedCategory = resolveUserIconCategory(batchDefaultCategory);
+    const inheritedKeywords = parseKeywordInput(batchDefaultKeywords);
+    const nextDraftItems: BatchUploadDraftItem[] = [];
+    const requests: Array<{
+      sourceItemId: string;
+      body: {
+        imageDataUrl: string;
+        name: string;
+        category?: string | null;
+        keywords?: string[];
+        originalFileName?: string | null;
+      };
+    }> = [];
+
+    for (const item of batchDraftItems) {
+      const sanitizedName = sanitizeIconNameInput(item.iconName);
+      const resolvedCategory = resolveUserIconCategory(item.category || inheritedCategory);
+      const mergedKeywords = mergeBatchUploadKeywords({
+        defaultKeywords: inheritedKeywords,
+        itemKeywords: item.keywords,
+        iconName: sanitizedName,
+        originalFileName: item.originalFileName,
+      });
+
+      if (!item.previewDataUrl) {
+        nextDraftItems.push({
+          ...item,
+          iconName: sanitizedName,
+          category: resolvedCategory,
+          keywords: parseKeywordInput(item.keywords).join(", "),
+          error: item.error ?? "Arquivo inválido para upload.",
+        });
+        continue;
+      }
+
+      if (sanitizedName.length < 2) {
+        nextDraftItems.push({
+          ...item,
+          iconName: sanitizedName,
+          category: resolvedCategory,
+          keywords: mergedKeywords.join(", "),
+          error: "Nome do ícone obrigatório.",
+        });
+        continue;
+      }
+
+      nextDraftItems.push({
+        ...item,
+        iconName: sanitizedName,
+        category: resolvedCategory,
+        keywords: mergedKeywords.join(", "),
+        error: null,
+      });
+      requests.push({
+        sourceItemId: item.id,
+        body: {
+          imageDataUrl: item.previewDataUrl,
+          name: sanitizedName,
+          category: resolvedCategory,
+          keywords: mergedKeywords,
+          originalFileName: item.originalFileName || null,
+        },
+      });
+    }
+
+    setBatchDraftItems(nextDraftItems);
+
+    if (requests.length === 0) {
+      toast({
+        title: "Nenhum ícone válido para salvar",
+        description: "Corrija os itens com erro e tente novamente.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    uploadBatchMutation.mutate({
+      requests,
+      defaultCategory: inheritedCategory,
+      defaultKeywords: inheritedKeywords,
+    });
+  };
+
   const handleReset = () => {
     emitSelection({
       displayValue: null,
@@ -692,6 +964,9 @@ export function IconPicker({
     setUploadIconName("");
     setUploadCategory("outro");
     setUploadKeywords("");
+    setBatchDraftItems([]);
+    setBatchDefaultCategory("outro");
+    setBatchDefaultKeywords("");
     setIgnoredSuggestionKey(null);
     setAutoAppliedSuggestionKey(null);
   };
@@ -1223,97 +1498,252 @@ export function IconPicker({
             </TabsContent>
 
             <TabsContent value="upload" className="mt-4 space-y-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-foreground">Tipo de upload</label>
+                  <Select value={uploadMode} onValueChange={(nextMode) => setUploadMode(nextMode as IconUploadMode)}>
+                    <SelectTrigger aria-label="Tipo de upload de ícone">
+                      <SelectValue placeholder="Selecione o tipo de upload" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="individual">Individual</SelectItem>
+                      <SelectItem value="batch">Em lote</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {uploadMode === "batch" ? (
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Categoria padrão do lote</label>
+                    <Select value={batchDefaultCategory} onValueChange={setBatchDefaultCategory}>
+                      <SelectTrigger aria-label="Categoria padrão do lote">
+                        <SelectValue placeholder="Selecione uma categoria" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {USER_ICON_CATEGORIES.map((category) => (
+                          <SelectItem key={category.value} value={category.value}>
+                            {category.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+              </div>
+
               <div
-                className="cursor-pointer space-y-3 rounded-xl border-2 border-dashed p-8 text-center transition-colors hover:bg-accent/50"
+                className="cursor-pointer space-y-3 rounded-xl border-2 border-dashed p-6 text-center transition-colors hover:bg-accent/50"
                 onClick={() => fileRef.current?.click()}
               >
-                {uploadPreview ? (
-                  <img
-                    src={uploadPreview}
-                    alt="Preview"
-                    className="mx-auto h-20 w-20 rounded-xl object-cover"
-                  />
-                ) : value && value.startsWith("data:") ? (
-                  <img
-                    src={value}
-                    alt="Ícone atual"
-                    className="mx-auto h-20 w-20 rounded-xl object-cover"
-                  />
+                {uploadMode === "individual" ? (
+                  uploadPreview ? (
+                    <img
+                      src={uploadPreview}
+                      alt="Preview"
+                      className="mx-auto h-20 w-20 rounded-xl object-cover"
+                    />
+                  ) : value && value.startsWith("data:") ? (
+                    <img
+                      src={value}
+                      alt="Ícone atual"
+                      className="mx-auto h-20 w-20 rounded-xl object-cover"
+                    />
+                  ) : (
+                    <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-xl bg-muted">
+                      <Upload className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                  )
                 ) : (
                   <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-xl bg-muted">
                     <Upload className="h-8 w-8 text-muted-foreground" />
                   </div>
                 )}
                 <div>
-                  <p className="text-sm font-medium">Clique para selecionar</p>
-                  <p className="text-xs text-muted-foreground">PNG, JPG ou SVG</p>
+                  <p className="text-sm font-medium">
+                    {uploadMode === "batch" ? "Clique para selecionar vários arquivos" : "Clique para selecionar"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {uploadMode === "batch"
+                      ? `PNG, JPG ou SVG · até ${ICON_BATCH_UPLOAD_MAX_ITEMS} arquivos`
+                      : "PNG, JPG ou SVG"}
+                  </p>
                 </div>
               </div>
 
               <input
                 ref={fileRef}
                 type="file"
-                accept="image/png,image/jpeg,image/jpg,image/svg+xml"
+                accept={ICON_ALLOWED_MIME_TYPES.join(",")}
                 className="hidden"
                 onChange={handleFileChange}
+                multiple={uploadMode === "batch"}
                 data-testid="input-upload-icone"
               />
 
-              <div className="grid grid-cols-1 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-foreground">Nome do ícone</label>
-                  <Input
-                    value={uploadIconName}
-                    onChange={(event) => setUploadIconName(event.target.value)}
-                    placeholder="Ex: Itaú, KaBuM, Netflix"
-                    aria-label="Nome do ícone"
-                    maxLength={120}
-                  />
-                </div>
+              {uploadMode === "individual" ? (
+                <>
+                  <div className="grid grid-cols-1 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-foreground">Nome do ícone</label>
+                      <Input
+                        value={uploadIconName}
+                        onChange={(event) => setUploadIconName(event.target.value)}
+                        placeholder="Ex: Itaú, KaBuM, Netflix"
+                        aria-label="Nome do ícone"
+                        maxLength={120}
+                      />
+                    </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-foreground">Categoria</label>
-                  <Select value={uploadCategory} onValueChange={setUploadCategory}>
-                    <SelectTrigger aria-label="Categoria do ícone">
-                      <SelectValue placeholder="Selecione uma categoria" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {USER_ICON_CATEGORIES.map((category) => (
-                        <SelectItem key={category.value} value={category.value}>
-                          {category.label}
-                        </SelectItem>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-foreground">Categoria</label>
+                      <Select value={uploadCategory} onValueChange={setUploadCategory}>
+                        <SelectTrigger aria-label="Categoria do ícone">
+                          <SelectValue placeholder="Selecione uma categoria" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {USER_ICON_CATEGORIES.map((category) => (
+                            <SelectItem key={category.value} value={category.value}>
+                              {category.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-foreground">Palavras-chave para reconhecimento automático</label>
+                      <Input
+                        value={uploadKeywords}
+                        onChange={(event) => setUploadKeywords(event.target.value)}
+                        placeholder="Ex: itau, itaú, itaucard, unibanco"
+                        aria-label="Palavras-chave do ícone"
+                        maxLength={500}
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Use palavras que costumam aparecer na fatura ou no nome da compra.
+                      </p>
+                    </div>
+                  </div>
+
+                  {uploadPreview ? (
+                    <Button
+                      type="button"
+                      className="w-full"
+                      onClick={handleConfirmUpload}
+                      data-testid="button-confirmar-upload"
+                      disabled={uploadIconMutation.isPending}
+                    >
+                      <Check className="mr-2 h-4 w-4" />
+                      {uploadIconMutation.isPending ? "Salvando..." : "Salvar ícone"}
+                    </Button>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Palavras-chave base do lote</label>
+                    <Input
+                      value={batchDefaultKeywords}
+                      onChange={(event) => setBatchDefaultKeywords(event.target.value)}
+                      placeholder="Ex: mercado pago, mp, carteira digital"
+                      aria-label="Palavras-chave base do lote"
+                      maxLength={500}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Essas palavras serão combinadas com as de cada item.
+                    </p>
+                  </div>
+
+                  {batchReadInProgress ? (
+                    <p className="text-xs text-muted-foreground">Processando arquivos do lote...</p>
+                  ) : null}
+
+                  {batchDraftItems.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Nenhum arquivo no lote ainda.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {batchDraftItems.map((item) => (
+                        <div key={item.id} className="rounded-lg border p-3">
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="flex min-w-0 items-center gap-2">
+                              {item.previewDataUrl ? (
+                                <img
+                                  src={item.previewDataUrl}
+                                  alt={item.iconName || "Preview"}
+                                  className="h-10 w-10 rounded-md object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
+                                  <Upload className="h-4 w-4 text-muted-foreground" />
+                                </div>
+                              )}
+                              <p className="truncate text-xs text-muted-foreground" title={item.originalFileName}>
+                                {item.originalFileName}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => handleBatchDraftRemove(item.id)}
+                              aria-label={`Remover ${item.originalFileName} do lote`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                            <Input
+                              value={item.iconName}
+                              onChange={(event) => handleBatchDraftUpdate(item.id, { iconName: event.target.value, error: null })}
+                              placeholder="Nome do ícone"
+                              aria-label={`Nome do ícone ${item.originalFileName}`}
+                              maxLength={120}
+                            />
+                            <Select
+                              value={item.category}
+                              onValueChange={(nextCategory) => handleBatchDraftUpdate(item.id, { category: nextCategory })}
+                            >
+                              <SelectTrigger aria-label={`Categoria do ícone ${item.originalFileName}`}>
+                                <SelectValue placeholder="Categoria" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {USER_ICON_CATEGORIES.map((category) => (
+                                  <SelectItem key={category.value} value={category.value}>
+                                    {category.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              value={item.keywords}
+                              onChange={(event) => handleBatchDraftUpdate(item.id, { keywords: event.target.value })}
+                              placeholder="Palavras-chave"
+                              aria-label={`Palavras-chave do ícone ${item.originalFileName}`}
+                              maxLength={500}
+                            />
+                          </div>
+                          {item.error ? (
+                            <p className="mt-2 text-xs text-destructive">{item.error}</p>
+                          ) : null}
+                        </div>
                       ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                    </div>
+                  )}
 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-foreground">Palavras-chave para reconhecimento automático</label>
-                  <Input
-                    value={uploadKeywords}
-                    onChange={(event) => setUploadKeywords(event.target.value)}
-                    placeholder="Ex: itau, itaú, itaucard, unibanco"
-                    aria-label="Palavras-chave do ícone"
-                    maxLength={500}
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Use palavras que costumam aparecer na fatura ou no nome da compra.
-                  </p>
-                </div>
-              </div>
-
-              {uploadPreview ? (
-                <Button
-                  type="button"
-                  className="w-full"
-                  onClick={handleConfirmUpload}
-                  data-testid="button-confirmar-upload"
-                  disabled={uploadIconMutation.isPending}
-                >
-                  <Check className="mr-2 h-4 w-4" />
-                  {uploadIconMutation.isPending ? "Salvando..." : "Salvar ícone"}
-                </Button>
-              ) : null}
+                  <Button
+                    type="button"
+                    className="w-full"
+                    onClick={handleConfirmBatchUpload}
+                    disabled={batchDraftItems.length === 0 || batchReadInProgress || uploadBatchMutation.isPending}
+                    data-testid="button-confirmar-upload-lote"
+                  >
+                    <Check className="mr-2 h-4 w-4" />
+                    {uploadBatchMutation.isPending ? "Salvando..." : "Salvar ícones"}
+                  </Button>
+                </>
+              )}
 
               {value && !isManageMode ? (
                 <Button

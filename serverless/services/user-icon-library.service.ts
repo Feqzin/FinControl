@@ -2,6 +2,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../db.js";
 import { iconMatchRules, userIconLibrary, type UserIconLibraryItem } from "../../shared/schema.js";
 import type {
+  UserIconLibraryBatchCreateBodyInput,
   UserIconLibraryCreateBodyInput,
   UserIconLibraryUpdateBodyInput,
 } from "../validators/user-icon-library.validators.js";
@@ -96,6 +97,21 @@ function sanitizeKeywordList(value: unknown): string[] {
   }
 
   return output;
+}
+
+function mergeKeywordLists(primary: string[], secondary: string[]): string[] {
+  const unique = new Set<string>();
+  const merged: string[] = [];
+  for (const entry of [...primary, ...secondary]) {
+    const trimmed = String(entry ?? "").trim();
+    if (!trimmed) continue;
+    const normalized = normalizeIconTerm(trimmed);
+    if (!normalized || unique.has(normalized)) continue;
+    unique.add(normalized);
+    merged.push(trimmed.slice(0, 80));
+    if (merged.length >= MAX_KEYWORDS) break;
+  }
+  return merged;
 }
 
 function sanitizeFileNameTerm(value: string | null | undefined): string {
@@ -392,5 +408,45 @@ export class UserIconLibraryService {
 
     await removeRulesForIcon(userId, existing.imageUrl);
     return true;
+  }
+
+  async createBatch(
+    userId: string,
+    payload: UserIconLibraryBatchCreateBodyInput,
+  ): Promise<{
+    created: UserIconLibraryItem[];
+    failed: Array<{ requestIndex: number; originalFileName: string; reason: string }>;
+  }> {
+    const created: UserIconLibraryItem[] = [];
+    const failed: Array<{ requestIndex: number; originalFileName: string; reason: string }> = [];
+    const defaultKeywords = sanitizeKeywordList(payload.defaultKeywords);
+    const defaultCategory = sanitizeOptionalCategory(payload.defaultCategory);
+
+    for (let index = 0; index < payload.icons.length; index += 1) {
+      const rawItem = payload.icons[index];
+      if (!rawItem) continue;
+      const originalFileName = String(rawItem.originalFileName ?? "").trim() || `icone_${index + 1}`;
+      const mergedKeywords = mergeKeywordLists(defaultKeywords, sanitizeKeywordList(rawItem.keywords));
+
+      try {
+        const icon = await this.create(userId, {
+          name: rawItem.name,
+          category: rawItem.category ?? defaultCategory,
+          keywords: mergedKeywords,
+          originalFileName: rawItem.originalFileName,
+          imageDataUrl: rawItem.imageDataUrl,
+        });
+        created.push(icon);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "Não foi possível salvar este ícone.";
+        failed.push({
+          requestIndex: index,
+          originalFileName,
+          reason,
+        });
+      }
+    }
+
+    return { created, failed };
   }
 }

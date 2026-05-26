@@ -116,6 +116,15 @@ import {
   matchesIconCategory,
   resolveIconCategoryValue,
 } from "@shared/icon-categories";
+import {
+  ICON_ALLOWED_MIME_TYPES,
+  ICON_BATCH_UPLOAD_MAX_ITEMS,
+  ICON_UPLOAD_MAX_BYTES,
+  isIconMimeTypeAllowed,
+  mergeBatchUploadKeywords,
+  parseKeywordInput as parseBatchKeywordInput,
+  suggestBatchIconNameFromFileName,
+} from "../src/components/icon-picker-upload-batch.utils";
 
 test("formatters: moeda e data em pt-BR", () => {
   assert.equal(formatCurrencyBRL(1234.56), "R$\u00a01.234,56");
@@ -3650,6 +3659,10 @@ test("icon categories: lista amigável contém novas categorias e mantém 'Outro
   assert.equal(values.includes("delivery"), true);
   assert.equal(values.includes("farmacia"), true);
   assert.equal(values.includes("imposto"), true);
+  assert.equal(values.includes("carteira"), false);
+  assert.equal(values.includes("assinatura"), false);
+  assert.equal(values.includes("educacao"), false);
+  assert.equal(values.includes("telefonia"), false);
   assert.equal(values[values.length - 1], "outro");
 });
 
@@ -3657,15 +3670,58 @@ test("icon categories: compatibilidade com categorias legadas mantém filtros fu
   assert.equal(resolveIconCategoryValue("marketplaces"), "loja");
   assert.equal(resolveIconCategoryValue("supermercados"), "mercado");
   assert.equal(resolveIconCategoryValue("games"), "game");
+  assert.equal(resolveIconCategoryValue("carteira"), "banco");
+  assert.equal(resolveIconCategoryValue("assinatura"), "servico");
+  assert.equal(resolveIconCategoryValue("educacao"), "servico");
+  assert.equal(resolveIconCategoryValue("telefonia"), "internet");
 
   const lojaFilterValues = getIconCategoryFilterValues("loja");
   assert.equal(lojaFilterValues.includes("loja"), true);
   assert.equal(lojaFilterValues.includes("marketplaces"), true);
 
+  const bancoFilterValues = getIconCategoryFilterValues("banco");
+  assert.equal(bancoFilterValues.includes("carteira"), true);
+
   assert.equal(matchesIconCategory("marketplaces", "loja"), true);
   assert.equal(matchesIconCategory("supermercados", "mercado"), true);
+  assert.equal(matchesIconCategory("carteira", "banco"), true);
+  assert.equal(matchesIconCategory("telefonia", "internet"), true);
   assert.equal(matchesIconCategory("categoria-desconhecida", "loja"), false);
   assert.equal(matchesIconCategory("categoria-desconhecida", "all"), true);
+});
+
+test("icon batch upload utils: sugere nome amigável a partir do arquivo", () => {
+  assert.equal(suggestBatchIconNameFromFileName("Itau_Unibanco_logo_2023.svg"), "Itau Unibanco Logo");
+  assert.equal(suggestBatchIconNameFromFileName("kabum-icone.png"), "Kabum Icone");
+});
+
+test("icon batch upload utils: merge de palavras-chave herda base, item, nome e arquivo sem duplicar", () => {
+  const merged = mergeBatchUploadKeywords({
+    defaultKeywords: ["kabum", "mercado livre"],
+    itemKeywords: "kabum, games",
+    iconName: "KaBuM",
+    originalFileName: "MLP_KaBuM_logo.svg",
+  });
+
+  assert.equal(merged.includes("kabum"), true);
+  assert.equal(merged.includes("mercado livre"), true);
+  assert.equal(merged.includes("games"), true);
+  assert.equal(merged.includes("MLP KaBuM logo"), true);
+  assert.equal(merged.length, 4);
+});
+
+test("icon batch upload utils: parse keywords remove duplicadas e espaços extras", () => {
+  const parsed = parseBatchKeywordInput("  itau, itaú, itaucard, ITAUCARD , unibanco  ");
+  assert.deepEqual(parsed, ["itau", "itaucard", "unibanco"]);
+});
+
+test("icon batch upload utils: valida tipos permitidos e limites padrão", () => {
+  assert.equal(isIconMimeTypeAllowed("image/png"), true);
+  assert.equal(isIconMimeTypeAllowed("image/jpeg"), true);
+  assert.equal(isIconMimeTypeAllowed("image/webp"), false);
+  assert.equal(ICON_ALLOWED_MIME_TYPES.includes("image/svg+xml"), true);
+  assert.equal(ICON_UPLOAD_MAX_BYTES, 512 * 1024);
+  assert.equal(ICON_BATCH_UPLOAD_MAX_ITEMS, 30);
 });
 
 test("relatorios PDF: metadados usam overview quando disponível", () => {

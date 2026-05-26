@@ -28,6 +28,29 @@ export type UpdateUserIconLibraryPayload = {
   keywords?: string[] | string | null;
 };
 
+export type CreateUserIconLibraryBatchItemPayload = {
+  name: string;
+  category?: string | null;
+  keywords?: string[] | string | null;
+  originalFileName?: string | null;
+  imageDataUrl: string;
+};
+
+export type CreateUserIconLibraryBatchPayload = {
+  defaultCategory?: string | null;
+  defaultKeywords?: string[] | string | null;
+  icons: CreateUserIconLibraryBatchItemPayload[];
+};
+
+export type CreateUserIconLibraryBatchResult = {
+  created: UserIconLibraryItemApiModel[];
+  failed: Array<{
+    requestIndex: number;
+    originalFileName: string;
+    reason: string;
+  }>;
+};
+
 export async function fetchUserIconLibrary(): Promise<UserIconLibraryItemApiModel[]> {
   const response = await apiRequest("GET", "/api/user-icon-library");
   return response.json();
@@ -58,4 +81,15 @@ export async function updateUserIconLibraryItem(
 
 export async function deleteUserIconLibraryItem(iconId: string): Promise<void> {
   await apiRequest("DELETE", `/api/user-icon-library/${iconId}`);
+}
+
+export async function createUserIconLibraryBatch(
+  payload: CreateUserIconLibraryBatchPayload,
+): Promise<CreateUserIconLibraryBatchResult> {
+  const response = await apiRequest("POST", "/api/user-icon-library/batch", payload);
+  const body = await response.json();
+  return {
+    created: Array.isArray(body?.created) ? body.created as UserIconLibraryItemApiModel[] : [],
+    failed: Array.isArray(body?.failed) ? body.failed as CreateUserIconLibraryBatchResult["failed"] : [],
+  };
 }
