@@ -1918,9 +1918,6 @@ export function IconPicker({
                                 {pack.category ? getIconCategoryLabel(pack.category) : "Sem categoria"} · {pack.iconsCount} ícone(s)
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {getPackLibrarySummaryLabel(pack)}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
                                 {pack.sourceType === "community"
                                   ? `Publicado por: ${formatCommunityAuthorLabel(pack.ownerLabel)}`
                                   : "Catálogo oficial"}
