@@ -81,6 +81,10 @@ function buildIconFingerprint(name: string, category: string | null, imageUrl: s
   return `${normalizeIconTerm(name)}|${normalizeIconTerm(category)}|${String(imageUrl ?? "").trim()}`;
 }
 
+function buildIconNameCategoryFingerprint(name: string, category: string | null): string {
+  return `${normalizeIconTerm(name)}|${normalizeIconTerm(category)}`;
+}
+
 const testPublicUsersById: Record<string, { nomeCompleto: string | null; username: string | null }> = {
   user_a: { nomeCompleto: "Fernando", username: "fernando.publico@example.com" },
   user_b: { nomeCompleto: null, username: "elza.finance@example.com" },
@@ -303,7 +307,7 @@ function createInMemoryServiceFixture() {
       const normalizedCategory = String(query?.category ?? "").trim().toLowerCase();
       const packId = String(query?.packId ?? "").trim();
       const includePackItems = query?.includePackItems === true;
-      return officialIcons
+      let list = officialIcons
         .filter((icon) => icon.isActive)
         .filter((icon) => {
           if (origin === "community") return isCommunityIconKey(icon.iconKey);
@@ -314,7 +318,50 @@ function createInMemoryServiceFixture() {
           if (packId) return icon.packId === packId;
           if (includePackItems) return true;
           return !icon.packId;
-        })
+        });
+
+      if (!packId && !includePackItems) {
+        const packedIcons = officialIcons
+          .filter((icon) => icon.isActive)
+          .filter((icon) => (origin === "community" ? isCommunityIconKey(icon.iconKey) : origin === "official" ? !isCommunityIconKey(icon.iconKey) : true))
+          .filter((icon) => Boolean(icon.packId));
+
+        const packedSourceUserIconIds = new Set<string>();
+        const packedCommunityIconKeys = new Set<string>();
+        const packedFingerprints = new Set<string>();
+        const packedNameCategoryFingerprints = new Set<string>();
+
+        for (const packed of packedIcons) {
+          const parsed = parseCommunityKeyParts(packed.iconKey);
+          if (parsed?.sourceUserIconId) {
+            packedSourceUserIconIds.add(parsed.sourceUserIconId);
+          }
+          if (isCommunityIconKey(packed.iconKey)) {
+            packedCommunityIconKeys.add(packed.iconKey);
+          }
+          packedFingerprints.add(buildIconFingerprint(packed.name, packed.category, packed.imageUrl));
+          packedNameCategoryFingerprints.add(buildIconNameCategoryFingerprint(packed.name, packed.category));
+        }
+
+        list = list.filter((icon) => {
+          const parsed = parseCommunityKeyParts(icon.iconKey);
+          const sourceUserIconId = parsed?.sourceUserIconId ?? null;
+          if (sourceUserIconId && packedSourceUserIconIds.has(sourceUserIconId)) return false;
+          if (isCommunityIconKey(icon.iconKey) && packedCommunityIconKeys.has(icon.iconKey)) return false;
+
+          const fingerprint = buildIconFingerprint(icon.name, icon.category, icon.imageUrl);
+          if (packedFingerprints.has(fingerprint)) return false;
+
+          const hasImageUrl = String(icon.imageUrl ?? "").trim().length > 0;
+          if (!hasImageUrl) {
+            const nameCategory = buildIconNameCategoryFingerprint(icon.name, icon.category);
+            if (packedNameCategoryFingerprints.has(nameCategory)) return false;
+          }
+          return true;
+        });
+      }
+
+      return list
         .filter((icon) => (!normalizedCategory ? true : String(icon.category ?? "").toLowerCase() === normalizedCategory))
         .filter((icon) => {
           if (!normalizedSearch) return true;
@@ -1096,6 +1143,22 @@ test("community icons: listagem geral exclui itens de pack e detalhe do pack man
       body: JSON.stringify({ userIconId: "user-upload-a" }),
     });
     assert.equal(publishIndividual.status, 201);
+    const publishIndividualBody = await publishIndividual.json();
+    const hiddenIndividualPublicationId = publishIndividualBody?.publication?.id as string;
+    assert.equal(typeof hiddenIndividualPublicationId, "string");
+
+    const publishUnrelatedIndividual = await fetch(`${baseUrl}/api/icons/community/publish`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_b",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ userIconId: "user-upload-b" }),
+    });
+    assert.equal(publishUnrelatedIndividual.status, 201);
+    const publishUnrelatedBody = await publishUnrelatedIndividual.json();
+    const visibleIndividualPublicationId = publishUnrelatedBody?.publication?.id as string;
+    assert.equal(typeof visibleIndividualPublicationId, "string");
 
     const communityList = await fetch(`${baseUrl}/api/icons/community`, {
       headers: { "x-test-auth": "user_b" },
@@ -1104,7 +1167,8 @@ test("community icons: listagem geral exclui itens de pack e detalhe do pack man
     const communityListBody = await communityList.json();
     const listedIcons = Array.isArray(communityListBody?.icons) ? communityListBody.icons : [];
     assert.equal(listedIcons.some((icon: { packId: string | null }) => icon.packId === packId), false);
-    assert.equal(listedIcons.some((icon: { packId: string | null }) => icon.packId === null), true);
+    assert.equal(listedIcons.some((icon: { id: string }) => icon.id === hiddenIndividualPublicationId), false);
+    assert.equal(listedIcons.some((icon: { id: string }) => icon.id === visibleIndividualPublicationId), true);
 
     const packDetails = await fetch(`${baseUrl}/api/icons/community/packs/${packId}`, {
       headers: { "x-test-auth": "user_b" },

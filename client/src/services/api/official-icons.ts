@@ -16,6 +16,8 @@ export type OfficialIconApiModel = {
   aliases: string[];
   packId: string | null;
   packName: string | null;
+  hiddenBecausePacked?: boolean;
+  representedInPack?: boolean;
   alreadyInLibrary: boolean;
   createdAt: string;
   updatedAt: string;

@@ -250,6 +250,7 @@ export function IconPicker({
       const filterBySelectedCategory = (icons: OfficialIconApiModel[]): OfficialIconApiModel[] =>
         icons
           .filter((icon) => !icon.packId)
+          .filter((icon) => !icon.hiddenBecausePacked && !icon.representedInPack)
           .filter((icon) => matchesIconCategory(icon.category, exploreCategory));
 
       if (exploreOrigin === "community") {

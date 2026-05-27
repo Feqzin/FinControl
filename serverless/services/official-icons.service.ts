@@ -388,11 +388,16 @@ function normalizeCategoryTerm(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
-function buildIconFingerprint(name: string, category: string | null, imageUrl: string): string {
+function buildIconNameCategoryFingerprint(name: string, category: string | null): string {
   const normalizedName = normalizeIconTerm(name);
   const normalizedCategory = normalizeCategoryTerm(category);
+  return `${normalizedName}|${normalizedCategory}`;
+}
+
+function buildIconFingerprint(name: string, category: string | null, imageUrl: string): string {
+  const base = buildIconNameCategoryFingerprint(name, category);
   const imageHash = createHash("sha1").update(String(imageUrl ?? "").trim()).digest("hex").slice(0, 16);
-  return `${normalizedName}|${normalizedCategory}|${imageHash}`;
+  return `${base}|${imageHash}`;
 }
 
 export class OfficialIconLibraryService {
@@ -686,13 +691,45 @@ export class OfficialIconLibraryService {
       };
     });
 
-    if (normalizedCategory) {
-      icons = icons.filter((icon) => (icon.category ?? "").trim().toLowerCase() === normalizedCategory);
-    }
     if (packId) {
       icons = icons.filter((icon) => icon.packId === packId);
     } else if (!includePackItems) {
-      icons = icons.filter((icon) => !icon.packId);
+      const packedSourceUserIconIds = new Set<string>();
+      const packedCommunityIconKeys = new Set<string>();
+      const packedFingerprints = new Set<string>();
+      const packedNameCategoryFingerprints = new Set<string>();
+
+      for (const icon of icons) {
+        if (!icon.packId) continue;
+        if (icon.sourceUserIconId) {
+          packedSourceUserIconIds.add(icon.sourceUserIconId);
+        }
+        if (icon.sourceType === "community") {
+          packedCommunityIconKeys.add(icon.iconKey);
+        }
+        packedFingerprints.add(buildIconFingerprint(icon.name, icon.category, icon.imageUrl));
+        packedNameCategoryFingerprints.add(buildIconNameCategoryFingerprint(icon.name, icon.category));
+      }
+
+      icons = icons.filter((icon) => {
+        if (icon.packId) return false;
+        if (icon.sourceUserIconId && packedSourceUserIconIds.has(icon.sourceUserIconId)) return false;
+        if (icon.sourceType === "community" && packedCommunityIconKeys.has(icon.iconKey)) return false;
+
+        const fingerprint = buildIconFingerprint(icon.name, icon.category, icon.imageUrl);
+        if (packedFingerprints.has(fingerprint)) return false;
+
+        const hasImageUrl = String(icon.imageUrl ?? "").trim().length > 0;
+        if (!hasImageUrl) {
+          const nameCategoryFingerprint = buildIconNameCategoryFingerprint(icon.name, icon.category);
+          if (packedNameCategoryFingerprints.has(nameCategoryFingerprint)) return false;
+        }
+
+        return true;
+      });
+    }
+    if (normalizedCategory) {
+      icons = icons.filter((icon) => (icon.category ?? "").trim().toLowerCase() === normalizedCategory);
     }
     if (normalizedSearch) {
       icons = icons.filter((icon) => iconMatchesSearch(icon, normalizedSearch));
