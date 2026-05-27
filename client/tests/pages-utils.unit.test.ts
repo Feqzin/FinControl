@@ -134,6 +134,12 @@ import {
   filterAndSortPersonalIcons,
   paginateItems,
 } from "../src/components/icon-picker-pagination.utils";
+import {
+  buildPackMatchSummaryByPackId,
+  hasExploreSearchTerm,
+  resolveExploreIconsForView,
+  resolveExplorePacksForView,
+} from "../src/components/icon-picker-explore-search.utils";
 
 test("formatters: moeda e data em pt-BR", () => {
   assert.equal(formatCurrencyBRL(1234.56), "R$\u00a01.234,56");
@@ -3808,6 +3814,180 @@ test("icon picker pagination utils: pagina coleção e limita em janela estável
   assert.equal(page2.startIndex, 40);
   assert.equal(page2.endIndex, 41);
   assert.equal(page2.page, 2);
+});
+
+test("icon picker explore search: sem busca não mostra ícones de pack na seção individual", () => {
+  const icons = [
+    {
+      id: "icon-individual",
+      iconKey: "official-netflix",
+      sourceType: "official",
+      sourceUserIconId: null,
+      ownerUserId: null,
+      ownerLabel: null,
+      ownerPublicCode: null,
+      name: "Netflix",
+      imageUrl: "https://cdn/icons/netflix.png",
+      storagePath: null,
+      category: "streaming",
+      tags: ["netflix"],
+      aliases: [],
+      packId: null,
+      packName: null,
+      hiddenBecausePacked: false,
+      representedInPack: false,
+      alreadyInLibrary: false,
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    },
+    {
+      id: "icon-pack-itau",
+      iconKey: "community:bank:itau",
+      sourceType: "community",
+      sourceUserIconId: "user-icon-itau",
+      ownerUserId: null,
+      ownerLabel: "Fernando",
+      ownerPublicCode: "USR-AAAA1111",
+      name: "Itaú Unibanco",
+      imageUrl: "https://cdn/icons/itau.png",
+      storagePath: null,
+      category: "banco",
+      tags: ["itau", "itaucard"],
+      aliases: [],
+      packId: "pack-bancos",
+      packName: "Bancos",
+      hiddenBecausePacked: false,
+      representedInPack: false,
+      alreadyInLibrary: false,
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    },
+  ];
+
+  const visibleIcons = resolveExploreIconsForView(icons as any, {
+    search: "",
+    category: "all",
+  });
+
+  assert.deepEqual(visibleIcons.map((icon) => icon.id), ["icon-individual"]);
+});
+
+test("icon picker explore search: com busca mostra ícones de pack e encontra pack por ícone interno", () => {
+  const icons = [
+    {
+      id: "icon-pack-itau",
+      iconKey: "community:bank:itau",
+      sourceType: "community",
+      sourceUserIconId: "user-icon-itau",
+      ownerUserId: null,
+      ownerLabel: "Fernando",
+      ownerPublicCode: "USR-AAAA1111",
+      name: "Itaú Unibanco",
+      imageUrl: "https://cdn/icons/itau.png",
+      storagePath: null,
+      category: "banco",
+      tags: ["itau", "itaucard"],
+      aliases: [],
+      packId: "pack-bancos",
+      packName: "Bancos",
+      hiddenBecausePacked: false,
+      representedInPack: false,
+      alreadyInLibrary: false,
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    },
+  ];
+  const packs = [
+    {
+      id: "pack-bancos",
+      name: "Bancos",
+      description: "Pack com bancos brasileiros",
+      category: "banco",
+      coverImageUrl: null,
+      sourceType: "community",
+      ownerUserId: null,
+      ownerLabel: "Fernando",
+      ownerPublicCode: "USR-AAAA1111",
+      isPublished: true,
+      iconsCount: 5,
+      addedIconsCount: 0,
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    },
+  ];
+
+  const matchedIcons = resolveExploreIconsForView(icons as any, {
+    search: "itau",
+    category: "all",
+  });
+  assert.deepEqual(matchedIcons.map((icon) => icon.id), ["icon-pack-itau"]);
+
+  const matchesByPack = buildPackMatchSummaryByPackId(matchedIcons as any);
+  assert.equal(matchesByPack.has("pack-bancos"), true);
+
+  const matchedPacks = resolveExplorePacksForView(packs as any, {
+    search: "itau",
+    matchingPackIds: new Set(matchesByPack.keys()),
+  });
+  assert.deepEqual(matchedPacks.map((pack) => pack.id), ["pack-bancos"]);
+});
+
+test("icon picker explore search: categoria e termo funcionam juntos na busca interna de packs", () => {
+  const icons = [
+    {
+      id: "icon-pack-itau",
+      iconKey: "community:bank:itau",
+      sourceType: "community",
+      sourceUserIconId: "user-icon-itau",
+      ownerUserId: null,
+      ownerLabel: "Fernando",
+      ownerPublicCode: "USR-AAAA1111",
+      name: "Itaú Unibanco",
+      imageUrl: "https://cdn/icons/itau.png",
+      storagePath: null,
+      category: "banco",
+      tags: ["itau", "itaucard"],
+      aliases: [],
+      packId: "pack-bancos",
+      packName: "Bancos",
+      hiddenBecausePacked: false,
+      representedInPack: false,
+      alreadyInLibrary: false,
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    },
+    {
+      id: "icon-pack-cinema",
+      iconKey: "community:movie:cinemark",
+      sourceType: "community",
+      sourceUserIconId: "user-icon-cinema",
+      ownerUserId: null,
+      ownerLabel: "Fernando",
+      ownerPublicCode: "USR-AAAA1111",
+      name: "Cinemark",
+      imageUrl: "https://cdn/icons/cinemark.png",
+      storagePath: null,
+      category: "servico",
+      tags: ["cinema"],
+      aliases: [],
+      packId: "pack-lazer",
+      packName: "Lazer",
+      hiddenBecausePacked: false,
+      representedInPack: false,
+      alreadyInLibrary: false,
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    },
+  ];
+
+  const matchedBankIcons = resolveExploreIconsForView(icons as any, {
+    search: "itau",
+    category: "banco",
+  });
+
+  assert.deepEqual(matchedBankIcons.map((icon) => icon.id), ["icon-pack-itau"]);
+  assert.equal(hasExploreSearchTerm("itau"), true);
+  assert.equal(hasExploreSearchTerm("   "), false);
 });
 
 test("icon batch upload utils: sugere nome amigável a partir do arquivo", () => {

@@ -62,7 +62,6 @@ import {
 import {
   ICON_CATEGORY_OPTIONS as USER_ICON_CATEGORIES,
   getIconCategoryLabel,
-  matchesIconCategory,
   resolveIconCategoryValue,
 } from "@shared/icon-categories";
 import {
@@ -82,6 +81,13 @@ import {
   paginateItems,
   type PersonalIconSortOrder,
 } from "@/components/icon-picker-pagination.utils";
+import {
+  buildPackMatchSummaryByPackId,
+  formatPackMatchHint,
+  hasExploreSearchTerm,
+  resolveExploreIconsForView,
+  resolveExplorePacksForView,
+} from "@/components/icon-picker-explore-search.utils";
 
 interface IconPickerProps {
   value?: string | null;
@@ -227,6 +233,7 @@ export function IconPicker({
   const [packDetailsTarget, setPackDetailsTarget] = useState<OfficialIconPackApiModel | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const hasExploreSearch = hasExploreSearchTerm(exploreSearch);
 
   const { data: personalIcons = [], isLoading: isLoadingPersonalIcons } = useQuery<UserIconLibraryItemApiModel[]>({
     queryKey: ["/api/user-icon-library"],
@@ -236,10 +243,9 @@ export function IconPicker({
   });
 
   const { data: explorePacks = [], isLoading: isLoadingExplorePacks } = useQuery<OfficialIconPackApiModel[]>({
-    queryKey: ["/api/icons/packs", "explore", exploreSearch, exploreCategory, exploreOrigin],
+    queryKey: ["/api/icons/packs", "explore", exploreCategory, exploreOrigin],
     queryFn: () =>
       fetchIconPacks({
-        search: exploreSearch || undefined,
         category: exploreCategory !== "all" ? exploreCategory : undefined,
         origin: exploreOrigin,
       }),
@@ -252,16 +258,17 @@ export function IconPicker({
     queryFn: async () => {
       const query = {
         search: exploreSearch || undefined,
+        includePackItems: hasExploreSearch || undefined,
       };
-      const filterBySelectedCategory = (icons: OfficialIconApiModel[]): OfficialIconApiModel[] =>
-        icons
-          .filter((icon) => !icon.packId)
-          .filter((icon) => !icon.hiddenBecausePacked && !icon.representedInPack)
-          .filter((icon) => matchesIconCategory(icon.category, exploreCategory));
+      const filterForView = (icons: OfficialIconApiModel[]): OfficialIconApiModel[] =>
+        resolveExploreIconsForView(icons, {
+          search: exploreSearch,
+          category: exploreCategory,
+        });
 
       if (exploreOrigin === "community") {
         const communityIcons = await fetchCommunityIcons(query);
-        return filterBySelectedCategory(communityIcons);
+        return filterForView(communityIcons);
       }
 
       if (exploreOrigin === "official") {
@@ -269,7 +276,7 @@ export function IconPicker({
           ...query,
           origin: "official",
         });
-        return filterBySelectedCategory(onlyOfficialIcons);
+        return filterForView(onlyOfficialIcons);
       }
 
       const [officialList, communityList] = await Promise.all([
@@ -280,9 +287,9 @@ export function IconPicker({
         fetchCommunityIcons(query),
       ]);
 
-      return filterBySelectedCategory([...officialList, ...communityList]);
+      return filterForView([...officialList, ...communityList]);
     },
-    enabled: open && exploreType !== "packs",
+    enabled: open && (exploreType !== "packs" || hasExploreSearch),
     staleTime: 60_000,
   });
 
@@ -1337,9 +1344,33 @@ export function IconPicker({
     [filteredPersonalIcons, myIconsPage, iconsPerPage],
   );
 
+  const packMatchSummaryByPackId = useMemo(
+    () => buildPackMatchSummaryByPackId(officialIcons),
+    [officialIcons],
+  );
+
+  const filteredExplorePacks = useMemo(
+    () => resolveExplorePacksForView(explorePacks, {
+      search: exploreSearch,
+      matchingPackIds: new Set(packMatchSummaryByPackId.keys()),
+    }),
+    [explorePacks, exploreSearch, packMatchSummaryByPackId],
+  );
+
+  const explorePacksById = useMemo(
+    () => new Map(explorePacks.map((pack) => [pack.id, pack])),
+    [explorePacks],
+  );
+
+  const shouldShowExploreGlobalEmpty =
+    hasExploreSearch
+    && exploreType === "all"
+    && filteredExplorePacks.length === 0
+    && officialIcons.length === 0;
+
   const paginatedExplorePacks = useMemo(
-    () => paginateItems(explorePacks, explorePacksPage, packsPerPage),
-    [explorePacks, explorePacksPage],
+    () => paginateItems(filteredExplorePacks, explorePacksPage, packsPerPage),
+    [filteredExplorePacks, explorePacksPage],
   );
 
   const paginatedExploreIcons = useMemo(
@@ -1733,10 +1764,16 @@ export function IconPicker({
                 </div>
               </div>
 
-              {exploreType !== "icons" ? (
+              {shouldShowExploreGlobalEmpty ? (
+                <p className="text-xs text-muted-foreground">
+                  Nenhum pack ou ícone encontrado para “{exploreSearch.trim()}”.
+                </p>
+              ) : null}
+
+              {exploreType !== "icons" && !(shouldShowExploreGlobalEmpty && exploreType === "all") ? (
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Packs disponíveis
+                    {hasExploreSearch ? "Packs encontrados" : "Packs disponíveis"}
                   </p>
                   {isLoadingExplorePacks ? (
                     <p className="text-xs text-muted-foreground">Carregando packs...</p>
@@ -1758,6 +1795,11 @@ export function IconPicker({
                               <p className="line-clamp-2 text-xs text-muted-foreground">
                                 {pack.description || "Sem descrição"}
                               </p>
+                              {hasExploreSearch ? (
+                                <p className="text-xs text-muted-foreground">
+                                  {formatPackMatchHint(packMatchSummaryByPackId.get(pack.id)) ?? "Match pelo nome/descrição do pack"}
+                                </p>
+                              ) : null}
                               <p className="mt-1 text-xs text-muted-foreground">
                                 {pack.category ? getIconCategoryLabel(pack.category) : "Sem categoria"} · {pack.iconsCount} ícone(s)
                               </p>
@@ -1835,15 +1877,19 @@ export function IconPicker({
                 </div>
               ) : null}
 
-              {exploreType !== "packs" ? (
+              {exploreType !== "packs" && !(shouldShowExploreGlobalEmpty && exploreType === "all") ? (
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Ícones individuais
+                    {hasExploreSearch ? "Ícones encontrados" : "Ícones individuais"}
                   </p>
                   {isLoadingOfficialIcons ? (
                     <p className="text-xs text-muted-foreground">Carregando ícones...</p>
                   ) : paginatedExploreIcons.totalItems === 0 ? (
-                    <p className="text-xs text-muted-foreground">Nenhum ícone individual encontrado para esse filtro.</p>
+                    <p className="text-xs text-muted-foreground">
+                      {hasExploreSearch
+                        ? "Nenhum ícone encontrado para esse filtro."
+                        : "Nenhum ícone individual encontrado para esse filtro."}
+                    </p>
                   ) : (
                     <>
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
@@ -1866,7 +1912,10 @@ export function IconPicker({
                                 <div className="min-w-0">
                                   <p className="truncate text-xs font-medium">{icon.name}</p>
                                   <p className="truncate text-[10px] text-muted-foreground">
-                                    {icon.category ? getIconCategoryLabel(icon.category) : (icon.packName || "Sem categoria")}
+                                    {icon.category ? getIconCategoryLabel(icon.category) : "Sem categoria"}
+                                  </p>
+                                  <p className="truncate text-[10px] text-muted-foreground">
+                                    {icon.packName ? `Pack: ${icon.packName}` : "Origem: Ícone individual"}
                                   </p>
                                 </div>
                               </div>
@@ -1880,6 +1929,26 @@ export function IconPicker({
                                   {alreadyAdded ? "Na sua biblioteca" : "Disponível"}
                                 </Badge>
                               </div>
+                              {icon.packId && hasExploreSearch ? (
+                                <div className="mt-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="w-full"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      const pack = explorePacksById.get(icon.packId ?? "");
+                                      if (pack) {
+                                        openPackDetails(pack);
+                                      }
+                                    }}
+                                  >
+                                    Abrir pack
+                                  </Button>
+                                </div>
+                              ) : null}
                             </button>
                           );
                         })}
@@ -2681,6 +2750,23 @@ export function IconPicker({
                   }}
                 >
                   Adicionar à minha biblioteca
+                </Button>
+              ) : null}
+
+              {manageActionTarget.icon.packId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    const pack = explorePacksById.get(manageActionTarget.icon.packId ?? "");
+                    if (pack) {
+                      openPackDetails(pack);
+                    }
+                    setManageActionTarget(null);
+                  }}
+                >
+                  Abrir pack
                 </Button>
               ) : null}
 
