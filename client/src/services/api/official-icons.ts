@@ -4,6 +4,7 @@ export type OfficialIconApiModel = {
   id: string;
   iconKey: string;
   packItemPublicCode?: string | null;
+  sourcePackItemPublicCode?: string | null;
   sourceType?: "official" | "community";
   sourceUserIconId?: string | null;
   ownerUserId?: string | null;
