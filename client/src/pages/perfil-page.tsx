@@ -220,6 +220,10 @@ export default function PerfilPage() {
     isProMode,
   } = useUIPreferences();
   const [nomeCompleto, setNomeCompleto] = useState(user?.nomeCompleto || "");
+  const [publicUsername, setPublicUsername] = useState(user?.username || "");
+  const [fullNameVisibility, setFullNameVisibility] = useState<"private" | "public">(
+    user?.fullNameVisibility === "public" ? "public" : "private",
+  );
   const [arquivoImportacao, setArquivoImportacao] = useState<File | null>(null);
   const [modoImportacao, setModoImportacao] = useState<ImportMode>("merge");
   const [modoRestauracaoCloud, setModoRestauracaoCloud] = useState<ImportMode>("merge");
@@ -260,6 +264,13 @@ export default function PerfilPage() {
     queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
   }, [billingStatus, planoAtualAutenticado, user]);
 
+  useEffect(() => {
+    if (!user) return;
+    setNomeCompleto(user.nomeCompleto || "");
+    setPublicUsername(user.username || "");
+    setFullNameVisibility(user.fullNameVisibility === "public" ? "public" : "private");
+  }, [user]);
+
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
   const { data: servicoPessoas = [] } = useQuery<ServicoPessoa[]>({ queryKey: ["/api/servico-pessoas"] });
@@ -275,14 +286,24 @@ export default function PerfilPage() {
 
   const updateProfile = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PATCH", "/api/auth/profile", { nomeCompleto });
+      const res = await apiRequest("PATCH", "/api/auth/profile", {
+        nomeCompleto,
+        username: publicUsername,
+        fullNameVisibility,
+      });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: "Perfil atualizado" });
     },
-    onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
+    onError: (error) => {
+      toast({
+        title: "Erro ao atualizar",
+        description: parseApiErrorMessage(error, "Não foi possível atualizar seu perfil agora."),
+        variant: "destructive",
+      });
+    },
   });
 
   const invalidateFinancialQueries = () => {
@@ -684,8 +705,36 @@ export default function PerfilPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Usuario</Label>
-              <Input value={user?.username || ""} disabled />
+              <Label>Usuário público</Label>
+              <Input
+                value={publicUsername}
+                onChange={(event) => setPublicUsername(event.target.value)}
+                placeholder="@seuusuario"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              <p className="text-xs text-muted-foreground">
+                Esse nome aparece em packs e recursos compartilhados.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Privacidade do nome completo</Label>
+              <Select
+                value={fullNameVisibility}
+                onValueChange={(value) => setFullNameVisibility(value as "private" | "public")}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="private">Não exibir publicamente</SelectItem>
+                  <SelectItem value="public">Exibir publicamente</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Por padrão, outros usuários veem apenas seu usuário público.
+              </p>
             </div>
           </div>
           <Button

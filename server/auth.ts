@@ -144,13 +144,16 @@ function toAuthUserResponse(user: {
   id: string;
   username: string;
   nomeCompleto?: string | null;
+  fullNameVisibility?: unknown;
   subscriptionTier?: unknown;
 }) {
   const access = buildSubscriptionAccess(user.subscriptionTier);
+  const fullNameVisibility = user.fullNameVisibility === "public" ? "public" : "private";
   return {
     id: user.id,
     username: user.username,
     nomeCompleto: user.nomeCompleto ?? null,
+    fullNameVisibility,
     subscriptionTier: access.subscriptionTier,
     features: access.features,
   };
@@ -180,6 +183,30 @@ const loginLimiter = rateLimit({
 function normalizeUsername(input: unknown): string {
   if (typeof input !== "string") return "";
   return input.trim();
+}
+
+const PUBLIC_USERNAME_REGEX = /^[a-z0-9._-]{3,30}$/;
+const EMAIL_LIKE_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const FULL_NAME_VISIBILITY_VALUES = new Set(["private", "public"]);
+
+function normalizePublicUsername(input: unknown): string {
+  if (typeof input !== "string") return "";
+  return input.trim().replace(/^@+/, "").toLowerCase();
+}
+
+function validatePublicUsername(value: string): string | null {
+  if (!value) return "Informe o usuário público.";
+  if (EMAIL_LIKE_REGEX.test(value)) return "O usuário público não pode ser um e-mail.";
+  if (!PUBLIC_USERNAME_REGEX.test(value)) {
+    return "Usuário público inválido. Use 3 a 30 caracteres com letras minúsculas, números, ponto, underline ou hífen.";
+  }
+  return null;
+}
+
+function sanitizeNomeCompleto(value: string | null | undefined): string | null {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, 120);
 }
 
 function hashResetToken(token: string): string {
@@ -595,9 +622,57 @@ export function setupAuth(app: Express) {
 
   app.patch("/api/auth/profile", requireAuth, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
-      const { nomeCompleto } = req.body;
-      await storage.updateUser(userId, { nomeCompleto });
+      const sessionUser = req.user as any;
+      const userId = sessionUser.id;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const updates: Record<string, unknown> = {};
+
+      if (Object.prototype.hasOwnProperty.call(body, "nomeCompleto")) {
+        const rawNomeCompleto = body.nomeCompleto;
+        if (rawNomeCompleto !== null && rawNomeCompleto !== undefined && typeof rawNomeCompleto !== "string") {
+          return res.status(400).json({ message: "Nome completo inválido." });
+        }
+        updates.nomeCompleto = sanitizeNomeCompleto(rawNomeCompleto as string | null | undefined);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(body, "username")) {
+        const rawUsername = body.username;
+        if (typeof rawUsername !== "string") {
+          return res.status(400).json({ message: "Usuário público inválido." });
+        }
+
+        const normalizedCandidate = normalizePublicUsername(rawUsername);
+        const currentNormalized = normalizePublicUsername(sessionUser?.username);
+        const usernameChanged = normalizedCandidate !== currentNormalized;
+
+        if (usernameChanged) {
+          const validationError = validatePublicUsername(normalizedCandidate);
+          if (validationError) {
+            return res.status(400).json({ message: validationError });
+          }
+          const existing = await storage.getUserByUsername(normalizedCandidate);
+          if (existing && existing.id !== userId) {
+            return res.status(409).json({ message: "Este usuário público já está em uso." });
+          }
+          updates.username = normalizedCandidate;
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(body, "fullNameVisibility")) {
+        const rawVisibility = body.fullNameVisibility;
+        if (typeof rawVisibility !== "string") {
+          return res.status(400).json({ message: "Configuração de privacidade inválida." });
+        }
+        const visibility = rawVisibility.trim().toLowerCase();
+        if (!FULL_NAME_VISIBILITY_VALUES.has(visibility)) {
+          return res.status(400).json({ message: "Configuração de privacidade inválida." });
+        }
+        updates.fullNameVisibility = visibility;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await storage.updateUser(userId, updates as any);
+      }
       const user = await storage.getUser(userId);
       auditAuth(req, {
         action: "update",

@@ -102,7 +102,8 @@ function isMissingUsersOptionalColumnsError(error: unknown): boolean {
       combined.includes("\"trial_used_at\"") ||
       combined.includes("\"reset_token\"") ||
       combined.includes("\"reset_token_expiry\"") ||
-      combined.includes("\"public_code\"")
+      combined.includes("\"public_code\"") ||
+      combined.includes("\"full_name_visibility\"")
     );
 
   if (referencesUsersOptionalColumnsInFailedQuery) return true;
@@ -117,7 +118,8 @@ function isMissingUsersOptionalColumnsError(error: unknown): boolean {
       combined.includes("trial_used_at") ||
       combined.includes("reset_token") ||
       combined.includes("reset_token_expiry") ||
-      combined.includes("public_code")
+      combined.includes("public_code") ||
+      combined.includes("full_name_visibility")
     );
 
   return referencesMissingColumn;
@@ -136,6 +138,7 @@ function toUserWithOptionalDefaults(user: {
     password: user.password,
     publicCode: null,
     nomeCompleto: null,
+    fullNameVisibility: "private",
     subscriptionTier:
       (user.subscriptionTier as string | undefined) ??
       (user.subscription_tier as string | undefined) ??
@@ -536,6 +539,7 @@ export class DatabaseStorage implements IStorage {
       delete fallbackData.trialUsedAt;
       delete fallbackData.resetToken;
       delete fallbackData.resetTokenExpiry;
+      delete fallbackData.fullNameVisibility;
 
       if (Object.keys(fallbackData).length === 0) {
         return this.getUser(id);

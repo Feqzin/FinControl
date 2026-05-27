@@ -169,7 +169,8 @@ export class DatabaseStorage implements IStorage {
         combined.includes("trial_used_at") ||
         combined.includes("reset_token") ||
         combined.includes("reset_token_expiry") ||
-        combined.includes("public_code")
+        combined.includes("public_code") ||
+        combined.includes("full_name_visibility")
       )
     );
   }
@@ -187,6 +188,7 @@ export class DatabaseStorage implements IStorage {
       password: user.password,
       publicCode: null,
       nomeCompleto: null,
+      fullNameVisibility: "private",
       subscriptionTier:
       user.subscriptionTier ??
       user.subscription_tier ??
@@ -252,6 +254,7 @@ export class DatabaseStorage implements IStorage {
       delete fallbackData.trialUsedAt;
       delete fallbackData.resetToken;
       delete fallbackData.resetTokenExpiry;
+      delete fallbackData.fullNameVisibility;
 
       if (Object.keys(fallbackData).length === 0) {
         return this.getUser(id);

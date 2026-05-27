@@ -11,6 +11,7 @@ type AuthUser = {
   id: string;
   username: string;
   nomeCompleto: string | null;
+  fullNameVisibility?: "private" | "public" | null;
   subscriptionTier?: SubscriptionTier | null;
   features?: SubscriptionFeatures | null;
   limits?: SubscriptionLimits | null;

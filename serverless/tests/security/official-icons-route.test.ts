@@ -95,26 +95,26 @@ function buildIconNameCategoryFingerprint(name: string, category: string | null)
   return `${normalizeIconTerm(name)}|${normalizeIconTerm(category)}`;
 }
 
-const testPublicUsersById: Record<string, { nomeCompleto: string | null; username: string | null }> = {
-  user_a: { nomeCompleto: "Fernando", username: "fernando.publico@example.com" },
-  user_b: { nomeCompleto: null, username: "elza.finance@example.com" },
-  admin_user: { nomeCompleto: "Admin", username: "admin@example.com" },
+const PUBLIC_USERNAME_REGEX = /^[a-z0-9._-]{3,30}$/;
+
+const testPublicUsersById: Record<string, { username: string | null }> = {
+  user_a: { username: "fernandoq87" },
+  user_b: { username: "elza.finance@example.com" },
+  admin_user: { username: "admin" },
 };
 
 function resolvePublicOwnerLabel(ownerUserId: string | null | undefined): string {
   if (!ownerUserId) return "Usuário";
   const profile = testPublicUsersById[ownerUserId];
-  if (!profile) return "Usuário";
+  const ownerPublicCode = `USR-${ownerUserId.toUpperCase()}`;
+  if (!profile) return `Usuário ${ownerPublicCode.slice(0, 8)}`;
 
-  const nomeCompleto = String(profile.nomeCompleto ?? "").trim();
-  if (nomeCompleto) return nomeCompleto;
+  const username = String(profile.username ?? "").trim().replace(/^@+/, "").toLowerCase();
+  if (PUBLIC_USERNAME_REGEX.test(username)) {
+    return `@${username}`;
+  }
 
-  const username = String(profile.username ?? "").trim();
-  if (!username) return "Usuário";
-  if (!username.includes("@")) return username;
-
-  const localPart = username.split("@")[0]?.trim() ?? "";
-  return localPart || "Usuário";
+  return `Usuário ${ownerPublicCode.slice(0, 8)}`;
 }
 
 function createInMemoryServiceFixture() {
@@ -1077,11 +1077,11 @@ test("community packs: usuário cria pack com ícones próprios e outro usuário
     const listBody = await listAsUserB.json();
     assert.equal(listBody.packs.some((pack: { id: string }) => pack.id === packId), true);
     const listedPack = listBody.packs.find((pack: { id: string }) => pack.id === packId);
-    assert.equal(listedPack?.ownerLabel, "Fernando");
+    assert.equal(listedPack?.ownerLabel, "@fernandoq87");
     assert.equal(listedPack?.ownerPublicCode, "USR-USER_A");
     assert.equal(listedPack?.publicCode, packPublicCode);
     assert.equal(listedPack?.libraryStatus, "none");
-    assert.equal(String(listedPack?.ownerLabel ?? "").includes("@"), false);
+    assert.equal(String(listedPack?.ownerLabel ?? "").includes("@"), true);
     assert.equal(JSON.stringify(listedPack).includes("example.com"), false);
 
     const detailsAsUserB = await fetch(`${baseUrl}/api/icons/community/packs/${packId}`, {
@@ -1089,9 +1089,9 @@ test("community packs: usuário cria pack com ícones próprios e outro usuário
     });
     assert.equal(detailsAsUserB.status, 200);
     const detailsBody = await detailsAsUserB.json();
-    assert.equal(detailsBody?.pack?.ownerLabel, "Fernando");
+    assert.equal(detailsBody?.pack?.ownerLabel, "@fernandoq87");
     assert.equal(detailsBody?.pack?.ownerPublicCode, "USR-USER_A");
-    assert.equal(String(detailsBody?.pack?.ownerLabel ?? "").includes("@"), false);
+    assert.equal(String(detailsBody?.pack?.ownerLabel ?? "").includes("@"), true);
     assert.equal(JSON.stringify(detailsBody?.pack ?? {}).includes("example.com"), false);
 
     const listAsOwner = await fetch(`${baseUrl}/api/icons/community/packs`, {
@@ -1289,7 +1289,7 @@ test("community icons: listagem geral exclui itens de pack e detalhe do pack man
   });
 });
 
-test("community packs: fallback público usa parte segura do username sem expor email", async () => {
+test("community packs: fallback público usa public_code reduzido sem expor e-mail", async () => {
   const { app } = createOfficialIconsRouteApp();
   await withTestServer(app, async (baseUrl) => {
     const createPack = await fetch(`${baseUrl}/api/icons/community/packs`, {
@@ -1315,7 +1315,7 @@ test("community packs: fallback público usa parte segura do username sem expor 
     assert.equal(listAsUserA.status, 200);
     const listBody = await listAsUserA.json();
     const listedPack = listBody.packs.find((pack: { id: string }) => pack.id === packId);
-    assert.equal(listedPack?.ownerLabel, "elza.finance");
+    assert.equal(listedPack?.ownerLabel, "Usuário USR-USER");
     assert.equal(listedPack?.ownerPublicCode, "USR-USER_B");
     assert.equal(String(listedPack?.ownerLabel ?? "").includes("@"), false);
     assert.equal(JSON.stringify(listedPack).includes("example.com"), false);

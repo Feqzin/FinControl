@@ -227,6 +227,11 @@ function getExploreIconPackOriginLabel(icon: OfficialIconApiModel): string {
   return "Origem: Ícone individual";
 }
 
+function formatCommunityAuthorLabel(ownerLabel: string | null | undefined): string {
+  const normalized = String(ownerLabel ?? "").trim();
+  return normalized || "Usuário";
+}
+
 export function IconPicker({
   value,
   name = "",
@@ -1917,9 +1922,14 @@ export function IconPicker({
                               </p>
                               <p className="text-xs text-muted-foreground">
                                 {pack.sourceType === "community"
-                                  ? `Publicado por: ${pack.ownerLabel || "Usuário"}${pack.ownerPublicCode ? ` · ID: ${pack.ownerPublicCode}` : ""}${pack.publicCode ? ` · Pack: ${pack.publicCode}` : ""}`
+                                  ? `Publicado por: ${formatCommunityAuthorLabel(pack.ownerLabel)}`
                                   : "Catálogo oficial"}
                               </p>
+                              {pack.publicCode ? (
+                                <p className="text-xs text-muted-foreground">
+                                  ID do pack: {pack.publicCode}
+                                </p>
+                              ) : null}
                               <div className="mt-2 flex items-center gap-2">
                                 <Button
                                   type="button"
@@ -2039,7 +2049,7 @@ export function IconPicker({
                               <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
                                 <span className="text-muted-foreground">
                                   {isCommunity
-                                    ? `Publicado por: ${icon.ownerLabel || "Usuário"}${icon.ownerPublicCode ? ` · ID: ${icon.ownerPublicCode}` : ""}`
+                                    ? `Publicado por: ${formatCommunityAuthorLabel(icon.ownerLabel)}`
                                     : "Catálogo oficial"}
                                 </span>
                                 <Badge variant={alreadyAdded ? "secondary" : "outline"} className="h-5 px-1.5 text-[10px]">
@@ -2540,9 +2550,14 @@ export function IconPicker({
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
                 {packDetailsTarget.sourceType === "community"
-                  ? `Publicado por: ${packDetailsTarget.ownerLabel || "Usuário"}${packDetailsTarget.ownerPublicCode ? ` · ID: ${packDetailsTarget.ownerPublicCode}` : ""}${packDetailsTarget.publicCode ? ` · Pack: ${packDetailsTarget.publicCode}` : ""}`
+                  ? `Publicado por: ${formatCommunityAuthorLabel(packDetailsTarget.ownerLabel)}`
                   : "Catálogo oficial"}
               </p>
+              {packDetailsTarget.publicCode ? (
+                <p className="text-xs text-muted-foreground">
+                  ID do pack: {packDetailsTarget.publicCode}
+                </p>
+              ) : null}
               <p className="text-xs text-muted-foreground">
                 {packDetailsTarget.description || "Sem descrição"}
               </p>
@@ -2887,7 +2902,7 @@ export function IconPicker({
               ) : null}
               {manageActionTarget.icon.sourceType === "community" ? (
                 <p className="text-xs text-muted-foreground">
-                  {`Publicado por: ${manageActionTarget.icon.ownerLabel || "Usuário"}${manageActionTarget.icon.ownerPublicCode ? ` · ID: ${manageActionTarget.icon.ownerPublicCode}` : ""}`}
+                  {`Publicado por: ${formatCommunityAuthorLabel(manageActionTarget.icon.ownerLabel)}`}
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">Catálogo oficial</p>
@@ -2902,7 +2917,7 @@ export function IconPicker({
               </p>
               {manageActionTarget.icon.packItemPublicCode ? (
                 <p className="text-xs text-muted-foreground">
-                  ID do item: {manageActionTarget.icon.packItemPublicCode}
+                  ID do ícone: {manageActionTarget.icon.packItemPublicCode}
                 </p>
               ) : null}
 
@@ -3002,9 +3017,14 @@ export function IconPicker({
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">
                 {manageActionTarget.pack.sourceType === "community"
-                  ? `Publicado por: ${manageActionTarget.pack.ownerLabel || "Usuário"}${manageActionTarget.pack.ownerPublicCode ? ` · ID: ${manageActionTarget.pack.ownerPublicCode}` : ""}${manageActionTarget.pack.publicCode ? ` · Pack: ${manageActionTarget.pack.publicCode}` : ""}`
+                  ? `Publicado por: ${formatCommunityAuthorLabel(manageActionTarget.pack.ownerLabel)}`
                   : "Catálogo oficial"}
               </p>
+              {manageActionTarget.pack.publicCode ? (
+                <p className="text-xs text-muted-foreground">
+                  ID do pack: {manageActionTarget.pack.publicCode}
+                </p>
+              ) : null}
               <p className="text-xs text-muted-foreground">
                 {getPackLibrarySummaryLabel(manageActionTarget.pack)}
               </p>

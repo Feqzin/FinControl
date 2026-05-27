@@ -265,19 +265,48 @@ function sanitizeOptionalText(value: string | null | undefined, maxLength: numbe
   return trimmed.slice(0, maxLength);
 }
 
-function resolvePublicAuthorLabel(user: { nomeCompleto: string | null; username: string | null } | null | undefined): string {
-  const displayName = sanitizeOptionalText(user?.nomeCompleto, 80);
-  if (displayName) return displayName;
+const PUBLIC_USERNAME_DISPLAY_REGEX = /^[a-z0-9._-]{3,30}$/;
 
-  const username = sanitizeOptionalText(user?.username, 120);
-  if (username) {
-    const safeUsername = username.includes("@")
-      ? sanitizeOptionalText(username.split("@")[0] ?? "", 60)
-      : username;
-    if (safeUsername) return safeUsername;
+function normalizePublicUsernameForDisplay(value: string | null | undefined): string | null {
+  const normalized = String(value ?? "").trim().replace(/^@+/, "").toLowerCase();
+  if (!normalized) return null;
+  if (!PUBLIC_USERNAME_DISPLAY_REGEX.test(normalized)) return null;
+  return normalized;
+}
+
+function buildShortPublicCodeLabel(value: string | null | undefined): string {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "USR-0000";
+
+  const parts = normalized.split("-");
+  const prefix = String(parts[0] ?? "USR").replace(/[^A-Za-z0-9]/g, "").toUpperCase() || "USR";
+  const suffixRaw = parts.length > 1
+    ? parts.slice(1).join("-")
+    : normalized.slice(prefix.length);
+  const suffix = suffixRaw.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  if (suffix.length > 0) {
+    return `${prefix}-${suffix.slice(0, 4)}`;
   }
 
-  return "Usuário";
+  const compact = normalized.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  if (compact.length >= 4) {
+    return `USR-${compact.slice(0, 4)}`;
+  }
+
+  return "USR-0000";
+}
+
+function resolvePublicAuthorLabel(user: {
+  id: string;
+  username: string | null;
+  publicCode?: string | null;
+} | null | undefined): string {
+  const publicUsername = normalizePublicUsernameForDisplay(user?.username);
+  if (publicUsername) return `@${publicUsername}`;
+
+  const userId = sanitizeOptionalText(user?.id, 120) ?? "anonymous";
+  const publicCode = resolvePublicCode(user?.publicCode ?? null, userId);
+  return `Usuário ${buildShortPublicCodeLabel(publicCode)}`;
 }
 
 function buildFallbackPublicCodeFromUserId(userId: string): string {
@@ -595,7 +624,7 @@ export class OfficialIconLibraryService {
 
     const profiles = new Map<string, PublicUserProfile>();
     const assignProfiles = (
-      rows: Array<{ id: string; username: string | null; nomeCompleto: string | null; publicCode?: string | null }>,
+      rows: Array<{ id: string; username: string | null; publicCode?: string | null }>,
     ): void => {
       for (const row of rows) {
         profiles.set(row.id, {
@@ -610,7 +639,6 @@ export class OfficialIconLibraryService {
         .select({
           id: users.id,
           username: users.username,
-          nomeCompleto: users.nomeCompleto,
           publicCode: users.publicCode,
         })
         .from(users)
@@ -622,7 +650,6 @@ export class OfficialIconLibraryService {
         .select({
           id: users.id,
           username: users.username,
-          nomeCompleto: users.nomeCompleto,
         })
         .from(users)
         .where(inArray(users.id, uniqueUserIds));
@@ -631,9 +658,10 @@ export class OfficialIconLibraryService {
 
     for (const userId of uniqueUserIds) {
       if (profiles.has(userId)) continue;
+      const fallbackPublicCode = buildFallbackPublicCodeFromUserId(userId);
       profiles.set(userId, {
-        displayName: "Usuário",
-        publicCode: buildFallbackPublicCodeFromUserId(userId),
+        displayName: `Usuário ${buildShortPublicCodeLabel(fallbackPublicCode)}`,
+        publicCode: fallbackPublicCode,
       });
     }
 
@@ -643,16 +671,18 @@ export class OfficialIconLibraryService {
   private async getPublicUserProfile(userId: string | null | undefined): Promise<PublicUserProfile> {
     const normalizedUserId = String(userId ?? "").trim();
     if (!normalizedUserId) {
+      const fallbackPublicCode = buildFallbackPublicCodeFromUserId("anonymous");
       return {
-        displayName: "Usuário",
-        publicCode: buildFallbackPublicCodeFromUserId("anonymous"),
+        displayName: `Usuário ${buildShortPublicCodeLabel(fallbackPublicCode)}`,
+        publicCode: fallbackPublicCode,
       };
     }
 
     const profiles = await this.getPublicUserProfilesByIds([normalizedUserId]);
+    const fallbackPublicCode = buildFallbackPublicCodeFromUserId(normalizedUserId);
     return profiles.get(normalizedUserId) ?? {
-      displayName: "Usuário",
-      publicCode: buildFallbackPublicCodeFromUserId(normalizedUserId),
+      displayName: `Usuário ${buildShortPublicCodeLabel(fallbackPublicCode)}`,
+      publicCode: fallbackPublicCode,
     };
   }
 
