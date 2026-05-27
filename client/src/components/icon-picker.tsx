@@ -246,10 +246,11 @@ export function IconPicker({
     queryFn: async () => {
       const query = {
         search: exploreSearch || undefined,
-        packId: explorePackId !== "all" ? explorePackId : undefined,
       };
       const filterBySelectedCategory = (icons: OfficialIconApiModel[]): OfficialIconApiModel[] =>
-        icons.filter((icon) => matchesIconCategory(icon.category, exploreCategory));
+        icons
+          .filter((icon) => !icon.packId)
+          .filter((icon) => matchesIconCategory(icon.category, exploreCategory));
 
       if (exploreOrigin === "community") {
         const communityIcons = await fetchCommunityIcons(query);

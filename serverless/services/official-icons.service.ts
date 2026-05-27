@@ -654,6 +654,7 @@ export class OfficialIconLibraryService {
     const normalizedSearch = normalizeIconTerm(query.search ?? "");
     const normalizedCategory = (query.category ?? "").trim().toLowerCase();
     const packId = (query.packId ?? "").trim();
+    const includePackItems = query.includePackItems === true;
 
     const ownerUserIdByIconId = new Map<string, string | null>();
     let icons = rows.map<OfficialIconListItemView>((row) => {
@@ -690,6 +691,8 @@ export class OfficialIconLibraryService {
     }
     if (packId) {
       icons = icons.filter((icon) => icon.packId === packId);
+    } else if (!includePackItems) {
+      icons = icons.filter((icon) => !icon.packId);
     }
     if (normalizedSearch) {
       icons = icons.filter((icon) => iconMatchesSearch(icon, normalizedSearch));

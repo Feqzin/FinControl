@@ -13,6 +13,16 @@ const optionalCategoryField = queryStringField
 const optionalOriginField = queryStringField
   .pipe(z.enum(["all", "official", "community"]).optional());
 
+const optionalBooleanField = queryStringField
+  .transform((value) => {
+    if (value === undefined) return undefined;
+    const normalized = String(value).trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") return true;
+    if (normalized === "false" || normalized === "0") return false;
+    return value;
+  })
+  .pipe(z.boolean().optional());
+
 const nonEmptyTrimmed = z.string().trim().min(1);
 
 const iconTextArray = z
@@ -27,6 +37,7 @@ export const officialIconsListQuerySchema = z.object({
   category: optionalCategoryField,
   packId: optionalTrimmedField,
   origin: optionalOriginField,
+  includePackItems: optionalBooleanField,
 });
 
 export const officialIconPacksListQuerySchema = z.object({

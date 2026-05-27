@@ -69,6 +69,7 @@ export type FetchOfficialIconsQuery = {
   category?: string;
   packId?: string;
   origin?: "all" | "official" | "community";
+  includePackItems?: boolean;
 };
 
 export type FetchOfficialIconPacksQuery = {
@@ -103,6 +104,7 @@ function toQueryString(query: FetchOfficialIconsQuery): string {
   if (query.category?.trim()) params.set("category", query.category.trim());
   if (query.packId?.trim()) params.set("packId", query.packId.trim());
   if (query.origin?.trim()) params.set("origin", query.origin.trim());
+  if (query.includePackItems !== undefined) params.set("includePackItems", String(query.includePackItems));
   const serialized = params.toString();
   return serialized ? `?${serialized}` : "";
 }

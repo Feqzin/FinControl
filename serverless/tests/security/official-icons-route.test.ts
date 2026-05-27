@@ -290,12 +290,19 @@ function createInMemoryServiceFixture() {
   const service = {
     async listOfficialIcons(
       userId: string,
-      query?: { origin?: "official" | "community" | "all"; packId?: string; search?: string; category?: string },
+      query?: {
+        origin?: "official" | "community" | "all";
+        packId?: string;
+        search?: string;
+        category?: string;
+        includePackItems?: boolean;
+      },
     ) {
       const origin = query?.origin ?? "official";
       const normalizedSearch = String(query?.search ?? "").trim().toLowerCase();
       const normalizedCategory = String(query?.category ?? "").trim().toLowerCase();
       const packId = String(query?.packId ?? "").trim();
+      const includePackItems = query?.includePackItems === true;
       return officialIcons
         .filter((icon) => icon.isActive)
         .filter((icon) => {
@@ -303,7 +310,11 @@ function createInMemoryServiceFixture() {
           if (origin === "official") return !isCommunityIconKey(icon.iconKey);
           return true;
         })
-        .filter((icon) => (!packId ? true : icon.packId === packId))
+        .filter((icon) => {
+          if (packId) return icon.packId === packId;
+          if (includePackItems) return true;
+          return !icon.packId;
+        })
         .filter((icon) => (!normalizedCategory ? true : String(icon.category ?? "").toLowerCase() === normalizedCategory))
         .filter((icon) => {
           if (!normalizedSearch) return true;
@@ -312,7 +323,10 @@ function createInMemoryServiceFixture() {
         })
         .map((icon) => mapListItem(icon, userId));
     },
-    async listCommunityIcons(userId: string, query?: { packId?: string; search?: string; category?: string }) {
+    async listCommunityIcons(
+      userId: string,
+      query?: { packId?: string; search?: string; category?: string; includePackItems?: boolean },
+    ) {
       return service.listOfficialIcons(userId, { ...query, origin: "community" });
     },
     async listOfficialPacks(userId: string, query?: { origin?: "all" | "official" | "community"; category?: string; search?: string }) {
@@ -761,8 +775,16 @@ test("official icons: usuário lista somente ícones ativos", async () => {
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(Array.isArray(body.icons), true);
-    assert.equal(body.icons.length, 1);
-    assert.equal(body.icons[0].id, "official-kabum");
+    assert.equal(body.icons.length, 0);
+
+    const withPackItems = await fetch(`${baseUrl}/api/icons/official?includePackItems=true`, {
+      headers: { "x-test-auth": "user_a" },
+    });
+    assert.equal(withPackItems.status, 200);
+    const withPackItemsBody = await withPackItems.json();
+    assert.equal(Array.isArray(withPackItemsBody.icons), true);
+    assert.equal(withPackItemsBody.icons.length, 1);
+    assert.equal(withPackItemsBody.icons[0].id, "official-kabum");
   });
 });
 
@@ -1041,6 +1063,65 @@ test("community packs: adição parcial adiciona apenas faltantes sem duplicar e
       && icon.officialIconId
       && createBody.icons.some((packIcon: { id: string }) => packIcon.id === icon.officialIconId));
     assert.equal(bIconsForPack.length, 2);
+  });
+});
+
+test("community icons: listagem geral exclui itens de pack e detalhe do pack mantém os ícones", async () => {
+  const { app } = createOfficialIconsRouteApp();
+  await withTestServer(app, async (baseUrl) => {
+    const createPack = await fetch(`${baseUrl}/api/icons/community/packs`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Pack Bancos",
+        category: "banco",
+        userIconIds: ["user-upload-a"],
+        publish: true,
+      }),
+    });
+    assert.equal(createPack.status, 201);
+    const createPackBody = await createPack.json();
+    const packId = createPackBody?.pack?.id as string;
+    assert.equal(typeof packId, "string");
+
+    const publishIndividual = await fetch(`${baseUrl}/api/icons/community/publish`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ userIconId: "user-upload-a" }),
+    });
+    assert.equal(publishIndividual.status, 201);
+
+    const communityList = await fetch(`${baseUrl}/api/icons/community`, {
+      headers: { "x-test-auth": "user_b" },
+    });
+    assert.equal(communityList.status, 200);
+    const communityListBody = await communityList.json();
+    const listedIcons = Array.isArray(communityListBody?.icons) ? communityListBody.icons : [];
+    assert.equal(listedIcons.some((icon: { packId: string | null }) => icon.packId === packId), false);
+    assert.equal(listedIcons.some((icon: { packId: string | null }) => icon.packId === null), true);
+
+    const packDetails = await fetch(`${baseUrl}/api/icons/community/packs/${packId}`, {
+      headers: { "x-test-auth": "user_b" },
+    });
+    assert.equal(packDetails.status, 200);
+    const packDetailsBody = await packDetails.json();
+    assert.equal(Array.isArray(packDetailsBody?.icons), true);
+    assert.equal(packDetailsBody.icons.length > 0, true);
+    assert.equal(packDetailsBody.icons.every((icon: { packId: string | null }) => icon.packId === packId), true);
+
+    const withPackItems = await fetch(`${baseUrl}/api/icons/community?includePackItems=true`, {
+      headers: { "x-test-auth": "user_b" },
+    });
+    assert.equal(withPackItems.status, 200);
+    const withPackItemsBody = await withPackItems.json();
+    const withPackItemsIcons = Array.isArray(withPackItemsBody?.icons) ? withPackItemsBody.icons : [];
+    assert.equal(withPackItemsIcons.some((icon: { packId: string | null }) => icon.packId === packId), true);
   });
 });
 
