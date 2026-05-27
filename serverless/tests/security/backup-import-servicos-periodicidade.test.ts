@@ -98,3 +98,37 @@ test("backup/import servicos: restaura backup novo com valorCobranca sem depende
   assert.equal(resolved.valorMensal, "19.15");
 });
 
+test("backup/import servicos: aceita serviço sem data fixa e preserva dataCobranca nula", () => {
+  const parsed = parseBackupJsonImport({
+    exportadoEm: "2026-05-27T12:00:00.000Z",
+    usuario: "demo",
+    pessoas: [],
+    dividas: [],
+    cartoes: [],
+    compras: [],
+    parcelasCompra: [],
+    servicos: [
+      {
+        id: "servico-sem-data",
+        userId: "legacy-user",
+        nome: "Cabeleireiro",
+        categoria: "cuidados_pessoais",
+        valorMensal: "195.00",
+        valorCobranca: "45.00",
+        periodicidadeCobranca: "semanal",
+        dataCobranca: null,
+        formaPagamento: "pix",
+        compraCartaoId: null,
+        status: "ativo",
+      },
+    ],
+    servicoPessoas: [],
+    servicoPagamentos: [],
+    pessoaSaldoMovimentacoes: [],
+    metas: [],
+  });
+
+  const transformed = transformBackupForPersistence(parsed, "user-target");
+  const transformedServico = transformed.servicos[0] as Record<string, unknown>;
+  assert.equal(transformedServico.dataCobranca, null);
+});

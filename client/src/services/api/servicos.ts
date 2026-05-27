@@ -7,7 +7,7 @@ export type ServicoPayload = {
   valorMensal?: string;
   valorCobranca?: string;
   periodicidadeCobranca?: "mensal" | "anual" | "semestral" | "trimestral" | "bimestral" | "semanal";
-  dataCobranca: string | number;
+  dataCobranca: string | number | null;
   formaPagamento: string;
   compraCartaoId?: string | null;
   status?: string;
@@ -20,11 +20,24 @@ export type ServicoPessoaPayload = {
   valorDevido: string;
 };
 
+function serializeServicoDataCobranca(value: ServicoPayload["dataCobranca"] | undefined): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+
+  const numeric = Number(normalized);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.trunc(numeric);
+}
+
 export async function createServico(payload: ServicoPayload): Promise<void> {
+  const dataCobranca = serializeServicoDataCobranca(payload.dataCobranca);
   await apiRequest("POST", "/api/servicos", {
     ...payload,
     periodicidadeCobranca: payload.periodicidadeCobranca ?? "mensal",
-    dataCobranca: Number(payload.dataCobranca),
+    dataCobranca: dataCobranca ?? null,
     compraCartaoId: payload.compraCartaoId ?? null,
     status: payload.status || "ativo",
     iconeId: payload.iconeId ?? null,
@@ -32,10 +45,12 @@ export async function createServico(payload: ServicoPayload): Promise<void> {
 }
 
 export async function updateServico(id: string, payload: Partial<ServicoPayload>): Promise<void> {
+  const hasDataCobranca = Object.prototype.hasOwnProperty.call(payload, "dataCobranca");
+  const dataCobranca = hasDataCobranca ? serializeServicoDataCobranca(payload.dataCobranca) : undefined;
   await apiRequest("PATCH", `/api/servicos/${id}`, {
     ...payload,
     ...(payload.periodicidadeCobranca !== undefined ? { periodicidadeCobranca: payload.periodicidadeCobranca } : {}),
-    ...(payload.dataCobranca !== undefined ? { dataCobranca: Number(payload.dataCobranca) } : {}),
+    ...(hasDataCobranca ? { dataCobranca: dataCobranca ?? null } : {}),
   });
 }
 

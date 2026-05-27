@@ -245,7 +245,7 @@ function toServicoInsert(row: JsonRow, label: string): InsertServicoWithId {
     valorMensal: billing.valorMensal,
     valorCobranca: billing.valorCobranca,
     periodicidadeCobranca: billing.periodicidadeCobranca,
-    dataCobranca: readRequiredInteger(row, "dataCobranca", label),
+    dataCobranca: readOptionalInteger(row, "dataCobranca", label),
     formaPagamento: readRequiredString(row, "formaPagamento", label),
     compraCartaoId: readOptionalString(row, "compraCartaoId", label),
     status: readOptionalString(row, "status", label) ?? "ativo",

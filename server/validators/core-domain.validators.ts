@@ -4,6 +4,11 @@ import { insertPatrimonioSchema, insertRendaSchema } from "@shared/schema";
 const nonEmptyUpdateMessage = "Informe ao menos um campo para atualizar";
 const moneyField = z.string().or(z.number()).transform(String);
 const servicoPeriodicidadeField = z.enum(["mensal", "anual", "semestral", "trimestral", "bimestral", "semanal"]);
+const servicoDataCobrancaField = z.preprocess((value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  return value;
+}, z.coerce.number().int().min(1).max(31).nullable());
 
 export const pessoaBody = z.object({
   nome: z.string().min(1),
@@ -20,7 +25,7 @@ export const servicoBody = z.object({
   valorMensal: moneyField.optional(),
   valorCobranca: moneyField.optional(),
   periodicidadeCobranca: servicoPeriodicidadeField.optional().default("mensal"),
-  dataCobranca: z.coerce.number().int().min(1).max(31),
+  dataCobranca: servicoDataCobrancaField,
   formaPagamento: z.string().min(1),
   status: z.string().optional().default("ativo"),
 }).refine((data) => data.valorMensal !== undefined || data.valorCobranca !== undefined, {
@@ -33,7 +38,7 @@ export const servicoUpdateBody = z.object({
   valorMensal: moneyField.optional(),
   valorCobranca: moneyField.optional(),
   periodicidadeCobranca: servicoPeriodicidadeField.optional(),
-  dataCobranca: z.coerce.number().int().min(1).max(31).optional(),
+  dataCobranca: servicoDataCobrancaField.optional(),
   formaPagamento: z.string().min(1).optional(),
   status: z.string().min(1).optional(),
   iconeId: z.string().optional().nullable(),

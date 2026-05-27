@@ -37,6 +37,14 @@ function toDayNumber(value: unknown): number {
   return day;
 }
 
+function toOptionalDayNumber(value: unknown): number | null {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const day = Math.trunc(numeric);
+  if (day < 1 || day > 31) return null;
+  return day;
+}
+
 function getCreatedAtMaybe(servico: Servico): string | null {
   const raw = servico as Record<string, unknown>;
   const createdAt = raw.createdAt;
@@ -97,8 +105,11 @@ export function sortServicosForView(servicos: Servico[], options: SortOptions): 
         return nameA.localeCompare(nameB);
       }
       case "dia_cobranca_mais_proximo": {
-        const dayA = toDayNumber(a.dataCobranca);
-        const dayB = toDayNumber(b.dataCobranca);
+        const dayA = toOptionalDayNumber(a.dataCobranca);
+        const dayB = toOptionalDayNumber(b.dataCobranca);
+        if (dayA == null && dayB == null) return nameA.localeCompare(nameB);
+        if (dayA == null) return 1;
+        if (dayB == null) return -1;
         const distanceA = getDistanceFromReference(dayA, referenceDay);
         const distanceB = getDistanceFromReference(dayB, referenceDay);
         const diff = distanceA - distanceB;
@@ -107,8 +118,11 @@ export function sortServicosForView(servicos: Servico[], options: SortOptions): 
         return nameA.localeCompare(nameB);
       }
       case "dia_cobranca_mais_distante": {
-        const dayA = toDayNumber(a.dataCobranca);
-        const dayB = toDayNumber(b.dataCobranca);
+        const dayA = toOptionalDayNumber(a.dataCobranca);
+        const dayB = toOptionalDayNumber(b.dataCobranca);
+        if (dayA == null && dayB == null) return nameA.localeCompare(nameB);
+        if (dayA == null) return 1;
+        if (dayB == null) return -1;
         const distanceA = getDistanceFromReference(dayA, referenceDay);
         const distanceB = getDistanceFromReference(dayB, referenceDay);
         const diff = distanceB - distanceA;
@@ -133,7 +147,12 @@ export function sortServicosForView(servicos: Servico[], options: SortOptions): 
         const createdB = getCreatedAtMaybe(b);
         const diff = toTimestampDesc(createdB) - toTimestampDesc(createdA);
         if (diff !== 0) return diff;
-        const dayDiff = toDayNumber(b.dataCobranca) - toDayNumber(a.dataCobranca);
+        const dayA = toOptionalDayNumber(a.dataCobranca);
+        const dayB = toOptionalDayNumber(b.dataCobranca);
+        if (dayA == null && dayB == null) return nameA.localeCompare(nameB);
+        if (dayA == null) return 1;
+        if (dayB == null) return -1;
+        const dayDiff = dayB - dayA;
         if (dayDiff !== 0) return dayDiff;
         return nameA.localeCompare(nameB);
       }
@@ -142,7 +161,12 @@ export function sortServicosForView(servicos: Servico[], options: SortOptions): 
         const createdB = getCreatedAtMaybe(b);
         const diff = toTimestampAsc(createdA) - toTimestampAsc(createdB);
         if (diff !== 0) return diff;
-        const dayDiff = toDayNumber(a.dataCobranca) - toDayNumber(b.dataCobranca);
+        const dayA = toOptionalDayNumber(a.dataCobranca);
+        const dayB = toOptionalDayNumber(b.dataCobranca);
+        if (dayA == null && dayB == null) return nameA.localeCompare(nameB);
+        if (dayA == null) return 1;
+        if (dayB == null) return -1;
+        const dayDiff = dayA - dayB;
         if (dayDiff !== 0) return dayDiff;
         return nameA.localeCompare(nameB);
       }

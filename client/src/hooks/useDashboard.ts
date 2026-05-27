@@ -332,12 +332,22 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     (d) => d.tipo === "pagar" && d.status === "pendente" && d.dataVencimento && d.dataVencimento < today,
   );
 
-  const getNextDueDate = (diaDoMes: number): string => {
+  const isValidBillingDay = (value: number | null | undefined): value is number =>
+    typeof value === "number"
+    && Number.isInteger(value)
+    && value >= 1
+    && value <= 31;
+
+  const getNextDueDate = (diaDoMes: number | null | undefined): string | null => {
+    if (!isValidBillingDay(diaDoMes)) {
+      return null;
+    }
+    const billingDay = diaDoMes;
     const now = new Date();
-    const thisMonth = new Date(now.getFullYear(), now.getMonth(), diaDoMes);
+    const thisMonth = new Date(now.getFullYear(), now.getMonth(), billingDay);
     const thisMonthStr = format(thisMonth, "yyyy-MM-dd");
     if (thisMonthStr >= today) return thisMonthStr;
-    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, diaDoMes);
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, billingDay);
     return format(nextMonth, "yyyy-MM-dd");
   };
 
@@ -348,6 +358,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       const usado = compras.filter((cc) => cc.cartaoId === c.id).reduce((s, cc) => s + toMoneyNumber(cc.valorParcela), 0);
       if (usado <= 0) return;
       const dataVenc = getNextDueDate(c.diaVencimento);
+      if (!dataVenc) return;
       const daysUntil = differenceInDays(parseISO(dataVenc), new Date());
       items.push({
         id: `cartao-${c.id}`,
@@ -378,6 +389,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
 
     servicos.filter((s) => s.status === "ativo").forEach((s) => {
       const dataVenc = getNextDueDate(s.dataCobranca);
+      if (!dataVenc) return;
       const daysUntil = differenceInDays(parseISO(dataVenc), new Date());
       items.push({
         id: `servico-${s.id}`,
@@ -431,9 +443,11 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     });
 
     servicos.filter((s) => s.status === "ativo").forEach((s) => {
+      if (!isValidBillingDay(s.dataCobranca)) return;
+      const billingDay = s.dataCobranca;
       const now = new Date();
-      let d = new Date(now.getFullYear(), now.getMonth(), s.dataCobranca);
-      if (format(d, "yyyy-MM-dd") < today) d = new Date(now.getFullYear(), now.getMonth() + 1, s.dataCobranca);
+      let d = new Date(now.getFullYear(), now.getMonth(), billingDay);
+      if (format(d, "yyyy-MM-dd") < today) d = new Date(now.getFullYear(), now.getMonth() + 1, billingDay);
       const ds = format(d, "yyyy-MM-dd");
       if (ds >= today && ds <= in7Days) {
         items.push({ id: `svc-${s.id}`, title: s.nome, dateStr: ds, amount: toMoneyNumber(s.valorMensal), type: "servico" });

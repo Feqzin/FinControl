@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -41,7 +42,7 @@ import {
   decideLinkedCompraBillingValueFill,
   getCompraCartaoTotalForServico,
 } from "@/pages/servicos/servico-linked-compra.utils";
-import { Plus, Repeat, Trash2, X, Check, Users, ChevronUp, Pencil, CreditCard, Unlink2 } from "lucide-react";
+import { Plus, Repeat, Trash2, Pause, Play, Users, ChevronUp, Pencil, CreditCard, Unlink2 } from "lucide-react";
 import { BrandIconDisplay } from "@/lib/brand-icons";
 import { fetchIconMatchRules, type IconMatchRuleApiModel } from "@/services/api/icon-match-rules";
 import { type UserIconMatchRule } from "@/lib/purchase-icon-matching";
@@ -65,6 +66,7 @@ const categorias = [
   { value: "lazer", label: "Lazer" },
   { value: "software", label: "Software" },
   { value: "assinatura", label: "Assinatura" },
+  { value: "cuidados_pessoais", label: "Cuidados pessoais" },
   { value: "outros", label: "Outros" },
 ];
 
@@ -93,6 +95,16 @@ function formatCategoriaFallback(categoria: string): string {
     .join(" ");
 }
 
+function hasFixedBillingDay(value: unknown): value is number {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 1 && numeric <= 31;
+}
+
+function formatServicoBillingDayLabel(value: unknown): string {
+  if (!hasFixedBillingDay(value)) return "Sem data fixa";
+  return `Dia ${Math.trunc(Number(value))}`;
+}
+
 export default function ServicosPage() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -109,6 +121,7 @@ export default function ServicosPage() {
     formaPagamento: "cartao",
     compraCartaoId: COMPRA_NONE_VALUE,
   });
+  const [createSemDataFixa, setCreateSemDataFixa] = useState(false);
   const [editingServico, setEditingServico] = useState<Servico | null>(null);
   const [editIcone, setEditIcone] = useState<string | null>(null);
   const [editIconPersistableId, setEditIconPersistableId] = useState<string | null>(null);
@@ -125,6 +138,7 @@ export default function ServicosPage() {
     formaPagamento: "cartao",
     compraCartaoId: COMPRA_NONE_VALUE,
   });
+  const [editSemDataFixa, setEditSemDataFixa] = useState(false);
 
   const {
     servicos,
@@ -441,6 +455,7 @@ export default function ServicosPage() {
               setNewServicoIcone(null);
               setNewServicoIconPersistableId(null);
               setNewServicoIconManualSelection(false);
+              setCreateSemDataFixa(false);
             }
           }}
         >
@@ -456,12 +471,21 @@ export default function ServicosPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
+                if (!createSemDataFixa && String(form.dataCobranca).trim().length === 0) {
+                  toast({
+                    title: "Dia de cobrança obrigatório",
+                    description: "Preencha um dia de cobrança ou marque Sem data fixa.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
                 createMutation.mutate(
                   {
                     ...form,
                     valorMensal: createBilling.valorMensal,
                     valorCobranca: createBilling.valorCobranca,
                     periodicidadeCobranca: createBilling.periodicidadeCobranca,
+                    dataCobranca: createSemDataFixa ? null : form.dataCobranca,
                     compraCartaoId: form.compraCartaoId === COMPRA_NONE_VALUE ? null : form.compraCartaoId,
                     iconeId: resolveEntityIconIdForSave({
                       isManualSelection: newServicoIconManualSelection,
@@ -482,6 +506,7 @@ export default function ServicosPage() {
                         formaPagamento: "cartao",
                         compraCartaoId: COMPRA_NONE_VALUE,
                       });
+                      setCreateSemDataFixa(false);
                       setNewServicoIcone(null);
                       setNewServicoIconPersistableId(null);
                       setNewServicoIconManualSelection(false);
@@ -628,8 +653,25 @@ export default function ServicosPage() {
                     max="31"
                     value={form.dataCobranca}
                     onChange={(e) => setForm({ ...form, dataCobranca: e.target.value })}
-                    required
+                    required={!createSemDataFixa}
+                    disabled={createSemDataFixa}
                   />
+                  <div className="flex items-center gap-2 pt-1">
+                    <Checkbox
+                      id="checkbox-servico-sem-data"
+                      checked={createSemDataFixa}
+                      onCheckedChange={(checked) => {
+                        const nextChecked = checked === true;
+                        setCreateSemDataFixa(nextChecked);
+                        if (nextChecked) {
+                          setForm({ ...form, dataCobranca: "" });
+                        }
+                      }}
+                    />
+                    <Label htmlFor="checkbox-servico-sem-data" className="text-xs text-muted-foreground">
+                      Sem data fixa
+                    </Label>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Forma de pagamento</Label>
@@ -811,7 +853,7 @@ export default function ServicosPage() {
                                 )}
                               </div>
                               <p className="text-xs text-muted-foreground mt-0.5">
-                                Dia {s.dataCobranca} | {s.formaPagamento}
+                                {formatServicoBillingDayLabel(s.dataCobranca)} | {s.formaPagamento}
                               </p>
                               <p className={`text-xs mt-0.5 ${origemMesAtual.className}`}>
                                 {origemMesAtual.label}
@@ -871,12 +913,14 @@ export default function ServicosPage() {
                                 setEditIcone(resolvedIcon.displayIconId);
                                 setEditIconPersistableId(resolvedIcon.persistableIconId);
                                 setEditIconManualSelection(Boolean(s.iconeId));
+                                const servicoHasFixedBillingDay = hasFixedBillingDay(s.dataCobranca);
+                                setEditSemDataFixa(!servicoHasFixedBillingDay);
                                 setEditForm({
                                   nome: s.nome,
                                   categoria: s.categoria,
                                   valorCobranca: billingView.valorCobranca.toFixed(2),
                                   periodicidadeCobranca: billingView.periodicidade,
-                                  dataCobranca: String(s.dataCobranca),
+                                  dataCobranca: servicoHasFixedBillingDay ? String(s.dataCobranca) : "",
                                   formaPagamento: s.formaPagamento,
                                   compraCartaoId: s.compraCartaoId ?? COMPRA_NONE_VALUE,
                                 });
@@ -918,7 +962,7 @@ export default function ServicosPage() {
                               aria-label={isServicoAtivo ? "Pausar serviço" : "Reativar serviço"}
                               title={isServicoAtivo ? "Pausar serviço" : "Reativar serviço"}
                             >
-                              {isServicoAtivo ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                              {isServicoAtivo ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                             </Button>
                             <Button
                               variant="ghost"
@@ -973,6 +1017,7 @@ export default function ServicosPage() {
             setEditIcone(null);
             setEditIconPersistableId(null);
             setEditIconManualSelection(false);
+            setEditSemDataFixa(false);
           }
         }}
       >
@@ -984,6 +1029,14 @@ export default function ServicosPage() {
             onSubmit={(e) => {
               e.preventDefault();
               if (!editingServico) return;
+              if (!editSemDataFixa && String(editForm.dataCobranca).trim().length === 0) {
+                toast({
+                  title: "Dia de cobrança obrigatório",
+                  description: "Preencha um dia de cobrança ou marque Sem data fixa.",
+                  variant: "destructive",
+                });
+                return;
+              }
               updateMutation.mutate(
                 {
                   id: editingServico.id,
@@ -991,6 +1044,7 @@ export default function ServicosPage() {
                   valorMensal: editBilling.valorMensal,
                   valorCobranca: editBilling.valorCobranca,
                   periodicidadeCobranca: editBilling.periodicidadeCobranca,
+                  dataCobranca: editSemDataFixa ? null : editForm.dataCobranca,
                   compraCartaoId: editForm.compraCartaoId === COMPRA_NONE_VALUE ? null : editForm.compraCartaoId,
                   iconeId: resolveEntityIconIdForSave({
                     isManualSelection: editIconManualSelection,
@@ -1005,6 +1059,7 @@ export default function ServicosPage() {
                     setEditIcone(null);
                     setEditIconPersistableId(null);
                     setEditIconManualSelection(false);
+                    setEditSemDataFixa(false);
                     toast({ title: "Serviço atualizado" });
                   },
                   onError: (e: Error) =>
@@ -1135,8 +1190,25 @@ export default function ServicosPage() {
                   max="31"
                   value={editForm.dataCobranca}
                   onChange={(e) => setEditForm({ ...editForm, dataCobranca: e.target.value })}
-                  required
+                  required={!editSemDataFixa}
+                  disabled={editSemDataFixa}
                 />
+                <div className="flex items-center gap-2 pt-1">
+                  <Checkbox
+                    id="checkbox-edit-servico-sem-data"
+                    checked={editSemDataFixa}
+                    onCheckedChange={(checked) => {
+                      const nextChecked = checked === true;
+                      setEditSemDataFixa(nextChecked);
+                      if (nextChecked) {
+                        setEditForm({ ...editForm, dataCobranca: "" });
+                      }
+                    }}
+                  />
+                  <Label htmlFor="checkbox-edit-servico-sem-data" className="text-xs text-muted-foreground">
+                    Sem data fixa
+                  </Label>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Forma de pagamento</Label>

@@ -615,6 +615,7 @@ function buildPessoaFixture(overrides: Partial<Pessoa> = {}): Pessoa {
 }
 
 function buildServicoFixture(overrides: Partial<Servico> = {}): Servico {
+  const hasDataCobrancaOverride = Object.prototype.hasOwnProperty.call(overrides, "dataCobranca");
   return {
     id: overrides.id ?? "servico-1",
     userId: overrides.userId ?? "user-1",
@@ -623,7 +624,7 @@ function buildServicoFixture(overrides: Partial<Servico> = {}): Servico {
     valorMensal: overrides.valorMensal ?? "19.90",
     periodicidadeCobranca: overrides.periodicidadeCobranca ?? null,
     valorCobranca: overrides.valorCobranca ?? null,
-    dataCobranca: overrides.dataCobranca ?? 10,
+    dataCobranca: hasDataCobrancaOverride ? (overrides.dataCobranca ?? null) : 10,
     formaPagamento: overrides.formaPagamento ?? "cartao",
     compraCartaoId: overrides.compraCartaoId ?? null,
     status: overrides.status ?? "ativo",
@@ -762,6 +763,20 @@ test("servicos utils: ordena por dia de cobrança mais próximo", () => {
 
   const sorted = sortServicosForView(servicos, { sortBy: "dia_cobranca_mais_proximo", referenceDay: 10 });
   assert.deepEqual(sorted.map((servico) => servico.id), ["s2", "s3", "s1"]);
+});
+
+test("servicos utils: serviços sem data fixa ficam no fim da ordenação por dia", () => {
+  const servicos = [
+    buildServicoFixture({ id: "s1", dataCobranca: 2, nome: "Dia 2" }),
+    buildServicoFixture({ id: "s2", dataCobranca: null, nome: "Sem data" }),
+    buildServicoFixture({ id: "s3", dataCobranca: 12, nome: "Dia 12" }),
+  ];
+
+  const porDiaMaisProximo = sortServicosForView(servicos, { sortBy: "dia_cobranca_mais_proximo", referenceDay: 10 });
+  assert.deepEqual(porDiaMaisProximo.map((servico) => servico.id), ["s3", "s1", "s2"]);
+
+  const porDiaMaisDistante = sortServicosForView(servicos, { sortBy: "dia_cobranca_mais_distante", referenceDay: 10 });
+  assert.deepEqual(porDiaMaisDistante.map((servico) => servico.id), ["s1", "s3", "s2"]);
 });
 
 test("servicos utils: ordena por status e categoria", () => {

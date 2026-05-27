@@ -5,6 +5,11 @@ const nonEmptyUpdateMessage = "Informe ao menos um campo para atualizar";
 const moneyField = z.string().or(z.number()).transform(String);
 const isoDateField = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Data invalida. Use o formato yyyy-MM-dd");
 const servicoPeriodicidadeField = z.enum(["mensal", "anual", "semestral", "trimestral", "bimestral", "semanal"]);
+const servicoDataCobrancaField = z.preprocess((value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  return value;
+}, z.coerce.number().int().min(1).max(31).nullable());
 
 export const pessoaBody = z.object({
   nome: z.string().min(1),
@@ -55,7 +60,7 @@ export const servicoBody = z.object({
   valorMensal: moneyField.optional(),
   valorCobranca: moneyField.optional(),
   periodicidadeCobranca: servicoPeriodicidadeField.optional().default("mensal"),
-  dataCobranca: z.coerce.number().int().min(1).max(31),
+  dataCobranca: servicoDataCobrancaField,
   formaPagamento: z.string().min(1),
   compraCartaoId: z.string().min(1).optional().nullable(),
   status: z.string().optional().default("ativo"),
@@ -69,7 +74,7 @@ export const servicoUpdateBody = z.object({
   valorMensal: moneyField.optional(),
   valorCobranca: moneyField.optional(),
   periodicidadeCobranca: servicoPeriodicidadeField.optional(),
-  dataCobranca: z.coerce.number().int().min(1).max(31).optional(),
+  dataCobranca: servicoDataCobrancaField.optional(),
   formaPagamento: z.string().min(1).optional(),
   compraCartaoId: z.string().min(1).optional().nullable(),
   status: z.string().min(1).optional(),
