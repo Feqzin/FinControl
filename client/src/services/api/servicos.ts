@@ -41,7 +41,7 @@ export async function updateServico(id: string, payload: Partial<ServicoPayload>
 
 export async function toggleServicoStatus(id: string, statusAtual: string): Promise<void> {
   await apiRequest("PATCH", `/api/servicos/${id}`, {
-    status: statusAtual === "ativo" ? "cancelado" : "ativo",
+    status: statusAtual === "ativo" ? "pausado" : "ativo",
   });
 }
 

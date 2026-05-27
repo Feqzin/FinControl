@@ -97,7 +97,7 @@ export default function ServicosPage() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [expandedDivisao, setExpandedDivisao] = useState<Set<string>>(new Set());
-  const [servicosTab, setServicosTab] = useState<"ativos" | "pendentes" | "pagos" | "divisao" | "vinculos">("ativos");
+  const [servicosTab, setServicosTab] = useState<"ativos" | "pendentes" | "pagos" | "divisao" | "vinculos" | "pausados">("ativos");
   const [mesReferencia, setMesReferencia] = useState(format(new Date(), "yyyy-MM"));
   const [sortBy, setSortBy] = useState<ServicoSortBy>("dia_cobranca_mais_proximo");
   const [form, setForm] = useState({
@@ -366,17 +366,20 @@ export default function ServicosPage() {
 
   const servicosFiltradosPorAba = servicos.filter((servico) => {
     const resumoMes = getResumoServicoMes(servico);
+    const isAtivo = servico.status === "ativo";
     switch (servicosTab) {
       case "ativos":
-        return servico.status === "ativo";
+        return isAtivo;
       case "pendentes":
-        return servico.status === "ativo" && resumoMes.pendentes > 0;
+        return isAtivo && resumoMes.pendentes > 0;
       case "pagos":
-        return servico.status === "ativo" && resumoMes.totalVinculos > 0 && resumoMes.pendentes === 0;
+        return isAtivo && resumoMes.totalVinculos > 0 && resumoMes.pendentes === 0;
       case "divisao":
         return resumoMes.totalVinculos > 0;
       case "vinculos":
         return Boolean(servico.compraCartaoId);
+      case "pausados":
+        return !isAtivo;
       default:
         return true;
     }
@@ -676,6 +679,7 @@ export default function ServicosPage() {
             <TabsTrigger value="pagos" data-testid="tab-servicos-pagos">Pagos</TabsTrigger>
             <TabsTrigger value="divisao" data-testid="tab-servicos-divisao">Divisão</TabsTrigger>
             <TabsTrigger value="vinculos" data-testid="tab-servicos-vinculos">Vínculos cartão</TabsTrigger>
+            <TabsTrigger value="pausados" data-testid="tab-servicos-pausados">Pausados</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end lg:w-auto">
@@ -722,7 +726,7 @@ export default function ServicosPage() {
           <CardContent className="p-5">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <p className="text-sm text-muted-foreground">Total mensal em serviços</p>
+                <p className="text-sm text-muted-foreground">Total mensal em serviços ativos</p>
                 <p className="fin-value-kpi">{formatCurrencyBRL(totalMensal)}</p>
               </div>
               <div className="flex items-center justify-center w-10 h-10 rounded-md bg-amber-500/10">
@@ -770,6 +774,8 @@ export default function ServicosPage() {
               </div>
               <div className="space-y-2">
                 {cat.servicos.map((s) => {
+                  const isServicoAtivo = s.status === "ativo";
+                  const isServicoPausado = !isServicoAtivo;
                   const isDivisaoOpen = expandedDivisao.has(s.id);
                   const vinculados = servicoPessoas.filter((sp) => sp.servicoId === s.id);
                   const pendentesHoje = vinculados.filter(
@@ -788,7 +794,7 @@ export default function ServicosPage() {
                           <div className="min-w-0">
                             <div className="min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <p className={`font-medium leading-tight ${s.status === "cancelado" ? "line-through text-muted-foreground" : ""}`}>
+                                <p className={`font-medium leading-tight ${isServicoPausado ? "line-through text-muted-foreground" : ""}`}>
                                   {s.nome}
                                 </p>
                                 {vinculados.length > 0 && (
@@ -819,8 +825,8 @@ export default function ServicosPage() {
                           </div>
                           <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 sm:col-span-1 sm:col-start-3 sm:justify-end sm:self-start">
                             <span className="fin-value-person whitespace-nowrap text-right">{formatServicoBillingValue(s)}</span>
-                            <Badge variant={s.status === "ativo" ? "default" : "secondary"} className="h-7 px-2.5 text-xs font-semibold whitespace-nowrap">
-                              {s.status === "ativo" ? "Ativo" : "Cancelado"}
+                            <Badge variant={isServicoAtivo ? "default" : "secondary"} className="h-7 px-2.5 text-xs font-semibold whitespace-nowrap">
+                              {isServicoAtivo ? "Ativo" : "Pausado"}
                             </Badge>
                           </div>
                         </div>
@@ -885,17 +891,34 @@ export default function ServicosPage() {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
-                              onClick={() =>
+                              onClick={() => {
+                                const shouldProceed = isServicoAtivo
+                                  ? window.confirm(
+                                    "Este serviço deixará de entrar nos totais ativos, mas o histórico será mantido.",
+                                  )
+                                  : window.confirm(
+                                    "Este serviço voltará a entrar nos totais ativos.",
+                                  );
+                                if (!shouldProceed) return;
+
                                 toggleStatusMutation.mutate(
                                   { id: s.id, status: s.status },
-                                  { onSuccess: () => toast({ title: "Status atualizado" }) },
-                                )
-                              }
+                                  {
+                                    onSuccess: () =>
+                                      toast({
+                                        title: isServicoAtivo ? "Serviço pausado" : "Serviço reativado",
+                                        description: isServicoAtivo
+                                          ? "Este serviço deixou de entrar nos totais ativos."
+                                          : "Este serviço voltou a entrar nos totais ativos.",
+                                      }),
+                                  },
+                                );
+                              }}
                               data-testid={`button-toggle-servico-${s.id}`}
-                              aria-label={s.status === "ativo" ? "Cancelar serviço" : "Reativar serviço"}
-                              title={s.status === "ativo" ? "Cancelar serviço" : "Reativar serviço"}
+                              aria-label={isServicoAtivo ? "Pausar serviço" : "Reativar serviço"}
+                              title={isServicoAtivo ? "Pausar serviço" : "Reativar serviço"}
                             >
-                              {s.status === "ativo" ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                              {isServicoAtivo ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
                             </Button>
                             <Button
                               variant="ghost"

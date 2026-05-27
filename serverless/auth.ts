@@ -13,6 +13,7 @@ import { writeAuditLog } from "./audit-log.js";
 import { writeTechnicalLog } from "./logger.js";
 import { getUserSubscriptionAccess } from "./subscription-access.js";
 import {
+  isEmailLikeUsername,
   normalizePublicUsername,
   resolvePublicUsernameForResponse,
   validatePublicUsername,
@@ -258,6 +259,15 @@ function normalizeUsername(input: unknown): string {
   return input.trim();
 }
 
+function normalizeLoginIdentifier(input: unknown): string {
+  const raw = normalizeUsername(input);
+  if (!raw) return "";
+  if (isEmailLikeUsername(raw)) {
+    return raw.toLowerCase();
+  }
+  return normalizePublicUsername(raw);
+}
+
 const FULL_NAME_VISIBILITY_VALUES = new Set(["private", "public"]);
 
 function sanitizeNomeCompleto(value: string | null | undefined): string | null {
@@ -317,10 +327,14 @@ export function setupAuth(app: Express) {
   app.use(passport.session());
 
   passport.use(
-    new LocalStrategy(async (username, password, done) => {
+    new LocalStrategy(
+      { usernameField: "identifier", passwordField: "password", passReqToCallback: true },
+      async (req, _identifier, password, done) => {
       try {
-        const normalizedUsername = normalizeUsername(username);
-        const user = await storage.getUserByUsername(normalizedUsername);
+        const normalizedIdentifier = normalizeLoginIdentifier(
+          req.body?.identifier ?? req.body?.username,
+        );
+        const user = await storage.getUserByUsername(normalizedIdentifier);
 
         if (!user) {
           writeTechnicalLog({
@@ -328,11 +342,11 @@ export function setupAuth(app: Express) {
             source: "auth",
             level: "info",
             data: {
-              username: normalizedUsername,
+              identifier: normalizedIdentifier,
               userFound: false,
             },
           });
-          return done(null, false, { message: "Usuario nao encontrado" });
+          return done(null, false, { message: "E-mail/usuario ou senha invalidos." });
         }
 
         const storedPasswordInspection = inspectStoredPassword(user.password);
@@ -341,7 +355,7 @@ export function setupAuth(app: Express) {
           source: "auth",
           level: storedPasswordInspection.isComparable ? "info" : "warn",
           data: {
-            username: normalizedUsername,
+            identifier: normalizedIdentifier,
             userFound: true,
             hasId: Boolean(user.id),
             hasUsername: typeof user.username === "string" && user.username.length > 0,
@@ -362,7 +376,7 @@ export function setupAuth(app: Express) {
         }
 
         const match = await comparePasswords(password, user.password);
-        if (!match) return done(null, false, { message: "Senha incorreta" });
+        if (!match) return done(null, false, { message: "E-mail/usuario ou senha invalidos." });
         return done(null, user);
       } catch (err) {
         writeTechnicalLog({
@@ -370,14 +384,15 @@ export function setupAuth(app: Express) {
           source: "auth",
           level: "error",
           data: {
-            username: normalizeUsername(username),
+            identifier: normalizeLoginIdentifier(req.body?.identifier ?? req.body?.username),
             reason: "strategy_exception",
             error: err instanceof Error ? err.message : String(err),
           },
         });
         return done(err);
       }
-    })
+      },
+    )
   );
 
   passport.serializeUser((user: any, done) => {
@@ -596,14 +611,20 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/auth/login", loginLimiter, (req, res, next) => {
-    const attemptedUsername = normalizeUsername(req.body?.username);
+    const attemptedIdentifier = normalizeLoginIdentifier(req.body?.identifier ?? req.body?.username);
+    const requestBody = typeof req.body === "object" && req.body !== null
+      ? req.body as Record<string, unknown>
+      : {};
+    requestBody.identifier = requestBody.identifier ?? requestBody.username;
+    req.body = requestBody;
+
     passport.authenticate("local", (err: any, user: any, info: any) => {
       if (err) {
         auditAuth(req, {
           action: "auth",
           status: "error",
           domain: "auth.login",
-          details: { username: attemptedUsername, reason: "passport_error" },
+          details: { identifier: attemptedIdentifier, reason: "passport_error" },
           error: err.message,
         });
         return next(err);
@@ -613,9 +634,9 @@ export function setupAuth(app: Express) {
           action: "auth",
           status: "failure",
           domain: "auth.login",
-          details: { username: attemptedUsername, reason: info?.message || "invalid_credentials" },
+          details: { identifier: attemptedIdentifier, reason: info?.message || "invalid_credentials" },
         });
-        return res.status(401).json({ message: info?.message || "Credenciais invalidas" });
+        return res.status(401).json({ message: "E-mail/usuario ou senha invalidos." });
       }
       req.session.regenerate((regenErr) => {
         if (regenErr) {
@@ -624,7 +645,7 @@ export function setupAuth(app: Express) {
             status: "error",
             domain: "auth.login",
             userId: user.id,
-            details: { username: attemptedUsername, reason: "session_regenerate_failed" },
+            details: { identifier: attemptedIdentifier, reason: "session_regenerate_failed" },
             error: regenErr.message,
           });
           return next(regenErr);
@@ -636,7 +657,7 @@ export function setupAuth(app: Express) {
               status: "error",
               domain: "auth.login",
               userId: user.id,
-              details: { username: attemptedUsername, reason: "session_login_failed" },
+              details: { identifier: attemptedIdentifier, reason: "session_login_failed" },
               error: loginErr.message,
             });
             return next(loginErr);
@@ -648,7 +669,7 @@ export function setupAuth(app: Express) {
                 status: "error",
                 domain: "auth.login",
                 userId: user.id,
-                details: { username: attemptedUsername, reason: "session_save_failed" },
+                details: { identifier: attemptedIdentifier, reason: "session_save_failed" },
                 error: saveErr.message,
               });
               return next(saveErr);

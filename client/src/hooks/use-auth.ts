@@ -61,8 +61,13 @@ export function useAuth() {
   });
 
   const loginMutation = useMutation({
-    mutationFn: async (data: { username: string; password: string }) => {
-      const res = await apiRequest("POST", "/api/auth/login", data);
+    mutationFn: async (data: { identifier?: string; username?: string; password: string }) => {
+      const identifier = String(data.identifier ?? data.username ?? "").trim();
+      const res = await apiRequest("POST", "/api/auth/login", {
+        identifier,
+        username: identifier,
+        password: data.password,
+      });
       return res.json() as Promise<AuthUser>;
     },
     onSuccess: async (loggedUser) => {

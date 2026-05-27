@@ -1906,9 +1906,6 @@ export function IconPicker({
                               onClick={() => openPackDetails(pack)}
                             >
                               <p className="text-sm font-medium">{pack.name}</p>
-                              <p className="line-clamp-2 text-xs text-muted-foreground">
-                                {pack.description || "Sem descrição"}
-                              </p>
                               {hasExploreSearch ? (
                                 <p className="text-xs text-muted-foreground">
                                   {formatPackMatchHint(packMatchSummaryByPackId.get(pack.id)) ?? "Match pelo nome/descrição do pack"}

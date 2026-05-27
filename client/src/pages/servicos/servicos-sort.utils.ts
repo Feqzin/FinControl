@@ -61,7 +61,7 @@ function toTimestampDesc(value?: string | null): number {
 function getStatusRank(status: string): number {
   const normalized = normalizeText(status);
   if (normalized === "ativo") return 0;
-  if (normalized === "cancelado") return 1;
+  if (normalized === "pausado" || normalized === "cancelado") return 1;
   return 2;
 }
 

@@ -74,7 +74,7 @@ export default function AuthPage() {
   const { login, register } = useAuth();
   const { toast } = useToast();
   const { setUsageMode } = useUIPreferences();
-  const [loginData, setLoginData] = useState({ username: "", password: "" });
+  const [loginData, setLoginData] = useState({ identifier: "", password: "" });
   const [registerData, setRegisterData] = useState({ nomeCompleto: "", username: "", password: "" });
   const [registerUsageMode, setRegisterUsageMode] = useState<UsageMode>("guiado");
   const [registerAge, setRegisterAge] = useState("");
@@ -239,13 +239,13 @@ export default function AuthPage() {
                     <CardContent>
                       <form onSubmit={handleLogin} className="space-y-4">
                         <div className="space-y-2">
-                          <Label htmlFor="login-username">Usuario</Label>
+                          <Label htmlFor="login-username">E-mail ou usuário</Label>
                           <Input
                             id="login-username"
                             data-testid="input-login-username"
-                            placeholder="seu@email.com"
-                            value={loginData.username}
-                            onChange={(e) => setLoginData({ ...loginData, username: e.target.value })}
+                            placeholder="seu@email.com ou usuário"
+                            value={loginData.identifier}
+                            onChange={(e) => setLoginData({ ...loginData, identifier: e.target.value })}
                             required
                           />
                         </div>
