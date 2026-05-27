@@ -201,6 +201,41 @@ function normalizeLoginIdentifier(input: unknown): string {
   return normalizePublicUsername(raw);
 }
 
+function resolveRawLoginIdentifierFromBody(body: unknown): string {
+  if (typeof body !== "object" || body === null) return "";
+  const payload = body as Record<string, unknown>;
+  return String(payload.identifier ?? payload.email ?? payload.username ?? "").trim();
+}
+
+async function findUserForLoginIdentifier(rawIdentifier: string) {
+  const normalizedIdentifier = normalizeLoginIdentifier(rawIdentifier);
+  if (!normalizedIdentifier) return undefined;
+
+  if (isEmailLikeUsername(normalizedIdentifier)) {
+    const legacyEmailAsUsernameUser = await storage.getUserByUsername(normalizedIdentifier);
+    if (legacyEmailAsUsernameUser) return legacyEmailAsUsernameUser;
+
+    try {
+      const result = await pool.query<{ id: string }>(
+        `select id from "users" where lower("email") = lower($1) limit 1`,
+        [normalizedIdentifier],
+      );
+      const userId = result.rows[0]?.id;
+      if (!userId) return undefined;
+      return await storage.getUser(userId);
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code;
+      if (code === "42703") {
+        // Compatibilidade: ambientes sem coluna users.email continuam com fallback legacy.
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  return storage.getUserByUsername(normalizedIdentifier);
+}
+
 const FULL_NAME_VISIBILITY_VALUES = new Set(["private", "public"]);
 
 function sanitizeNomeCompleto(value: string | null | undefined): string | null {
@@ -263,18 +298,16 @@ export function setupAuth(app: Express) {
     new LocalStrategy(
       { usernameField: "identifier", passwordField: "password", passReqToCallback: true },
       async (req, _identifier, password, done) => {
-      try {
-        const normalizedIdentifier = normalizeLoginIdentifier(
-          req.body?.identifier ?? req.body?.username,
-        );
-        const user = await storage.getUserByUsername(normalizedIdentifier);
-        if (!user) return done(null, false, { message: "E-mail/usuario ou senha invalidos." });
-        const match = await comparePasswords(password, user.password);
-        if (!match) return done(null, false, { message: "E-mail/usuario ou senha invalidos." });
-        return done(null, user);
-      } catch (err) {
-        return done(err);
-      }
+        try {
+          const rawIdentifier = resolveRawLoginIdentifierFromBody(req.body);
+          const user = await findUserForLoginIdentifier(rawIdentifier);
+          if (!user) return done(null, false, { message: "E-mail/usuario ou senha invalidos." });
+          const match = await comparePasswords(password, user.password);
+          if (!match) return done(null, false, { message: "E-mail/usuario ou senha invalidos." });
+          return done(null, user);
+        } catch (err) {
+          return done(err);
+        }
       },
     )
   );
@@ -389,11 +422,12 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/auth/login", loginLimiter, (req, res, next) => {
-    const attemptedIdentifier = normalizeLoginIdentifier(req.body?.identifier ?? req.body?.username);
+    const rawIdentifier = resolveRawLoginIdentifierFromBody(req.body);
+    const attemptedIdentifier = normalizeLoginIdentifier(rawIdentifier);
     const requestBody = typeof req.body === "object" && req.body !== null
       ? req.body as Record<string, unknown>
       : {};
-    requestBody.identifier = requestBody.identifier ?? requestBody.username;
+    requestBody.identifier = rawIdentifier;
     req.body = requestBody;
 
     passport.authenticate("local", (err: any, user: any, info: any) => {
