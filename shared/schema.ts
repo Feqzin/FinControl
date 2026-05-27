@@ -232,6 +232,7 @@ export type UserIconLibraryItem = typeof userIconLibrary.$inferSelect;
 
 export const officialIconPacks = pgTable("official_icon_packs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  publicCode: text("public_code"),
   name: text("name").notNull(),
   description: text("description"),
   category: text("category"),
@@ -255,6 +256,7 @@ export type OfficialIconPack = typeof officialIconPacks.$inferSelect;
 export const officialIconLibrary = pgTable("official_icon_library", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   iconKey: text("icon_key").notNull(),
+  packItemPublicCode: text("pack_item_public_code"),
   name: text("name").notNull(),
   imageUrl: text("image_url").notNull(),
   storagePath: text("storage_path"),

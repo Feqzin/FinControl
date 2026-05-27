@@ -3,6 +3,7 @@ import { apiRequest } from "@/lib/queryClient";
 export type OfficialIconApiModel = {
   id: string;
   iconKey: string;
+  packItemPublicCode?: string | null;
   sourceType?: "official" | "community";
   sourceUserIconId?: string | null;
   ownerUserId?: string | null;
@@ -16,6 +17,7 @@ export type OfficialIconApiModel = {
   aliases: string[];
   packId: string | null;
   packName: string | null;
+  packPublicCode?: string | null;
   hiddenBecausePacked?: boolean;
   representedInPack?: boolean;
   alreadyInLibrary: boolean;
@@ -25,6 +27,7 @@ export type OfficialIconApiModel = {
 
 export type OfficialIconPackApiModel = {
   id: string;
+  publicCode?: string | null;
   name: string;
   description: string | null;
   category: string | null;
@@ -36,6 +39,8 @@ export type OfficialIconPackApiModel = {
   isPublished: boolean;
   iconsCount: number;
   addedIconsCount: number;
+  missingIconsCount?: number;
+  libraryStatus?: "none" | "partial" | "full";
   createdAt: string;
   updatedAt: string;
 };
@@ -60,9 +65,21 @@ export type AddOfficialIconToLibraryResult = {
 
 export type AddOfficialPackToLibraryResult = {
   packId: string;
+  packPublicCode?: string | null;
   totalIcons: number;
   addedCount: number;
   alreadyInLibraryCount: number;
+  missingIconsCount?: number;
+  libraryStatus?: "none" | "partial" | "full";
+  createdMatchRules: number;
+};
+
+export type AddCommunityPackItemToLibraryResult = {
+  added: boolean;
+  alreadyInLibrary: boolean;
+  userIconId: string;
+  packPublicCode: string | null;
+  packItemPublicCode: string;
   createdMatchRules: number;
 };
 
@@ -185,6 +202,11 @@ export async function fetchCommunityIconPackDetails(packId: string): Promise<Com
 
 export async function addCommunityPackToLibrary(packId: string): Promise<AddOfficialPackToLibraryResult> {
   const response = await apiRequest("POST", `/api/icons/community/packs/${packId}/add-to-library`);
+  return response.json();
+}
+
+export async function addCommunityPackItemToLibrary(itemPublicCode: string): Promise<AddCommunityPackItemToLibraryResult> {
+  const response = await apiRequest("POST", `/api/icons/community/pack-items/${encodeURIComponent(itemPublicCode)}/add-to-library`);
   return response.json();
 }
 

@@ -22,6 +22,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import {
+  addCommunityPackItemToLibrary,
   addCommunityPackToLibrary,
   addCommunityIconToLibrary,
   addOfficialIconToLibrary,
@@ -174,6 +175,37 @@ function getItemTerms(item: Pick<UserIconLibraryItemApiModel, "name" | "tags">):
     .map((term) => String(term ?? "").trim())
     .filter((term) => term.length > 0);
   return Array.from(new Set(terms));
+}
+
+function resolvePackProgress(pack: OfficialIconPackApiModel): {
+  total: number;
+  added: number;
+  missing: number;
+  status: "none" | "partial" | "full";
+} {
+  const total = Math.max(0, Number(pack.iconsCount) || 0);
+  const added = Math.max(0, Math.min(total, Number(pack.addedIconsCount) || 0));
+  const missing = Math.max(0, total - added);
+  const status = added <= 0
+    ? "none"
+    : added >= total
+      ? "full"
+      : "partial";
+  return { total, added, missing, status };
+}
+
+function getPackLibrarySummaryLabel(pack: OfficialIconPackApiModel): string {
+  const progress = resolvePackProgress(pack);
+  if (progress.status === "full") return "Na sua biblioteca";
+  if (progress.status === "partial") return `${progress.added}/${progress.total} na biblioteca`;
+  return "Disponível";
+}
+
+function getPackAddActionLabel(pack: OfficialIconPackApiModel): string {
+  const progress = resolvePackProgress(pack);
+  if (progress.status === "full") return "Na sua biblioteca";
+  if (progress.status === "partial") return "Adicionar faltantes";
+  return "Adicionar pack à minha biblioteca";
 }
 
 export function IconPicker({
@@ -611,6 +643,7 @@ export function IconPicker({
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/community/packs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs/details"] });
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Não foi possível adicionar o ícone.";
@@ -633,9 +666,35 @@ export function IconPicker({
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/community"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs/details"] });
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Não foi possível adicionar o ícone publicado.";
+      toast({
+        title: "Erro ao adicionar ícone",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const addCommunityPackItemMutation = useMutation({
+    mutationFn: async (itemPublicCode: string) => addCommunityPackItemToLibrary(itemPublicCode),
+    onSuccess: (result) => {
+      toast({
+        title: result.alreadyInLibrary ? "Ícone já estava na sua biblioteca." : "Ícone do pack adicionado à sua biblioteca.",
+      });
+      void queryClient.invalidateQueries({ queryKey: ["/api/user-icon-library"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/official"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/community"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/community/packs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs/details"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icon-match-rules"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Não foi possível adicionar o ícone do pack.";
       toast({
         title: "Erro ao adicionar ícone",
         description: message,
@@ -688,14 +747,21 @@ export function IconPicker({
         ? addCommunityPackToLibrary(pack.id)
         : addOfficialPackToLibrary(pack.id),
     onSuccess: (result) => {
+      const addedCount = Number(result.addedCount ?? 0);
+      const alreadyCount = Number(result.alreadyInLibraryCount ?? 0);
+      const title = addedCount > 0
+        ? "Pack atualizado na sua biblioteca."
+        : "Este pack já está na sua biblioteca.";
       toast({
-        title: "Pack adicionado à sua biblioteca.",
-        description: `${result.addedCount} ícone(s) novo(s) e ${result.alreadyInLibraryCount} já existente(s).`,
+        title,
+        description: `${addedCount} ícone(s) adicionados e ${alreadyCount} já existente(s).`,
       });
       void queryClient.invalidateQueries({ queryKey: ["/api/user-icon-library"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/official"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/explore"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/community/packs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs/details"] });
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Não foi possível adicionar o pack.";
@@ -1246,6 +1312,29 @@ export function IconPicker({
     return byImage ?? null;
   };
 
+  const isAddExploreIconPending = (icon: OfficialIconApiModel): boolean => {
+    if (icon.sourceType === "community" && icon.packItemPublicCode) {
+      return addCommunityPackItemMutation.isPending && addCommunityPackItemMutation.variables === icon.packItemPublicCode;
+    }
+    if (icon.sourceType === "community") {
+      return addCommunityIconMutation.isPending && addCommunityIconMutation.variables === icon.id;
+    }
+    return addOfficialIconMutation.isPending && addOfficialIconMutation.variables === icon.id;
+  };
+
+  const addExploreIconToLibrary = async (icon: OfficialIconApiModel): Promise<{ userIconId: string | null }> => {
+    if (icon.sourceType === "community" && icon.packItemPublicCode) {
+      const result = await addCommunityPackItemMutation.mutateAsync(icon.packItemPublicCode);
+      return { userIconId: result.userIconId ?? null };
+    }
+    if (icon.sourceType === "community") {
+      const result = await addCommunityIconMutation.mutateAsync(icon.id);
+      return { userIconId: result.icon?.id ?? null };
+    }
+    const result = await addOfficialIconMutation.mutateAsync(icon.id);
+    return { userIconId: result.icon?.id ?? null };
+  };
+
   const isActionLoading = (actionKey: string): boolean => iconActionLoadingKey === actionKey;
 
   const personalOfficialIconIds = officialIconsInLibrary;
@@ -1783,7 +1872,8 @@ export function IconPicker({
                     <>
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         {paginatedExplorePacks.items.map((pack) => {
-                          const allAlreadyAdded = pack.iconsCount > 0 && pack.addedIconsCount >= pack.iconsCount;
+                          const progress = resolvePackProgress(pack);
+                          const isFull = progress.status === "full";
                           return (
                             <button
                               key={pack.id}
@@ -1804,23 +1894,26 @@ export function IconPicker({
                                 {pack.category ? getIconCategoryLabel(pack.category) : "Sem categoria"} · {pack.iconsCount} ícone(s)
                               </p>
                               <p className="text-xs text-muted-foreground">
+                                {getPackLibrarySummaryLabel(pack)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
                                 {pack.sourceType === "community"
-                                  ? `Publicado por: ${pack.ownerLabel || "Usuário"}${pack.ownerPublicCode ? ` · ID: ${pack.ownerPublicCode}` : ""}`
+                                  ? `Publicado por: ${pack.ownerLabel || "Usuário"}${pack.ownerPublicCode ? ` · ID: ${pack.ownerPublicCode}` : ""}${pack.publicCode ? ` · Pack: ${pack.publicCode}` : ""}`
                                   : "Catálogo oficial"}
                               </p>
                               <div className="mt-2 flex items-center gap-2">
                                 <Button
                                   type="button"
                                   size="sm"
-                                  variant={allAlreadyAdded ? "outline" : "default"}
-                                  disabled={allAlreadyAdded || addPackToLibraryMutation.isPending}
+                                  variant={isFull ? "outline" : "default"}
+                                  disabled={isFull || addPackToLibraryMutation.isPending}
                                   onClick={(event) => {
                                     event.preventDefault();
                                     event.stopPropagation();
                                     addPackToLibraryMutation.mutate(pack);
                                   }}
                                 >
-                                  {allAlreadyAdded ? "Na sua biblioteca" : "Adicionar pack à minha biblioteca"}
+                                  {getPackAddActionLabel(pack)}
                                 </Button>
                                 <Button
                                   type="button"
@@ -1917,6 +2010,11 @@ export function IconPicker({
                                   <p className="truncate text-[10px] text-muted-foreground">
                                     {icon.packName ? `Pack: ${icon.packName}` : "Origem: Ícone individual"}
                                   </p>
+                                  {icon.packItemPublicCode ? (
+                                    <p className="truncate text-[10px] text-muted-foreground">
+                                      ID: {icon.packItemPublicCode}
+                                    </p>
+                                  ) : null}
                                 </div>
                               </div>
                               <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
@@ -1929,6 +2027,28 @@ export function IconPicker({
                                   {alreadyAdded ? "Na sua biblioteca" : "Disponível"}
                                 </Badge>
                               </div>
+                              {!alreadyAdded ? (
+                                <div className="mt-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="w-full"
+                                    disabled={isAddExploreIconPending(icon)}
+                                    onClick={async (event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      try {
+                                        await addExploreIconToLibrary(icon);
+                                      } catch {
+                                        // handled by mutation onError
+                                      }
+                                    }}
+                                  >
+                                    Adicionar este ícone
+                                  </Button>
+                                </div>
+                              ) : null}
                               {icon.packId && hasExploreSearch ? (
                                 <div className="mt-2">
                                   <Button
@@ -2401,7 +2521,7 @@ export function IconPicker({
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
                 {packDetailsTarget.sourceType === "community"
-                  ? `Publicado por: ${packDetailsTarget.ownerLabel || "Usuário"}${packDetailsTarget.ownerPublicCode ? ` · ID: ${packDetailsTarget.ownerPublicCode}` : ""}`
+                  ? `Publicado por: ${packDetailsTarget.ownerLabel || "Usuário"}${packDetailsTarget.ownerPublicCode ? ` · ID: ${packDetailsTarget.ownerPublicCode}` : ""}${packDetailsTarget.publicCode ? ` · Pack: ${packDetailsTarget.publicCode}` : ""}`
                   : "Catálogo oficial"}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -2432,7 +2552,37 @@ export function IconPicker({
                             <p className="truncate text-[10px] text-muted-foreground">
                               {icon.category ? getIconCategoryLabel(icon.category) : "Sem categoria"}
                             </p>
+                            {icon.packItemPublicCode ? (
+                              <p className="truncate text-[10px] text-muted-foreground">
+                                ID: {icon.packItemPublicCode}
+                              </p>
+                            ) : null}
                           </div>
+                        </div>
+                        <div className="mt-2 flex flex-col gap-1">
+                          <Badge variant={alreadyAdded ? "secondary" : "outline"} className="w-fit px-1.5 text-[10px]">
+                            {alreadyAdded ? "Na sua biblioteca" : "Disponível"}
+                          </Badge>
+                          {!alreadyAdded ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="w-full"
+                              disabled={isAddExploreIconPending(icon)}
+                              onClick={async (event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                try {
+                                  await addExploreIconToLibrary(icon);
+                                } catch {
+                                  // handled by mutation onError
+                                }
+                              }}
+                            >
+                              Adicionar este ícone
+                            </Button>
+                          ) : null}
                         </div>
                       </button>
                     );
@@ -2445,16 +2595,14 @@ export function IconPicker({
               <Button
                 type="button"
                 className="w-full"
-                variant={packDetailsTarget.iconsCount > 0 && packDetailsTarget.addedIconsCount >= packDetailsTarget.iconsCount ? "outline" : "default"}
+                variant={resolvePackProgress(packDetailsTarget).status === "full" ? "outline" : "default"}
                 disabled={
-                  (packDetailsTarget.iconsCount > 0 && packDetailsTarget.addedIconsCount >= packDetailsTarget.iconsCount)
+                  (resolvePackProgress(packDetailsTarget).status === "full")
                   || addPackToLibraryMutation.isPending
                 }
                 onClick={() => addPackToLibraryMutation.mutate(packDetailsTarget)}
               >
-                {packDetailsTarget.iconsCount > 0 && packDetailsTarget.addedIconsCount >= packDetailsTarget.iconsCount
-                  ? "Na sua biblioteca"
-                  : "Adicionar pack à minha biblioteca"}
+                {getPackAddActionLabel(packDetailsTarget)}
               </Button>
             </div>
           ) : null}
@@ -2725,31 +2873,28 @@ export function IconPicker({
               ) : (
                 <p className="text-xs text-muted-foreground">Catálogo oficial</p>
               )}
+              {manageActionTarget.icon.packItemPublicCode ? (
+                <p className="text-xs text-muted-foreground">
+                  ID do item: {manageActionTarget.icon.packItemPublicCode}
+                </p>
+              ) : null}
 
               {!manageActionTarget.alreadyAdded ? (
                 <Button
                   type="button"
                   variant="outline"
                   className="w-full justify-start"
-                  disabled={
-                    manageActionTarget.icon.sourceType === "community"
-                      ? addCommunityIconMutation.isPending && addCommunityIconMutation.variables === manageActionTarget.icon.id
-                      : addOfficialIconMutation.isPending && addOfficialIconMutation.variables === manageActionTarget.icon.id
-                  }
+                  disabled={isAddExploreIconPending(manageActionTarget.icon)}
                   onClick={async () => {
                     try {
-                      if (manageActionTarget.icon.sourceType === "community") {
-                        await addCommunityIconMutation.mutateAsync(manageActionTarget.icon.id);
-                      } else {
-                        await addOfficialIconMutation.mutateAsync(manageActionTarget.icon.id);
-                      }
+                      await addExploreIconToLibrary(manageActionTarget.icon);
                       setManageActionTarget(null);
                     } catch {
                       // handled by mutation onError
                     }
                   }}
                 >
-                  Adicionar à minha biblioteca
+                  Adicionar este ícone
                 </Button>
               ) : null}
 
@@ -2804,12 +2949,17 @@ export function IconPicker({
                         return;
                       }
 
-                      if (manageActionTarget.icon.sourceType === "community") {
-                        const result = await addCommunityIconMutation.mutateAsync(manageActionTarget.icon.id);
-                        handleSelectPersonal(result.icon);
-                      } else {
-                        const result = await addOfficialIconMutation.mutateAsync(manageActionTarget.icon.id);
-                        handleSelectPersonal(result.icon);
+                      const addedResult = await addExploreIconToLibrary(manageActionTarget.icon);
+                      const selectedUserIconId = addedResult.userIconId;
+                      emitSelection({
+                        displayValue: manageActionTarget.icon.imageUrl,
+                        persistableIconId: selectedUserIconId,
+                        source: "personal",
+                        userIconId: selectedUserIconId,
+                        officialIconId: manageActionTarget.icon.id,
+                      });
+                      if (!isManageMode) {
+                        setOpen(false);
                       }
                       setManageActionTarget(null);
                     } catch {
@@ -2825,8 +2975,11 @@ export function IconPicker({
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">
                 {manageActionTarget.pack.sourceType === "community"
-                  ? `Publicado por: ${manageActionTarget.pack.ownerLabel || "Usuário"}${manageActionTarget.pack.ownerPublicCode ? ` · ID: ${manageActionTarget.pack.ownerPublicCode}` : ""}`
+                  ? `Publicado por: ${manageActionTarget.pack.ownerLabel || "Usuário"}${manageActionTarget.pack.ownerPublicCode ? ` · ID: ${manageActionTarget.pack.ownerPublicCode}` : ""}${manageActionTarget.pack.publicCode ? ` · Pack: ${manageActionTarget.pack.publicCode}` : ""}`
                   : "Catálogo oficial"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {getPackLibrarySummaryLabel(manageActionTarget.pack)}
               </p>
               <Button
                 type="button"
@@ -2841,10 +2994,10 @@ export function IconPicker({
               </Button>
               <Button
                 type="button"
-                variant={manageActionTarget.pack.iconsCount > 0 && manageActionTarget.pack.addedIconsCount >= manageActionTarget.pack.iconsCount ? "outline" : "default"}
+                variant={resolvePackProgress(manageActionTarget.pack).status === "full" ? "outline" : "default"}
                 className="w-full justify-start"
                 disabled={
-                  (manageActionTarget.pack.iconsCount > 0 && manageActionTarget.pack.addedIconsCount >= manageActionTarget.pack.iconsCount)
+                  (resolvePackProgress(manageActionTarget.pack).status === "full")
                   || addPackToLibraryMutation.isPending
                 }
                 onClick={() => {
@@ -2852,9 +3005,7 @@ export function IconPicker({
                   setManageActionTarget(null);
                 }}
               >
-                {manageActionTarget.pack.iconsCount > 0 && manageActionTarget.pack.addedIconsCount >= manageActionTarget.pack.iconsCount
-                  ? "Na sua biblioteca"
-                  : "Adicionar pack à minha biblioteca"}
+                {getPackAddActionLabel(manageActionTarget.pack)}
               </Button>
               {manageActionTarget.pack.sourceType === "community" ? (
                 <Button

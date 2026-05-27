@@ -46,6 +46,7 @@ export class OfficialIconPackNotFoundError extends Error {}
 export class CommunityIconPublicationNotFoundError extends Error {}
 export class CommunityIconPublicationOwnershipError extends Error {}
 export class CommunityPackNotFoundError extends Error {}
+export class CommunityPackItemNotFoundError extends Error {}
 export class CommunityPackOwnershipError extends Error {}
 export class UserIconOwnershipError extends Error {}
 export class CommunityIconPublishConflictError extends Error {}
@@ -53,6 +54,7 @@ export class CommunityIconPublishConflictError extends Error {}
 export type OfficialIconListItemView = {
   id: string;
   iconKey: string;
+  packItemPublicCode: string | null;
   sourceType: "official" | "community";
   sourceUserIconId: string | null;
   ownerUserId: string | null;
@@ -66,13 +68,17 @@ export type OfficialIconListItemView = {
   aliases: string[];
   packId: string | null;
   packName: string | null;
+  packPublicCode: string | null;
   alreadyInLibrary: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
 
+export type PackLibraryStatus = "none" | "partial" | "full";
+
 export type OfficialIconPackView = {
   id: string;
+  publicCode: string | null;
   name: string;
   description: string | null;
   category: string | null;
@@ -84,6 +90,8 @@ export type OfficialIconPackView = {
   isPublished: boolean;
   iconsCount: number;
   addedIconsCount: number;
+  missingIconsCount: number;
+  libraryStatus: PackLibraryStatus;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -400,7 +408,118 @@ function buildIconFingerprint(name: string, category: string | null, imageUrl: s
   return `${base}|${imageHash}`;
 }
 
+function sanitizePublicCodePrefix(value: string): string {
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]/g, "");
+  if (!normalized) return "USR-SYSTEM";
+  return normalized.slice(0, 30);
+}
+
+function buildPackPublicCode(ownerPublicCode: string, sequence: number): string {
+  return `${sanitizePublicCodePrefix(ownerPublicCode)}-P${String(sequence).padStart(3, "0")}`;
+}
+
+function buildPackItemPublicCode(packPublicCode: string, sequence: number): string {
+  return `${sanitizePublicCodePrefix(packPublicCode)}-I${String(sequence).padStart(3, "0")}`;
+}
+
 export class OfficialIconLibraryService {
+  private parsePackSequence(publicCode: string, ownerPublicCode: string): number {
+    const normalizedOwner = sanitizePublicCodePrefix(ownerPublicCode);
+    const regex = new RegExp(`^${normalizedOwner}-P(\\d+)`, "i");
+    const match = regex.exec(String(publicCode ?? "").trim());
+    if (!match) return 0;
+    const sequence = Number.parseInt(match[1] ?? "0", 10);
+    return Number.isFinite(sequence) ? sequence : 0;
+  }
+
+  private parsePackItemSequence(packItemPublicCode: string, packPublicCode: string): number {
+    const normalizedPackCode = sanitizePublicCodePrefix(packPublicCode);
+    const regex = new RegExp(`^${normalizedPackCode}-I(\\d+)`, "i");
+    const match = regex.exec(String(packItemPublicCode ?? "").trim());
+    if (!match) return 0;
+    const sequence = Number.parseInt(match[1] ?? "0", 10);
+    return Number.isFinite(sequence) ? sequence : 0;
+  }
+
+  private async generateNextPackPublicCode(ownerUserId: string): Promise<string> {
+    const ownerProfile = await this.getPublicUserProfile(ownerUserId);
+    const ownerPublicCode = sanitizePublicCodePrefix(ownerProfile.publicCode);
+    const existingCodes = await db
+      .select({ publicCode: officialIconPacks.publicCode })
+      .from(officialIconPacks)
+      .where(sql`${officialIconPacks.publicCode} like ${`${ownerPublicCode}-P%`}`);
+
+    let maxSequence = 0;
+    for (const row of existingCodes) {
+      const sequence = this.parsePackSequence(row.publicCode ?? "", ownerPublicCode);
+      if (sequence > maxSequence) {
+        maxSequence = sequence;
+      }
+    }
+
+    let nextSequence = maxSequence + 1;
+    let candidate = buildPackPublicCode(ownerPublicCode, nextSequence);
+    while (true) {
+      const [exists] = await db
+        .select({ id: officialIconPacks.id })
+        .from(officialIconPacks)
+        .where(eq(officialIconPacks.publicCode, candidate))
+        .limit(1);
+      if (!exists) return candidate;
+      nextSequence += 1;
+      candidate = buildPackPublicCode(ownerPublicCode, nextSequence);
+    }
+  }
+
+  private async generateNextPackItemPublicCode(packPublicCode: string): Promise<string> {
+    const normalizedPackCode = sanitizePublicCodePrefix(packPublicCode);
+    const existingCodes = await db
+      .select({ packItemPublicCode: officialIconLibrary.packItemPublicCode })
+      .from(officialIconLibrary)
+      .where(sql`${officialIconLibrary.packItemPublicCode} like ${`${normalizedPackCode}-I%`}`);
+
+    let maxSequence = 0;
+    for (const row of existingCodes) {
+      const sequence = this.parsePackItemSequence(row.packItemPublicCode ?? "", normalizedPackCode);
+      if (sequence > maxSequence) {
+        maxSequence = sequence;
+      }
+    }
+
+    let nextSequence = maxSequence + 1;
+    let candidate = buildPackItemPublicCode(normalizedPackCode, nextSequence);
+    while (true) {
+      const [exists] = await db
+        .select({ id: officialIconLibrary.id })
+        .from(officialIconLibrary)
+        .where(eq(officialIconLibrary.packItemPublicCode, candidate))
+        .limit(1);
+      if (!exists) return candidate;
+      nextSequence += 1;
+      candidate = buildPackItemPublicCode(normalizedPackCode, nextSequence);
+    }
+  }
+
+  private resolvePackLibraryStatus(iconsCount: number, addedIconsCount: number): {
+    missingIconsCount: number;
+    libraryStatus: PackLibraryStatus;
+  } {
+    const total = Math.max(0, Number(iconsCount) || 0);
+    const added = Math.max(0, Math.min(total, Number(addedIconsCount) || 0));
+    const missing = Math.max(0, total - added);
+
+    if (total === 0 || added === 0) {
+      return { missingIconsCount: total, libraryStatus: "none" };
+    }
+    if (added >= total) {
+      return { missingIconsCount: 0, libraryStatus: "full" };
+    }
+    return { missingIconsCount: missing, libraryStatus: "partial" };
+  }
+
   private async loadUserIconLookup(userId: string): Promise<UserIconLookup> {
     const rows = await db
       .select()
@@ -642,7 +761,9 @@ export class OfficialIconLibraryService {
         tags: officialIconLibrary.tags,
         aliases: officialIconLibrary.aliases,
         packId: officialIconLibrary.packId,
+        packItemPublicCode: officialIconLibrary.packItemPublicCode,
         packName: officialIconPacks.name,
+        packPublicCode: officialIconPacks.publicCode,
         createdBy: officialIconLibrary.createdBy,
         createdAt: officialIconLibrary.createdAt,
         updatedAt: officialIconLibrary.updatedAt,
@@ -677,6 +798,7 @@ export class OfficialIconLibraryService {
         ownerPublicCode: sourceType === "community" ? null : null,
         id: row.id,
         iconKey: row.iconKey,
+        packItemPublicCode: row.packItemPublicCode ?? null,
         name: row.name,
         imageUrl: row.imageUrl,
         storagePath: row.storagePath ?? null,
@@ -685,6 +807,7 @@ export class OfficialIconLibraryService {
         aliases: sanitizeStringArray(row.aliases),
         packId: row.packId ?? null,
         packName: row.packName ?? null,
+        packPublicCode: row.packPublicCode ?? null,
         alreadyInLibrary: false,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
@@ -891,9 +1014,13 @@ export class OfficialIconLibraryService {
       const ownerPublicCode = sourceType === "community"
         ? (ownerProfile?.publicCode ?? (ownerUserId ? buildFallbackPublicCodeFromUserId(ownerUserId) : null))
         : null;
+      const iconsCount = iconCountByPackId.get(pack.id) ?? 0;
+      const addedIconsCount = addedCountByPackId.get(pack.id) ?? 0;
+      const library = this.resolvePackLibraryStatus(iconsCount, addedIconsCount);
 
       return {
         id: pack.id,
+        publicCode: pack.publicCode ?? null,
         name: pack.name,
         description: pack.description ?? null,
         category: pack.category ?? null,
@@ -903,8 +1030,10 @@ export class OfficialIconLibraryService {
         ownerLabel,
         ownerPublicCode,
         isPublished: Boolean(pack.isActive),
-        iconsCount: iconCountByPackId.get(pack.id) ?? 0,
-        addedIconsCount: addedCountByPackId.get(pack.id) ?? 0,
+        iconsCount,
+        addedIconsCount,
+        missingIconsCount: library.missingIconsCount,
+        libraryStatus: library.libraryStatus,
         createdAt: pack.createdAt,
         updatedAt: pack.updatedAt,
       } satisfies OfficialIconPackView;
@@ -922,6 +1051,7 @@ export class OfficialIconLibraryService {
     }
     if (normalizedSearch) {
       list = list.filter((pack) => normalizeIconTerm([
+        pack.publicCode ?? "",
         pack.name,
         pack.description ?? "",
         pack.category ?? "",
@@ -1309,10 +1439,12 @@ export class OfficialIconLibraryService {
     const publish = payload.publish ?? true;
     const now = new Date();
     const packId = buildCommunityPackId(userId);
+    const packPublicCode = await this.generateNextPackPublicCode(userId);
     const [createdPack] = await db
       .insert(officialIconPacks)
       .values({
         id: packId,
+        publicCode: packPublicCode,
         name: payload.name.trim(),
         description: sanitizeOptionalText(payload.description, 280),
         category: sanitizeOptionalText(payload.category, 60),
@@ -1327,10 +1459,11 @@ export class OfficialIconLibraryService {
       throw new Error("Não foi possível criar o pack comunitário.");
     }
 
-    const snapshots = sourceIcons.map((sourceIcon) => {
+    const snapshots = sourceIcons.map((sourceIcon, index) => {
       const snapshotTags = sanitizeStringArray(sourceIcon.tags);
       return {
         iconKey: buildCommunityPackIconKey(userId, sourceIcon.id, packId),
+        packItemPublicCode: buildPackItemPublicCode(packPublicCode, index + 1),
         name: sourceIcon.name,
         imageUrl: sourceIcon.imageUrl,
         storagePath: sourceIcon.storagePath,
@@ -1356,6 +1489,7 @@ export class OfficialIconLibraryService {
 
       createdPackView = {
         id: createdPack.id,
+        publicCode: createdPack.publicCode ?? packPublicCode,
         name: createdPack.name,
         description: createdPack.description ?? null,
         category: createdPack.category ?? null,
@@ -1367,6 +1501,8 @@ export class OfficialIconLibraryService {
         isPublished: Boolean(createdPack.isActive),
         iconsCount: snapshots.length,
         addedIconsCount: 0,
+        missingIconsCount: snapshots.length,
+        libraryStatus: snapshots.length > 0 ? "none" : "full",
         createdAt: createdPack.createdAt,
         updatedAt: createdPack.updatedAt,
       };
@@ -1381,9 +1517,12 @@ export class OfficialIconLibraryService {
 
   async addCommunityPackToLibrary(userId: string, packId: string): Promise<{
     packId: string;
+    packPublicCode: string | null;
     totalIcons: number;
     addedCount: number;
     alreadyInLibraryCount: number;
+    missingIconsCount: number;
+    libraryStatus: PackLibraryStatus;
     createdMatchRules: number;
   }> {
     const metadata = await this.resolvePackSourceAndOwner(packId);
@@ -1391,6 +1530,55 @@ export class OfficialIconLibraryService {
       throw new CommunityPackNotFoundError("Pack comunitário não encontrado.");
     }
     return this.addOfficialPackToLibrary(userId, packId);
+  }
+
+  async addCommunityPackItemToLibrary(userId: string, itemPublicCode: string): Promise<{
+    added: boolean;
+    alreadyInLibrary: boolean;
+    userIconId: string;
+    packPublicCode: string | null;
+    packItemPublicCode: string;
+    createdMatchRules: number;
+  }> {
+    const normalizedCode = String(itemPublicCode ?? "").trim();
+    if (!normalizedCode) {
+      throw new CommunityPackItemNotFoundError("Item do pack comunitário não encontrado.");
+    }
+
+    const [item] = await db
+      .select({
+        id: officialIconLibrary.id,
+        iconKey: officialIconLibrary.iconKey,
+        packId: officialIconLibrary.packId,
+        packItemPublicCode: officialIconLibrary.packItemPublicCode,
+        packPublicCode: officialIconPacks.publicCode,
+        packIsActive: officialIconPacks.isActive,
+      })
+      .from(officialIconLibrary)
+      .leftJoin(officialIconPacks, eq(officialIconLibrary.packId, officialIconPacks.id))
+      .where(and(
+        eq(officialIconLibrary.packItemPublicCode, normalizedCode),
+        eq(officialIconLibrary.isActive, true),
+      ))
+      .limit(1);
+
+    if (!item || !item.packId || !item.packIsActive) {
+      throw new CommunityPackItemNotFoundError("Item do pack comunitário não encontrado.");
+    }
+
+    if (!parseCommunityIconKey(item.iconKey)) {
+      throw new CommunityPackItemNotFoundError("Item do pack comunitário não encontrado.");
+    }
+
+    const result = await this.addOfficialLibraryIconToUserLibrary(userId, item.id, "community");
+    return {
+      added: !result.alreadyInLibrary,
+      alreadyInLibrary: result.alreadyInLibrary,
+      userIconId: result.icon.id,
+      packPublicCode: item.packPublicCode ?? null,
+      packItemPublicCode: item.packItemPublicCode ?? normalizedCode,
+      createdMatchRules: result.createdMatchRules,
+    };
   }
 
   async updateCommunityPack(
@@ -1450,13 +1638,20 @@ export class OfficialIconLibraryService {
 
   async addOfficialPackToLibrary(userId: string, packId: string): Promise<{
     packId: string;
+    packPublicCode: string | null;
     totalIcons: number;
     addedCount: number;
     alreadyInLibraryCount: number;
+    missingIconsCount: number;
+    libraryStatus: PackLibraryStatus;
     createdMatchRules: number;
   }> {
     const [pack] = await db
-      .select()
+      .select({
+        id: officialIconPacks.id,
+        publicCode: officialIconPacks.publicCode,
+        isActive: officialIconPacks.isActive,
+      })
       .from(officialIconPacks)
       .where(and(
         eq(officialIconPacks.id, packId),
@@ -1504,19 +1699,26 @@ export class OfficialIconLibraryService {
       createdMatchRules += added.createdMatchRules;
     }
 
+    const library = this.resolvePackLibraryStatus(icons.length, icons.length);
+
     return {
       packId: pack.id,
+      packPublicCode: pack.publicCode ?? null,
       totalIcons: icons.length,
       addedCount,
       alreadyInLibraryCount,
+      missingIconsCount: library.missingIconsCount,
+      libraryStatus: library.libraryStatus,
       createdMatchRules,
     };
   }
 
   async createOfficialPack(_adminUserId: string, payload: AdminCreateOfficialIconPackBodyInput): Promise<OfficialIconPack> {
+    const packPublicCode = await this.generateNextPackPublicCode(_adminUserId);
     const [created] = await db
       .insert(officialIconPacks)
       .values({
+        publicCode: packPublicCode,
         name: payload.name.trim(),
         description: sanitizeOptionalText(payload.description, 280),
         category: sanitizeOptionalText(payload.category, 60),
@@ -1560,9 +1762,13 @@ export class OfficialIconLibraryService {
 
   async createOfficialIcon(adminUserId: string, payload: AdminCreateOfficialIconBodyInput): Promise<OfficialIconLibraryItem> {
     const packId = sanitizeOptionalText(payload.packId, 128);
+    let packPublicCode: string | null = null;
     if (packId) {
       const [pack] = await db
-        .select({ id: officialIconPacks.id })
+        .select({
+          id: officialIconPacks.id,
+          publicCode: officialIconPacks.publicCode,
+        })
         .from(officialIconPacks)
         .where(and(
           eq(officialIconPacks.id, packId),
@@ -1572,14 +1778,29 @@ export class OfficialIconLibraryService {
       if (!pack) {
         throw new OfficialIconPackNotFoundError("Pack oficial não encontrado.");
       }
+      packPublicCode = sanitizeOptionalText(pack.publicCode, 60);
+      if (!packPublicCode) {
+        packPublicCode = await this.generateNextPackPublicCode(adminUserId);
+        await db
+          .update(officialIconPacks)
+          .set({
+            publicCode: packPublicCode,
+            updatedAt: new Date(),
+          })
+          .where(eq(officialIconPacks.id, pack.id));
+      }
     }
 
     const imageUrl = resolveImageUrlFromInput(payload);
+    const packItemPublicCode = packPublicCode
+      ? await this.generateNextPackItemPublicCode(packPublicCode)
+      : null;
 
     const [created] = await db
       .insert(officialIconLibrary)
       .values({
         iconKey: payload.iconKey.trim(),
+        packItemPublicCode,
         name: payload.name.trim(),
         imageUrl,
         storagePath: sanitizeOptionalText(payload.storagePath, 2_000),
@@ -1614,10 +1835,26 @@ export class OfficialIconLibraryService {
     if (payload.aliases !== undefined) updates.aliases = sanitizeStringArray(payload.aliases);
     if (payload.isActive !== undefined) updates.isActive = payload.isActive;
     if (payload.packId !== undefined) {
+      const [existingIcon] = await db
+        .select({
+          id: officialIconLibrary.id,
+          packId: officialIconLibrary.packId,
+          packItemPublicCode: officialIconLibrary.packItemPublicCode,
+        })
+        .from(officialIconLibrary)
+        .where(eq(officialIconLibrary.id, id))
+        .limit(1);
+      if (!existingIcon) {
+        throw new OfficialIconNotFoundError("Ícone oficial não encontrado.");
+      }
+
       const packId = sanitizeOptionalText(payload.packId, 128);
       if (packId) {
         const [pack] = await db
-          .select({ id: officialIconPacks.id })
+          .select({
+            id: officialIconPacks.id,
+            publicCode: officialIconPacks.publicCode,
+          })
           .from(officialIconPacks)
           .where(and(
             eq(officialIconPacks.id, packId),
@@ -1627,6 +1864,26 @@ export class OfficialIconLibraryService {
         if (!pack) {
           throw new OfficialIconPackNotFoundError("Pack oficial não encontrado.");
         }
+
+        let packPublicCode = sanitizeOptionalText(pack.publicCode, 60);
+        if (!packPublicCode) {
+          packPublicCode = await this.generateNextPackPublicCode("admin");
+          await db
+            .update(officialIconPacks)
+            .set({
+              publicCode: packPublicCode,
+              updatedAt: new Date(),
+            })
+            .where(eq(officialIconPacks.id, pack.id));
+        }
+
+        const currentPackItemPublicCode = sanitizeOptionalText(existingIcon.packItemPublicCode, 120);
+        const isSamePack = existingIcon.packId === packId;
+        updates.packItemPublicCode = isSamePack && currentPackItemPublicCode
+          ? currentPackItemPublicCode
+          : await this.generateNextPackItemPublicCode(packPublicCode);
+      } else {
+        updates.packItemPublicCode = null;
       }
       updates.packId = packId;
     }

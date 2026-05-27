@@ -54,6 +54,10 @@ export const addOfficialPackParamsSchema = z.object({
   id: nonEmptyTrimmed.max(128),
 });
 
+export const addCommunityPackItemParamsSchema = z.object({
+  itemPublicCode: nonEmptyTrimmed.max(128),
+});
+
 export const publishCommunityIconBodySchema = z.object({
   userIconId: nonEmptyTrimmed.max(128),
 });
@@ -124,6 +128,7 @@ export type OfficialIconsListQueryInput = z.infer<typeof officialIconsListQueryS
 export type OfficialIconPacksListQueryInput = z.infer<typeof officialIconPacksListQuerySchema>;
 export type AddOfficialIconParamsInput = z.infer<typeof addOfficialIconParamsSchema>;
 export type AddOfficialPackParamsInput = z.infer<typeof addOfficialPackParamsSchema>;
+export type AddCommunityPackItemParamsInput = z.infer<typeof addCommunityPackItemParamsSchema>;
 export type PublishCommunityIconBodyInput = z.infer<typeof publishCommunityIconBodySchema>;
 export type CommunityIconParamsInput = z.infer<typeof communityIconParamsSchema>;
 export type CreateCommunityPackBodyInput = z.infer<typeof createCommunityPackBodySchema>;

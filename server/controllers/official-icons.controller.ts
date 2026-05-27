@@ -4,6 +4,7 @@ import {
   CommunityIconPublicationNotFoundError,
   CommunityIconPublicationOwnershipError,
   CommunityIconPublishConflictError,
+  CommunityPackItemNotFoundError,
   CommunityPackNotFoundError,
   CommunityPackOwnershipError,
   OfficialIconLibraryService,
@@ -14,6 +15,7 @@ import {
 import {
   addOfficialIconParamsSchema,
   addOfficialPackParamsSchema,
+  addCommunityPackItemParamsSchema,
   adminCreateOfficialIconBodySchema,
   adminCreateOfficialIconPackBodySchema,
   adminUpdateOfficialIconBodySchema,
@@ -54,9 +56,11 @@ function mapServiceErrorToResponse(res: Response, error: unknown): Response | nu
   if (
     error instanceof OfficialIconNotFoundError
     || error instanceof OfficialIconPackNotFoundError
+    || error instanceof CommunityPackItemNotFoundError
     || error instanceof CommunityPackNotFoundError
     || errorName === "OfficialIconNotFoundError"
     || errorName === "OfficialIconPackNotFoundError"
+    || errorName === "CommunityPackItemNotFoundError"
     || errorName === "CommunityPackNotFoundError"
   ) {
     return res.status(404).json({ message: errorMessage });
@@ -227,6 +231,20 @@ export function createOfficialIconsController(service: OfficialIconLibraryServic
         return res.status(201).json(result);
       } catch (error) {
         return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao adicionar pack comunitário." });
+      }
+    },
+
+    addCommunityPackItemToLibrary: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const parsed = addCommunityPackItemParamsSchema.safeParse(req.params);
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+      try {
+        const result = await service.addCommunityPackItemToLibrary(userId, parsed.data.itemPublicCode);
+        return res.status(201).json(result);
+      } catch (error) {
+        return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao adicionar item do pack comunitário." });
       }
     },
 

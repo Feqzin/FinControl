@@ -324,6 +324,7 @@ export function registerRoutes(app: Express): void {
   app.post("/api/icons/community/publish", requireAuth, officialIconsController.publishCommunityIcon);
   app.post("/api/icons/community/packs", requireAuth, officialIconsController.createCommunityPack);
   app.post("/api/icons/community/:id/add-to-library", requireAuth, officialIconsController.addCommunityIconToLibrary);
+  app.post("/api/icons/community/pack-items/:itemPublicCode/add-to-library", requireAuth, officialIconsController.addCommunityPackItemToLibrary);
   app.post("/api/icons/community/packs/:id/add-to-library", requireAuth, officialIconsController.addCommunityPackToLibrary);
   app.patch("/api/icons/community/packs/:id", requireAuth, officialIconsController.updateCommunityPack);
   app.patch("/api/icons/community/packs/:id/unpublish", requireAuth, officialIconsController.unpublishCommunityPack);
