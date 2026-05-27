@@ -106,6 +106,20 @@ type OfficialIconLike = {
 
 type OfficialIconOrigin = "official" | "community" | "all";
 
+type PublishedIconCandidate = {
+  id: string;
+  iconKey: string;
+  name: string;
+  imageUrl: string;
+  category: string | null;
+};
+
+type UserIconLookup = {
+  byId: Map<string, UserIconLibraryItem>;
+  byOfficialIconId: Map<string, UserIconLibraryItem>;
+  byFingerprint: Map<string, UserIconLibraryItem>;
+};
+
 function buildCommunityIconKey(ownerUserId: string, sourceUserIconId: string): string {
   return `${COMMUNITY_ICON_KEY_PREFIX}${ownerUserId}:${sourceUserIconId}`;
 }
@@ -370,7 +384,78 @@ function iconMatchesSearch(icon: OfficialIconListItemView, normalizedSearch: str
   return haystack.includes(normalizedSearch);
 }
 
+function normalizeCategoryTerm(value: string | null | undefined): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function buildIconFingerprint(name: string, category: string | null, imageUrl: string): string {
+  const normalizedName = normalizeIconTerm(name);
+  const normalizedCategory = normalizeCategoryTerm(category);
+  const imageHash = createHash("sha1").update(String(imageUrl ?? "").trim()).digest("hex").slice(0, 16);
+  return `${normalizedName}|${normalizedCategory}|${imageHash}`;
+}
+
 export class OfficialIconLibraryService {
+  private async loadUserIconLookup(userId: string): Promise<UserIconLookup> {
+    const rows = await db
+      .select()
+      .from(userIconLibrary)
+      .where(eq(userIconLibrary.userId, userId));
+
+    const byId = new Map<string, UserIconLibraryItem>();
+    const byOfficialIconId = new Map<string, UserIconLibraryItem>();
+    const byFingerprint = new Map<string, UserIconLibraryItem>();
+
+    for (const row of rows) {
+      byId.set(row.id, row);
+      if (row.officialIconId) {
+        byOfficialIconId.set(row.officialIconId, row);
+      }
+      const fingerprint = buildIconFingerprint(row.name, row.category, row.imageUrl);
+      if (!byFingerprint.has(fingerprint)) {
+        byFingerprint.set(fingerprint, row);
+      }
+    }
+
+    return {
+      byId,
+      byOfficialIconId,
+      byFingerprint,
+    };
+  }
+
+  private registerUserIconInLookup(lookup: UserIconLookup, row: UserIconLibraryItem): void {
+    lookup.byId.set(row.id, row);
+    if (row.officialIconId) {
+      lookup.byOfficialIconId.set(row.officialIconId, row);
+    }
+    const fingerprint = buildIconFingerprint(row.name, row.category, row.imageUrl);
+    if (!lookup.byFingerprint.has(fingerprint)) {
+      lookup.byFingerprint.set(fingerprint, row);
+    }
+  }
+
+  private findExistingUserIconForPublishedIcon(
+    userId: string,
+    publishedIcon: PublishedIconCandidate,
+    lookup: UserIconLookup,
+  ): UserIconLibraryItem | null {
+    const byOfficialId = lookup.byOfficialIconId.get(publishedIcon.id);
+    if (byOfficialId) return byOfficialId;
+
+    const parsedCommunity = parseCommunityIconKey(publishedIcon.iconKey);
+    if (parsedCommunity && parsedCommunity.ownerUserId === userId) {
+      const bySourceUserIconId = lookup.byId.get(parsedCommunity.sourceUserIconId);
+      if (bySourceUserIconId) return bySourceUserIconId;
+    }
+
+    const fingerprint = buildIconFingerprint(publishedIcon.name, publishedIcon.category, publishedIcon.imageUrl);
+    const byFingerprint = lookup.byFingerprint.get(fingerprint);
+    if (byFingerprint) return byFingerprint;
+
+    return null;
+  }
+
   private async getPublicUserProfilesByIds(userIds: string[]): Promise<Map<string, PublicUserProfile>> {
     const uniqueUserIds = Array.from(
       new Set(
@@ -636,28 +721,23 @@ export class OfficialIconLibraryService {
       };
     });
 
-    const officialIds = icons.map((icon) => icon.id);
-    if (officialIds.length === 0) {
+    if (icons.length === 0) {
       return [];
     }
 
-    const userOfficialIconRows = await db
-      .select({ officialIconId: userIconLibrary.officialIconId })
-      .from(userIconLibrary)
-      .where(and(
-        eq(userIconLibrary.userId, userId),
-        inArray(userIconLibrary.officialIconId, officialIds),
-      ));
-
-    const addedSet = new Set(
-      userOfficialIconRows
-        .map((row) => row.officialIconId)
-        .filter((value): value is string => typeof value === "string" && value.length > 0),
-    );
+    const userIconLookup = await this.loadUserIconLookup(userId);
 
     return icons.map((icon) => ({
       ...icon,
-      alreadyInLibrary: addedSet.has(icon.id),
+      alreadyInLibrary: Boolean(
+        this.findExistingUserIconForPublishedIcon(userId, {
+          id: icon.id,
+          iconKey: icon.iconKey,
+          name: icon.name,
+          imageUrl: icon.imageUrl,
+          category: icon.category,
+        }, userIconLookup),
+      ),
     }));
   }
 
@@ -686,20 +766,6 @@ export class OfficialIconLibraryService {
       ))
       .groupBy(officialIconLibrary.packId);
 
-    const addedCounts = await db
-      .select({
-        packId: officialIconLibrary.packId,
-        count: sql<number>`count(*)`,
-      })
-      .from(userIconLibrary)
-      .innerJoin(officialIconLibrary, eq(userIconLibrary.officialIconId, officialIconLibrary.id))
-      .where(and(
-        eq(userIconLibrary.userId, userId),
-        eq(officialIconLibrary.isActive, true),
-        inArray(officialIconLibrary.packId, packIds),
-      ))
-      .groupBy(officialIconLibrary.packId);
-
     const packOwnershipRows = await db
       .select({
         packId: officialIconLibrary.packId,
@@ -713,16 +779,41 @@ export class OfficialIconLibraryService {
       ))
       .orderBy(asc(officialIconLibrary.createdAt));
 
+    const packIcons = await db
+      .select({
+        id: officialIconLibrary.id,
+        packId: officialIconLibrary.packId,
+        iconKey: officialIconLibrary.iconKey,
+        name: officialIconLibrary.name,
+        imageUrl: officialIconLibrary.imageUrl,
+        category: officialIconLibrary.category,
+      })
+      .from(officialIconLibrary)
+      .where(and(
+        eq(officialIconLibrary.isActive, true),
+        inArray(officialIconLibrary.packId, packIds),
+      ));
+
     const iconCountByPackId = new Map<string, number>();
     for (const row of iconCounts) {
       if (!row.packId) continue;
       iconCountByPackId.set(row.packId, Number(row.count) || 0);
     }
 
+    const userIconLookup = await this.loadUserIconLookup(userId);
     const addedCountByPackId = new Map<string, number>();
-    for (const row of addedCounts) {
-      if (!row.packId) continue;
-      addedCountByPackId.set(row.packId, Number(row.count) || 0);
+    for (const icon of packIcons) {
+      const packId = icon.packId ?? "";
+      if (!packId) continue;
+      const exists = this.findExistingUserIconForPublishedIcon(userId, {
+        id: icon.id,
+        iconKey: icon.iconKey,
+        name: icon.name,
+        imageUrl: icon.imageUrl,
+        category: icon.category ?? null,
+      }, userIconLookup);
+      if (!exists) continue;
+      addedCountByPackId.set(packId, (addedCountByPackId.get(packId) ?? 0) + 1);
     }
 
     const sourceByPackId = new Map<string, "official" | "community">();
@@ -806,41 +897,49 @@ export class OfficialIconLibraryService {
     userId: string,
     officialIconId: string,
     sourceType: "official" | "community",
+    options: { userIconLookup?: UserIconLookup } = {},
   ): Promise<{
     icon: UserIconLibraryItem;
     alreadyInLibrary: boolean;
     createdMatchRules: number;
   }> {
     const officialIcon = await this.loadActiveOfficialIconById(officialIconId, { origin: sourceType });
+    const lookup = options.userIconLookup ?? await this.loadUserIconLookup(userId);
 
-    const [existing] = await db
-      .select()
-      .from(userIconLibrary)
-      .where(and(
-        eq(userIconLibrary.userId, userId),
-        eq(userIconLibrary.officialIconId, officialIconId),
-      ))
-      .limit(1);
+    const existing = this.findExistingUserIconForPublishedIcon(userId, {
+      id: officialIcon.id,
+      iconKey: officialIcon.iconKey,
+      name: officialIcon.name,
+      imageUrl: officialIcon.imageUrl,
+      category: officialIcon.category ?? null,
+    }, lookup);
 
     if (existing) {
-      const [updated] = await db
-        .update(userIconLibrary)
-        .set({
-          sourceType,
-          name: officialIcon.name,
-          imageUrl: officialIcon.imageUrl,
-          storagePath: officialIcon.storagePath,
-          category: officialIcon.category,
-          tags: sanitizeStringArray(officialIcon.tags),
-          updatedAt: new Date(),
-        })
-        .where(and(
-          eq(userIconLibrary.id, existing.id),
-          eq(userIconLibrary.userId, userId),
-        ))
-        .returning();
+      const shouldRefreshFromOfficial = existing.officialIconId === officialIconId;
+      let row = existing;
+      if (shouldRefreshFromOfficial) {
+        const [updated] = await db
+          .update(userIconLibrary)
+          .set({
+            sourceType,
+            name: officialIcon.name,
+            imageUrl: officialIcon.imageUrl,
+            storagePath: officialIcon.storagePath,
+            category: officialIcon.category,
+            tags: sanitizeStringArray(officialIcon.tags),
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(userIconLibrary.id, existing.id),
+            eq(userIconLibrary.userId, userId),
+          ))
+          .returning();
+        if (updated) {
+          row = updated;
+          this.registerUserIconInLookup(lookup, updated);
+        }
+      }
 
-      const row = updated ?? existing;
       const createdMatchRules = await this.upsertMatchRulesForOfficialIcon(userId, row.imageUrl, officialIcon);
       return {
         icon: row,
@@ -884,6 +983,7 @@ export class OfficialIconLibraryService {
         .limit(1);
 
       if (existingAfterConflict) {
+        this.registerUserIconInLookup(lookup, existingAfterConflict);
         const createdMatchRules = await this.upsertMatchRulesForOfficialIcon(userId, existingAfterConflict.imageUrl, officialIcon);
         return {
           icon: existingAfterConflict,
@@ -899,6 +999,7 @@ export class OfficialIconLibraryService {
       throw new Error("Não foi possível adicionar o ícone oficial.");
     }
 
+    this.registerUserIconInLookup(lookup, created);
     const createdMatchRules = await this.upsertMatchRulesForOfficialIcon(userId, created.imageUrl, officialIcon);
     return {
       icon: created,
@@ -1348,10 +1449,13 @@ export class OfficialIconLibraryService {
     let addedCount = 0;
     let alreadyInLibraryCount = 0;
     let createdMatchRules = 0;
+    const userIconLookup = await this.loadUserIconLookup(userId);
 
     for (const icon of icons) {
       const sourceType = resolveIconOrigin(icon.iconKey);
-      const added = await this.addOfficialLibraryIconToUserLibrary(userId, icon.id, sourceType);
+      const added = await this.addOfficialLibraryIconToUserLibrary(userId, icon.id, sourceType, {
+        userIconLookup,
+      });
       if (added.alreadyInLibrary) {
         alreadyInLibraryCount += 1;
       } else {

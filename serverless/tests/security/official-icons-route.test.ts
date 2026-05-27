@@ -46,17 +46,39 @@ type InMemoryUserIcon = {
 };
 
 const COMMUNITY_PREFIX = "community:";
+const COMMUNITY_PACK_ICON_SEGMENT = ":pack:";
 
 function isCommunityIconKey(iconKey: string): boolean {
   return iconKey.startsWith(COMMUNITY_PREFIX);
 }
 
-function parseCommunitySourceUserIconId(iconKey: string): string | null {
+function parseCommunityKeyParts(iconKey: string): { ownerUserId: string; sourceUserIconId: string } | null {
   if (!isCommunityIconKey(iconKey)) return null;
   const payload = iconKey.slice(COMMUNITY_PREFIX.length);
-  const chunks = payload.split(":");
-  if (chunks.length < 2) return null;
-  return chunks.slice(1).join(":") || null;
+  const delimiterIndex = payload.indexOf(":");
+  if (delimiterIndex <= 0) return null;
+  const ownerUserId = payload.slice(0, delimiterIndex).trim();
+  const sourcePayload = payload.slice(delimiterIndex + 1).trim();
+  const sourceUserIconId = sourcePayload.split(COMMUNITY_PACK_ICON_SEGMENT)[0]?.trim() ?? "";
+  if (!ownerUserId || !sourceUserIconId) return null;
+  return { ownerUserId, sourceUserIconId };
+}
+
+function parseCommunitySourceUserIconId(iconKey: string): string | null {
+  return parseCommunityKeyParts(iconKey)?.sourceUserIconId ?? null;
+}
+
+function normalizeIconTerm(value: string | null | undefined): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function buildIconFingerprint(name: string, category: string | null, imageUrl: string): string {
+  return `${normalizeIconTerm(name)}|${normalizeIconTerm(category)}|${String(imageUrl ?? "").trim()}`;
 }
 
 const testPublicUsersById: Record<string, { nomeCompleto: string | null; username: string | null }> = {
@@ -151,6 +173,25 @@ function createInMemoryServiceFixture() {
   let userIconSeq = 1;
   let officialSeq = 1;
 
+  const findExistingUserIconForOfficial = (userId: string, icon: InMemoryOfficialIcon): InMemoryUserIcon | null => {
+    const byOfficialId = userIcons.find((row) => row.userId === userId && row.officialIconId === icon.id);
+    if (byOfficialId) return byOfficialId;
+
+    const parsedCommunity = parseCommunityKeyParts(icon.iconKey);
+    if (parsedCommunity && parsedCommunity.ownerUserId === userId) {
+      const bySourceUserIconId = userIcons.find((row) =>
+        row.userId === userId && row.id === parsedCommunity.sourceUserIconId);
+      if (bySourceUserIconId) return bySourceUserIconId;
+    }
+
+    const fingerprint = buildIconFingerprint(icon.name, icon.category, icon.imageUrl);
+    const byFingerprint = userIcons.find((row) =>
+      row.userId === userId && buildIconFingerprint(row.name, row.category, row.imageUrl) === fingerprint);
+    if (byFingerprint) return byFingerprint;
+
+    return null;
+  };
+
   const mapListItem = (icon: InMemoryOfficialIcon, userId: string) => ({
     id: icon.id,
     iconKey: icon.iconKey,
@@ -167,7 +208,7 @@ function createInMemoryServiceFixture() {
     aliases: icon.aliases,
     packId: icon.packId,
     packName: icon.packName,
-    alreadyInLibrary: userIcons.some((row) => row.userId === userId && row.officialIconId === icon.id),
+    alreadyInLibrary: Boolean(findExistingUserIconForOfficial(userId, icon)),
     createdAt: new Date(),
     updatedAt: new Date(),
   });
@@ -185,7 +226,7 @@ function createInMemoryServiceFixture() {
       throw error;
     }
 
-    const existing = userIcons.find((row) => row.userId === userId && row.officialIconId === icon.id);
+    const existing = findExistingUserIconForOfficial(userId, icon);
     if (existing) {
       return {
         icon: {
@@ -288,12 +329,10 @@ function createInMemoryServiceFixture() {
         .map((pack) => {
           const totalIcons = officialIcons.filter((icon) =>
             icon.isActive && icon.packId === pack.id).length;
-          const addedIconsCount = userIcons.filter((icon) =>
-            icon.userId === userId
-            && icon.officialIconId
-            && officialIcons.some((official) =>
-              official.id === icon.officialIconId
-              && official.packId === pack.id)).length;
+          const addedIconsCount = officialIcons.filter((icon) =>
+            icon.isActive
+            && icon.packId === pack.id
+            && Boolean(findExistingUserIconForOfficial(userId, icon))).length;
           return {
             ...pack,
             ownerUserId: null,
@@ -908,6 +947,23 @@ test("community packs: usuário cria pack com ícones próprios e outro usuário
     assert.equal(String(detailsBody?.pack?.ownerLabel ?? "").includes("@"), false);
     assert.equal(JSON.stringify(detailsBody?.pack ?? {}).includes("example.com"), false);
 
+    const listAsOwner = await fetch(`${baseUrl}/api/icons/community/packs`, {
+      headers: { "x-test-auth": "user_a" },
+    });
+    assert.equal(listAsOwner.status, 200);
+    const ownerBody = await listAsOwner.json();
+    const ownerPack = ownerBody.packs.find((pack: { id: string }) => pack.id === packId);
+    assert.equal(ownerPack?.addedIconsCount, ownerPack?.iconsCount);
+
+    const addPackAsOwner = await fetch(`${baseUrl}/api/icons/community/packs/${packId}/add-to-library`, {
+      method: "POST",
+      headers: { "x-test-auth": "user_a" },
+    });
+    assert.equal(addPackAsOwner.status, 201);
+    const addPackAsOwnerBody = await addPackAsOwner.json();
+    assert.equal(addPackAsOwnerBody.addedCount, 0);
+    assert.equal(addPackAsOwnerBody.alreadyInLibraryCount, addPackAsOwnerBody.totalIcons);
+
     const addPack = await fetch(`${baseUrl}/api/icons/community/packs/${packId}/add-to-library`, {
       method: "POST",
       headers: { "x-test-auth": "user_b" },
@@ -927,6 +983,64 @@ test("community packs: usuário cria pack com ícones próprios e outro usuário
 
     const bCopies = fixture.userIcons.filter((icon) => icon.userId === "user_b" && icon.sourceType === "community");
     assert.equal(bCopies.length > 0, true);
+  });
+});
+
+test("community packs: adição parcial adiciona apenas faltantes sem duplicar existentes", async () => {
+  const { app, fixture } = createOfficialIconsRouteApp();
+  fixture.userIcons.push({
+    id: "user-upload-a-2",
+    userId: "user_a",
+    sourceType: "upload",
+    officialIconId: null,
+    name: "Nubank Custom",
+    imageUrl: "data:image/png;base64,nubank-custom",
+    category: "banco",
+    tags: ["nubank", "nu"],
+  });
+
+  await withTestServer(app, async (baseUrl) => {
+    const createPack = await fetch(`${baseUrl}/api/icons/community/packs`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        name: "Pack Parcial",
+        category: "banco",
+        userIconIds: ["user-upload-a", "user-upload-a-2"],
+        publish: true,
+      }),
+    });
+    assert.equal(createPack.status, 201);
+    const createBody = await createPack.json();
+    const packId = createBody?.pack?.id as string;
+    assert.equal(typeof packId, "string");
+    assert.equal(createBody.icons.length, 2);
+
+    const oneIconFromPack = createBody.icons[0]?.id as string;
+    const addSingleIcon = await fetch(`${baseUrl}/api/icons/community/${oneIconFromPack}/add-to-library`, {
+      method: "POST",
+      headers: { "x-test-auth": "user_b" },
+    });
+    assert.equal(addSingleIcon.status, 201);
+
+    const addPack = await fetch(`${baseUrl}/api/icons/community/packs/${packId}/add-to-library`, {
+      method: "POST",
+      headers: { "x-test-auth": "user_b" },
+    });
+    assert.equal(addPack.status, 201);
+    const addPackBody = await addPack.json();
+    assert.equal(addPackBody.totalIcons, 2);
+    assert.equal(addPackBody.addedCount, 1);
+    assert.equal(addPackBody.alreadyInLibraryCount, 1);
+
+    const bIconsForPack = fixture.userIcons.filter((icon) =>
+      icon.userId === "user_b"
+      && icon.officialIconId
+      && createBody.icons.some((packIcon: { id: string }) => packIcon.id === icon.officialIconId));
+    assert.equal(bIconsForPack.length, 2);
   });
 });
 
