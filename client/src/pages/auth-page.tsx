@@ -12,6 +12,7 @@ import { useUIPreferences, type UsageMode } from "@/context/ui-preferences";
 import {
   DollarSign, TrendingUp, Shield, BarChart3, Eye, EyeOff, Target, Copy, Check, Sparkles,
 } from "lucide-react";
+import { normalizePublicUsername, validatePublicUsername } from "@shared/public-username";
 
 function PasswordInput({ id, placeholder, value, onChange, testId }: {
   id: string; placeholder: string; value: string; onChange: (v: string) => void; testId?: string;
@@ -101,9 +102,18 @@ export default function AuthPage() {
       toast({ title: "Senha muito curta", description: "A senha deve ter pelo menos 8 caracteres", variant: "destructive" });
       return;
     }
+    const normalizedPublicUsername = normalizePublicUsername(registerData.username);
+    const publicUsernameValidationError = validatePublicUsername(normalizedPublicUsername);
+    if (publicUsernameValidationError) {
+      toast({ title: "Usuário público inválido", description: publicUsernameValidationError, variant: "destructive" });
+      return;
+    }
     try {
       setUsageMode(registerUsageMode);
-      await register.mutateAsync(registerData);
+      await register.mutateAsync({
+        ...registerData,
+        username: normalizedPublicUsername,
+      });
     } catch (error: any) {
       toast({ title: "Erro ao criar conta", description: error.message, variant: "destructive" });
     }
@@ -290,15 +300,18 @@ export default function AuthPage() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="reg-username">Usuario</Label>
+                          <Label htmlFor="reg-username">Usuário público</Label>
                           <Input
                             id="reg-username"
                             data-testid="input-register-username"
-                            placeholder="seu@email.com"
+                            placeholder="ex: fernandoq87"
                             value={registerData.username}
                             onChange={(e) => setRegisterData({ ...registerData, username: e.target.value })}
                             required
                           />
+                          <p className="text-xs text-muted-foreground">
+                            Esse nome aparecerá em packs e recursos compartilhados.
+                          </p>
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="reg-password">Senha</Label>

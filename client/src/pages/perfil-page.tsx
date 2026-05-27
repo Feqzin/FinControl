@@ -42,6 +42,11 @@ import type {
   ServicoPessoa,
 } from "@shared/schema";
 import { calculateRemaining, type SubscriptionAccess, type SubscriptionLimitValue } from "@shared/subscription";
+import {
+  normalizePublicUsername,
+  resolvePublicUsernameForResponse,
+  validatePublicUsername,
+} from "@shared/public-username";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -230,6 +235,8 @@ export default function PerfilPage() {
   const [backupRestaurandoId, setBackupRestaurandoId] = useState<string | null>(null);
   const [perfilTab, setPerfilTab] = useState<"conta" | "planos" | "backup" | "ajuda">("planos");
   const inputImportacaoRef = useRef<HTMLInputElement | null>(null);
+  const resolvedPublicUsername = resolvePublicUsernameForResponse(user?.username);
+  const canDefinePublicUsername = resolvedPublicUsername === null;
   const planoAtualAutenticado = getUserSubscriptionTier(user);
   const limitsFromAuth = getUserSubscriptionLimits(user);
   const usageQuery = useSubscriptionUsage();
@@ -267,7 +274,7 @@ export default function PerfilPage() {
   useEffect(() => {
     if (!user) return;
     setNomeCompleto(user.nomeCompleto || "");
-    setPublicUsername(user.username || "");
+    setPublicUsername(resolvePublicUsernameForResponse(user.username) ?? "");
     setFullNameVisibility(user.fullNameVisibility === "public" ? "public" : "private");
   }, [user]);
 
@@ -286,11 +293,19 @@ export default function PerfilPage() {
 
   const updateProfile = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PATCH", "/api/auth/profile", {
+      const payload: Record<string, unknown> = {
         nomeCompleto,
-        username: publicUsername,
         fullNameVisibility,
-      });
+      };
+      if (canDefinePublicUsername) {
+        const normalizedPublicUsername = normalizePublicUsername(publicUsername);
+        const usernameValidationError = validatePublicUsername(normalizedPublicUsername);
+        if (usernameValidationError) {
+          throw new Error(usernameValidationError);
+        }
+        payload.username = normalizedPublicUsername;
+      }
+      const res = await apiRequest("PATCH", "/api/auth/profile", payload);
       return res.json();
     },
     onSuccess: () => {
@@ -686,11 +701,11 @@ export default function PerfilPage() {
         <CardContent className="space-y-4">
           <div className="flex items-center gap-4">
             <div className="flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary font-bold text-2xl flex-shrink-0">
-              {(user?.nomeCompleto || user?.username || "?")[0].toUpperCase()}
+              {(user?.nomeCompleto || resolvedPublicUsername || "U")[0].toUpperCase()}
             </div>
             <div>
-              <p className="font-semibold text-lg">{user?.nomeCompleto || user?.username}</p>
-              <p className="text-sm text-muted-foreground">{user?.username}</p>
+              <p className="font-semibold text-lg">{user?.nomeCompleto || (resolvedPublicUsername ? `@${resolvedPublicUsername}` : "Usuário")}</p>
+              <p className="text-sm text-muted-foreground">{resolvedPublicUsername ? `@${resolvedPublicUsername}` : "Usuário sem username público"}</p>
             </div>
           </div>
           <Separator />
@@ -707,16 +722,23 @@ export default function PerfilPage() {
             <div className="space-y-2">
               <Label>Usuário público</Label>
               <Input
-                value={publicUsername}
+                value={canDefinePublicUsername ? publicUsername : `@${resolvedPublicUsername}`}
                 onChange={(event) => setPublicUsername(event.target.value)}
-                placeholder="@seuusuario"
+                placeholder="ex: fernandoq87"
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
+                disabled={!canDefinePublicUsername}
               />
-              <p className="text-xs text-muted-foreground">
-                Esse nome aparece em packs e recursos compartilhados.
-              </p>
+              {canDefinePublicUsername ? (
+                <p className="text-xs text-muted-foreground">
+                  Como sua conta foi criada antes dessa atualização, você pode definir seu usuário público uma vez.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Seu usuário público é usado em packs e recursos compartilhados. Para alterar, entre em contato com o suporte.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Privacidade do nome completo</Label>

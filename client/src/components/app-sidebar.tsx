@@ -179,7 +179,7 @@ export function AppSidebar() {
         </Dialog>
 
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm text-muted-foreground truncate">{user?.username}</span>
+          <span className="text-sm text-muted-foreground truncate">{user?.username ? `@${user.username}` : "Usuário"}</span>
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"

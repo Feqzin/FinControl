@@ -9,7 +9,7 @@ import {
 
 type AuthUser = {
   id: string;
-  username: string;
+  username: string | null;
   nomeCompleto: string | null;
   fullNameVisibility?: "private" | "public" | null;
   subscriptionTier?: SubscriptionTier | null;

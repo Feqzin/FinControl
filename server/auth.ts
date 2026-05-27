@@ -11,6 +11,11 @@ import rateLimit from "express-rate-limit";
 import { ENV } from "./env";
 import { writeAuditLog } from "./audit-log";
 import { buildSubscriptionAccess } from "@shared/subscription";
+import {
+  normalizePublicUsername,
+  resolvePublicUsernameForResponse,
+  validatePublicUsername,
+} from "@shared/public-username";
 
 const scryptAsync = promisify(scrypt);
 const isProduction = ENV.nodeEnv === "production";
@@ -142,16 +147,17 @@ const sessionCookieSettings = {
 
 function toAuthUserResponse(user: {
   id: string;
-  username: string;
+  username?: string | null;
   nomeCompleto?: string | null;
   fullNameVisibility?: unknown;
   subscriptionTier?: unknown;
 }) {
   const access = buildSubscriptionAccess(user.subscriptionTier);
   const fullNameVisibility = user.fullNameVisibility === "public" ? "public" : "private";
+  const publicUsername = resolvePublicUsernameForResponse(user.username);
   return {
     id: user.id,
-    username: user.username,
+    username: publicUsername,
     nomeCompleto: user.nomeCompleto ?? null,
     fullNameVisibility,
     subscriptionTier: access.subscriptionTier,
@@ -185,23 +191,7 @@ function normalizeUsername(input: unknown): string {
   return input.trim();
 }
 
-const PUBLIC_USERNAME_REGEX = /^[a-z0-9._-]{3,30}$/;
-const EMAIL_LIKE_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const FULL_NAME_VISIBILITY_VALUES = new Set(["private", "public"]);
-
-function normalizePublicUsername(input: unknown): string {
-  if (typeof input !== "string") return "";
-  return input.trim().replace(/^@+/, "").toLowerCase();
-}
-
-function validatePublicUsername(value: string): string | null {
-  if (!value) return "Informe o usuário público.";
-  if (EMAIL_LIKE_REGEX.test(value)) return "O usuário público não pode ser um e-mail.";
-  if (!PUBLIC_USERNAME_REGEX.test(value)) {
-    return "Usuário público inválido. Use 3 a 30 caracteres com letras minúsculas, números, ponto, underline ou hífen.";
-  }
-  return null;
-}
 
 function sanitizeNomeCompleto(value: string | null | undefined): string | null {
   const trimmed = String(value ?? "").trim();
@@ -290,10 +280,10 @@ export function setupAuth(app: Express) {
   app.post("/api/auth/register", loginLimiter, async (req, res, next) => {
     let username = "";
     try {
-      username = normalizeUsername(req.body?.username);
+      username = normalizePublicUsername(req.body?.username);
       const password = req.body?.password;
       const nomeCompleto = req.body?.nomeCompleto;
-      if (!username || !password) {
+      if (!password) {
         auditAuth(req, {
           action: "auth",
           status: "failure",
@@ -301,6 +291,16 @@ export function setupAuth(app: Express) {
           details: { reason: "missing_credentials" },
         });
         return res.status(400).json({ message: "Usuario e senha sao obrigatorios" });
+      }
+      const usernameValidationError = validatePublicUsername(username);
+      if (usernameValidationError) {
+        auditAuth(req, {
+          action: "auth",
+          status: "failure",
+          domain: "auth.register",
+          details: { reason: "invalid_public_username" },
+        });
+        return res.status(400).json({ message: usernameValidationError });
       }
       if (password.length < 8) {
         auditAuth(req, {
@@ -626,6 +626,12 @@ export function setupAuth(app: Express) {
       const userId = sessionUser.id;
       const body = (req.body ?? {}) as Record<string, unknown>;
       const updates: Record<string, unknown> = {};
+      const persistedUser = await storage.getUser(userId);
+      if (!persistedUser) {
+        return res.status(404).json({ message: "Usuário não encontrado." });
+      }
+      const currentPublicUsername = resolvePublicUsernameForResponse(persistedUser.username);
+      const canDefinePublicUsername = currentPublicUsername === null;
 
       if (Object.prototype.hasOwnProperty.call(body, "nomeCompleto")) {
         const rawNomeCompleto = body.nomeCompleto;
@@ -642,10 +648,11 @@ export function setupAuth(app: Express) {
         }
 
         const normalizedCandidate = normalizePublicUsername(rawUsername);
-        const currentNormalized = normalizePublicUsername(sessionUser?.username);
-        const usernameChanged = normalizedCandidate !== currentNormalized;
-
-        if (usernameChanged) {
+        if (!canDefinePublicUsername) {
+          if (normalizedCandidate !== currentPublicUsername) {
+            return res.status(403).json({ message: "Usuário público não pode ser alterado." });
+          }
+        } else {
           const validationError = validatePublicUsername(normalizedCandidate);
           if (validationError) {
             return res.status(400).json({ message: validationError });
