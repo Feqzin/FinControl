@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BrandIconDisplay, LIBRARY_ICONS } from "@/lib/brand-icons";
 import { Check, ImagePlus, RotateCcw, Settings2, Trash2, Upload } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import {
@@ -76,6 +77,11 @@ import {
   suggestBatchIconNameFromFileName,
   isIconMimeTypeAllowed,
 } from "@/components/icon-picker-upload-batch.utils";
+import {
+  filterAndSortPersonalIcons,
+  paginateItems,
+  type PersonalIconSortOrder,
+} from "@/components/icon-picker-pagination.utils";
 
 interface IconPickerProps {
   value?: string | null;
@@ -177,9 +183,11 @@ export function IconPicker({
   triggerTestId,
 }: IconPickerProps) {
   const isManageMode = mode === "manage";
+  const isMobile = useIsMobile();
   const safeOnChange = onChange ?? NOOP_ICON_CHANGE;
   const safeOnSelectMeta = onSelectMeta ?? NOOP_ICON_META;
   const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"biblioteca" | "explorar" | "upload">("biblioteca");
   const [uploadMode, setUploadMode] = useState<IconUploadMode>("individual");
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [uploadFileName, setUploadFileName] = useState<string>("");
@@ -198,11 +206,16 @@ export function IconPicker({
   const [iconActionLoadingKey, setIconActionLoadingKey] = useState<string | null>(null);
   const [ignoredSuggestionKey, setIgnoredSuggestionKey] = useState<string | null>(null);
   const [autoAppliedSuggestionKey, setAutoAppliedSuggestionKey] = useState<string | null>(null);
+  const [myIconsSearch, setMyIconsSearch] = useState("");
+  const [myIconsCategory, setMyIconsCategory] = useState("all");
+  const [myIconsOrder, setMyIconsOrder] = useState<PersonalIconSortOrder>("recent");
+  const [myIconsPage, setMyIconsPage] = useState(1);
   const [exploreSearch, setExploreSearch] = useState("");
   const [exploreCategory, setExploreCategory] = useState("all");
   const [exploreOrigin, setExploreOrigin] = useState<"all" | "official" | "community">("all");
-  const [exploreType, setExploreType] = useState<"all" | "icons" | "packs">("all");
-  const [explorePackId, setExplorePackId] = useState("all");
+  const [exploreType, setExploreType] = useState<"all" | "icons" | "packs">("packs");
+  const [explorePacksPage, setExplorePacksPage] = useState(1);
+  const [exploreIconsPage, setExploreIconsPage] = useState(1);
   const [manageActionTarget, setManageActionTarget] = useState<ManageActionTarget | null>(null);
   const [createPackOpen, setCreatePackOpen] = useState(false);
   const [newPackName, setNewPackName] = useState("");
@@ -222,13 +235,6 @@ export function IconPicker({
     staleTime: 60_000,
   });
 
-  const { data: officialPacks = [] } = useQuery<OfficialIconPackApiModel[]>({
-    queryKey: ["/api/icons/packs", "all"],
-    queryFn: () => fetchIconPacks(),
-    enabled: open,
-    staleTime: 60_000,
-  });
-
   const { data: explorePacks = [], isLoading: isLoadingExplorePacks } = useQuery<OfficialIconPackApiModel[]>({
     queryKey: ["/api/icons/packs", "explore", exploreSearch, exploreCategory, exploreOrigin],
     queryFn: () =>
@@ -242,7 +248,7 @@ export function IconPicker({
   });
 
   const { data: officialIcons = [], isLoading: isLoadingOfficialIcons } = useQuery<OfficialIconApiModel[]>({
-    queryKey: ["/api/icons/explore", exploreSearch, exploreCategory, explorePackId, exploreOrigin],
+    queryKey: ["/api/icons/explore", exploreSearch, exploreCategory, exploreOrigin],
     queryFn: async () => {
       const query = {
         search: exploreSearch || undefined,
@@ -452,12 +458,6 @@ export function IconPicker({
     safeOnChange,
     safeOnSelectMeta,
   ]);
-
-  useEffect(() => {
-    if (exploreOrigin !== "community") return;
-    if (explorePackId === "all") return;
-    setExplorePackId("all");
-  }, [exploreOrigin, explorePackId]);
 
   const uploadIconMutation = useMutation({
     mutationFn: async (payload: {
@@ -1320,6 +1320,60 @@ export function IconPicker({
     });
   };
 
+  const iconsPerPage = isMobile ? 24 : 40;
+  const packsPerPage = 12;
+
+  const filteredPersonalIcons = useMemo(
+    () => filterAndSortPersonalIcons(personalIcons, {
+      search: myIconsSearch,
+      category: myIconsCategory,
+      sort: myIconsOrder,
+    }),
+    [personalIcons, myIconsSearch, myIconsCategory, myIconsOrder],
+  );
+
+  const paginatedPersonalIcons = useMemo(
+    () => paginateItems(filteredPersonalIcons, myIconsPage, iconsPerPage),
+    [filteredPersonalIcons, myIconsPage, iconsPerPage],
+  );
+
+  const paginatedExplorePacks = useMemo(
+    () => paginateItems(explorePacks, explorePacksPage, packsPerPage),
+    [explorePacks, explorePacksPage],
+  );
+
+  const paginatedExploreIcons = useMemo(
+    () => paginateItems(officialIcons, exploreIconsPage, iconsPerPage),
+    [officialIcons, exploreIconsPage, iconsPerPage],
+  );
+
+  useEffect(() => {
+    setMyIconsPage(1);
+  }, [myIconsSearch, myIconsCategory, myIconsOrder, isMobile]);
+
+  useEffect(() => {
+    setExplorePacksPage(1);
+    setExploreIconsPage(1);
+  }, [exploreSearch, exploreCategory, exploreOrigin, exploreType, isMobile]);
+
+  useEffect(() => {
+    if (myIconsPage > paginatedPersonalIcons.totalPages) {
+      setMyIconsPage(1);
+    }
+  }, [myIconsPage, paginatedPersonalIcons.totalPages]);
+
+  useEffect(() => {
+    if (explorePacksPage > paginatedExplorePacks.totalPages) {
+      setExplorePacksPage(1);
+    }
+  }, [explorePacksPage, paginatedExplorePacks.totalPages]);
+
+  useEffect(() => {
+    if (exploreIconsPage > paginatedExploreIcons.totalPages) {
+      setExploreIconsPage(1);
+    }
+  }, [exploreIconsPage, paginatedExploreIcons.totalPages]);
+
   return (
     <>
       <button
@@ -1357,7 +1411,7 @@ export function IconPicker({
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[85vh] w-[min(95vw,900px)] max-w-4xl overflow-y-auto">
+        <DialogContent className="flex h-[95dvh] max-h-[90vh] w-[min(95vw,980px)] max-w-5xl flex-col overflow-hidden p-4 sm:h-auto">
           <DialogHeader>
             <DialogTitle>{isManageMode ? "Biblioteca de ícones" : "Alterar Ícone"}</DialogTitle>
           </DialogHeader>
@@ -1393,14 +1447,18 @@ export function IconPicker({
             </div>
           ) : null}
 
-          <Tabs defaultValue="biblioteca">
+          <Tabs
+            value={activeTab}
+            onValueChange={(nextValue) => setActiveTab(nextValue as "biblioteca" | "explorar" | "upload")}
+            className="mt-2 flex min-h-0 flex-1 flex-col"
+          >
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="biblioteca">Biblioteca</TabsTrigger>
               <TabsTrigger value="explorar">Explorar ícones</TabsTrigger>
               <TabsTrigger value="upload">Upload</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="biblioteca" className="mt-4 space-y-4">
+            <TabsContent value="biblioteca" className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
               {CATEGORIES.map((cat) => {
                 const items = LIBRARY_ICONS.filter((i) => i.category === cat);
                 return (
@@ -1457,75 +1515,160 @@ export function IconPicker({
                 );
               })}
 
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="space-y-3">
+                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Meus ícones
                   </p>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setCreatePackOpen(true)}
-                    data-testid="button-criar-pack"
-                  >
-                    Criar pack
-                  </Button>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:items-center">
+                    <Input
+                      value={myIconsSearch}
+                      onChange={(event) => setMyIconsSearch(event.target.value)}
+                      placeholder="Buscar meus ícones..."
+                      aria-label="Buscar meus ícones"
+                      className="w-full lg:min-w-[220px]"
+                    />
+                    <Select value={myIconsCategory} onValueChange={setMyIconsCategory}>
+                      <SelectTrigger aria-label="Filtrar categoria dos meus ícones" className="w-full lg:min-w-[170px]">
+                        <SelectValue placeholder="Categoria" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas categorias</SelectItem>
+                        {USER_ICON_CATEGORIES.map((category) => (
+                          <SelectItem key={category.value} value={category.value}>
+                            {category.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={myIconsOrder}
+                      onValueChange={(next) => setMyIconsOrder(next as PersonalIconSortOrder)}
+                    >
+                      <SelectTrigger aria-label="Ordenar meus ícones" className="w-full lg:min-w-[170px]">
+                        <SelectValue placeholder="Ordenar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="recent">Mais recentes</SelectItem>
+                        <SelectItem value="name-asc">Nome A-Z</SelectItem>
+                        <SelectItem value="category">Categoria</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {personalIcons.length > 0 ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setCreatePackOpen(true)}
+                        data-testid="button-criar-pack"
+                        className="w-full lg:w-auto"
+                      >
+                        Criar pack
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
                 {isLoadingPersonalIcons ? (
                   <p className="text-xs text-muted-foreground">Carregando ícones personalizados...</p>
                 ) : personalIcons.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Você ainda não enviou ícones personalizados.</p>
-                ) : (
-                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
-                    {personalIcons.map((item) => {
-                      const isSelected = value === item.imageUrl;
-                      const isAutomationEnabled = (iconMatchRulesByIconId.get(item.imageUrl)?.length ?? 0) > 0;
-                      const publication = communityPublicationBySourceUserIconId.get(item.id) ?? null;
-                      const isAutomationDisabled = !isAutomationEnabled;
-                      const automationLabel = isAutomationDisabled ? "Automação desativada" : "Automação ativa";
-                      return (
-                        <div
-                          key={item.id}
-                          className={`relative rounded-lg border p-2 transition-all ${
-                            isSelected ? "border-primary ring-2 ring-primary/30" : "border-transparent"
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => openManagePersonalActions(item, publication)}
-                            data-testid={`icon-personal-option-${item.id}`}
-                            title={`${item.name} · ${automationLabel}`}
-                            aria-label={`${item.name}. ${automationLabel}. Abrir ações do ícone.`}
-                            className="flex w-full flex-col items-center gap-1 rounded-md p-1 text-left transition-colors hover:bg-accent"
-                          >
-                            <div className="relative">
-                              <img
-                                src={item.imageUrl}
-                                alt={item.name}
-                                className={`h-10 w-10 rounded-xl object-cover transition ${
-                                  isAutomationDisabled ? "opacity-50 grayscale saturate-0" : ""
-                                }`}
-                              />
-                              {isSelected ? (
-                                <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary">
-                                  <Check className="h-2.5 w-2.5 text-primary-foreground" />
-                                </div>
-                              ) : null}
-                            </div>
-                            <span
-                              className={`w-full truncate text-center text-[10px] leading-tight text-muted-foreground ${
-                                isAutomationDisabled ? "opacity-75" : ""
-                              }`}
-                              title={item.name}
-                            >
-                              {item.name}
-                            </span>
-                          </button>
-                        </div>
-                      );
-                    })}
+                  <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                    <p>Você ainda não enviou ícones personalizados.</p>
+                    <p className="mt-1 text-xs">Faça upload individual ou em lote para começar.</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="mt-3"
+                      variant="outline"
+                      onClick={() => setActiveTab("upload")}
+                    >
+                      Fazer upload
+                    </Button>
                   </div>
+                ) : filteredPersonalIcons.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Nenhum ícone encontrado para esse filtro.</p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                      {paginatedPersonalIcons.items.map((item) => {
+                        const isSelected = value === item.imageUrl;
+                        const isAutomationEnabled = (iconMatchRulesByIconId.get(item.imageUrl)?.length ?? 0) > 0;
+                        const publication = communityPublicationBySourceUserIconId.get(item.id) ?? null;
+                        const isAutomationDisabled = !isAutomationEnabled;
+                        const automationLabel = isAutomationDisabled ? "Automação desativada" : "Automação ativa";
+                        return (
+                          <div
+                            key={item.id}
+                            className={`relative rounded-lg border p-2 transition-all ${
+                              isSelected ? "border-primary ring-2 ring-primary/30" : "border-transparent"
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => openManagePersonalActions(item, publication)}
+                              data-testid={`icon-personal-option-${item.id}`}
+                              title={`${item.name} · ${automationLabel}`}
+                              aria-label={`${item.name}. ${automationLabel}. Abrir ações do ícone.`}
+                              className="flex w-full flex-col items-center gap-1 rounded-md p-1 text-left transition-colors hover:bg-accent"
+                            >
+                              <div className="relative">
+                                <img
+                                  src={item.imageUrl}
+                                  alt={item.name}
+                                  className={`h-10 w-10 rounded-xl object-cover transition ${
+                                    isAutomationDisabled ? "opacity-50 grayscale saturate-0" : ""
+                                  }`}
+                                />
+                                {isSelected ? (
+                                  <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary">
+                                    <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                                  </div>
+                                ) : null}
+                              </div>
+                              <span
+                                className={`w-full truncate text-center text-[10px] leading-tight text-muted-foreground ${
+                                  isAutomationDisabled ? "opacity-75" : ""
+                                }`}
+                                title={item.name}
+                              >
+                                {item.name}
+                              </span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 p-2 text-xs text-muted-foreground">
+                      <p>
+                        Mostrando {paginatedPersonalIcons.startIndex + 1}–{paginatedPersonalIcons.endIndex} de{" "}
+                        {paginatedPersonalIcons.totalItems} ícones
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={paginatedPersonalIcons.page <= 1}
+                          onClick={() => setMyIconsPage((current) => Math.max(1, current - 1))}
+                        >
+                          Anterior
+                        </Button>
+                        <span>
+                          Página {paginatedPersonalIcons.page} de {paginatedPersonalIcons.totalPages}
+                        </span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={paginatedPersonalIcons.page >= paginatedPersonalIcons.totalPages}
+                          onClick={() =>
+                            setMyIconsPage((current) => Math.min(paginatedPersonalIcons.totalPages, current + 1))
+                          }
+                        >
+                          Próxima
+                        </Button>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -1544,67 +1687,51 @@ export function IconPicker({
               ) : null}
             </TabsContent>
 
-                        <TabsContent value="explorar" className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
-                <Input
-                  value={exploreSearch}
-                  onChange={(event) => setExploreSearch(event.target.value)}
-                  placeholder="Buscar ícone ou pack"
-                  aria-label="Buscar ícone ou pack"
-                  className="sm:col-span-2"
-                />
-                <Select value={exploreType} onValueChange={(value) => setExploreType(value as "all" | "icons" | "packs")}>
-                  <SelectTrigger aria-label="Filtrar tipo de conteúdo">
-                    <SelectValue placeholder="Tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Ícones e packs</SelectItem>
-                    <SelectItem value="icons">Somente ícones</SelectItem>
-                    <SelectItem value="packs">Somente packs</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={exploreOrigin} onValueChange={(value) => setExploreOrigin(value as "all" | "official" | "community")}>
-                  <SelectTrigger aria-label="Filtrar origem dos ícones">
-                    <SelectValue placeholder="Origem" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="official">Oficiais</SelectItem>
-                    <SelectItem value="community">Comunidade</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={exploreCategory} onValueChange={setExploreCategory}>
-                  <SelectTrigger aria-label="Filtrar categoria de ícones">
-                    <SelectValue placeholder="Categoria" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas categorias</SelectItem>
-                    {USER_ICON_CATEGORIES.map((category) => (
-                      <SelectItem key={category.value} value={category.value}>
-                        {category.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {exploreType !== "packs" ? (
-                <Select value={explorePackId} onValueChange={setExplorePackId}>
-                  <SelectTrigger aria-label="Filtrar pack">
-                    <SelectValue placeholder="Pack" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos os packs</SelectItem>
-                    {officialPacks
-                      .filter((pack) => exploreOrigin === "all" || pack.sourceType === exploreOrigin)
-                      .map((pack) => (
-                        <SelectItem key={pack.id} value={pack.id}>
-                          {pack.name}
+            <TabsContent value="explorar" className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+              <div className="sticky top-0 z-10 bg-background pb-1">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <Input
+                    value={exploreSearch}
+                    onChange={(event) => setExploreSearch(event.target.value)}
+                    placeholder="Buscar pack ou ícone"
+                    aria-label="Buscar pack ou ícone"
+                    className="sm:col-span-2 lg:col-span-1"
+                  />
+                  <Select value={exploreType} onValueChange={(value) => setExploreType(value as "all" | "icons" | "packs")}>
+                    <SelectTrigger aria-label="Filtrar tipo de conteúdo">
+                      <SelectValue placeholder="Tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="packs">Packs</SelectItem>
+                      <SelectItem value="icons">Ícones individuais</SelectItem>
+                      <SelectItem value="all">Todos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={exploreOrigin} onValueChange={(value) => setExploreOrigin(value as "all" | "official" | "community")}>
+                    <SelectTrigger aria-label="Filtrar origem dos ícones">
+                      <SelectValue placeholder="Origem" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="official">Oficiais</SelectItem>
+                      <SelectItem value="community">Comunidade</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={exploreCategory} onValueChange={setExploreCategory}>
+                    <SelectTrigger aria-label="Filtrar categoria de ícones">
+                      <SelectValue placeholder="Categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas categorias</SelectItem>
+                      {USER_ICON_CATEGORIES.map((category) => (
+                        <SelectItem key={category.value} value={category.value}>
+                          {category.label}
                         </SelectItem>
                       ))}
-                  </SelectContent>
-                </Select>
-              ) : null}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
               {exploreType !== "icons" ? (
                 <div className="space-y-2">
@@ -1613,62 +1740,97 @@ export function IconPicker({
                   </p>
                   {isLoadingExplorePacks ? (
                     <p className="text-xs text-muted-foreground">Carregando packs...</p>
-                  ) : explorePacks.length === 0 ? (
+                  ) : paginatedExplorePacks.totalItems === 0 ? (
                     <p className="text-xs text-muted-foreground">Nenhum pack encontrado para esse filtro.</p>
                   ) : (
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {explorePacks.map((pack) => {
-                        const allAlreadyAdded = pack.iconsCount > 0 && pack.addedIconsCount >= pack.iconsCount;
-                        return (
-                          <button
-                            key={pack.id}
+                    <>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {paginatedExplorePacks.items.map((pack) => {
+                          const allAlreadyAdded = pack.iconsCount > 0 && pack.addedIconsCount >= pack.iconsCount;
+                          return (
+                            <button
+                              key={pack.id}
+                              type="button"
+                              className="rounded-lg border p-3 text-left transition-colors hover:bg-accent"
+                              onClick={() => openPackDetails(pack)}
+                            >
+                              <p className="text-sm font-medium">{pack.name}</p>
+                              <p className="line-clamp-2 text-xs text-muted-foreground">
+                                {pack.description || "Sem descrição"}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {pack.category ? getIconCategoryLabel(pack.category) : "Sem categoria"} · {pack.iconsCount} ícone(s)
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {pack.sourceType === "community"
+                                  ? `Publicado por: ${pack.ownerLabel || "Usuário"}${pack.ownerPublicCode ? ` · ID: ${pack.ownerPublicCode}` : ""}`
+                                  : "Catálogo oficial"}
+                              </p>
+                              <div className="mt-2 flex items-center gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant={allAlreadyAdded ? "outline" : "default"}
+                                  disabled={allAlreadyAdded || addPackToLibraryMutation.isPending}
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    addPackToLibraryMutation.mutate(pack);
+                                  }}
+                                >
+                                  {allAlreadyAdded ? "Na sua biblioteca" : "Adicionar pack à minha biblioteca"}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    openPackActions(pack);
+                                  }}
+                                >
+                                  Ações
+                                </Button>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 p-2 text-xs text-muted-foreground">
+                        <p>
+                          Mostrando {paginatedExplorePacks.startIndex + 1}–{paginatedExplorePacks.endIndex} de{" "}
+                          {paginatedExplorePacks.totalItems} packs
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
                             type="button"
-                            className="rounded-lg border p-3 text-left transition-colors hover:bg-accent"
-                            onClick={() => openPackDetails(pack)}
+                            size="sm"
+                            variant="outline"
+                            disabled={paginatedExplorePacks.page <= 1}
+                            onClick={() => setExplorePacksPage((current) => Math.max(1, current - 1))}
                           >
-                            <p className="text-sm font-medium">{pack.name}</p>
-                            <p className="line-clamp-2 text-xs text-muted-foreground">
-                              {pack.description || "Sem descrição"}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {pack.category ? getIconCategoryLabel(pack.category) : "Sem categoria"} · {pack.iconsCount} ícone(s)
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {pack.sourceType === "community"
-                                ? `Publicado por: ${pack.ownerLabel || "Usuário"}${pack.ownerPublicCode ? ` · ID: ${pack.ownerPublicCode}` : ""}`
-                                : "Catálogo oficial"}
-                            </p>
-                            <div className="mt-2 flex items-center gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant={allAlreadyAdded ? "outline" : "default"}
-                                disabled={allAlreadyAdded || addPackToLibraryMutation.isPending}
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  addPackToLibraryMutation.mutate(pack);
-                                }}
-                              >
-                                {allAlreadyAdded ? "Na sua biblioteca" : "Adicionar pack à minha biblioteca"}
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  openPackActions(pack);
-                                }}
-                              >
-                                Ações
-                              </Button>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+                            Anterior
+                          </Button>
+                          <span>
+                            Página {paginatedExplorePacks.page} de {paginatedExplorePacks.totalPages}
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={paginatedExplorePacks.page >= paginatedExplorePacks.totalPages}
+                            onClick={() =>
+                              setExplorePacksPage((current) =>
+                                Math.min(paginatedExplorePacks.totalPages, current + 1),
+                              )
+                            }
+                          >
+                            Próxima
+                          </Button>
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
               ) : null}
@@ -1676,57 +1838,92 @@ export function IconPicker({
               {exploreType !== "packs" ? (
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Ícones disponíveis
+                    Ícones individuais
                   </p>
                   {isLoadingOfficialIcons ? (
                     <p className="text-xs text-muted-foreground">Carregando ícones...</p>
-                  ) : officialIcons.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">Nenhum ícone encontrado para esse filtro.</p>
+                  ) : paginatedExploreIcons.totalItems === 0 ? (
+                    <p className="text-xs text-muted-foreground">Nenhum ícone individual encontrado para esse filtro.</p>
                   ) : (
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-                      {officialIcons.map((icon) => {
-                        const alreadyAdded = icon.alreadyInLibrary || personalOfficialIconIds.has(icon.id);
-                        const isCommunity = icon.sourceType === "community";
-                        return (
-                          <button
-                            key={icon.id}
-                            type="button"
-                            className="rounded-lg border p-2 text-left transition-colors hover:bg-accent"
-                            onClick={() => openExploreActions(icon, alreadyAdded)}
-                          >
-                            <div className="flex items-center gap-2">
-                              <img
-                                src={icon.imageUrl}
-                                alt={icon.name}
-                                className="h-9 w-9 rounded-lg object-cover"
-                              />
-                              <div className="min-w-0">
-                                <p className="truncate text-xs font-medium">{icon.name}</p>
-                                <p className="truncate text-[10px] text-muted-foreground">
-                                  {icon.category ? getIconCategoryLabel(icon.category) : (icon.packName || "Sem categoria")}
-                                </p>
+                    <>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                        {paginatedExploreIcons.items.map((icon) => {
+                          const alreadyAdded = icon.alreadyInLibrary || personalOfficialIconIds.has(icon.id);
+                          const isCommunity = icon.sourceType === "community";
+                          return (
+                            <button
+                              key={icon.id}
+                              type="button"
+                              className="rounded-lg border p-2 text-left transition-colors hover:bg-accent"
+                              onClick={() => openExploreActions(icon, alreadyAdded)}
+                            >
+                              <div className="flex items-center gap-2">
+                                <img
+                                  src={icon.imageUrl}
+                                  alt={icon.name}
+                                  className="h-9 w-9 rounded-lg object-cover"
+                                />
+                                <div className="min-w-0">
+                                  <p className="truncate text-xs font-medium">{icon.name}</p>
+                                  <p className="truncate text-[10px] text-muted-foreground">
+                                    {icon.category ? getIconCategoryLabel(icon.category) : (icon.packName || "Sem categoria")}
+                                  </p>
+                                </div>
                               </div>
-                            </div>
-                            <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
-                              <span className="text-muted-foreground">
-                                {isCommunity
-                                  ? `Publicado por: ${icon.ownerLabel || "Usuário"}${icon.ownerPublicCode ? ` · ID: ${icon.ownerPublicCode}` : ""}`
-                                  : "Catálogo oficial"}
-                              </span>
-                              <Badge variant={alreadyAdded ? "secondary" : "outline"} className="h-5 px-1.5 text-[10px]">
-                                {alreadyAdded ? "Na sua biblioteca" : "Disponível"}
-                              </Badge>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+                              <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+                                <span className="text-muted-foreground">
+                                  {isCommunity
+                                    ? `Publicado por: ${icon.ownerLabel || "Usuário"}${icon.ownerPublicCode ? ` · ID: ${icon.ownerPublicCode}` : ""}`
+                                    : "Catálogo oficial"}
+                                </span>
+                                <Badge variant={alreadyAdded ? "secondary" : "outline"} className="h-5 px-1.5 text-[10px]">
+                                  {alreadyAdded ? "Na sua biblioteca" : "Disponível"}
+                                </Badge>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 p-2 text-xs text-muted-foreground">
+                        <p>
+                          Mostrando {paginatedExploreIcons.startIndex + 1}–{paginatedExploreIcons.endIndex} de{" "}
+                          {paginatedExploreIcons.totalItems} ícones
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={paginatedExploreIcons.page <= 1}
+                            onClick={() => setExploreIconsPage((current) => Math.max(1, current - 1))}
+                          >
+                            Anterior
+                          </Button>
+                          <span>
+                            Página {paginatedExploreIcons.page} de {paginatedExploreIcons.totalPages}
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={paginatedExploreIcons.page >= paginatedExploreIcons.totalPages}
+                            onClick={() =>
+                              setExploreIconsPage((current) =>
+                                Math.min(paginatedExploreIcons.totalPages, current + 1),
+                              )
+                            }
+                          >
+                            Próxima
+                          </Button>
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
               ) : null}
             </TabsContent>
 
-            <TabsContent value="upload" className="mt-4 space-y-4">
+            <TabsContent value="upload" className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-foreground">Tipo de upload</label>

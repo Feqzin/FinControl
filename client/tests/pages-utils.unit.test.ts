@@ -129,6 +129,11 @@ import {
   parseKeywordInput as parseBatchKeywordInput,
   suggestBatchIconNameFromFileName,
 } from "../src/components/icon-picker-upload-batch.utils";
+import type { UserIconLibraryItemApiModel } from "../src/services/api/user-icon-library";
+import {
+  filterAndSortPersonalIcons,
+  paginateItems,
+} from "../src/components/icon-picker-pagination.utils";
 
 test("formatters: moeda e data em pt-BR", () => {
   assert.equal(formatCurrencyBRL(1234.56), "R$\u00a01.234,56");
@@ -3722,6 +3727,87 @@ test("icon categories: categorias removidas não são visíveis e são normaliza
   assert.equal(normalizeIconCategoryForDisplay("assinatura"), "servico");
   assert.equal(normalizeIconCategoryForDisplay("educacao"), "servico");
   assert.equal(normalizeIconCategoryForDisplay("telefonia"), "internet");
+});
+
+test("icon picker pagination utils: filtra, ordena e busca em Meus ícones", () => {
+  const icons: UserIconLibraryItemApiModel[] = [
+    {
+      id: "icon-1",
+      userId: "user-1",
+      sourceType: "upload",
+      officialIconId: null,
+      name: "Itaú Unibanco",
+      imageUrl: "https://cdn.fincontrol.dev/itau.png",
+      storagePath: null,
+      category: "banco",
+      tags: ["itau", "itaucard"],
+      createdAt: "2026-05-12T10:00:00.000Z",
+      updatedAt: "2026-05-12T10:00:00.000Z",
+    },
+    {
+      id: "icon-2",
+      userId: "user-1",
+      sourceType: "upload",
+      officialIconId: null,
+      name: "Netflix",
+      imageUrl: "https://cdn.fincontrol.dev/netflix.png",
+      storagePath: null,
+      category: "streaming",
+      tags: ["filme", "serie"],
+      createdAt: "2026-05-10T10:00:00.000Z",
+      updatedAt: "2026-05-10T10:00:00.000Z",
+    },
+    {
+      id: "icon-3",
+      userId: "user-1",
+      sourceType: "upload",
+      officialIconId: null,
+      name: "Mercado Pago",
+      imageUrl: "https://cdn.fincontrol.dev/mp.png",
+      storagePath: null,
+      category: "servico",
+      tags: ["mp", "carteira digital"],
+      createdAt: "2026-05-11T10:00:00.000Z",
+      updatedAt: "2026-05-11T10:00:00.000Z",
+    },
+  ];
+
+  const onlyBanks = filterAndSortPersonalIcons(icons, {
+    search: "",
+    category: "banco",
+    sort: "recent",
+  });
+  assert.deepEqual(onlyBanks.map((item) => item.id), ["icon-1"]);
+
+  const searchStreaming = filterAndSortPersonalIcons(icons, {
+    search: "streaming",
+    category: "all",
+    sort: "name-asc",
+  });
+  assert.deepEqual(searchStreaming.map((item) => item.id), ["icon-2"]);
+
+  const sortedByName = filterAndSortPersonalIcons(icons, {
+    search: "",
+    category: "all",
+    sort: "name-asc",
+  });
+  assert.deepEqual(sortedByName.map((item) => item.id), ["icon-1", "icon-3", "icon-2"]);
+});
+
+test("icon picker pagination utils: pagina coleção e limita em janela estável", () => {
+  const values = Array.from({ length: 41 }, (_, index) => `icon-${index + 1}`);
+  const page1 = paginateItems(values, 1, 40);
+  assert.equal(page1.items.length, 40);
+  assert.equal(page1.startIndex, 0);
+  assert.equal(page1.endIndex, 40);
+  assert.equal(page1.totalItems, 41);
+  assert.equal(page1.totalPages, 2);
+
+  const page2 = paginateItems(values, 2, 40);
+  assert.deepEqual(page2.items, ["icon-41"]);
+  assert.equal(page2.startIndex, 40);
+  assert.equal(page2.endIndex, 41);
+  assert.equal(page2.page, 2);
 });
 
 test("icon batch upload utils: sugere nome amigável a partir do arquivo", () => {
