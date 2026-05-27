@@ -3990,6 +3990,102 @@ test("icon picker explore search: categoria e termo funcionam juntos na busca in
   assert.equal(hasExploreSearchTerm("   "), false);
 });
 
+test("icon picker explore search: com busca mantém item de pack visível por metadado de origem", () => {
+  const icons = [
+    {
+      id: "icon-pack-next",
+      iconKey: "community:bank:next",
+      sourceType: "community",
+      sourceUserIconId: "user-icon-next",
+      ownerUserId: null,
+      ownerLabel: "Fernando",
+      ownerPublicCode: "USR-AAAA1111",
+      name: "Next Bank",
+      imageUrl: "https://cdn/icons/next.png",
+      storagePath: null,
+      category: "banco",
+      tags: ["next"],
+      aliases: [],
+      packId: null,
+      packName: "Bancos",
+      packPublicCode: "USR-AAAA1111-P001",
+      hiddenBecausePacked: false,
+      representedInPack: false,
+      alreadyInLibrary: false,
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    },
+  ];
+
+  const matchedWithSearch = resolveExploreIconsForView(icons as any, {
+    search: "next",
+    category: "all",
+  });
+  assert.deepEqual(matchedWithSearch.map((icon) => icon.id), ["icon-pack-next"]);
+
+  const matchedWithoutSearch = resolveExploreIconsForView(icons as any, {
+    search: "",
+    category: "all",
+  });
+  assert.deepEqual(matchedWithoutSearch.map((icon) => icon.id), []);
+});
+
+test("icon picker explore search: com busca evita duplicata individual representada em pack", () => {
+  const icons = [
+    {
+      id: "icon-pack-itau",
+      iconKey: "community:bank:itau:pack",
+      sourceType: "community",
+      sourceUserIconId: "user-icon-itau",
+      ownerUserId: null,
+      ownerLabel: "Fernando",
+      ownerPublicCode: "USR-AAAA1111",
+      name: "Itaú Unibanco",
+      imageUrl: "https://cdn/icons/itau.png",
+      storagePath: null,
+      category: "banco",
+      tags: ["itau", "itaucard"],
+      aliases: [],
+      packId: "pack-bancos",
+      packName: "Bancos",
+      hiddenBecausePacked: false,
+      representedInPack: false,
+      alreadyInLibrary: false,
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    },
+    {
+      id: "icon-individual-legado-itau",
+      iconKey: "community:bank:itau",
+      sourceType: "community",
+      sourceUserIconId: "user-icon-itau",
+      ownerUserId: null,
+      ownerLabel: "Fernando",
+      ownerPublicCode: "USR-AAAA1111",
+      name: "Itaú Unibanco",
+      imageUrl: "https://cdn/icons/itau.png",
+      storagePath: null,
+      category: "banco",
+      tags: ["itau"],
+      aliases: [],
+      packId: null,
+      packName: null,
+      hiddenBecausePacked: true,
+      representedInPack: true,
+      alreadyInLibrary: false,
+      createdAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    },
+  ];
+
+  const matched = resolveExploreIconsForView(icons as any, {
+    search: "itau",
+    category: "all",
+  });
+
+  assert.deepEqual(matched.map((icon) => icon.id), ["icon-pack-itau"]);
+});
+
 test("icon batch upload utils: sugere nome amigável a partir do arquivo", () => {
   assert.equal(suggestBatchIconNameFromFileName("Itau_Unibanco_logo_2023.svg"), "Itau Unibanco Logo");
   assert.equal(suggestBatchIconNameFromFileName("kabum-icone.png"), "Kabum Icone");

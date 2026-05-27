@@ -208,6 +208,25 @@ function getPackAddActionLabel(pack: OfficialIconPackApiModel): string {
   return "Adicionar pack à minha biblioteca";
 }
 
+function getExploreIconPackOriginLabel(icon: OfficialIconApiModel): string {
+  const packName = String(icon.packName ?? "").trim();
+  if (packName) {
+    return `Pack: ${packName}`;
+  }
+
+  const packPublicCode = String(icon.packPublicCode ?? "").trim();
+  if (packPublicCode) {
+    return `Pack: ${packPublicCode}`;
+  }
+
+  const packId = String(icon.packId ?? "").trim();
+  if (packId) {
+    return "Pack publicado";
+  }
+
+  return "Origem: Ícone individual";
+}
+
 export function IconPicker({
   value,
   name = "",
@@ -2008,7 +2027,7 @@ export function IconPicker({
                                     {icon.category ? getIconCategoryLabel(icon.category) : "Sem categoria"}
                                   </p>
                                   <p className="truncate text-[10px] text-muted-foreground">
-                                    {icon.packName ? `Pack: ${icon.packName}` : "Origem: Ícone individual"}
+                                    {getExploreIconPackOriginLabel(icon)}
                                   </p>
                                   {icon.packItemPublicCode ? (
                                     <p className="truncate text-[10px] text-muted-foreground">
@@ -2873,6 +2892,14 @@ export function IconPicker({
               ) : (
                 <p className="text-xs text-muted-foreground">Catálogo oficial</p>
               )}
+              <p className="text-xs text-muted-foreground">
+                {getExploreIconPackOriginLabel(manageActionTarget.icon)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {manageActionTarget.icon.category
+                  ? `Categoria: ${getIconCategoryLabel(manageActionTarget.icon.category)}`
+                  : "Categoria: Sem categoria"}
+              </p>
               {manageActionTarget.icon.packItemPublicCode ? (
                 <p className="text-xs text-muted-foreground">
                   ID do item: {manageActionTarget.icon.packItemPublicCode}

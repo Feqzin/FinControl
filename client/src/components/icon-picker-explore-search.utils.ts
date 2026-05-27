@@ -29,6 +29,13 @@ function buildIconSearchHaystack(icon: OfficialIconApiModel): string {
   ].join(" "));
 }
 
+function hasPackOrigin(icon: OfficialIconApiModel): boolean {
+  return String(icon.packId ?? "").trim().length > 0
+    || String(icon.packName ?? "").trim().length > 0
+    || String(icon.packPublicCode ?? "").trim().length > 0
+    || String(icon.packItemPublicCode ?? "").trim().length > 0;
+}
+
 function buildPackSearchHaystack(pack: OfficialIconPackApiModel): string {
   return normalizeSearchTerm([
     pack.name,
@@ -54,14 +61,16 @@ export function resolveExploreIconsForView(
   const withCategory = icons.filter((icon) => matchesIconCategory(icon.category, options.category));
 
   if (!normalizedSearch) {
-    return withCategory.filter((icon) => !icon.packId && !icon.hiddenBecausePacked && !icon.representedInPack);
+    return withCategory.filter((icon) => !hasPackOrigin(icon) && !icon.hiddenBecausePacked && !icon.representedInPack);
   }
 
   return withCategory.filter((icon) => {
     if (!buildIconSearchHaystack(icon).includes(normalizedSearch)) {
       return false;
     }
-    if (!icon.packId && (icon.hiddenBecausePacked || icon.representedInPack)) {
+    // Mantém itens de pack visíveis durante busca, mas evita duplicatas
+    // de publicações individuais equivalentes que já estejam representadas em pack.
+    if (!hasPackOrigin(icon) && (icon.hiddenBecausePacked || icon.representedInPack)) {
       return false;
     }
     return true;
