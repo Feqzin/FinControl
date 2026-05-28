@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  BACKUP_RESTORE_SUPPORTED_MODULE_KEYS,
+  isBackupRestoreModuleKey,
+  type BackupRestoreAction,
+  type BackupRestoreMode,
+  type BackupRestoreModuleKey,
+} from "../../shared/backup-restore-modules.js";
 import type {
   Cartao,
   CompraCartao,
@@ -61,11 +68,35 @@ export type BackupJsonImportPayload = {
   metas: WithoutUserId<Meta>[];
 };
 
-export type BackupImportMode = "merge" | "replace";
+export type BackupImportMode = BackupRestoreMode;
+
+export type BackupJsonModulesSelection = Partial<Record<BackupRestoreModuleKey, BackupRestoreAction>>;
 
 export type BackupJsonImportRequest = {
   modo: BackupImportMode;
+  modules?: BackupJsonModulesSelection;
   backup: BackupJsonImportPayload;
+};
+
+type BackupSectionPresence = Record<BackupRestoreModuleKey, boolean>;
+
+const MODULE_TO_BACKUP_SECTION: Record<BackupRestoreModuleKey, keyof BackupJsonImportPayload> = {
+  pessoas: "pessoas",
+  dividas: "dividas",
+  cartoes: "cartoes",
+  compras: "compras",
+  parcelasCompra: "parcelasCompra",
+  servicos: "servicos",
+  servicoPessoas: "servicoPessoas",
+  servicoPagamentos: "servicoPagamentos",
+  pessoaSaldoMovimentacoes: "pessoaSaldoMovimentacoes",
+  metas: "metas",
+};
+
+export type BackupJsonImportEnvelope = {
+  backup: BackupJsonImportPayload;
+  presentSections: BackupSectionPresence;
+  backupVersion: string | null;
 };
 
 function removeUserIdFromRow(row: Row): Row {
@@ -123,15 +154,69 @@ export function parseBackupJsonImport(input: string | unknown): BackupJsonImport
 function parseImportMode(value: unknown): BackupImportMode {
   if (value == null || value === "") return "merge";
   if (typeof value !== "string") {
-    throw new BackupJsonParseError("Modo de importacao invalido. Use 'merge' ou 'replace'.");
+    throw new BackupJsonParseError("Modo de importacao invalido. Use 'merge', 'replace' ou 'custom'.");
   }
 
   const normalized = value.trim().toLowerCase();
-  if (normalized === "merge" || normalized === "replace") {
+  if (normalized === "merge" || normalized === "replace" || normalized === "custom") {
     return normalized;
   }
 
-  throw new BackupJsonParseError("Modo de importacao invalido. Use 'merge' ou 'replace'.");
+  throw new BackupJsonParseError("Modo de importacao invalido. Use 'merge', 'replace' ou 'custom'.");
+}
+
+function parseModuleAction(value: unknown, moduleKey: string): BackupRestoreAction {
+  if (typeof value !== "string") {
+    throw new BackupJsonParseError(`Acao invalida para modulo '${moduleKey}'. Use 'merge', 'replace' ou 'ignore'.`);
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "merge" || normalized === "replace" || normalized === "ignore") {
+    return normalized;
+  }
+  throw new BackupJsonParseError(`Acao invalida para modulo '${moduleKey}'. Use 'merge', 'replace' ou 'ignore'.`);
+}
+
+function parseModulesSelection(value: unknown): BackupJsonModulesSelection {
+  if (value == null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new BackupJsonParseError("Selecao de modulos invalida.");
+  }
+
+  const row = value as Row;
+  const modules: BackupJsonModulesSelection = {};
+  for (const [key, rawAction] of Object.entries(row)) {
+    if (!isBackupRestoreModuleKey(key)) {
+      continue;
+    }
+    modules[key] = parseModuleAction(rawAction, key);
+  }
+
+  return modules;
+}
+
+function resolveBackupRoot(payload: unknown): Row | null {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return null;
+  }
+  const row = payload as Row;
+  if (Object.prototype.hasOwnProperty.call(row, "backup")) {
+    const inner = row.backup;
+    if (typeof inner === "object" && inner !== null && !Array.isArray(inner)) {
+      return inner as Row;
+    }
+    return null;
+  }
+  return row;
+}
+
+function computePresentSections(backupRoot: Row | null): BackupSectionPresence {
+  const present = {} as BackupSectionPresence;
+  for (const moduleKey of BACKUP_RESTORE_SUPPORTED_MODULE_KEYS) {
+    const sectionKey = MODULE_TO_BACKUP_SECTION[moduleKey];
+    present[moduleKey] = backupRoot != null
+      && Object.prototype.hasOwnProperty.call(backupRoot, sectionKey);
+  }
+  return present;
 }
 
 export function parseBackupJsonImportRequest(input: string | unknown): BackupJsonImportRequest {
@@ -140,8 +225,10 @@ export function parseBackupJsonImportRequest(input: string | unknown): BackupJso
   if (typeof payload === "object" && payload !== null && !Array.isArray(payload)) {
     const row = payload as Row;
     if (Object.prototype.hasOwnProperty.call(row, "backup")) {
+      const modo = parseImportMode(row.modo ?? row.mode ?? row.importMode);
       return {
-        modo: parseImportMode(row.modo ?? row.mode ?? row.importMode),
+        modo,
+        modules: modo === "custom" ? parseModulesSelection(row.modules ?? row.modulos) : undefined,
         backup: parseBackupJsonImport(row.backup),
       };
     }
@@ -150,5 +237,25 @@ export function parseBackupJsonImportRequest(input: string | unknown): BackupJso
   return {
     modo: "merge",
     backup: parseBackupJsonImport(payload),
+  };
+}
+
+export function parseBackupJsonImportEnvelope(input: string | unknown): BackupJsonImportEnvelope {
+  const payload = parseJsonInput(input);
+  const backupRoot = resolveBackupRoot(payload);
+  const backup = parseBackupJsonImport(backupRoot ?? payload);
+
+  const backupVersion = backupRoot != null
+    ? (typeof backupRoot.version === "string" && backupRoot.version.trim() !== ""
+      ? backupRoot.version.trim()
+      : typeof backupRoot.backupVersion === "string" && backupRoot.backupVersion.trim() !== ""
+        ? backupRoot.backupVersion.trim()
+        : null)
+    : null;
+
+  return {
+    backup,
+    presentSections: computePresentSections(backupRoot),
+    backupVersion,
   };
 }

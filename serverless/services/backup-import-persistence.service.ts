@@ -31,6 +31,11 @@ import type { BackupImportTransformResult } from "./backup-import-transform.serv
 import type { BackupImportMode } from "../validators/backup-import.validators.js";
 import { resolveServicoBackupBillingFields } from "./backup-import-servicos.utils.js";
 import { resolveServicoCategoryValue } from "../../shared/service-categories.js";
+import {
+  BACKUP_RESTORE_SUPPORTED_MODULE_KEYS,
+  type BackupRestoreAction,
+  type BackupRestoreModuleKey,
+} from "../../shared/backup-restore-modules.js";
 
 type JsonRow = Record<string, unknown>;
 
@@ -60,6 +65,7 @@ export type BackupImportPersistenceResult = {
 
 type BackupImportPersistenceOptions = {
   modo?: BackupImportMode;
+  moduleActions?: Partial<Record<BackupRestoreModuleKey, BackupRestoreAction>>;
   userId: string;
 };
 
@@ -343,12 +349,70 @@ async function clearUserFinancialDataForReplace(tx: TxLike, userId: string): Pro
   await tx.delete(pessoasTable).where(eq(pessoasTable.userId, userId));
 }
 
+function resolveModuleActions(
+  modo: BackupImportMode,
+  actions?: Partial<Record<BackupRestoreModuleKey, BackupRestoreAction>>,
+): Record<BackupRestoreModuleKey, BackupRestoreAction> {
+  if (modo === "merge" || modo === "replace") {
+    return BACKUP_RESTORE_SUPPORTED_MODULE_KEYS.reduce((acc, moduleKey) => {
+      acc[moduleKey] = modo;
+      return acc;
+    }, {} as Record<BackupRestoreModuleKey, BackupRestoreAction>);
+  }
+
+  return BACKUP_RESTORE_SUPPORTED_MODULE_KEYS.reduce((acc, moduleKey) => {
+    const requested = actions?.[moduleKey];
+    acc[moduleKey] = requested === "merge" || requested === "replace" || requested === "ignore"
+      ? requested
+      : "ignore";
+    return acc;
+  }, {} as Record<BackupRestoreModuleKey, BackupRestoreAction>);
+}
+
+async function clearUserFinancialDataForCustomReplace(
+  tx: TxLike,
+  userId: string,
+  moduleActions: Record<BackupRestoreModuleKey, BackupRestoreAction>,
+): Promise<void> {
+  if (moduleActions.servicoPagamentos === "replace") {
+    await tx.delete(servicoPagamentosTable).where(eq(servicoPagamentosTable.userId, userId));
+  }
+  if (moduleActions.servicoPessoas === "replace") {
+    await tx.delete(servicoPessoasTable).where(eq(servicoPessoasTable.userId, userId));
+  }
+  if (moduleActions.pessoaSaldoMovimentacoes === "replace") {
+    await tx.delete(pessoaSaldoMovimentacoesTable).where(eq(pessoaSaldoMovimentacoesTable.userId, userId));
+  }
+  if (moduleActions.parcelasCompra === "replace") {
+    await tx.delete(parcelasCompraTable).where(eq(parcelasCompraTable.userId, userId));
+  }
+  if (moduleActions.servicos === "replace") {
+    await tx.delete(servicosTable).where(eq(servicosTable.userId, userId));
+  }
+  if (moduleActions.compras === "replace") {
+    await tx.delete(comprasCartaoTable).where(eq(comprasCartaoTable.userId, userId));
+  }
+  if (moduleActions.dividas === "replace") {
+    await tx.delete(dividasTable).where(eq(dividasTable.userId, userId));
+  }
+  if (moduleActions.metas === "replace") {
+    await tx.delete(metasTable).where(eq(metasTable.userId, userId));
+  }
+  if (moduleActions.cartoes === "replace") {
+    await tx.delete(cartoesTable).where(eq(cartoesTable.userId, userId));
+  }
+  if (moduleActions.pessoas === "replace") {
+    await tx.delete(pessoasTable).where(eq(pessoasTable.userId, userId));
+  }
+}
+
 export async function persistTransformedBackupImport(
   transformed: BackupImportTransformResult,
   options: BackupImportPersistenceOptions,
 ): Promise<BackupImportPersistenceResult> {
   const modo = options.modo ?? "merge";
   const userId = options.userId;
+  const moduleActions = resolveModuleActions(modo, options.moduleActions);
   const pessoasRows = transformed.pessoas.map((item, index) => toPessoaInsert(asRow(item, `pessoas[${index}]`), `pessoas[${index}]`));
   const cartoesRows = transformed.cartoes.map((item, index) => toCartaoInsert(asRow(item, `cartoes[${index}]`), `cartoes[${index}]`));
   const dividasRows = transformed.dividas.map((item, index) => toDividaInsert(asRow(item, `dividas[${index}]`), `dividas[${index}]`));
@@ -391,61 +455,81 @@ export async function persistTransformedBackupImport(
   await db.transaction(async (tx) => {
     if (modo === "replace") {
       await clearUserFinancialDataForReplace(tx, userId);
+    } else if (modo === "custom") {
+      await clearUserFinancialDataForCustomReplace(tx, userId, moduleActions);
     }
 
     const txStorage = new DatabaseStorage(tx);
 
-    for (const pessoa of pessoasRows) {
-      await txStorage.createPessoa(pessoa as unknown as InsertPessoa);
+    if (moduleActions.pessoas !== "ignore") {
+      for (const pessoa of pessoasRows) {
+        await txStorage.createPessoa(pessoa as unknown as InsertPessoa);
+      }
     }
 
-    for (const cartao of cartoesRows) {
-      await txStorage.createCartao(cartao as unknown as InsertCartao);
+    if (moduleActions.cartoes !== "ignore") {
+      for (const cartao of cartoesRows) {
+        await txStorage.createCartao(cartao as unknown as InsertCartao);
+      }
     }
 
-    for (const divida of dividasRows) {
-      await txStorage.createDivida(divida as unknown as InsertDivida);
+    if (moduleActions.dividas !== "ignore") {
+      for (const divida of dividasRows) {
+        await txStorage.createDivida(divida as unknown as InsertDivida);
+      }
     }
 
-    for (const compra of comprasRows) {
-      await txStorage.createCompraCartao(compra as unknown as InsertCompraCartao);
+    if (moduleActions.compras !== "ignore") {
+      for (const compra of comprasRows) {
+        await txStorage.createCompraCartao(compra as unknown as InsertCompraCartao);
+      }
     }
 
-    if (parcelasCompraRows.length > 0) {
+    if (moduleActions.parcelasCompra !== "ignore" && parcelasCompraRows.length > 0) {
       await txStorage.createParcelasCompraBulk(parcelasCompraRows as unknown as InsertParcelaCompra[]);
     }
 
-    for (const servico of servicosRows) {
-      await txStorage.createServico(servico as unknown as InsertServico);
+    if (moduleActions.servicos !== "ignore") {
+      for (const servico of servicosRows) {
+        await txStorage.createServico(servico as unknown as InsertServico);
+      }
     }
 
-    for (const servicoPessoa of servicoPessoasRows) {
-      await txStorage.createServicoPessoa(servicoPessoa as unknown as InsertServicoPessoa);
+    if (moduleActions.servicoPessoas !== "ignore") {
+      for (const servicoPessoa of servicoPessoasRows) {
+        await txStorage.createServicoPessoa(servicoPessoa as unknown as InsertServicoPessoa);
+      }
     }
 
-    for (const servicoPagamento of servicoPagamentosRows) {
-      await txStorage.createServicoPagamento(servicoPagamento as unknown as InsertServicoPagamento);
+    if (moduleActions.servicoPagamentos !== "ignore") {
+      for (const servicoPagamento of servicoPagamentosRows) {
+        await txStorage.createServicoPagamento(servicoPagamento as unknown as InsertServicoPagamento);
+      }
     }
 
-    for (const movimentacao of pessoaSaldoMovimentacoesRows) {
-      await txStorage.createPessoaSaldoMovimentacao(movimentacao as unknown as InsertPessoaSaldoMovimentacao);
+    if (moduleActions.pessoaSaldoMovimentacoes !== "ignore") {
+      for (const movimentacao of pessoaSaldoMovimentacoesRows) {
+        await txStorage.createPessoaSaldoMovimentacao(movimentacao as unknown as InsertPessoaSaldoMovimentacao);
+      }
     }
 
-    for (const meta of metasRows) {
-      await txStorage.createMeta(meta as unknown as InsertMeta);
+    if (moduleActions.metas !== "ignore") {
+      for (const meta of metasRows) {
+        await txStorage.createMeta(meta as unknown as InsertMeta);
+      }
     }
   });
 
   return {
-    pessoasInseridas: pessoasRows.length,
-    cartoesInseridos: cartoesRows.length,
-    dividasInseridas: dividasRows.length,
-    comprasInseridas: comprasRows.length,
-    parcelasCompraInseridas: parcelasCompraRows.length,
-    servicosInseridos: servicosRows.length,
-    servicoPessoasInseridas: servicoPessoasRows.length,
-    servicoPagamentosInseridos: servicoPagamentosRows.length,
-    saldoMovimentacoesInseridas: pessoaSaldoMovimentacoesRows.length,
-    metasInseridas: metasRows.length,
+    pessoasInseridas: moduleActions.pessoas === "ignore" ? 0 : pessoasRows.length,
+    cartoesInseridos: moduleActions.cartoes === "ignore" ? 0 : cartoesRows.length,
+    dividasInseridas: moduleActions.dividas === "ignore" ? 0 : dividasRows.length,
+    comprasInseridas: moduleActions.compras === "ignore" ? 0 : comprasRows.length,
+    parcelasCompraInseridas: moduleActions.parcelasCompra === "ignore" ? 0 : parcelasCompraRows.length,
+    servicosInseridos: moduleActions.servicos === "ignore" ? 0 : servicosRows.length,
+    servicoPessoasInseridas: moduleActions.servicoPessoas === "ignore" ? 0 : servicoPessoasRows.length,
+    servicoPagamentosInseridos: moduleActions.servicoPagamentos === "ignore" ? 0 : servicoPagamentosRows.length,
+    saldoMovimentacoesInseridas: moduleActions.pessoaSaldoMovimentacoes === "ignore" ? 0 : pessoaSaldoMovimentacoesRows.length,
+    metasInseridas: moduleActions.metas === "ignore" ? 0 : metasRows.length,
   };
 }

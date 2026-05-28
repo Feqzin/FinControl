@@ -221,6 +221,47 @@ test("cloud backup download usa userId da sessao (nao confia em input externo)",
   }
 });
 
+test("cloud backup preview usa userId da sessao (nao confia em input externo)", async () => {
+  const testUser = await createSecurityTestUser("ownership_cloud_backup_preview");
+  let capturedUserId: string | null = null;
+  let capturedBackupId: string | null = null;
+
+  const controller = createCloudBackupsController({
+    previewById: async (userId: string, backupId: string) => {
+      capturedUserId = userId;
+      capturedBackupId = backupId;
+      return {
+        backupInfo: {
+          fileName: "backup.json",
+          createdAt: "2026-05-28T00:00:00.000Z",
+          sizeBytes: 123,
+          version: null,
+        },
+        modules: [],
+        warnings: [],
+      };
+    },
+  } as any);
+
+  try {
+    const app = express();
+    app.use((req, _res, next) => {
+      (req as any).user = { id: testUser.id };
+      next();
+    });
+    app.post("/api/backups/cloud/:id/preview", controller.previewById);
+
+    await withTestServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/backups/cloud/backup_user_b/preview`, { method: "POST" });
+      assert.equal(response.status, 200);
+      assert.equal(capturedUserId, testUser.id);
+      assert.equal(capturedBackupId, "backup_user_b");
+    });
+  } finally {
+    await testUser.cleanup();
+  }
+});
+
 test("download de comprovante usa userId autenticado para checagem de ownership", async () => {
   const testUser = await createSecurityTestUser("ownership_comprovante_divida_download");
   let capturedUserId: string | null = null;

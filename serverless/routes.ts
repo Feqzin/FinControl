@@ -46,9 +46,14 @@ import {
   webhookRateLimit,
 } from "./middleware/rate-limit.js";
 import { PagamentosTimelineService } from "./services/pagamentos-timeline.service.js";
-import { BackupJsonParseError, parseBackupJsonImportRequest } from "./validators/backup-import.validators.js";
+import {
+  BackupJsonParseError,
+  parseBackupJsonImportEnvelope,
+  parseBackupJsonImportRequest,
+} from "./validators/backup-import.validators.js";
 import { transformBackupForPersistence } from "./services/backup-import-transform.service.js";
 import { persistTransformedBackupImport } from "./services/backup-import-persistence.service.js";
+import { buildBackupRestorePreview, buildBackupRestoreSelectionPlan } from "./services/backup-restore-selection.service.js";
 import { toErrorLog, writeTechnicalLog } from "./logger.js";
 import { CloudBackupsService } from "./services/cloud-backups.service.js";
 import { SubscriptionService } from "./services/subscription.service.js";
@@ -344,7 +349,63 @@ export function registerRoutes(app: Express): void {
   app.post("/api/backups/cloud", backupRateLimit, requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.createManual);
   app.get("/api/backups/cloud", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.listByUser);
   app.get("/api/backups/cloud/:id/download", backupRateLimit, requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.downloadById);
+  app.post("/api/backups/cloud/:id/preview", backupRateLimit, requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.previewById);
   app.post("/api/backups/cloud/:id/restore", backupRateLimit, requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.restoreById);
+  app.post("/api/import/preview", importRateLimit, requireAuth, async (req, res) => {
+    const currentUserId = (req.user as { id?: unknown } | undefined)?.id;
+
+    if (typeof currentUserId !== "string" || currentUserId.trim() === "") {
+      return res.status(401).json({ message: "Nao autenticado" });
+    }
+
+    try {
+      const envelope = parseBackupJsonImportEnvelope(req.body);
+      const preview = buildBackupRestorePreview({
+        envelope,
+      });
+
+      writeTechnicalLog({
+        event: "backup.restore.preview",
+        source: "routes",
+        level: "info",
+        requestId: req.requestId,
+        data: {
+          userId: currentUserId,
+          origin: "local_import_preview",
+          modules: preview.modules.map((module) => ({
+            key: module.key,
+            count: module.count,
+            foundInBackup: module.foundInBackup,
+          })),
+        },
+      });
+
+      return res.status(200).json(preview);
+    } catch (error) {
+      if (error instanceof BackupJsonParseError) {
+        return res.status(400).json({ message: error.message, details: error.details ?? [] });
+      }
+
+      if (isBackupValidationError(error)) {
+        return res.status(400).json({ message: error.message });
+      }
+
+      writeTechnicalLog({
+        event: "backup.import.preview.failed",
+        source: "routes",
+        level: "error",
+        requestId: req.requestId,
+        data: {
+          userId: currentUserId,
+          error: toErrorLog(error),
+        },
+      });
+
+      return res.status(500).json({
+        message: "Falha ao analisar backup. Tente novamente em alguns instantes.",
+      });
+    }
+  });
   app.post("/api/import", importRateLimit, requireAuth, async (req, res) => {
     const currentUserId = (req.user as { id?: unknown } | undefined)?.id;
 
@@ -354,14 +415,53 @@ export function registerRoutes(app: Express): void {
 
     try {
       const request = parseBackupJsonImportRequest(req.body);
-      const transformed = transformBackupForPersistence(request.backup, currentUserId);
+      const envelope = parseBackupJsonImportEnvelope(req.body);
+      const plan = buildBackupRestoreSelectionPlan({
+        mode: request.modo,
+        modules: request.modules,
+        envelope,
+      });
+      if (plan.errors.length > 0) {
+        return res.status(400).json({ message: plan.errors[0] });
+      }
+
+      const transformed = transformBackupForPersistence(envelope.backup, currentUserId);
       const persisted = await persistTransformedBackupImport(transformed, {
         modo: request.modo,
+        moduleActions: plan.effectiveActions,
         userId: currentUserId,
+      });
+
+      writeTechnicalLog({
+        event: "backup.restore.applied",
+        source: "routes",
+        level: "info",
+        requestId: req.requestId,
+        data: {
+          userId: currentUserId,
+          origin: "local_import",
+          mode: request.modo,
+          modules: plan.effectiveActions,
+          warnings: plan.warnings,
+          counts: {
+            pessoas: persisted.pessoasInseridas,
+            cartoes: persisted.cartoesInseridos,
+            dividas: persisted.dividasInseridas,
+            compras: persisted.comprasInseridas,
+            parcelasCompra: persisted.parcelasCompraInseridas,
+            servicos: persisted.servicosInseridos,
+            servicoPessoas: persisted.servicoPessoasInseridas,
+            servicoPagamentos: persisted.servicoPagamentosInseridos,
+            pessoaSaldoMovimentacoes: persisted.saldoMovimentacoesInseridas,
+            metas: persisted.metasInseridas,
+          },
+        },
       });
 
       return res.status(201).json({
         modoImportacao: request.modo,
+        modulosAplicados: plan.effectiveActions,
+        avisos: plan.warnings,
         pessoasImportadas: persisted.pessoasInseridas,
         cartoesImportados: persisted.cartoesInseridos,
         dividasImportadas: persisted.dividasInseridas,

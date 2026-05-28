@@ -1,8 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseBackupJsonImport } from "../../validators/backup-import.validators.js";
+import {
+  parseBackupJsonImport,
+  parseBackupJsonImportEnvelope,
+  parseBackupJsonImportRequest,
+} from "../../validators/backup-import.validators.js";
 import { transformBackupForPersistence } from "../../services/backup-import-transform.service.js";
 import { resolveServicoBackupBillingFields } from "../../services/backup-import-servicos.utils.js";
+import { buildBackupRestoreSelectionPlan } from "../../services/backup-restore-selection.service.js";
 
 test("backup/import servicos: preserva periodicidade e valor de cobranca no parse+transform", () => {
   const parsed = parseBackupJsonImport({
@@ -232,4 +237,149 @@ test("backup/import dívidas: preserva deletedAt quando presente e mantém compa
 
   assert.equal(dividaAtiva.deletedAt ?? null, null);
   assert.equal(dividaRemovida.deletedAt, "2026-04-20T12:00:00.000Z");
+});
+
+test("backup/import request: mantém compatibilidade com modo legado merge/replace", () => {
+  const mergeRequest = parseBackupJsonImportRequest({
+    modo: "merge",
+    backup: {
+      exportadoEm: "2026-05-28T10:00:00.000Z",
+      usuario: "demo",
+      pessoas: [],
+      dividas: [],
+      cartoes: [],
+      compras: [],
+      parcelasCompra: [],
+      servicos: [],
+      servicoPessoas: [],
+      servicoPagamentos: [],
+      pessoaSaldoMovimentacoes: [],
+      metas: [],
+    },
+  });
+
+  const replaceRequest = parseBackupJsonImportRequest({
+    mode: "replace",
+    backup: {
+      exportadoEm: "2026-05-28T10:00:00.000Z",
+      usuario: "demo",
+      pessoas: [],
+      dividas: [],
+      cartoes: [],
+      compras: [],
+      parcelasCompra: [],
+      servicos: [],
+      servicoPessoas: [],
+      servicoPagamentos: [],
+      pessoaSaldoMovimentacoes: [],
+      metas: [],
+    },
+  });
+
+  assert.equal(mergeRequest.modo, "merge");
+  assert.equal(replaceRequest.modo, "replace");
+});
+
+test("backup/import request: aceita modo custom com módulos selecionados", () => {
+  const request = parseBackupJsonImportRequest({
+    modo: "custom",
+    modules: {
+      pessoas: "merge",
+      dividas: "ignore",
+      cartoes: "replace",
+      mod_inexistente: "merge",
+    },
+    backup: {
+      exportadoEm: "2026-05-28T10:00:00.000Z",
+      usuario: "demo",
+      pessoas: [],
+      dividas: [],
+      cartoes: [],
+      compras: [],
+      parcelasCompra: [],
+      servicos: [],
+      servicoPessoas: [],
+      servicoPagamentos: [],
+      pessoaSaldoMovimentacoes: [],
+      metas: [],
+    },
+  });
+
+  assert.equal(request.modo, "custom");
+  assert.equal(request.modules?.pessoas, "merge");
+  assert.equal(request.modules?.dividas, "ignore");
+  assert.equal(request.modules?.cartoes, "replace");
+});
+
+test("backup/import custom: bloqueia seleção inválida com dependência quebrada", () => {
+  const envelope = parseBackupJsonImportEnvelope({
+    exportadoEm: "2026-05-28T10:00:00.000Z",
+    usuario: "demo",
+    pessoas: [],
+    dividas: [
+      {
+        id: "d-1",
+        userId: "legacy",
+        pessoaId: "p-1",
+        tipo: "receber",
+        valor: "10.00",
+        status: "pendente",
+      },
+    ],
+    cartoes: [],
+    compras: [],
+    parcelasCompra: [],
+    servicos: [],
+    servicoPessoas: [],
+    servicoPagamentos: [],
+    pessoaSaldoMovimentacoes: [],
+    metas: [],
+  });
+
+  const plan = buildBackupRestoreSelectionPlan({
+    mode: "custom",
+    modules: {
+      pessoas: "ignore",
+      dividas: "merge",
+    },
+    envelope,
+  });
+
+  assert.equal(plan.errors.length > 0, true);
+  assert.equal(plan.errors[0]?.includes("Pessoas"), true);
+});
+
+test("backup/import custom: ignora módulo ausente no backup com aviso", () => {
+  const envelope = parseBackupJsonImportEnvelope({
+    exportadoEm: "2026-05-28T10:00:00.000Z",
+    usuario: "demo",
+    pessoas: [],
+    dividas: [],
+    cartoes: [],
+    compras: [],
+    parcelasCompra: [],
+    servicos: [],
+    servicoPessoas: [],
+    servicoPagamentos: [],
+    pessoaSaldoMovimentacoes: [],
+    metas: [],
+  });
+
+  const plan = buildBackupRestoreSelectionPlan({
+    mode: "custom",
+    modules: {
+      pessoas: "merge",
+      dividas: "replace",
+    },
+    envelope: {
+      ...envelope,
+      presentSections: {
+        ...envelope.presentSections,
+        dividas: false,
+      },
+    },
+  });
+
+  assert.equal(plan.effectiveActions.dividas, "ignore");
+  assert.equal(plan.warnings.some((warning) => warning.includes("dividas")), true);
 });

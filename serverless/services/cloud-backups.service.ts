@@ -7,12 +7,19 @@ import { toErrorLog, writeTechnicalLog } from "../logger.js";
 import { SupabaseStorageServerClient } from "./supabase-storage.client.js";
 import { userCloudBackups } from "../../shared/schema.js";
 import {
+  type BackupJsonModulesSelection,
   type BackupImportMode,
   BackupJsonParseError,
-  parseBackupJsonImport,
+  parseBackupJsonImportEnvelope,
 } from "../validators/backup-import.validators.js";
 import { transformBackupForPersistence } from "./backup-import-transform.service.js";
 import { persistTransformedBackupImport } from "./backup-import-persistence.service.js";
+import {
+  buildBackupRestorePreview,
+  buildBackupRestoreSelectionPlan,
+  type BackupRestorePreview,
+} from "./backup-restore-selection.service.js";
+import type { BackupRestoreAction, BackupRestoreModuleKey } from "../../shared/backup-restore-modules.js";
 
 export type CloudBackupListItem = {
   id: string;
@@ -27,6 +34,8 @@ export type CloudBackupListItem = {
 
 export type CloudBackupRestoreSummary = {
   modoImportacao: BackupImportMode;
+  modulosAplicados: Record<BackupRestoreModuleKey, BackupRestoreAction>;
+  avisos: string[];
   pessoasImportadas: number;
   cartoesImportados: number;
   dividasImportadas: number;
@@ -36,6 +45,11 @@ export type CloudBackupRestoreSummary = {
   servicoPagamentosImportados: number;
   saldoMovimentacoesImportados: number;
   metasImportadas: number;
+};
+
+export type CloudBackupRestoreRequest = {
+  modo: BackupImportMode;
+  modules?: BackupJsonModulesSelection;
 };
 
 type CloudBackupDownloadResult = {
@@ -372,12 +386,57 @@ export class CloudBackupsService {
     };
   }
 
-  async restoreById(userId: string, backupId: string, modo: BackupImportMode): Promise<CloudBackupRestoreSummary> {
+  async previewById(userId: string, backupId: string): Promise<BackupRestorePreview> {
     const downloaded = await this.downloadById(userId, backupId);
 
-    let parsedBackup;
     try {
-      parsedBackup = parseBackupJsonImport(downloaded.content.toString("utf8"));
+      const envelope = parseBackupJsonImportEnvelope(downloaded.content.toString("utf8"));
+      const preview = buildBackupRestorePreview({
+        envelope,
+        fileName: downloaded.fileName,
+        sizeBytes: downloaded.content.byteLength,
+        createdAt: downloaded.backup.createdAt.toISOString(),
+      });
+
+      writeTechnicalLog({
+        event: "backup.restore.preview",
+        source: "cloud-backups.service",
+        level: "info",
+        data: {
+          userId,
+          backupId,
+          fileName: downloaded.fileName,
+          modules: preview.modules.map((module) => ({
+            key: module.key,
+            count: module.count,
+            foundInBackup: module.foundInBackup,
+          })),
+        },
+      });
+
+      return preview;
+    } catch (error) {
+      if (error instanceof BackupJsonParseError) {
+        throw new CloudBackupsServiceError(
+          400,
+          `Arquivo de backup na nuvem invalido: ${error.message}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async restoreById(
+    userId: string,
+    backupId: string,
+    restoreRequest: CloudBackupRestoreRequest,
+  ): Promise<CloudBackupRestoreSummary> {
+    const modo = restoreRequest.modo;
+    const downloaded = await this.downloadById(userId, backupId);
+
+    let envelope;
+    try {
+      envelope = parseBackupJsonImportEnvelope(downloaded.content.toString("utf8"));
     } catch (error) {
       if (error instanceof BackupJsonParseError) {
         throw new CloudBackupsServiceError(
@@ -388,9 +447,19 @@ export class CloudBackupsService {
       throw error;
     }
 
+    const plan = buildBackupRestoreSelectionPlan({
+      mode: modo,
+      modules: restoreRequest.modules,
+      envelope,
+    });
+
+    if (plan.errors.length > 0) {
+      throw new CloudBackupsServiceError(400, plan.errors[0]);
+    }
+
     let transformed;
     try {
-      transformed = transformBackupForPersistence(parsedBackup, userId);
+      transformed = transformBackupForPersistence(envelope.backup, userId);
     } catch (error) {
       if (isTransformValidationError(error)) {
         throw new CloudBackupsServiceError(400, error.message);
@@ -400,11 +469,39 @@ export class CloudBackupsService {
 
     const persisted = await persistTransformedBackupImport(transformed, {
       modo,
+      moduleActions: plan.effectiveActions,
       userId,
+    });
+
+    writeTechnicalLog({
+      event: "backup.restore.applied",
+      source: "cloud-backups.service",
+      level: "info",
+      data: {
+        userId,
+        backupId,
+        mode: modo,
+        modules: plan.effectiveActions,
+        warnings: plan.warnings,
+        counts: {
+          pessoas: persisted.pessoasInseridas,
+          cartoes: persisted.cartoesInseridos,
+          dividas: persisted.dividasInseridas,
+          compras: persisted.comprasInseridas,
+          parcelasCompra: persisted.parcelasCompraInseridas,
+          servicos: persisted.servicosInseridos,
+          servicoPessoas: persisted.servicoPessoasInseridas,
+          servicoPagamentos: persisted.servicoPagamentosInseridos,
+          pessoaSaldoMovimentacoes: persisted.saldoMovimentacoesInseridas,
+          metas: persisted.metasInseridas,
+        },
+      },
     });
 
     return {
       modoImportacao: modo,
+      modulosAplicados: plan.effectiveActions,
+      avisos: plan.warnings,
       pessoasImportadas: persisted.pessoasInseridas,
       cartoesImportados: persisted.cartoesInseridos,
       dividasImportadas: persisted.dividasInseridas,

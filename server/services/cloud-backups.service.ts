@@ -1,10 +1,25 @@
 import { createHash } from "node:crypto";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { ENV } from "../env";
+import { toErrorLog, writeTechnicalLog } from "../logger";
 import { SupabaseStorageServerClient } from "./supabase-storage.client";
 import { pessoaSaldoMovimentacoes, userCloudBackups } from "@shared/schema";
+import {
+  type BackupImportMode,
+  type BackupJsonModulesSelection,
+  BackupJsonParseError,
+  parseBackupJsonImportEnvelope,
+} from "../../serverless/validators/backup-import.validators";
+import { transformBackupForPersistence } from "../../serverless/services/backup-import-transform.service";
+import { persistTransformedBackupImport } from "../../serverless/services/backup-import-persistence.service";
+import {
+  buildBackupRestorePreview,
+  buildBackupRestoreSelectionPlan,
+  type BackupRestorePreview,
+} from "../../serverless/services/backup-restore-selection.service";
+import type { BackupRestoreAction, BackupRestoreModuleKey } from "@shared/backup-restore-modules";
 
 export type CloudBackupListItem = {
   id: string;
@@ -15,6 +30,32 @@ export type CloudBackupListItem = {
   status: string;
   isEncrypted: boolean;
   createdAt: Date;
+};
+
+export type CloudBackupRestoreSummary = {
+  modoImportacao: BackupImportMode;
+  modulosAplicados: Record<BackupRestoreModuleKey, BackupRestoreAction>;
+  avisos: string[];
+  pessoasImportadas: number;
+  cartoesImportados: number;
+  dividasImportadas: number;
+  comprasImportadas: number;
+  servicosImportados: number;
+  servicoPessoasImportados: number;
+  servicoPagamentosImportados: number;
+  saldoMovimentacoesImportados: number;
+  metasImportadas: number;
+};
+
+export type CloudBackupRestoreRequest = {
+  modo: BackupImportMode;
+  modules?: BackupJsonModulesSelection;
+};
+
+type CloudBackupDownloadResult = {
+  backup: CloudBackupListItem;
+  fileName: string;
+  content: Buffer;
 };
 
 type CloudBackupPayload = {
@@ -104,6 +145,39 @@ function mapUploadErrorToUserMessage(bucket: string, error: { message: string; s
   return "Nao foi possivel salvar backup na nuvem. Verifique a configuracao do storage.";
 }
 
+function mapDownloadErrorToUserMessage(error: { message: string; statusCode?: number }): {
+  status: number;
+  message: string;
+} {
+  if (error.statusCode === 404) {
+    return {
+      status: 404,
+      message: "Arquivo de backup nao encontrado no storage.",
+    };
+  }
+
+  if (error.statusCode === 401 || error.statusCode === 403 || isAuthStorageError(error.message)) {
+    return {
+      status: 503,
+      message: "Nao foi possivel autenticar no storage para baixar o backup.",
+    };
+  }
+
+  return {
+    status: 503,
+    message: "Falha temporaria ao baixar backup na nuvem.",
+  };
+}
+
+function isTransformValidationError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const normalized = error.message.toLowerCase();
+  return normalized.startsWith("registro invalido")
+    || normalized.startsWith("campo obrigatorio invalido")
+    || normalized.startsWith("campo invalido")
+    || normalized.startsWith("relacionamento invalido");
+}
+
 export class CloudBackupsService {
   private readonly storageClient?: SupabaseStorageServerClient;
 
@@ -123,6 +197,18 @@ export class CloudBackupsService {
         "Backup na nuvem indisponivel: configuracao de storage pendente no servidor.",
       );
     }
+  }
+
+  private async getBackupRow(userId: string, backupId: string): Promise<typeof userCloudBackups.$inferSelect> {
+    const [row] = await db.select().from(userCloudBackups)
+      .where(and(eq(userCloudBackups.userId, userId), eq(userCloudBackups.id, backupId)))
+      .limit(1);
+
+    if (!row) {
+      throw new CloudBackupsServiceError(404, "Backup na nuvem nao encontrado.");
+    }
+
+    return row;
   }
 
   async createManualBackup(userId: string): Promise<CloudBackupListItem> {
@@ -190,10 +276,34 @@ export class CloudBackupsService {
     let uploadResult;
     try {
       uploadResult = await storageClient.uploadObject(filePath, content, JSON_MIME_TYPE);
-    } catch {
+    } catch (error) {
+      writeTechnicalLog({
+        event: "cloud_backup.create.upload_exception",
+        source: "cloud-backups.service",
+        level: "error",
+        data: {
+          userId,
+          bucket: storageClient.getBucket(),
+          filePath,
+          error: toErrorLog(error),
+        },
+      });
       throw new CloudBackupsServiceError(503, "Falha temporaria ao salvar backup na nuvem.");
     }
+
     if (uploadResult.error) {
+      writeTechnicalLog({
+        event: "cloud_backup.create.upload_failed",
+        source: "cloud-backups.service",
+        level: "error",
+        data: {
+          userId,
+          bucket: storageClient.getBucket(),
+          filePath,
+          statusCode: uploadResult.error.statusCode ?? null,
+          providerMessage: uploadResult.error.message,
+        },
+      });
       throw new CloudBackupsServiceError(
         503,
         mapUploadErrorToUserMessage(storageClient.getBucket(), uploadResult.error),
@@ -221,5 +331,186 @@ export class CloudBackupsService {
       .limit(clampLimit(limit));
 
     return rows.map(toListItem);
+  }
+
+  async downloadById(userId: string, backupId: string): Promise<CloudBackupDownloadResult> {
+    const backupRow = await this.getBackupRow(userId, backupId);
+    const storageClient = this.resolveStorageClient();
+
+    let downloadResult;
+    try {
+      downloadResult = await storageClient.downloadObject(backupRow.filePath);
+    } catch (error) {
+      writeTechnicalLog({
+        event: "cloud_backup.download.exception",
+        source: "cloud-backups.service",
+        level: "error",
+        data: {
+          userId,
+          backupId,
+          bucket: storageClient.getBucket(),
+          filePath: backupRow.filePath,
+          error: toErrorLog(error),
+        },
+      });
+      throw new CloudBackupsServiceError(503, "Falha temporaria ao baixar backup na nuvem.");
+    }
+
+    if (downloadResult.error || !downloadResult.data) {
+      if (downloadResult.error) {
+        writeTechnicalLog({
+          event: "cloud_backup.download.failed",
+          source: "cloud-backups.service",
+          level: "error",
+          data: {
+            userId,
+            backupId,
+            bucket: storageClient.getBucket(),
+            filePath: backupRow.filePath,
+            statusCode: downloadResult.error.statusCode ?? null,
+            providerMessage: downloadResult.error.message,
+          },
+        });
+
+        const mapped = mapDownloadErrorToUserMessage(downloadResult.error);
+        throw new CloudBackupsServiceError(mapped.status, mapped.message);
+      }
+
+      throw new CloudBackupsServiceError(500, "Falha ao ler o arquivo do backup na nuvem.");
+    }
+
+    return {
+      backup: toListItem(backupRow),
+      fileName: backupRow.fileName,
+      content: downloadResult.data,
+    };
+  }
+
+  async previewById(userId: string, backupId: string): Promise<BackupRestorePreview> {
+    const downloaded = await this.downloadById(userId, backupId);
+
+    try {
+      const envelope = parseBackupJsonImportEnvelope(downloaded.content.toString("utf8"));
+      const preview = buildBackupRestorePreview({
+        envelope,
+        fileName: downloaded.fileName,
+        sizeBytes: downloaded.content.byteLength,
+        createdAt: downloaded.backup.createdAt.toISOString(),
+      });
+
+      writeTechnicalLog({
+        event: "backup.restore.preview",
+        source: "cloud-backups.service",
+        level: "info",
+        data: {
+          userId,
+          backupId,
+          fileName: downloaded.fileName,
+          modules: preview.modules.map((module) => ({
+            key: module.key,
+            count: module.count,
+            foundInBackup: module.foundInBackup,
+          })),
+        },
+      });
+
+      return preview;
+    } catch (error) {
+      if (error instanceof BackupJsonParseError) {
+        throw new CloudBackupsServiceError(
+          400,
+          `Arquivo de backup na nuvem invalido: ${error.message}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async restoreById(
+    userId: string,
+    backupId: string,
+    restoreRequest: CloudBackupRestoreRequest,
+  ): Promise<CloudBackupRestoreSummary> {
+    const modo = restoreRequest.modo;
+    const downloaded = await this.downloadById(userId, backupId);
+
+    let envelope;
+    try {
+      envelope = parseBackupJsonImportEnvelope(downloaded.content.toString("utf8"));
+    } catch (error) {
+      if (error instanceof BackupJsonParseError) {
+        throw new CloudBackupsServiceError(
+          400,
+          `Arquivo de backup na nuvem invalido: ${error.message}`,
+        );
+      }
+      throw error;
+    }
+
+    const plan = buildBackupRestoreSelectionPlan({
+      mode: modo,
+      modules: restoreRequest.modules,
+      envelope,
+    });
+
+    if (plan.errors.length > 0) {
+      throw new CloudBackupsServiceError(400, plan.errors[0]);
+    }
+
+    let transformed;
+    try {
+      transformed = transformBackupForPersistence(envelope.backup, userId);
+    } catch (error) {
+      if (isTransformValidationError(error)) {
+        throw new CloudBackupsServiceError(400, error instanceof Error ? error.message : "Registro invalido no backup.");
+      }
+      throw error;
+    }
+
+    const persisted = await persistTransformedBackupImport(transformed, {
+      modo,
+      moduleActions: plan.effectiveActions,
+      userId,
+    });
+
+    writeTechnicalLog({
+      event: "backup.restore.applied",
+      source: "cloud-backups.service",
+      level: "info",
+      data: {
+        userId,
+        backupId,
+        mode: modo,
+        modules: plan.effectiveActions,
+        warnings: plan.warnings,
+        counts: {
+          pessoas: persisted.pessoasInseridas,
+          cartoes: persisted.cartoesInseridos,
+          dividas: persisted.dividasInseridas,
+          compras: persisted.comprasInseridas,
+          parcelasCompra: persisted.parcelasCompraInseridas,
+          servicos: persisted.servicosInseridos,
+          servicoPessoas: persisted.servicoPessoasInseridas,
+          servicoPagamentos: persisted.servicoPagamentosInseridos,
+          pessoaSaldoMovimentacoes: persisted.saldoMovimentacoesInseridas,
+          metas: persisted.metasInseridas,
+        },
+      },
+    });
+
+    return {
+      modoImportacao: modo,
+      modulosAplicados: plan.effectiveActions,
+      avisos: plan.warnings,
+      pessoasImportadas: persisted.pessoasInseridas,
+      cartoesImportados: persisted.cartoesInseridos,
+      dividasImportadas: persisted.dividasInseridas,
+      comprasImportadas: persisted.comprasInseridas,
+      servicosImportados: persisted.servicosInseridos,
+      servicoPessoasImportados: persisted.servicoPessoasInseridas,
+      servicoPagamentosImportados: persisted.servicoPagamentosInseridos,
+      saldoMovimentacoesImportados: persisted.saldoMovimentacoesInseridas,
+      metasImportadas: persisted.metasInseridas,
+    };
   }
 }

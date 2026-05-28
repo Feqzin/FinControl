@@ -1,4 +1,9 @@
 import { apiRequest } from "@/lib/queryClient";
+import type {
+  BackupRestoreAction,
+  BackupRestoreMode,
+  BackupRestoreModuleKey,
+} from "@shared/backup-restore-modules";
 
 export type CloudBackupItem = {
   id: string;
@@ -11,11 +16,36 @@ export type CloudBackupItem = {
   createdAt: string;
 };
 
-export type CloudBackupRestoreMode = "merge" | "replace";
+export type CloudBackupRestoreMode = BackupRestoreMode;
+
+export type CloudBackupRestoreModulesSelection = Partial<Record<BackupRestoreModuleKey, BackupRestoreAction>>;
+
+export type CloudBackupRestorePreview = {
+  backupInfo: {
+    fileName: string | null;
+    createdAt: string | null;
+    sizeBytes: number | null;
+    version: string | null;
+  };
+  modules: Array<{
+    key: string;
+    label: string;
+    count: number;
+    foundInBackup: boolean;
+    canMerge: boolean;
+    canReplace: boolean;
+    activeCount: number | null;
+    removedCount: number | null;
+    warnings: string[];
+  }>;
+  warnings: string[];
+};
 
 export type CloudBackupRestoreResult = {
   backupId: string;
   modoImportacao: CloudBackupRestoreMode;
+  modulosAplicados: Record<BackupRestoreModuleKey, BackupRestoreAction>;
+  avisos: string[];
   pessoasImportadas: number;
   cartoesImportados: number;
   dividasImportadas: number;
@@ -42,9 +72,18 @@ export async function listCloudBackups(limit = 20): Promise<CloudBackupItem[]> {
 export async function restoreCloudBackup(
   backupId: string,
   modo: CloudBackupRestoreMode,
+  modules?: CloudBackupRestoreModulesSelection,
 ): Promise<CloudBackupRestoreResult> {
-  const res = await apiRequest("POST", `/api/backups/cloud/${backupId}/restore`, { modo });
+  const res = await apiRequest("POST", `/api/backups/cloud/${backupId}/restore`, {
+    modo,
+    modules,
+  });
   return res.json() as Promise<CloudBackupRestoreResult>;
+}
+
+export async function previewCloudBackup(backupId: string): Promise<CloudBackupRestorePreview> {
+  const res = await apiRequest("POST", `/api/backups/cloud/${backupId}/preview`);
+  return res.json() as Promise<CloudBackupRestorePreview>;
 }
 
 export async function downloadCloudBackup(backupId: string): Promise<Blob> {

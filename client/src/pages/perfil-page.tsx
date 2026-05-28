@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -16,7 +17,15 @@ import {
   useAuth,
 } from "@/hooks/use-auth";
 import { useSubscriptionUsage } from "@/hooks/useSubscriptionUsage";
-import { createCloudBackup, listCloudBackups, restoreCloudBackup, type CloudBackupItem } from "@/services/api/cloud-backups";
+import {
+  createCloudBackup,
+  listCloudBackups,
+  previewCloudBackup,
+  restoreCloudBackup,
+  type CloudBackupItem,
+  type CloudBackupRestoreModulesSelection,
+  type CloudBackupRestorePreview,
+} from "@/services/api/cloud-backups";
 import {
   cancelMercadoPagoSubscription,
   createMercadoPagoCheckout,
@@ -47,6 +56,13 @@ import {
   resolvePublicUsernameForResponse,
   validatePublicUsername,
 } from "@shared/public-username";
+import {
+  BACKUP_RESTORE_SUPPORTED_MODULE_KEYS,
+  isBackupRestoreModuleKey,
+  type BackupRestoreAction,
+  type BackupRestoreMode,
+  type BackupRestoreModuleKey,
+} from "@shared/backup-restore-modules";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -174,7 +190,9 @@ if (!status) {
 }
 
 type ImportBackupResponse = {
-  modoImportacao?: "merge" | "replace";
+  modoImportacao?: BackupRestoreMode;
+  modulosAplicados?: Record<BackupRestoreModuleKey, BackupRestoreAction>;
+  avisos?: string[];
   pessoasImportadas: number;
   cartoesImportados: number;
   dividasImportadas: number;
@@ -213,6 +231,45 @@ function parseApiErrorMessage(error: unknown, fallbackMessage: string): string {
 }
 
 type ImportMode = "merge" | "replace";
+type RestoreReviewSource = "cloud" | "local";
+
+function createDefaultRestoreModuleActions(defaultAction: Extract<BackupRestoreAction, "merge" | "replace">): Record<BackupRestoreModuleKey, BackupRestoreAction> {
+  return BACKUP_RESTORE_SUPPORTED_MODULE_KEYS.reduce((acc, moduleKey) => {
+    acc[moduleKey] = defaultAction;
+    return acc;
+  }, {} as Record<BackupRestoreModuleKey, BackupRestoreAction>);
+}
+
+function hasReplaceRestoreAction(actions: Record<BackupRestoreModuleKey, BackupRestoreAction>): boolean {
+  return BACKUP_RESTORE_SUPPORTED_MODULE_KEYS.some((moduleKey) => actions[moduleKey] === "replace");
+}
+
+function countSelectedRestoreModules(actions: Record<BackupRestoreModuleKey, BackupRestoreAction>): number {
+  return BACKUP_RESTORE_SUPPORTED_MODULE_KEYS.filter((moduleKey) => actions[moduleKey] !== "ignore").length;
+}
+
+function resolveRestoreSubmissionMode(
+  actions: Record<BackupRestoreModuleKey, BackupRestoreAction>,
+): {
+  mode: BackupRestoreMode;
+  modules?: CloudBackupRestoreModulesSelection;
+} {
+  const selectedCount = countSelectedRestoreModules(actions);
+  const allMerge = BACKUP_RESTORE_SUPPORTED_MODULE_KEYS.every((moduleKey) => actions[moduleKey] === "merge");
+  const allReplace = BACKUP_RESTORE_SUPPORTED_MODULE_KEYS.every((moduleKey) => actions[moduleKey] === "replace");
+
+  if (selectedCount === BACKUP_RESTORE_SUPPORTED_MODULE_KEYS.length && allMerge) {
+    return { mode: "merge" };
+  }
+  if (selectedCount === BACKUP_RESTORE_SUPPORTED_MODULE_KEYS.length && allReplace) {
+    return { mode: "replace" };
+  }
+
+  return {
+    mode: "custom",
+    modules: actions,
+  };
+}
 
 export default function PerfilPage() {
   const { user, logout } = useAuth();
@@ -233,6 +290,18 @@ export default function PerfilPage() {
   const [modoImportacao, setModoImportacao] = useState<ImportMode>("merge");
   const [modoRestauracaoCloud, setModoRestauracaoCloud] = useState<ImportMode>("merge");
   const [backupRestaurandoId, setBackupRestaurandoId] = useState<string | null>(null);
+  const [restoreReviewOpen, setRestoreReviewOpen] = useState(false);
+  const [restoreReviewSource, setRestoreReviewSource] = useState<RestoreReviewSource | null>(null);
+  const [restoreReviewBackupId, setRestoreReviewBackupId] = useState<string | null>(null);
+  const [restoreReviewTitle, setRestoreReviewTitle] = useState("");
+  const [restorePreviewData, setRestorePreviewData] = useState<CloudBackupRestorePreview | null>(null);
+  const [restoreReviewModuleActions, setRestoreReviewModuleActions] = useState<Record<BackupRestoreModuleKey, BackupRestoreAction>>(
+    createDefaultRestoreModuleActions("merge"),
+  );
+  const [restoreReviewLoading, setRestoreReviewLoading] = useState(false);
+  const [restoreReviewApplyPending, setRestoreReviewApplyPending] = useState(false);
+  const [restoreReviewConfirmText, setRestoreReviewConfirmText] = useState("");
+  const [restoreLocalBackupPayload, setRestoreLocalBackupPayload] = useState<unknown | null>(null);
   const [perfilTab, setPerfilTab] = useState<"conta" | "planos" | "backup" | "ajuda">("planos");
   const inputImportacaoRef = useRef<HTMLInputElement | null>(null);
   const resolvedPublicUsername = resolvePublicUsernameForResponse(user?.username);
@@ -367,10 +436,12 @@ export default function PerfilPage() {
     mutationFn: async ({
       backupId,
       modo,
+      modules,
     }: {
       backupId: string;
-      modo: ImportMode;
-    }) => restoreCloudBackup(backupId, modo),
+      modo: BackupRestoreMode;
+      modules?: CloudBackupRestoreModulesSelection;
+    }) => restoreCloudBackup(backupId, modo, modules),
     onMutate: ({ backupId }) => {
       setBackupRestaurandoId(backupId);
     },
@@ -379,8 +450,14 @@ export default function PerfilPage() {
       invalidateFinancialQueries();
       toast({
         title: "Backup restaurado da nuvem",
-        description: `Modo: ${resultado.modoImportacao === "replace" ? "Substituir dados atuais" : "Mesclar com dados atuais"}. Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Vinculos de servico: ${resultado.servicoPessoasImportados ?? 0}, Pagamentos de servico: ${resultado.servicoPagamentosImportados ?? 0}, Movimentações de saldo: ${resultado.saldoMovimentacoesImportados ?? 0}, Metas: ${resultado.metasImportadas}`,
+        description: `Modo: ${resultado.modoImportacao === "replace" ? "Substituir dados atuais" : resultado.modoImportacao === "custom" ? "Personalizado" : "Mesclar com dados atuais"}. Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Vinculos de servico: ${resultado.servicoPessoasImportados ?? 0}, Pagamentos de servico: ${resultado.servicoPagamentosImportados ?? 0}, Movimentações de saldo: ${resultado.saldoMovimentacoesImportados ?? 0}, Metas: ${resultado.metasImportadas}`,
       });
+      if ((resultado.avisos?.length ?? 0) > 0) {
+        toast({
+          title: "Restauração concluída com avisos",
+          description: resultado.avisos?.[0] ?? "Alguns módulos foram ignorados durante a restauração.",
+        });
+      }
     },
     onError: (error) => {
       toast({
@@ -391,27 +468,21 @@ export default function PerfilPage() {
     },
     onSettled: () => {
       setBackupRestaurandoId(null);
+      setRestoreReviewApplyPending(false);
     },
   });
 
   const importBackup = useMutation({
     mutationFn: async ({
-      arquivo,
       modo,
+      modules,
+      backup,
     }: {
-      arquivo: File;
-      modo: ImportMode;
+      modo: BackupRestoreMode;
+      modules?: CloudBackupRestoreModulesSelection;
+      backup: unknown;
     }): Promise<ImportBackupResponse> => {
-      const texto = await arquivo.text();
-      let backup: unknown;
-
-      try {
-        backup = JSON.parse(texto);
-      } catch {
-        throw new Error("Arquivo JSON invalido. Verifique o arquivo e tente novamente.");
-      }
-
-      const res = await apiRequest("POST", "/api/import", { modo, backup });
+      const res = await apiRequest("POST", "/api/import", { modo, modules, backup });
       return res.json();
     },
     onSuccess: (resultado) => {
@@ -424,8 +495,14 @@ export default function PerfilPage() {
 
       toast({
         title: "Importacao concluida",
-        description: `Modo: ${(resultado.modoImportacao ?? modoImportacao) === "replace" ? "Substituir dados atuais" : "Mesclar com dados atuais"}. Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Vinculos de servico: ${resultado.servicoPessoasImportados ?? 0}, Pagamentos de servico: ${resultado.servicoPagamentosImportados ?? 0}, Movimentações de saldo: ${resultado.saldoMovimentacoesImportadas ?? 0}, Metas: ${resultado.metasImportadas}`,
+        description: `Modo: ${(resultado.modoImportacao ?? modoImportacao) === "replace" ? "Substituir dados atuais" : (resultado.modoImportacao ?? modoImportacao) === "custom" ? "Personalizado" : "Mesclar com dados atuais"}. Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Vinculos de servico: ${resultado.servicoPessoasImportados ?? 0}, Pagamentos de servico: ${resultado.servicoPagamentosImportados ?? 0}, Movimentações de saldo: ${resultado.saldoMovimentacoesImportadas ?? 0}, Metas: ${resultado.metasImportadas}`,
       });
+      if ((resultado.avisos?.length ?? 0) > 0) {
+        toast({
+          title: "Restauração concluída com avisos",
+          description: resultado.avisos?.[0] ?? "Alguns módulos foram ignorados durante a restauração.",
+        });
+      }
     },
     onError: (error) => {
       toast({
@@ -433,6 +510,9 @@ export default function PerfilPage() {
         description: parseApiErrorMessage(error, "Falha ao importar backup. Tente novamente."),
         variant: "destructive",
       });
+    },
+    onSettled: () => {
+      setRestoreReviewApplyPending(false);
     },
   });
 
@@ -570,7 +650,85 @@ export default function PerfilPage() {
     toast({ title: "Backup exportado com sucesso" });
   };
 
-  const importarDados = () => {
+  const resetRestoreReviewState = () => {
+    setRestoreReviewOpen(false);
+    setRestoreReviewSource(null);
+    setRestoreReviewBackupId(null);
+    setRestoreReviewTitle("");
+    setRestorePreviewData(null);
+    setRestoreReviewModuleActions(createDefaultRestoreModuleActions("merge"));
+    setRestoreReviewConfirmText("");
+    setRestoreReviewLoading(false);
+    setRestoreReviewApplyPending(false);
+    setRestoreLocalBackupPayload(null);
+  };
+
+  const applyRestoreActionToAvailableModules = (action: BackupRestoreAction) => {
+    setRestoreReviewModuleActions((current) => {
+      const next = { ...current };
+      for (const module of restorePreviewData?.modules ?? []) {
+        if (!isBackupRestoreModuleKey(module.key)) continue;
+        if (!module.foundInBackup || !module.canMerge) {
+          next[module.key] = "ignore";
+          continue;
+        }
+        next[module.key] = action;
+      }
+      return next;
+    });
+  };
+
+  const applyRestoreModeToSelectedModules = (mode: Extract<BackupRestoreAction, "merge" | "replace">) => {
+    setRestoreReviewModuleActions((current) => {
+      const next = { ...current };
+      for (const module of restorePreviewData?.modules ?? []) {
+        if (!isBackupRestoreModuleKey(module.key)) continue;
+        if (!module.foundInBackup || !module.canMerge) continue;
+        if (next[module.key] === "ignore") continue;
+        next[module.key] = mode;
+      }
+      return next;
+    });
+  };
+
+  const updateRestoreModuleAction = (moduleKey: BackupRestoreModuleKey, action: BackupRestoreAction) => {
+    setRestoreReviewModuleActions((current) => ({
+      ...current,
+      [moduleKey]: action,
+    }));
+  };
+
+  const openRestoreReviewWithPreview = (
+    source: RestoreReviewSource,
+    preview: CloudBackupRestorePreview,
+    options: {
+      title: string;
+      backupId?: string | null;
+      defaultMode: ImportMode;
+      localBackupPayload?: unknown;
+    },
+  ) => {
+    const defaultAction = options.defaultMode === "replace" ? "replace" : "merge";
+    const initialActions = createDefaultRestoreModuleActions(defaultAction);
+
+    for (const module of preview.modules) {
+      if (!isBackupRestoreModuleKey(module.key)) continue;
+      if (!module.foundInBackup || !module.canMerge) {
+        initialActions[module.key] = "ignore";
+      }
+    }
+
+    setRestoreReviewSource(source);
+    setRestoreReviewBackupId(options.backupId ?? null);
+    setRestoreReviewTitle(options.title);
+    setRestorePreviewData(preview);
+    setRestoreReviewModuleActions(initialActions);
+    setRestoreReviewConfirmText("");
+    setRestoreLocalBackupPayload(options.localBackupPayload ?? null);
+    setRestoreReviewOpen(true);
+  };
+
+  const importarDados = async () => {
     if (!arquivoImportacao) {
       toast({
         title: "Selecione um arquivo",
@@ -580,68 +738,127 @@ export default function PerfilPage() {
       return;
     }
 
-    if (modoImportacao === "replace") {
-      const confirmado = window.confirm(
-        "Modo substituir: todos os seus dados financeiros atuais serao apagados e substituidos pelo backup. Sua conta/login permanecerao intactos. Deseja continuar?",
-      );
-      if (!confirmado) {
-        return;
+    try {
+      setRestoreReviewLoading(true);
+      const texto = await arquivoImportacao.text();
+      let backupPayload: unknown;
+      try {
+        backupPayload = JSON.parse(texto);
+      } catch {
+        throw new Error("Arquivo JSON invalido. Verifique o arquivo e tente novamente.");
       }
 
-      const confirmacaoForte = window.prompt(
-        "Para confirmar a substituicao, digite SUBSTITUIR:",
-      );
-      if (confirmacaoForte !== "SUBSTITUIR") {
-        toast({
-          title: "Substituicao cancelada",
-          description: "Confirmacao nao realizada. Nenhum dado foi alterado.",
-        });
-        return;
-      }
-    } else {
-      const confirmed = window.confirm(
-        "Importar novamente pode duplicar dados. Deseja continuar com a importação?",
-      );
-      if (!confirmed) {
-        return;
-      }
+      const previewResponse = await apiRequest("POST", "/api/import/preview", {
+        backup: backupPayload,
+      });
+      const preview = await previewResponse.json() as CloudBackupRestorePreview;
+
+      openRestoreReviewWithPreview("local", preview, {
+        title: arquivoImportacao.name || "Backup local",
+        defaultMode: modoImportacao,
+        localBackupPayload: backupPayload,
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao analisar backup",
+        description: parseApiErrorMessage(error, "Falha ao analisar backup local."),
+        variant: "destructive",
+      });
+    } finally {
+      setRestoreReviewLoading(false);
     }
-
-    importBackup.mutate({ arquivo: arquivoImportacao, modo: modoImportacao });
   };
 
-  const restaurarBackupNuvem = (backup: CloudBackupItem) => {
-    if (modoRestauracaoCloud === "replace") {
-      const confirmado = window.confirm(
-        "Modo substituir: todos os seus dados financeiros atuais serao apagados e substituidos pelo backup da nuvem. Sua conta/login permanecerao intactos. Deseja continuar?",
-      );
-      if (!confirmado) {
-        return;
-      }
+  const restaurarBackupNuvem = async (backup: CloudBackupItem) => {
+    try {
+      setRestoreReviewLoading(true);
+      const preview = await previewCloudBackup(backup.id);
+      openRestoreReviewWithPreview("cloud", preview, {
+        title: backup.fileName,
+        backupId: backup.id,
+        defaultMode: modoRestauracaoCloud,
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao analisar backup da nuvem",
+        description: parseApiErrorMessage(error, "Falha ao analisar backup da nuvem."),
+        variant: "destructive",
+      });
+    } finally {
+      setRestoreReviewLoading(false);
+    }
+  };
 
-      const confirmacaoForte = window.prompt(
-        "Para confirmar a restauracao com substituicao, digite SUBSTITUIR:",
-      );
-      if (confirmacaoForte !== "SUBSTITUIR") {
-        toast({
-          title: "Restauracao cancelada",
-          description: "Confirmacao nao realizada. Nenhum dado foi alterado.",
-        });
-        return;
-      }
-    } else {
-      const confirmed = window.confirm(
-        "Restaurar em modo mesclar pode adicionar dados sem apagar os atuais. Deseja continuar?",
-      );
-      if (!confirmed) {
-        return;
-      }
+  const aplicarRestauracaoRevisada = () => {
+    if (!restoreReviewSource || !restorePreviewData) {
+      return;
     }
 
-    restoreCloudBackupMutation.mutate({
-      backupId: backup.id,
-      modo: modoRestauracaoCloud,
-    });
+    const selectedModulesCount = countSelectedRestoreModules(restoreReviewModuleActions);
+    if (selectedModulesCount === 0) {
+      toast({
+        title: "Selecione ao menos um módulo",
+        description: "Escolha pelo menos um módulo com Mesclar ou Substituir.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const hasReplace = hasReplaceRestoreAction(restoreReviewModuleActions);
+    if (hasReplace && restoreReviewConfirmText.trim() !== "RESTAURAR") {
+      toast({
+        title: "Confirmação obrigatória",
+        description: "Digite RESTAURAR para confirmar a substituição de dados.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const submission = resolveRestoreSubmissionMode(restoreReviewModuleActions);
+    setRestoreReviewApplyPending(true);
+
+    if (restoreReviewSource === "cloud") {
+      if (!restoreReviewBackupId) {
+        setRestoreReviewApplyPending(false);
+        return;
+      }
+      restoreCloudBackupMutation.mutate(
+        {
+          backupId: restoreReviewBackupId,
+          modo: submission.mode,
+          modules: submission.modules,
+        },
+        {
+          onSuccess: () => {
+            resetRestoreReviewState();
+          },
+        },
+      );
+      return;
+    }
+
+    if (!restoreLocalBackupPayload) {
+      setRestoreReviewApplyPending(false);
+      toast({
+        title: "Backup local não encontrado",
+        description: "Selecione o arquivo novamente para continuar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    importBackup.mutate(
+      {
+        modo: submission.mode,
+        modules: submission.modules,
+        backup: restoreLocalBackupPayload,
+      },
+      {
+        onSuccess: () => {
+          resetRestoreReviewState();
+        },
+      },
+    );
   };
 
   const totalReceber = dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
@@ -1052,6 +1269,9 @@ export default function PerfilPage() {
                 ? "Seu plano premium permite salvar e restaurar backups na nuvem privada."
                 : "Seu plano free nao inclui backup na nuvem. Upgrade para Premium liberara esse recurso."}
             </p>
+            <p className="text-xs text-muted-foreground rounded-md border border-border/60 bg-muted/20 p-2">
+              Antes de restaurar, você poderá revisar o conteúdo do backup e escolher por módulo se deseja Mesclar, Substituir ou Ignorar.
+            </p>
             <Button
               variant="outline"
               className="w-full touch-feedback"
@@ -1072,7 +1292,7 @@ export default function PerfilPage() {
                     className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
                     value={modoRestauracaoCloud}
                     onChange={(event) => setModoRestauracaoCloud(event.target.value as ImportMode)}
-                    disabled={restoreCloudBackupMutation.isPending}
+                    disabled={restoreCloudBackupMutation.isPending || restoreReviewApplyPending || restoreReviewLoading}
                     data-testid="select-cloud-restore-mode"
                   >
                     <option value="merge">Mesclar com dados atuais (recomendado)</option>
@@ -1123,12 +1343,14 @@ export default function PerfilPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => restaurarBackupNuvem(backup)}
-                            disabled={restoreCloudBackupMutation.isPending}
+                            disabled={restoreCloudBackupMutation.isPending || restoreReviewApplyPending || restoreReviewLoading}
                             data-testid={`button-cloud-restore-${backup.id}`}
                           >
                             {restoreCloudBackupMutation.isPending && backupRestaurandoId === backup.id
                               ? "Restaurando..."
-                              : "Restaurar"}
+                              : restoreReviewLoading
+                                ? "Analisando..."
+                                : "Restaurar"}
                           </Button>
                         </div>
                       </div>
@@ -1142,6 +1364,9 @@ export default function PerfilPage() {
           <p className="text-sm text-muted-foreground">
             Importe um backup JSON para restaurar seus dados nesta conta.
           </p>
+          <p className="text-xs text-muted-foreground rounded-md border border-border/60 bg-muted/20 p-2">
+            O backup local também passa por revisão antes de aplicar qualquer alteração.
+          </p>
           <div className="space-y-2">
             <Label htmlFor="modo-importacao-backup">Modo de importacao</Label>
             <select
@@ -1149,7 +1374,7 @@ export default function PerfilPage() {
               className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
               value={modoImportacao}
               onChange={(event) => setModoImportacao(event.target.value as ImportMode)}
-              disabled={importBackup.isPending}
+              disabled={importBackup.isPending || restoreReviewApplyPending || restoreReviewLoading}
               data-testid="select-import-mode"
             >
               <option value="merge">Mesclar com dados atuais (recomendado)</option>
@@ -1171,25 +1396,220 @@ export default function PerfilPage() {
             type="file"
             accept=".json,application/json"
             onChange={(e) => setArquivoImportacao(e.target.files?.[0] ?? null)}
-            disabled={importBackup.isPending}
+            disabled={importBackup.isPending || restoreReviewApplyPending || restoreReviewLoading}
             data-testid="input-import-backup"
           />
           <Button
             onClick={importarDados}
-            disabled={!arquivoImportacao || importBackup.isPending}
+            disabled={!arquivoImportacao || importBackup.isPending || restoreReviewApplyPending || restoreReviewLoading}
             data-testid="button-import-backup"
             className="w-full touch-feedback"
           >
-            {importBackup.isPending ? (
-              "Importando..."
+            {importBackup.isPending || restoreReviewApplyPending ? (
+              "Restaurando..."
+            ) : restoreReviewLoading ? (
+              "Analisando backup..."
             ) : (
               <>
-                <Upload className="w-4 h-4 mr-2" /> Importar dados (JSON)
+                <Upload className="w-4 h-4 mr-2" /> Revisar restauração (JSON)
               </>
             )}
           </Button>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={restoreReviewOpen}
+        onOpenChange={(open) => {
+          if (!open && (restoreReviewApplyPending || restoreCloudBackupMutation.isPending || importBackup.isPending)) {
+            return;
+          }
+          if (!open) {
+            resetRestoreReviewState();
+            return;
+          }
+          setRestoreReviewOpen(open);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] w-[min(95vw,980px)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Revisar restauração</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Escolha quais dados deseja restaurar antes de aplicar.
+            </p>
+
+            {restorePreviewData ? (
+              <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+                <p>
+                  <span className="font-medium text-foreground">Arquivo:</span>{" "}
+                  {(restorePreviewData.backupInfo.fileName ?? restoreReviewTitle) || "Backup"}
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">Gerado em:</span>{" "}
+                  {restorePreviewData.backupInfo.createdAt ? formatDateTimeBR(restorePreviewData.backupInfo.createdAt) : "-"}
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">Tamanho:</span>{" "}
+                  {restorePreviewData.backupInfo.sizeBytes != null ? formatBytes(restorePreviewData.backupInfo.sizeBytes) : "-"}
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">Versão:</span>{" "}
+                  {restorePreviewData.backupInfo.version ?? "não informada"}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {restoreReviewLoading ? "Analisando backup..." : "Nenhuma prévia disponível."}
+              </p>
+            )}
+
+            {restorePreviewData && (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyRestoreActionToAvailableModules("merge")}
+                  disabled={restoreReviewApplyPending}
+                >
+                  Selecionar tudo
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyRestoreActionToAvailableModules("ignore")}
+                  disabled={restoreReviewApplyPending}
+                >
+                  Ignorar tudo
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyRestoreModeToSelectedModules("merge")}
+                  disabled={restoreReviewApplyPending}
+                >
+                  Aplicar modo global: Mesclar
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => applyRestoreModeToSelectedModules("replace")}
+                  disabled={restoreReviewApplyPending}
+                >
+                  Aplicar modo global: Substituir
+                </Button>
+              </div>
+            )}
+
+            {restorePreviewData && (
+              <div className="space-y-2">
+                {restorePreviewData.modules.map((module) => {
+                  const moduleKey = isBackupRestoreModuleKey(module.key) ? module.key : null;
+                  const action: BackupRestoreAction = moduleKey
+                    ? restoreReviewModuleActions[moduleKey]
+                    : "ignore";
+                  return (
+                    <div key={module.key} className="rounded-md border p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">{module.label}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Encontrados: {module.count}
+                            {module.activeCount != null && module.removedCount != null
+                              ? ` · Ativos: ${module.activeCount} · Removidos: ${module.removedCount}`
+                              : ""}
+                          </p>
+                          {!module.foundInBackup && (
+                            <p className="text-xs text-amber-700">
+                              Não encontrado no backup.
+                            </p>
+                          )}
+                          {module.warnings.map((warning) => (
+                            <p key={`${module.key}-${warning}`} className="text-xs text-amber-700">
+                              {warning}
+                            </p>
+                          ))}
+                        </div>
+                        {moduleKey ? (
+                          <select
+                            className="h-9 min-w-[170px] rounded-md border border-input bg-background px-2 text-sm"
+                            value={action}
+                            onChange={(event) =>
+                              updateRestoreModuleAction(moduleKey, event.target.value as BackupRestoreAction)}
+                            disabled={!module.foundInBackup || restoreReviewApplyPending}
+                          >
+                            <option value="merge">Mesclar</option>
+                            <option value="replace">Substituir</option>
+                            <option value="ignore">Ignorar</option>
+                          </select>
+                        ) : (
+                          <Badge variant="secondary">Não encontrado</Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {(restorePreviewData?.warnings.length ?? 0) > 0 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                {restorePreviewData?.warnings.map((warning) => (
+                  <p key={`restore-warning-${warning}`}>{warning}</p>
+                ))}
+              </div>
+            )}
+
+            {hasReplaceRestoreAction(restoreReviewModuleActions) && (
+              <div className="space-y-2 rounded-md border border-red-200 bg-red-50 p-3">
+                <p className="text-xs text-red-800">
+                  Você escolheu substituir dados. Dados atuais dos módulos selecionados serão removidos antes da restauração.
+                </p>
+                <Label htmlFor="restore-confirm-text" className="text-xs text-red-900">
+                  Digite RESTAURAR para confirmar
+                </Label>
+                <Input
+                  id="restore-confirm-text"
+                  value={restoreReviewConfirmText}
+                  onChange={(event) => setRestoreReviewConfirmText(event.target.value)}
+                  disabled={restoreReviewApplyPending}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => resetRestoreReviewState()}
+                disabled={restoreReviewApplyPending || restoreCloudBackupMutation.isPending || importBackup.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={aplicarRestauracaoRevisada}
+                disabled={
+                  restoreReviewApplyPending
+                  || restoreCloudBackupMutation.isPending
+                  || importBackup.isPending
+                  || countSelectedRestoreModules(restoreReviewModuleActions) === 0
+                  || (hasReplaceRestoreAction(restoreReviewModuleActions) && restoreReviewConfirmText.trim() !== "RESTAURAR")
+                }
+              >
+                {restoreReviewApplyPending || restoreCloudBackupMutation.isPending || importBackup.isPending
+                  ? "Aplicando..."
+                  : "Aplicar restauração"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Card className={perfilTab === "ajuda" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
         <CardHeader className="pb-4">
