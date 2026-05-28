@@ -110,6 +110,7 @@ import {
   isServicoLinkedToCardCharge,
   resolveServicoBillingFields,
 } from "@shared/servico-periodicidade";
+import { resolveServicoCategoryValue } from "@shared/service-categories";
 import {
   ICON_CATEGORY_OPTIONS,
   ICON_CATEGORIES,
@@ -810,6 +811,16 @@ test("servicos utils: filtro + ordenação juntos preserva ordem esperada", () =
 test("servicos utils: lista vazia retorna vazio sem erro", () => {
   const sorted = sortServicosForView([], { sortBy: "nome_az", referenceDay: 10 });
   assert.deepEqual(sorted, []);
+});
+
+test("servicos categorias: normaliza cuidados pessoais", () => {
+  assert.equal(resolveServicoCategoryValue("Cuidados pessoais"), "cuidados_pessoais");
+  assert.equal(resolveServicoCategoryValue("cuidados-pessoais"), "cuidados_pessoais");
+  assert.equal(resolveServicoCategoryValue("cuidados_pessoais"), "cuidados_pessoais");
+});
+
+test("servicos categorias: categoria invalida retorna null", () => {
+  assert.equal(resolveServicoCategoryValue("categoria_invalida_xyz"), null);
 });
 
 test("servicos periodicidade: serviço legado sem periodicidade continua mensal", () => {

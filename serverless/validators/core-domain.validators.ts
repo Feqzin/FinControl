@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { insertPatrimonioSchema, insertRendaSchema } from "../../shared/schema.js";
+import { resolveServicoCategoryValue } from "../../shared/service-categories.js";
 
 const nonEmptyUpdateMessage = "Informe ao menos um campo para atualizar";
 const moneyField = z.string().or(z.number()).transform(String);
@@ -10,6 +11,14 @@ const servicoDataCobrancaField = z.preprocess((value) => {
   if (typeof value === "string" && value.trim() === "") return null;
   return value;
 }, z.coerce.number().int().min(1).max(31).nullable());
+const servicoCategoriaField = z.string().trim().min(1).transform((value, ctx) => {
+  const normalized = resolveServicoCategoryValue(value);
+  if (!normalized) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Categoria de servico invalida." });
+    return z.NEVER;
+  }
+  return normalized;
+});
 
 export const pessoaBody = z.object({
   nome: z.string().min(1),
@@ -56,7 +65,7 @@ export const pessoaAbaterSaldoParcelaBody = z.object({
 
 export const servicoBody = z.object({
   nome: z.string().min(1),
-  categoria: z.string().min(1),
+  categoria: servicoCategoriaField,
   valorMensal: moneyField.optional(),
   valorCobranca: moneyField.optional(),
   periodicidadeCobranca: servicoPeriodicidadeField.optional().default("mensal"),
@@ -70,7 +79,7 @@ export const servicoBody = z.object({
 
 export const servicoUpdateBody = z.object({
   nome: z.string().min(1).optional(),
-  categoria: z.string().min(1).optional(),
+  categoria: servicoCategoriaField.optional(),
   valorMensal: moneyField.optional(),
   valorCobranca: moneyField.optional(),
   periodicidadeCobranca: servicoPeriodicidadeField.optional(),

@@ -11,6 +11,11 @@ import {
   servicoPessoas,
   type InsertCompraCartao,
 } from "../../shared/schema.js";
+import {
+  SERVICO_CATEGORY_DEFAULT_VALUE,
+  type ServicoCategory,
+  resolveServicoCategoryValue,
+} from "../../shared/service-categories.js";
 import { formatMoneyFixed, multiply, parseMoney } from "../../utils/money.js";
 import { buildParcelasCompraRows } from "./parcelas-compra-materialization.js";
 import type {
@@ -23,13 +28,12 @@ import type {
 
 type ConfidenceLevel = "alta" | "media" | "baixa";
 type CanonicalImportItemStatus = "novo" | "duplicata_exata" | "possivel_duplicata" | "invalido";
-type ServiceCategory = "streaming" | "software" | "lazer" | "assinatura" | "utilidades" | "outros";
 type ImportServiceAction =
   | { type: "none" }
   | {
     type: "create_new";
     name: string;
-    category: ServiceCategory;
+    category: ServicoCategory;
     monthlyValue: number;
     billingDay: number;
   }
@@ -229,20 +233,8 @@ function parseForceImport(input: ImportPreviewItemInput): boolean {
   return input.forceImport === true;
 }
 
-function normalizeServiceCategory(rawCategory: string | null | undefined): ServiceCategory {
-  const normalized = (rawCategory ?? "")
-    .trim()
-    .toLowerCase();
-
-  if (normalized === "streaming") return "streaming";
-  if (normalized === "software") return "software";
-  if (normalized === "lazer") return "lazer";
-  if (normalized === "assinatura") return "assinatura";
-  if (normalized === "utilidades") return "utilidades";
-  if (normalized === "outros") return "outros";
-  if (normalized === "seguro") return "utilidades";
-  if (normalized === "outro") return "outros";
-  return "outros";
+function normalizeServiceCategory(rawCategory: string | null | undefined): ServicoCategory {
+  return resolveServicoCategoryValue(rawCategory) ?? SERVICO_CATEGORY_DEFAULT_VALUE;
 }
 
 function normalizeServiceAction(input: ImportPreviewItemInput): ImportServiceAction {

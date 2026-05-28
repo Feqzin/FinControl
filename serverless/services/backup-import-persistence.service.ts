@@ -30,6 +30,7 @@ import { DatabaseStorage } from "../storage.js";
 import type { BackupImportTransformResult } from "./backup-import-transform.service.js";
 import type { BackupImportMode } from "../validators/backup-import.validators.js";
 import { resolveServicoBackupBillingFields } from "./backup-import-servicos.utils.js";
+import { resolveServicoCategoryValue } from "../../shared/service-categories.js";
 
 type JsonRow = Record<string, unknown>;
 
@@ -225,6 +226,11 @@ function toParcelaCompraInsert(row: JsonRow, label: string): InsertParcelaCompra
 }
 
 function toServicoInsert(row: JsonRow, label: string): InsertServicoWithId {
+  const categoriaRaw = readRequiredString(row, "categoria", label);
+  const categoria = resolveServicoCategoryValue(categoriaRaw);
+  if (!categoria) {
+    throw new Error(`Campo invalido: ${label}.categoria`);
+  }
   const valorMensal = readOptionalDecimal(row, "valorMensal", label);
   const valorCobranca = readOptionalDecimal(row, "valorCobranca", label);
   const periodicidadeCobranca = readOptionalString(row, "periodicidadeCobranca", label);
@@ -241,7 +247,7 @@ function toServicoInsert(row: JsonRow, label: string): InsertServicoWithId {
     id: readRequiredString(row, "id", label),
     userId: readRequiredString(row, "userId", label),
     nome: readRequiredString(row, "nome", label),
-    categoria: readRequiredString(row, "categoria", label),
+    categoria,
     valorMensal: billing.valorMensal,
     valorCobranca: billing.valorCobranca,
     periodicidadeCobranca: billing.periodicidadeCobranca,

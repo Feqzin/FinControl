@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { normalizeIsoDate } from "../../utils/date.js";
 import { importFaturaExtratoItemStatusSchema } from "./import-fatura-extrato.validators.js";
+import { resolveServicoCategoryValue } from "../../shared/service-categories.js";
 
 const moneyField = z.union([z.string(), z.number()]);
 
@@ -27,16 +28,14 @@ const isoDateNullableOptional = z.union([z.string(), z.date(), z.null(), z.undef
 export const importSourceType = z.enum(["texto", "csv", "ofx", "qfx", "pdf", "manual"]);
 export const importAction = z.enum(["import", "skip"]);
 const importServiceActionType = z.enum(["none", "create_new", "link_existing"]);
-const importServiceActionCategory = z.enum([
-  "streaming",
-  "seguro",
-  "software",
-  "assinatura",
-  "outro",
-  "lazer",
-  "utilidades",
-  "outros",
-]);
+const importServiceActionCategory = z.string().trim().min(1).transform((value, ctx) => {
+  const normalized = resolveServicoCategoryValue(value);
+  if (!normalized) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Categoria de servico invalida." });
+    return z.NEVER;
+  }
+  return normalized;
+});
 
 const importServiceAction = z.object({
   type: importServiceActionType.default("none"),
