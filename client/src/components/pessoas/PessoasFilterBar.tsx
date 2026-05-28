@@ -40,6 +40,7 @@ export function PessoasFilterBar({
             <TabsTrigger value="me_deve" className="h-6 rounded-md px-2.5 text-xs" data-testid="filter-pessoas-me-devem">Me devem</TabsTrigger>
             <TabsTrigger value="eu_devo" className="h-6 rounded-md px-2.5 text-xs" data-testid="filter-pessoas-eu-devo">Eu devo</TabsTrigger>
             <TabsTrigger value="atrasados" className="h-6 rounded-md px-2.5 text-xs" data-testid="filter-pessoas-atrasados">Atrasados</TabsTrigger>
+            <TabsTrigger value="removidas" className="h-6 rounded-md px-2.5 text-xs" data-testid="filter-pessoas-removidas">Removidas</TabsTrigger>
           </TabsList>
         </Tabs>
         <Select value={sortBy} onValueChange={(value) => onSortChange(value as PessoaSortBy)}>

@@ -148,6 +148,10 @@ function readOptionalTimestamp(row: JsonRow, field: string, label: string): Date
 }
 
 function toPessoaInsert(row: JsonRow, label: string): InsertPessoaWithId {
+  const deletedAt =
+    readOptionalTimestamp(row, "deletedAt", label)
+    ?? readOptionalTimestamp(row, "deleted_at", label);
+
   return {
     id: readRequiredString(row, "id", label),
     userId: readRequiredString(row, "userId", label),
@@ -155,6 +159,7 @@ function toPessoaInsert(row: JsonRow, label: string): InsertPessoaWithId {
     tipo: readRequiredString(row, "tipo", label),
     telefone: readOptionalString(row, "telefone", label),
     observacao: readOptionalString(row, "observacao", label),
+    deletedAt,
   };
 }
 

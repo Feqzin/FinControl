@@ -132,3 +132,45 @@ test("backup/import servicos: aceita serviço sem data fixa e preserva dataCobra
   const transformedServico = transformed.servicos[0] as Record<string, unknown>;
   assert.equal(transformedServico.dataCobranca, null);
 });
+
+test("backup/import pessoas: preserva deletedAt quando presente e mantém compatibilidade sem campo", () => {
+  const parsed = parseBackupJsonImport({
+    exportadoEm: "2026-05-28T10:00:00.000Z",
+    usuario: "demo",
+    pessoas: [
+      {
+        id: "pessoa-old-1",
+        userId: "legacy-user",
+        nome: "Pessoa ativa",
+        tipo: "me_deve",
+        telefone: null,
+        observacao: null,
+      },
+      {
+        id: "pessoa-old-2",
+        userId: "legacy-user",
+        nome: "Pessoa removida",
+        tipo: "eu_devo",
+        telefone: null,
+        observacao: null,
+        deletedAt: "2026-04-01T12:00:00.000Z",
+      },
+    ],
+    dividas: [],
+    cartoes: [],
+    compras: [],
+    parcelasCompra: [],
+    servicos: [],
+    servicoPessoas: [],
+    servicoPagamentos: [],
+    pessoaSaldoMovimentacoes: [],
+    metas: [],
+  });
+
+  const transformed = transformBackupForPersistence(parsed, "user-target");
+  const pessoaAtiva = transformed.pessoas[0] as Record<string, unknown>;
+  const pessoaRemovida = transformed.pessoas[1] as Record<string, unknown>;
+
+  assert.equal(pessoaAtiva.deletedAt ?? null, null);
+  assert.equal(pessoaRemovida.deletedAt, "2026-04-01T12:00:00.000Z");
+});

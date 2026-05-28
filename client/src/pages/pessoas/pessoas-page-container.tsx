@@ -148,6 +148,7 @@ export default function PessoasPage() {
     reverterDividaPagamentoMutation,
     updatePessoaMutation,
     deleteMutation,
+    restorePessoaMutation,
     marcarServicoPagoMutation,
     reverterServicoPagoMutation,
     createSaldoMovimentacaoMutation,
@@ -166,6 +167,7 @@ export default function PessoasPage() {
     historyPessoa,
     historyFilter,
   });
+  const isRemovedFilter = filterTipo === "removidas";
 
   useEffect(() => {
     setVisiblePessoasCount(prefs.mobileMode ? 12 : 18);
@@ -223,7 +225,9 @@ export default function PessoasPage() {
           : composicaoPrincipal
             ? `Maior impacto atual em ${composicaoPrincipal.label.toLowerCase()}: ${formatCurrencyBRL(composicaoPrincipal.valor)}.`
             : "Acompanhe as pendências por origem para priorizar os próximos pagamentos.";
-  const filteredByStatus = filterTipo === "atrasados"
+  const filteredByStatus = isRemovedFilter
+    ? filtered
+    : filterTipo === "atrasados"
     ? filtered.filter((pessoa) => {
       const resumoPessoa = (() => {
         try {
@@ -238,6 +242,13 @@ export default function PessoasPage() {
   const sortedFilteredByStatus = sortPessoasForView(filteredByStatus, {
     sortBy,
     getMetrics: (pessoaId) => {
+      if (isRemovedFilter) {
+        return {
+          saldo: 0,
+          valorReceber: 0,
+          valorPagar: 0,
+        };
+      }
       const resumo = (() => {
         try {
           return getPessoaResumoConsolidado(pessoaId);
@@ -256,14 +267,18 @@ export default function PessoasPage() {
     },
   });
   const headerTotalPessoas = filteredByStatus.length;
-  const headerTotalPendente = filteredByStatus.reduce((sum, pessoa) => {
-    const resumo = getPessoaResumoConsolidado(pessoa.id);
-    return sum + resumo.consolidadoPendente;
-  }, 0);
-  const headerTotalAReceber = filteredByStatus.reduce((sum, pessoa) => {
-    const resumo = getPessoaResumoConsolidado(pessoa.id);
-    return sum + resumo.dividas.comigo.pendente + resumo.comprasVinculadas.pendentePessoa + resumo.servicosMesAtual.pendente;
-  }, 0);
+  const headerTotalPendente = isRemovedFilter
+    ? 0
+    : filteredByStatus.reduce((sum, pessoa) => {
+      const resumo = getPessoaResumoConsolidado(pessoa.id);
+      return sum + resumo.consolidadoPendente;
+    }, 0);
+  const headerTotalAReceber = isRemovedFilter
+    ? 0
+    : filteredByStatus.reduce((sum, pessoa) => {
+      const resumo = getPessoaResumoConsolidado(pessoa.id);
+      return sum + resumo.dividas.comigo.pendente + resumo.comprasVinculadas.pendentePessoa + resumo.servicosMesAtual.pendente;
+    }, 0);
   const visiblePessoas = sortedFilteredByStatus.slice(0, visiblePessoasCount);
   const hasMorePessoas = sortedFilteredByStatus.length > visiblePessoas.length;
   const visibleHistoryDividas = historyDividas.slice(0, historyVisible.dividas);
@@ -357,12 +372,29 @@ export default function PessoasPage() {
   };
 
   const handleDeletePessoa = (pessoa: Pessoa) => {
+    const confirmed = window.confirm(
+      "Remover esta pessoa da lista? Você poderá restaurá-la depois em Pessoas removidas.",
+    );
+    if (!confirmed) return;
+
     deleteMutation.mutate(pessoa.id, {
       onSuccess: () => {
         if (historyPessoa?.id === pessoa.id) {
           setHistoryPessoa(null);
         }
         toast({ title: "Pessoa removida" });
+      },
+      onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+    });
+  };
+
+  const handleRestorePessoa = (pessoa: Pessoa) => {
+    restorePessoaMutation.mutate(pessoa.id, {
+      onSuccess: () => {
+        if (historyPessoa?.id === pessoa.id) {
+          setHistoryPessoa(null);
+        }
+        toast({ title: "Pessoa restaurada" });
       },
       onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
     });
@@ -387,7 +419,14 @@ export default function PessoasPage() {
       />
 
       {sortedFilteredByStatus.length === 0 ? (
-        <PessoasEmptyState onAddPessoa={() => setOpenPessoa(true)} />
+        <PessoasEmptyState
+          onAddPessoa={isRemovedFilter ? undefined : () => setOpenPessoa(true)}
+          title={isRemovedFilter ? "Nenhuma pessoa removida." : undefined}
+          description={isRemovedFilter
+            ? "Pessoas removidas aparecerão aqui para restauração."
+            : undefined}
+          actionLabel={isRemovedFilter ? undefined : "Adicionar pessoa"}
+        />
       ) : (
         <PessoasGrid
           pessoas={visiblePessoas}
@@ -398,6 +437,8 @@ export default function PessoasPage() {
           onOpenHistory={setHistoryPessoa}
           onEdit={handleEditPessoa}
           onDelete={handleDeletePessoa}
+          showRemovedActions={isRemovedFilter}
+          onRestore={handleRestorePessoa}
         />
       )}
 
@@ -1716,34 +1757,46 @@ export default function PessoasPage() {
               )}
 
               <div className="mt-6 pt-4 border-t flex gap-2">
+                {!historyPessoa.deletedAt && (
+                  <Button
+                    className="flex-1"
+                    onClick={() => {
+                      setSelectedPessoa(historyPessoa);
+                      setDividaForm({
+                        tipo: historyPessoa.tipo === "me_deve" ? "receber" : "pagar",
+                        valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
+                      });
+                      setOpenDivida(true);
+                    }}
+                    data-testid="button-add-divida-history"
+                  >
+                    <Plus className="w-4 h-4 mr-2" /> Nova divida
+                  </Button>
+                )}
                 <Button
-                  className="flex-1"
+                  variant={historyPessoa.deletedAt ? "default" : "outline"}
                   onClick={() => {
-                    setSelectedPessoa(historyPessoa);
-                    setDividaForm({
-                      tipo: historyPessoa.tipo === "me_deve" ? "receber" : "pagar",
-                      valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
-                    });
-                    setOpenDivida(true);
-                  }}
-                  data-testid="button-add-divida-history"
-                >
-                  <Plus className="w-4 h-4 mr-2" /> Nova divida
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() =>
+                    if (historyPessoa.deletedAt) {
+                      handleRestorePessoa(historyPessoa);
+                      return;
+                    }
+
+                    const confirmed = window.confirm(
+                      "Remover esta pessoa da lista? Você poderá restaurá-la depois em Pessoas removidas.",
+                    );
+                    if (!confirmed) return;
+
                     deleteMutation.mutate(historyPessoa.id, {
                       onSuccess: () => {
                         setHistoryPessoa(null);
                         toast({ title: "Pessoa removida" });
                       },
                       onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
-                    })
-                  }
-                  data-testid="button-delete-history"
+                    });
+                  }}
+                  data-testid={historyPessoa.deletedAt ? "button-restore-history" : "button-delete-history"}
                 >
-                  <Trash2 className="w-4 h-4" />
+                  {historyPessoa.deletedAt ? "Restaurar pessoa" : <Trash2 className="w-4 h-4" />}
                 </Button>
               </div>
             </>

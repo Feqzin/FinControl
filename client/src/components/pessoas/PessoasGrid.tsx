@@ -11,6 +11,8 @@ type PessoasGridProps = {
   onOpenHistory: (pessoa: Pessoa) => void;
   onEdit: (pessoa: Pessoa) => void;
   onDelete: (pessoa: Pessoa) => void;
+  showRemovedActions?: boolean;
+  onRestore?: (pessoa: Pessoa) => void;
 };
 
 export function PessoasGrid({
@@ -22,6 +24,8 @@ export function PessoasGrid({
   onOpenHistory,
   onEdit,
   onDelete,
+  showRemovedActions = false,
+  onRestore,
 }: PessoasGridProps) {
   if (mobileMode) {
     return (
@@ -37,6 +41,8 @@ export function PessoasGrid({
             onOpenHistory={onOpenHistory}
             onEdit={onEdit}
             onDelete={onDelete}
+            showRemovedActions={showRemovedActions}
+            onRestore={onRestore}
           />
         ))}
       </div>
@@ -56,6 +62,8 @@ export function PessoasGrid({
           onOpenHistory={onOpenHistory}
           onEdit={onEdit}
           onDelete={onDelete}
+          showRemovedActions={showRemovedActions}
+          onRestore={onRestore}
         />
       ))}
     </div>

@@ -1,4 +1,4 @@
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, isNull, isNotNull } from "drizzle-orm";
 import { db } from "./db.js";
 import { writeTechnicalLog } from "./logger.js";
 import {
@@ -291,10 +291,12 @@ export interface IStorage {
   updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
 
   getPessoas(userId: string): Promise<Pessoa[]>;
+  getPessoasByStatus(userId: string, status: "active" | "removed" | "all"): Promise<Pessoa[]>;
   getPessoa(id: string, userId: string): Promise<Pessoa | undefined>;
   createPessoa(pessoa: InsertPessoa): Promise<Pessoa>;
   updatePessoa(id: string, userId: string, data: Partial<InsertPessoa>): Promise<Pessoa | undefined>;
   deletePessoa(id: string, userId: string): Promise<boolean>;
+  restorePessoa(id: string, userId: string): Promise<Pessoa | undefined>;
   getPessoaSaldoMovimentacoes(userId: string): Promise<PessoaSaldoMovimentacao[]>;
   getPessoaSaldoMovimentacoesByPessoa(pessoaId: string, userId: string): Promise<PessoaSaldoMovimentacao[]>;
   createPessoaSaldoMovimentacao(movimentacao: InsertPessoaSaldoMovimentacao): Promise<PessoaSaldoMovimentacao>;
@@ -630,7 +632,24 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async getPessoas(userId: string) { return this.database.select().from(pessoas).where(eq(pessoas.userId, userId)); }
+  async getPessoas(userId: string) {
+    return this.database.select().from(pessoas).where(eq(pessoas.userId, userId));
+  }
+  async getPessoasByStatus(userId: string, status: "active" | "removed" | "all") {
+    if (status === "active") {
+      return this.database
+        .select()
+        .from(pessoas)
+        .where(and(eq(pessoas.userId, userId), isNull(pessoas.deletedAt)));
+    }
+    if (status === "removed") {
+      return this.database
+        .select()
+        .from(pessoas)
+        .where(and(eq(pessoas.userId, userId), isNotNull(pessoas.deletedAt)));
+    }
+    return this.getPessoas(userId);
+  }
   async getPessoa(id: string, userId: string) {
     const [p] = await this.database.select().from(pessoas).where(and(eq(pessoas.id, id), eq(pessoas.userId, userId)));
     return p;
@@ -644,8 +663,22 @@ export class DatabaseStorage implements IStorage {
     return p;
   }
   async deletePessoa(id: string, userId: string) {
-    const result = await this.database.delete(pessoas).where(and(eq(pessoas.id, id), eq(pessoas.userId, userId))).returning();
-    return result.length > 0;
+    const [softDeleted] = await this.database
+      .update(pessoas)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(pessoas.id, id), eq(pessoas.userId, userId), isNull(pessoas.deletedAt)))
+      .returning();
+    return Boolean(softDeleted);
+  }
+  async restorePessoa(id: string, userId: string) {
+    const [restored] = await this.database
+      .update(pessoas)
+      .set({ deletedAt: null })
+      .where(and(eq(pessoas.id, id), eq(pessoas.userId, userId), isNotNull(pessoas.deletedAt)))
+      .returning();
+
+    if (restored) return restored;
+    return this.getPessoa(id, userId);
   }
   async getPessoaSaldoMovimentacoes(userId: string) {
     return this.database.select().from(pessoaSaldoMovimentacoes).where(eq(pessoaSaldoMovimentacoes.userId, userId));

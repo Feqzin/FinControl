@@ -10,6 +10,7 @@ import {
   Clock,
   Pencil,
   Plus,
+  RotateCcw,
   Trash2,
   Eye,
 } from "lucide-react";
@@ -23,6 +24,8 @@ type PessoaCardProps = {
   onOpenHistory: (pessoa: Pessoa) => void;
   onEdit: (pessoa: Pessoa) => void;
   onDelete: (pessoa: Pessoa) => void;
+  showRemovedActions?: boolean;
+  onRestore?: (pessoa: Pessoa) => void;
 };
 
 export function PessoaCard({
@@ -34,7 +37,48 @@ export function PessoaCard({
   onOpenHistory,
   onEdit,
   onDelete,
+  showRemovedActions = false,
+  onRestore,
 }: PessoaCardProps) {
+  if (showRemovedActions) {
+    return (
+      <Card
+        className="rounded-2xl border border-border/60 bg-card shadow-sm"
+        data-testid={`card-pessoa-removed-${pessoa.id}`}
+      >
+        <CardContent className="flex flex-col gap-3 p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-lg font-semibold leading-tight">{pessoa.nome}</p>
+              {pessoa.telefone && (
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">{pessoa.telefone}</p>
+              )}
+            </div>
+            <Badge variant="outline" className="h-6 px-2.5 text-[11px]">
+              Removida
+            </Badge>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Esta pessoa foi removida da lista principal e pode ser restaurada a qualquer momento.
+          </p>
+
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              className="h-8 rounded-lg text-xs"
+              onClick={() => onRestore?.(pessoa)}
+              data-testid={`button-restore-pessoa-${pessoa.id}`}
+            >
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+              Restaurar pessoa
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const isMeDeve = pessoa.tipo === "me_deve";
   const hasAtraso = resumo.alertas.comprasAtrasadas > 0 || resumo.dividas.comigo.vencidas > 0;
   const parcelasVencidasPessoa = resumo.alertas.parcelasVencidasPessoa ?? resumo.alertas.comprasAtrasadas;

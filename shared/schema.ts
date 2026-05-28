@@ -32,9 +32,11 @@ export const pessoas = pgTable("pessoas", {
   tipo: text("tipo").notNull(),
   telefone: text("telefone"),
   observacao: text("observacao"),
+  deletedAt: timestamp("deleted_at"),
 }, (table) => ({
   pessoasUserIdIdx: index("idx_pessoas_user_id").on(table.userId),
   pessoasUserNomeIdx: index("idx_pessoas_user_nome").on(table.userId, table.nome),
+  pessoasUserDeletedAtIdx: index("idx_pessoas_user_deleted_at").on(table.userId, table.deletedAt),
 }));
 
 export const insertPessoaSchema = createInsertSchema(pessoas).omit({ id: true });

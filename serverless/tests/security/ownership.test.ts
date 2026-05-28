@@ -286,6 +286,9 @@ testOwnershipIntegration("IDOR integração: usuário A não acessa, edita ou ex
     const deletedByA = await fixture.storage.deletePessoa(fixture.pessoaB.id, fixture.userA.id);
     assert.equal(deletedByA, false);
 
+    const restoredByA = await fixture.storage.restorePessoa(fixture.pessoaB.id, fixture.userA.id);
+    assert.equal(restoredByA, undefined);
+
     const [stillOwnedByB] = await fixture.db.select().from(fixture.tables.pessoas).where(
       fixture.and(
         fixture.eq(fixture.tables.pessoas.id, fixture.pessoaB.id),
@@ -293,6 +296,41 @@ testOwnershipIntegration("IDOR integração: usuário A não acessa, edita ou ex
       ),
     );
     assert.ok(stillOwnedByB);
+  } finally {
+    await cleanupOwnershipFixture(fixture);
+  }
+});
+
+testOwnershipIntegration("soft delete pessoa: remover move para removidas e restaurar devolve para ativas", async () => {
+  const fixture = await createOwnershipFixture();
+
+  try {
+    const pessoasAtivasAntes = await fixture.storage.getPessoasByStatus(fixture.userB.id, "active");
+    assert.ok(pessoasAtivasAntes.some((row: { id: string }) => row.id === fixture.pessoaB.id));
+
+    const deleted = await fixture.storage.deletePessoa(fixture.pessoaB.id, fixture.userB.id);
+    assert.equal(deleted, true);
+
+    const pessoasAtivasDepoisDelete = await fixture.storage.getPessoasByStatus(fixture.userB.id, "active");
+    assert.equal(
+      pessoasAtivasDepoisDelete.some((row: { id: string }) => row.id === fixture.pessoaB.id),
+      false,
+    );
+
+    const pessoasRemovidas = await fixture.storage.getPessoasByStatus(fixture.userB.id, "removed");
+    assert.equal(
+      pessoasRemovidas.some((row: { id: string }) => row.id === fixture.pessoaB.id),
+      true,
+    );
+
+    const restored = await fixture.storage.restorePessoa(fixture.pessoaB.id, fixture.userB.id);
+    assert.ok(restored);
+
+    const pessoasAtivasDepoisRestore = await fixture.storage.getPessoasByStatus(fixture.userB.id, "active");
+    assert.equal(
+      pessoasAtivasDepoisRestore.some((row: { id: string }) => row.id === fixture.pessoaB.id),
+      true,
+    );
   } finally {
     await cleanupOwnershipFixture(fixture);
   }

@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { PessoasService } from "../services/pessoas.service.js";
+import { PessoasService, type PessoaListStatus } from "../services/pessoas.service.js";
 import {
   pessoaAbaterSaldoParcelaBody,
   pessoaAbaterSaldoDividaBody,
@@ -17,6 +17,15 @@ import {
   sendNotFound,
   sendPlanLimitConflict,
 } from "./controller-utils.js";
+
+function resolvePessoaListStatus(raw: unknown): PessoaListStatus {
+  const normalized = String(raw ?? "").trim().toLowerCase();
+  if (normalized === "all") return "all";
+  if (normalized === "removed" || normalized === "removidas" || normalized === "inativas" || normalized === "inactive") {
+    return "removed";
+  }
+  return "active";
+}
 
 export function createPessoasController(service: PessoasService) {
   const billingService = new BillingService();
@@ -215,12 +224,13 @@ export function createPessoasController(service: PessoasService) {
 
     list: async (req: Request, res: Response) => {
       const userId = getUserId(req);
+      const status = resolvePessoaListStatus(req.query.status);
       const includeResumoRaw = String(req.query.includeResumo ?? "").trim().toLowerCase();
       const includeResumo = includeResumoRaw === "true" || includeResumoRaw === "1";
       if (includeResumo) {
-        return res.json(await service.listWithResumo(userId));
+        return res.json(await service.listWithResumo(userId, status));
       }
-      return res.json(await service.list(userId));
+      return res.json(await service.list(userId, status));
     },
 
     create: async (req: Request, res: Response) => {
@@ -269,6 +279,16 @@ export function createPessoasController(service: PessoasService) {
         return sendNotFound(res);
       }
       return res.json({ success: true });
+    },
+
+    restore: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const pessoaId = getParam(req, "id");
+      const restored = await service.restore(pessoaId, userId);
+      if (!restored) {
+        return sendNotFound(res);
+      }
+      return res.json(restored);
     },
   };
 }

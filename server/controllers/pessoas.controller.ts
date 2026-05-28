@@ -1,13 +1,23 @@
 import type { Request, Response } from "express";
-import { PessoasService } from "../services/pessoas.service";
+import { PessoasService, type PessoaListStatus } from "../services/pessoas.service";
 import { pessoaBody, pessoaUpdateBody } from "../validators/core-domain.validators";
 import { getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils";
+
+function resolvePessoaListStatus(raw: unknown): PessoaListStatus {
+  const normalized = String(raw ?? "").trim().toLowerCase();
+  if (normalized === "all") return "all";
+  if (normalized === "removed" || normalized === "removidas" || normalized === "inativas" || normalized === "inactive") {
+    return "removed";
+  }
+  return "active";
+}
 
 export function createPessoasController(service: PessoasService) {
   return {
     list: async (req: Request, res: Response) => {
       const userId = getUserId(req);
-      return res.json(await service.list(userId));
+      const status = resolvePessoaListStatus(req.query.status);
+      return res.json(await service.list(userId, status));
     },
 
     create: async (req: Request, res: Response) => {
@@ -41,6 +51,16 @@ export function createPessoasController(service: PessoasService) {
         return sendNotFound(res);
       }
       return res.json({ success: true });
+    },
+
+    restore: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const pessoaId = getParam(req, "id");
+      const restored = await service.restore(pessoaId, userId);
+      if (!restored) {
+        return sendNotFound(res);
+      }
+      return res.json(restored);
     },
   };
 }

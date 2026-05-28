@@ -88,6 +88,8 @@ export type PessoaResumo = {
   };
 };
 
+export type PessoaListStatus = "active" | "removed" | "all";
+
 type CreatePessoaSaldoMovimentacaoResult =
   | { error: "PESSOA_NOT_FOUND" }
   | { error: "VALOR_INVALIDO" }
@@ -639,11 +641,11 @@ function computePessoaResumo({
 export class PessoasService {
   constructor(private readonly storage: IStorage) {}
 
-  async list(userId: string) {
-    return this.storage.getPessoas(userId);
+  async list(userId: string, status: PessoaListStatus = "active") {
+    return this.storage.getPessoasByStatus(userId, status);
   }
 
-  async listWithResumo(userId: string) {
+  async listWithResumo(userId: string, status: PessoaListStatus = "active") {
     const [
       pessoas,
       dividas,
@@ -653,7 +655,7 @@ export class PessoasService {
       servicoPagamentos,
       saldoMovimentacoes,
     ] = await Promise.all([
-      this.storage.getPessoas(userId),
+      this.storage.getPessoasByStatus(userId, status),
       this.storage.getDividas(userId),
       this.storage.getComprasCartao(userId),
       this.storage.getParcelasCompraByUser(userId),
@@ -741,6 +743,10 @@ export class PessoasService {
 
   async delete(id: string, userId: string) {
     return this.storage.deletePessoa(id, userId);
+  }
+
+  async restore(id: string, userId: string) {
+    return this.storage.restorePessoa(id, userId);
   }
 
   async listSaldoMovimentacoesByUser(userId: string): Promise<PessoaSaldoMovimentacao[]> {

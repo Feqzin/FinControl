@@ -2,6 +2,8 @@ import { format } from "date-fns";
 import type { Pessoa } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 
+export type PessoaListStatus = "active" | "removed" | "all";
+
 export type PessoaPayload = {
   nome: string;
   tipo: string;
@@ -237,6 +239,16 @@ export async function deletePessoa(id: string): Promise<void> {
   await apiRequest("DELETE", `/api/pessoas/${id}`);
 }
 
+export async function restorePessoa(id: string): Promise<void> {
+  await apiRequest("PATCH", `/api/pessoas/${id}/restore`);
+}
+
+export async function listPessoas(status: PessoaListStatus = "active"): Promise<Pessoa[]> {
+  const suffix = status === "active" ? "" : `?status=${encodeURIComponent(status)}`;
+  const res = await apiRequest("GET", `/api/pessoas${suffix}`);
+  return (await res.json()) as Pessoa[];
+}
+
 export async function createDividaPessoa(payload: DividaPessoaPayload): Promise<void> {
   await apiRequest("POST", "/api/dividas", payload);
 }
@@ -300,8 +312,11 @@ export async function getPessoaResumo(pessoaId: string): Promise<PessoaResumo> {
   return (await res.json()) as PessoaResumo;
 }
 
-export async function listPessoasWithResumo(): Promise<PessoaWithResumo[]> {
-  const res = await apiRequest("GET", "/api/pessoas?includeResumo=true");
+export async function listPessoasWithResumo(status: PessoaListStatus = "active"): Promise<PessoaWithResumo[]> {
+  const suffix = status === "active"
+    ? "?includeResumo=true"
+    : `?includeResumo=true&status=${encodeURIComponent(status)}`;
+  const res = await apiRequest("GET", `/api/pessoas${suffix}`);
   return (await res.json()) as PessoaWithResumo[];
 }
 

@@ -22,6 +22,7 @@ import {
   deletePessoa,
   desvincularPessoaDeCompra,
   getPessoaResumo,
+  listPessoas,
   listPessoasWithResumo,
   listPessoaSaldoMovimentacoes,
   listTimelinePagamentosByPessoa,
@@ -29,6 +30,7 @@ import {
   marcarServicoPessoaComoPago,
   reverterDividaPessoaParaPendente,
   reverterServicoPessoaPago,
+  restorePessoa,
   vincularPessoaEmCompra,
   type PessoaSaldoMovimentacaoPayload,
   type PessoaSaldoMovimentacoesResponse,
@@ -142,6 +144,8 @@ export function usePessoas({
   historyPessoa,
   historyFilter,
 }: UsePessoasArgs) {
+  const isRemovedFilter = filterTipo === "removidas";
+
   const invalidateTimeline = () => {
     if (historyPessoa?.id) {
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas", historyPessoa.id, "timeline-pagamentos"] });
@@ -150,12 +154,18 @@ export function usePessoas({
 
   const pessoasComResumoQuery = useQuery<PessoaWithResumo[]>({
     queryKey: ["/api/pessoas", "includeResumo=true"],
-    queryFn: () => listPessoasWithResumo(),
+    queryFn: () => listPessoasWithResumo("active"),
   });
   const shouldUseLegacyPessoasList = pessoasComResumoQuery.isError;
   const legacyPessoasQuery = useQuery<Pessoa[]>({
-    queryKey: ["/api/pessoas"],
+    queryKey: ["/api/pessoas", "status=active"],
     enabled: shouldUseLegacyPessoasList,
+    queryFn: () => listPessoas("active"),
+  });
+  const removedPessoasQuery = useQuery<Pessoa[]>({
+    queryKey: ["/api/pessoas", "status=removed"],
+    enabled: isRemovedFilter,
+    queryFn: () => listPessoas("removed"),
   });
 
   const pessoasFromBatch = useMemo<Pessoa[]>(() => {
@@ -163,13 +173,15 @@ export function usePessoas({
     return data.map(({ resumo: _resumo, ...pessoa }) => pessoa);
   }, [pessoasComResumoQuery.data]);
 
-  const pessoas = shouldUseLegacyPessoasList
+  const pessoasAtivas = shouldUseLegacyPessoasList
     ? (legacyPessoasQuery.data ?? [])
     : pessoasFromBatch;
+  const pessoasRemovidas = removedPessoasQuery.data ?? [];
+  const pessoas = isRemovedFilter ? pessoasRemovidas : pessoasAtivas;
 
-  const isLoading = shouldUseLegacyPessoasList
-    ? legacyPessoasQuery.isLoading
-    : pessoasComResumoQuery.isLoading;
+  const isLoading = isRemovedFilter
+    ? removedPessoasQuery.isLoading
+    : (shouldUseLegacyPessoasList ? legacyPessoasQuery.isLoading : pessoasComResumoQuery.isLoading);
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: comprasCartao = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
   const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
@@ -216,11 +228,14 @@ export function usePessoas({
   }, [pessoasComResumoQuery.data]);
 
   const shouldUseResumoPerPessoaFallback =
-    shouldUseLegacyPessoasList
-    || pessoas.some((pessoa) => !resumoByIdFromBatch.has(pessoa.id));
+    !isRemovedFilter
+    && (
+      shouldUseLegacyPessoasList
+      || pessoasAtivas.some((pessoa) => !resumoByIdFromBatch.has(pessoa.id))
+    );
 
   const pessoaResumoQueries = useQueries({
-    queries: pessoas.map((pessoa) => ({
+    queries: pessoasAtivas.map((pessoa) => ({
       queryKey: ["/api/pessoas", pessoa.id, "resumo"],
       enabled: shouldUseResumoPerPessoaFallback && Boolean(pessoa.id),
       staleTime: 30_000,
@@ -234,14 +249,14 @@ export function usePessoas({
       return map;
     }
 
-    pessoas.forEach((pessoa, index) => {
+    pessoasAtivas.forEach((pessoa, index) => {
       const resumo = pessoaResumoQueries[index]?.data;
       if (resumo) {
         map.set(pessoa.id, resumo);
       }
     });
     return map;
-  }, [pessoaResumoQueries, pessoas, resumoByIdFromBatch, shouldUseResumoPerPessoaFallback]);
+  }, [pessoaResumoQueries, pessoasAtivas, resumoByIdFromBatch, shouldUseResumoPerPessoaFallback]);
 
   const createPessoaMutation = useMutation({
     mutationFn: (payload: PessoaPayload) => createPessoa(payload),
@@ -295,6 +310,13 @@ export function usePessoas({
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
+    },
+  });
+  const restorePessoaMutation = useMutation({
+    mutationFn: (id: string) => restorePessoa(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
     },
   });
 
@@ -466,6 +488,13 @@ export function usePessoas({
       pessoas
         .filter((p) => normalizeName(p?.nome).includes(normalizeName(search)))
         .filter((pessoa) => {
+          if (isRemovedFilter) {
+            return Boolean(pessoa.deletedAt);
+          }
+          return !pessoa.deletedAt;
+        })
+        .filter((pessoa) => {
+          if (isRemovedFilter) return true;
           const resumo = (() => {
             try {
               return getPessoaResumoConsolidado(pessoa.id);
@@ -477,14 +506,25 @@ export function usePessoas({
           if (!resumo) return filterTipo === "todos" || filterTipo === "atrasados";
           return matchesPessoaTipoFilter(filterTipo, resumo);
         }),
-    [comprasCartao, dividas, filterTipo, pessoaResumoById, pessoas, search, servicoPagamentos, servicoPessoas, meAtual],
+    [
+      comprasCartao,
+      dividas,
+      filterTipo,
+      pessoaResumoById,
+      pessoas,
+      search,
+      servicoPagamentos,
+      servicoPessoas,
+      meAtual,
+      isRemovedFilter,
+    ],
   );
 
   const duplicatePessoaByName = (nome: string): Pessoa | null => {
     if (nome.trim().length < 2) return null;
     const target = normalizeName(nome);
     return (
-      pessoas.find((p) => {
+      pessoasAtivas.find((p) => {
         const existing = normalizeName(p?.nome);
         return existing === target || existing.includes(target) || target.includes(existing);
       }) || null
@@ -707,6 +747,7 @@ export function usePessoas({
     reverterDividaPagamentoMutation,
     updatePessoaMutation,
     deleteMutation,
+    restorePessoaMutation,
     marcarServicoPagoMutation,
     reverterServicoPagoMutation,
     createSaldoMovimentacaoMutation,
