@@ -28,6 +28,12 @@ export const pessoaBody = z.object({
 
 export const pessoaUpdateBody = pessoaBody.partial();
 
+export const pessoaRecoverOrphanLinksBody = z.object({
+  orphanGroupKey: z.string().trim().min(1),
+  nome: z.string().trim().min(1).optional().nullable(),
+  pessoaIdExistente: z.string().trim().min(1).optional().nullable(),
+});
+
 export const servicoBody = z.object({
   nome: z.string().min(1),
   categoria: servicoCategoriaField,
@@ -108,6 +114,7 @@ export const patrimonioUpdateBody = insertPatrimonioSchema
 
 export type PessoaBodyInput = z.infer<typeof pessoaBody>;
 export type PessoaUpdateBodyInput = z.infer<typeof pessoaUpdateBody>;
+export type PessoaRecoverOrphanLinksBodyInput = z.infer<typeof pessoaRecoverOrphanLinksBody>;
 export type ServicoBodyInput = z.infer<typeof servicoBody>;
 export type ServicoUpdateBodyInput = z.infer<typeof servicoUpdateBody>;
 export type ServicoPessoaBodyInput = z.infer<typeof servicoPessoaBody>;

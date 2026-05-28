@@ -22,6 +22,7 @@ import {
   deletePessoa,
   desvincularPessoaDeCompra,
   getPessoaResumo,
+  listPessoasOrfas,
   listPessoas,
   listPessoasWithResumo,
   listPessoaSaldoMovimentacoes,
@@ -31,9 +32,11 @@ import {
   reverterDividaPessoaParaPendente,
   reverterServicoPessoaPago,
   restorePessoa,
+  recoverPessoaOrphanLinks,
   vincularPessoaEmCompra,
   type PessoaSaldoMovimentacaoPayload,
   type PessoaSaldoMovimentacoesResponse,
+  type PessoaOrphanLinksGroup,
   type PessoaResumo,
   type PessoaWithResumo,
   updateTimelinePagamentoObservacao,
@@ -166,6 +169,10 @@ export function usePessoas({
     queryKey: ["/api/pessoas", "status=removed"],
     enabled: isRemovedFilter,
     queryFn: () => listPessoas("removed"),
+  });
+  const orphanGroupsQuery = useQuery<PessoaOrphanLinksGroup[]>({
+    queryKey: ["/api/pessoas/orfas"],
+    queryFn: () => listPessoasOrfas(),
   });
 
   const pessoasFromBatch = useMemo<Pessoa[]>(() => {
@@ -317,6 +324,24 @@ export function usePessoas({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas/orfas"] });
+    },
+  });
+
+  const recoverOrphanLinksMutation = useMutation({
+    mutationFn: (payload: {
+      orphanGroupKey: string;
+      nome?: string | null;
+      pessoaIdExistente?: string | null;
+    }) => recoverPessoaOrphanLinks(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas/orfas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/servico-pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
+      invalidateTimeline();
     },
   });
 
@@ -723,6 +748,8 @@ export function usePessoas({
 
   return {
     pessoas,
+    orphanGroups: orphanGroupsQuery.data ?? [],
+    isOrphanGroupsLoading: orphanGroupsQuery.isLoading,
     dividas,
     comprasCartao,
     cartoes,
@@ -748,6 +775,7 @@ export function usePessoas({
     updatePessoaMutation,
     deleteMutation,
     restorePessoaMutation,
+    recoverOrphanLinksMutation,
     marcarServicoPagoMutation,
     reverterServicoPagoMutation,
     createSaldoMovimentacaoMutation,

@@ -227,6 +227,38 @@ export type PessoaWithResumo = Pessoa & {
   resumo?: PessoaResumoEmLote;
 };
 
+export type PessoaOrphanLinksGroup = {
+  orphanGroupKey: string;
+  nomeSugerido: string;
+  sourcePessoaId: string;
+  dividasCount: number;
+  linkedServicosCount: number;
+  linkedComprasCount: number;
+  totalAReceber: number;
+  totalAPagar: number;
+  exemplos: Array<{
+    dividaId: string;
+    descricao: string | null;
+    tipo: "receber" | "pagar" | string;
+    valor: string;
+    status: string;
+  }>;
+};
+
+export type RecoverOrphanLinksPayload = {
+  orphanGroupKey: string;
+  nome?: string | null;
+  pessoaIdExistente?: string | null;
+};
+
+export type RecoverOrphanLinksResponse = {
+  pessoaId: string;
+  createdPessoa: boolean;
+  linkedDividasCount: number;
+  linkedServicosCount: number;
+  linkedComprasCount: number;
+};
+
 export async function createPessoa(payload: PessoaPayload): Promise<void> {
   await apiRequest("POST", "/api/pessoas", payload);
 }
@@ -241,6 +273,18 @@ export async function deletePessoa(id: string): Promise<void> {
 
 export async function restorePessoa(id: string): Promise<void> {
   await apiRequest("PATCH", `/api/pessoas/${id}/restore`);
+}
+
+export async function listPessoasOrfas(): Promise<PessoaOrphanLinksGroup[]> {
+  const res = await apiRequest("GET", "/api/pessoas/orfas");
+  return (await res.json()) as PessoaOrphanLinksGroup[];
+}
+
+export async function recoverPessoaOrphanLinks(
+  payload: RecoverOrphanLinksPayload,
+): Promise<RecoverOrphanLinksResponse> {
+  const res = await apiRequest("POST", "/api/pessoas/recover-orphan-links", payload);
+  return (await res.json()) as RecoverOrphanLinksResponse;
 }
 
 export async function listPessoas(status: PessoaListStatus = "active"): Promise<Pessoa[]> {

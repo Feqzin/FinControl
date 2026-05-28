@@ -11,6 +11,7 @@ import "./imports-reconcile-route.test";
 import "./parcelas-compra-competencia-route.test";
 import "./comprovante-upload.test";
 import "./ownership.test";
+import "./pessoas-orphan-recovery.test";
 import "./errors-sanitization.test";
 import "./backup-import-servicos-periodicidade.test";
 import "./servicos-categoria-validation.test";

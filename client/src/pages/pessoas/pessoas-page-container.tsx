@@ -63,6 +63,7 @@ export default function PessoasPage() {
   const [, setLocation] = useLocation();
   const [openPessoa, setOpenPessoa] = useState(false);
   const [openDivida, setOpenDivida] = useState(false);
+  const [openOrphanRecovery, setOpenOrphanRecovery] = useState(false);
   const [selectedPessoa, setSelectedPessoa] = useState<Pessoa | null>(null);
   const [historyPessoa, setHistoryPessoa] = useState<Pessoa | null>(null);
   const [search, setSearch] = useState("");
@@ -112,6 +113,8 @@ export default function PessoasPage() {
   const [visiblePessoasCount, setVisiblePessoasCount] = useState(prefs.mobileMode ? 12 : 18);
   const [vincularCompraOpen, setVincularCompraOpen] = useState(false);
   const [compraSelecionadaParaVinculo, setCompraSelecionadaParaVinculo] = useState<string | null>(null);
+  const [orphanFormByKey, setOrphanFormByKey] = useState<Record<string, { nome: string; pessoaIdExistente: string }>>({});
+  const [ignoredOrphanGroups, setIgnoredOrphanGroups] = useState<string[]>([]);
 
   const [pessoaForm, setPessoaForm] = useState<{ nome: string; tipo: PessoaKind; telefone: string; observacao: string }>({
     nome: "",
@@ -131,6 +134,8 @@ export default function PessoasPage() {
     servicoPessoas,
     servicoPagamentos,
     servicos,
+    orphanGroups,
+    isOrphanGroupsLoading,
     isLoading,
     filtered,
     meAtual,
@@ -149,6 +154,7 @@ export default function PessoasPage() {
     updatePessoaMutation,
     deleteMutation,
     restorePessoaMutation,
+    recoverOrphanLinksMutation,
     marcarServicoPagoMutation,
     reverterServicoPagoMutation,
     createSaldoMovimentacaoMutation,
@@ -281,6 +287,10 @@ export default function PessoasPage() {
     }, 0);
   const visiblePessoas = sortedFilteredByStatus.slice(0, visiblePessoasCount);
   const hasMorePessoas = sortedFilteredByStatus.length > visiblePessoas.length;
+  const visibleOrphanGroups = orphanGroups.filter(
+    (group) => !ignoredOrphanGroups.includes(group.orphanGroupKey),
+  );
+  const pessoasAtivasParaVinculo = pessoas.filter((pessoa) => !pessoa.deletedAt);
   const visibleHistoryDividas = historyDividas.slice(0, historyVisible.dividas);
   const visibleHistoryCompras = historyCompras.slice(0, historyVisible.compras);
   const visibleHistoryServicos = historyServicoPessoas.slice(0, historyVisible.servicos);
@@ -400,6 +410,75 @@ export default function PessoasPage() {
     });
   };
 
+  const getOrphanForm = (orphanGroupKey: string, nomeSugerido: string) => {
+    return orphanFormByKey[orphanGroupKey] ?? { nome: nomeSugerido, pessoaIdExistente: "" };
+  };
+
+  const setOrphanFormValue = (
+    orphanGroupKey: string,
+    nomeSugerido: string,
+    patch: Partial<{ nome: string; pessoaIdExistente: string }>,
+  ) => {
+    const current = getOrphanForm(orphanGroupKey, nomeSugerido);
+    setOrphanFormByKey((prev) => ({
+      ...prev,
+      [orphanGroupKey]: {
+        nome: patch.nome ?? current.nome,
+        pessoaIdExistente: patch.pessoaIdExistente ?? current.pessoaIdExistente,
+      },
+    }));
+  };
+
+  const handleRecoverOrphanAsNewPessoa = (orphanGroupKey: string, nomeSugerido: string) => {
+    const form = getOrphanForm(orphanGroupKey, nomeSugerido);
+    const nome = form.nome.trim();
+    if (!nome) {
+      toast({ title: "Informe um nome para recuperar os vínculos", variant: "destructive" });
+      return;
+    }
+
+    recoverOrphanLinksMutation.mutate(
+      { orphanGroupKey, nome },
+      {
+        onSuccess: (result) => {
+          toast({
+            title: result.createdPessoa ? "Pessoa recuperada com sucesso" : "Vínculos recuperados com sucesso",
+            description: `${result.linkedDividasCount} dívida(s), ${result.linkedComprasCount} compra(s) e ${result.linkedServicosCount} serviço(s) vinculados.`,
+          });
+          setIgnoredOrphanGroups((prev) => [...prev, orphanGroupKey]);
+        },
+        onError: (err: Error) => {
+          toast({ title: "Erro ao recuperar vínculos", description: err.message, variant: "destructive" });
+        },
+      },
+    );
+  };
+
+  const handleRecoverOrphanToExistingPessoa = (orphanGroupKey: string, nomeSugerido: string) => {
+    const form = getOrphanForm(orphanGroupKey, nomeSugerido);
+    const pessoaIdExistente = form.pessoaIdExistente.trim();
+    if (!pessoaIdExistente) {
+      toast({ title: "Selecione uma pessoa de destino", variant: "destructive" });
+      return;
+    }
+
+    recoverOrphanLinksMutation.mutate(
+      { orphanGroupKey, pessoaIdExistente },
+      {
+        onSuccess: (result) => {
+          toast({
+            title: "Vínculos recuperados com sucesso",
+            description: `${result.linkedDividasCount} dívida(s), ${result.linkedComprasCount} compra(s) e ${result.linkedServicosCount} serviço(s) vinculados.`,
+          });
+          setIgnoredOrphanGroups((prev) => [...prev, orphanGroupKey]);
+        },
+        onError: (err: Error) => {
+          toast({ title: "Erro ao recuperar vínculos", description: err.message, variant: "destructive" });
+        },
+      },
+    );
+  };
+
   return (
     <div className="app-page-shell app-section-stack" data-testid="pessoas-page">
       <PessoasPageHeader
@@ -417,6 +496,29 @@ export default function PessoasPage() {
         onFilterChange={setFilterTipo}
         onSortChange={setSortBy}
       />
+
+      {!isRemovedFilter && !isOrphanGroupsLoading && visibleOrphanGroups.length > 0 && (
+        <div className="rounded-xl border border-amber-300/80 bg-amber-50/70 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>
+                Encontramos vínculos sem pessoa cadastrada.
+                Revise para restaurar os relacionamentos das dívidas e vínculos antigos.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-amber-400/70 bg-white/80 text-amber-900 hover:bg-white dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-100"
+              onClick={() => setOpenOrphanRecovery(true)}
+              data-testid="button-review-orphan-links"
+            >
+              Revisar vínculos
+            </Button>
+          </div>
+        </div>
+      )}
 
       {sortedFilteredByStatus.length === 0 ? (
         <PessoasEmptyState
@@ -687,6 +789,104 @@ export default function PessoasPage() {
               {createDividaMutation.isPending ? "Registrando..." : "Registrar divida"}
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={openOrphanRecovery} onOpenChange={setOpenOrphanRecovery}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Revisar vínculos órfãos</DialogTitle>
+          </DialogHeader>
+          {visibleOrphanGroups.length === 0 ? (
+            <div className="rounded-md border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
+              Nenhum vínculo órfão pendente para revisão.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {visibleOrphanGroups.map((group) => {
+                const form = getOrphanForm(group.orphanGroupKey, group.nomeSugerido);
+                return (
+                  <div key={group.orphanGroupKey} className="rounded-lg border border-border/70 bg-background/95 p-3 space-y-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold">{group.nomeSugerido}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {group.dividasCount} dívida(s) · {group.linkedComprasCount} compra(s) · {group.linkedServicosCount} serviço(s)
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          A receber: {formatCurrencyBRL(group.totalAReceber)} · A pagar: {formatCurrencyBRL(group.totalAPagar)}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIgnoredOrphanGroups((prev) => [...prev, group.orphanGroupKey])}
+                      >
+                        Ignorar
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label>Nome para restaurar</Label>
+                        <Input
+                          value={form.nome}
+                          onChange={(event) => setOrphanFormValue(group.orphanGroupKey, group.nomeSugerido, { nome: event.target.value })}
+                          placeholder="Nome da pessoa"
+                          data-testid={`input-orphan-name-${group.orphanGroupKey}`}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Vincular a pessoa existente</Label>
+                        <Select
+                          value={form.pessoaIdExistente || undefined}
+                          onValueChange={(value) => setOrphanFormValue(group.orphanGroupKey, group.nomeSugerido, { pessoaIdExistente: value })}
+                        >
+                          <SelectTrigger data-testid={`select-orphan-person-${group.orphanGroupKey}`}>
+                            <SelectValue placeholder="Selecione uma pessoa" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {pessoasAtivasParaVinculo.map((pessoa) => (
+                              <SelectItem key={pessoa.id} value={pessoa.id}>
+                                {pessoa.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {group.exemplos.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Exemplo: {group.exemplos[0].descricao?.trim() || `Dívida ${group.exemplos[0].dividaId.slice(0, 8)}`}
+                      </p>
+                    )}
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleRecoverOrphanAsNewPessoa(group.orphanGroupKey, group.nomeSugerido)}
+                        disabled={recoverOrphanLinksMutation.isPending}
+                        data-testid={`button-recover-orphan-new-${group.orphanGroupKey}`}
+                      >
+                        Restaurar como pessoa
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => handleRecoverOrphanToExistingPessoa(group.orphanGroupKey, group.nomeSugerido)}
+                        disabled={recoverOrphanLinksMutation.isPending}
+                        data-testid={`button-recover-orphan-existing-${group.orphanGroupKey}`}
+                      >
+                        Vincular a pessoa existente
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

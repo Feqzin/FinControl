@@ -29,6 +29,12 @@ export const pessoaBody = z.object({
 
 export const pessoaUpdateBody = pessoaBody.partial();
 
+export const pessoaRecoverOrphanLinksBody = z.object({
+  orphanGroupKey: z.string().trim().min(1),
+  nome: z.string().trim().min(1).optional().nullable(),
+  pessoaIdExistente: z.string().trim().min(1).optional().nullable(),
+});
+
 export const pessoaSaldoMovimentacaoBody = z.object({
   tipo: z.enum(["credito", "debito"]),
   valor: moneyField,
@@ -146,6 +152,7 @@ export const patrimonioUpdateBody = insertPatrimonioSchema
 
 export type PessoaBodyInput = z.infer<typeof pessoaBody>;
 export type PessoaUpdateBodyInput = z.infer<typeof pessoaUpdateBody>;
+export type PessoaRecoverOrphanLinksBodyInput = z.infer<typeof pessoaRecoverOrphanLinksBody>;
 export type PessoaSaldoMovimentacaoBodyInput = z.infer<typeof pessoaSaldoMovimentacaoBody>;
 export type PessoaAbaterSaldoDividaBodyInput = z.infer<typeof pessoaAbaterSaldoDividaBody>;
 export type PessoaAbaterSaldoServicoBodyInput = z.infer<typeof pessoaAbaterSaldoServicoBody>;

@@ -5,6 +5,7 @@ import {
   pessoaAbaterSaldoDividaBody,
   pessoaAbaterSaldoServicoBody,
   pessoaBody,
+  pessoaRecoverOrphanLinksBody,
   pessoaSaldoMovimentacaoBody,
   pessoaUpdateBody,
 } from "../validators/core-domain.validators.js";
@@ -289,6 +290,38 @@ export function createPessoasController(service: PessoasService) {
         return sendNotFound(res);
       }
       return res.json(restored);
+    },
+
+    listOrfas: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      return res.json(await service.listOrphanLinks(userId));
+    },
+
+    recoverOrphanLinks: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const parsed = pessoaRecoverOrphanLinksBody.safeParse(req.body);
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+
+      const result = await service.recoverOrphanLinks(userId, parsed.data);
+      if ("error" in result) {
+        if (result.error === "TARGET_PESSOA_NOT_FOUND") {
+          return sendNotFound(res, "Pessoa de destino nao encontrada.");
+        }
+        if (result.error === "ORPHAN_GROUP_NOT_FOUND") {
+          return sendNotFound(res, "Nenhum vinculo orfao encontrado para o grupo informado.");
+        }
+        if (result.error === "TARGET_PESSOA_REMOVED") {
+          return sendBadRequest(res, "A pessoa de destino esta removida. Restaure-a antes de vincular.");
+        }
+        if (result.error === "NOME_REQUIRED") {
+          return sendBadRequest(res, "Informe um nome para recuperar os vinculos orfaos.");
+        }
+        return sendBadRequest(res, "Chave de grupo orfao invalida.");
+      }
+
+      return res.json(result);
     },
   };
 }
