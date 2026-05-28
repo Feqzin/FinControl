@@ -10,6 +10,10 @@ import {
   sortDividasViewItems,
 } from "../src/pages/dividas/dividas.utils";
 import { sortPessoasForView } from "../src/pages/pessoas/pessoas-sort.utils";
+import {
+  getPessoaFilterFinancialTotals,
+  matchesPessoaTipoFilter,
+} from "../src/pages/pessoas/pessoas-filter.utils";
 import { sortServicosForView } from "../src/pages/servicos/servicos-sort.utils";
 import {
   buildServicoPeriodicidadeResumo,
@@ -725,6 +729,37 @@ test("pessoas utils: campos indefinidos usam fallback seguro", () => {
   });
 
   assert.deepEqual(sorted.map((pessoa) => pessoa.id), ["p2", "p1"]);
+});
+
+test("pessoas filtro: eu_devo considera dívidas onde usuário deve", () => {
+  const resumo = {
+    dividas: {
+      comigo: { pendente: 0 },
+      euDevo: { pendente: 94.38 },
+    },
+    comprasVinculadas: { pendentePessoa: 0 },
+    servicosMesAtual: { pendente: 0 },
+  };
+
+  assert.equal(matchesPessoaTipoFilter("eu_devo", resumo), true);
+  assert.equal(matchesPessoaTipoFilter("me_deve", resumo), false);
+});
+
+test("pessoas filtro: me_deve considera dívidas + compras + serviços pendentes", () => {
+  const resumo = {
+    dividas: {
+      comigo: { pendente: 30 },
+      euDevo: { pendente: 0 },
+    },
+    comprasVinculadas: { pendentePessoa: 20 },
+    servicosMesAtual: { pendente: 10 },
+  };
+
+  const totais = getPessoaFilterFinancialTotals(resumo);
+  assert.equal(totais.valorMeDevem, 60);
+  assert.equal(totais.valorEuDevo, 0);
+  assert.equal(matchesPessoaTipoFilter("me_deve", resumo), true);
+  assert.equal(matchesPessoaTipoFilter("eu_devo", resumo), false);
 });
 
 test("servicos utils: ordena por nome A-Z e Z-A", () => {

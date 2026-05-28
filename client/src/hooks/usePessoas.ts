@@ -11,6 +11,7 @@ import type {
 } from "@shared/schema";
 import { format } from "date-fns";
 import { queryClient } from "@/lib/queryClient";
+import { matchesPessoaTipoFilter } from "@/pages/pessoas/pessoas-filter.utils";
 import {
   abaterSaldoParcelaPessoa,
   abaterSaldoDividaPessoa,
@@ -458,15 +459,26 @@ export function usePessoas({
       .filter((d) => d.pessoaId === pessoaId)
       .sort((a, b) => (b.dataVencimento ?? "").localeCompare(a.dataVencimento ?? ""));
 
+  const meAtual = format(new Date(), "yyyy-MM");
+
   const filtered = useMemo(
     () =>
       pessoas
         .filter((p) => normalizeName(p?.nome).includes(normalizeName(search)))
-        .filter((p) => filterTipo === "todos" || filterTipo === "atrasados" || p.tipo === filterTipo),
-    [filterTipo, pessoas, search],
-  );
+        .filter((pessoa) => {
+          const resumo = (() => {
+            try {
+              return getPessoaResumoConsolidado(pessoa.id);
+            } catch {
+              return null;
+            }
+          })();
 
-  const meAtual = format(new Date(), "yyyy-MM");
+          if (!resumo) return filterTipo === "todos" || filterTipo === "atrasados";
+          return matchesPessoaTipoFilter(filterTipo, resumo);
+        }),
+    [comprasCartao, dividas, filterTipo, pessoaResumoById, pessoas, search, servicoPagamentos, servicoPessoas, meAtual],
+  );
 
   const duplicatePessoaByName = (nome: string): Pessoa | null => {
     if (nome.trim().length < 2) return null;

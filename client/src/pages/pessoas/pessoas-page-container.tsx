@@ -683,8 +683,8 @@ export default function PessoasPage() {
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto px-4 sm:px-6">
           {historyPessoa && historyStats && historyResumo && (
             <>
-              <SheetHeader className="mb-3 sticky top-0 z-10 bg-background/95 backdrop-blur pb-2 border-b border-border/50">
-                <SheetTitle className="text-base sm:text-lg">Histórico — {historyPessoa.nome}</SheetTitle>
+              <SheetHeader className="mb-4 border-b border-border/50 pb-2">
+                <SheetTitle className="text-base sm:text-lg">Histórico de {historyPessoa.nome}</SheetTitle>
               </SheetHeader>
 
               <div className="mb-4 rounded-lg border border-border/60 bg-muted/30 p-3">
