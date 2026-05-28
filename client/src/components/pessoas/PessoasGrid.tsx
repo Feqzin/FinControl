@@ -13,6 +13,7 @@ type PessoasGridProps = {
   onDelete: (pessoa: Pessoa) => void;
   showRemovedActions?: boolean;
   onRestore?: (pessoa: Pessoa) => void;
+  onPermanentDelete?: (pessoa: Pessoa) => void;
 };
 
 export function PessoasGrid({
@@ -26,6 +27,7 @@ export function PessoasGrid({
   onDelete,
   showRemovedActions = false,
   onRestore,
+  onPermanentDelete,
 }: PessoasGridProps) {
   if (mobileMode) {
     return (
@@ -43,6 +45,7 @@ export function PessoasGrid({
             onDelete={onDelete}
             showRemovedActions={showRemovedActions}
             onRestore={onRestore}
+            onPermanentDelete={onPermanentDelete}
           />
         ))}
       </div>
@@ -64,6 +67,7 @@ export function PessoasGrid({
           onDelete={onDelete}
           showRemovedActions={showRemovedActions}
           onRestore={onRestore}
+          onPermanentDelete={onPermanentDelete}
         />
       ))}
     </div>

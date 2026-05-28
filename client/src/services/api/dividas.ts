@@ -1,4 +1,13 @@
 import { apiRequest } from "@/lib/queryClient";
+import type { Divida } from "@shared/schema";
+
+export type DividaListStatus = "active" | "removed" | "all";
+
+export async function listDividas(status: DividaListStatus = "active"): Promise<Divida[]> {
+  const suffix = status === "active" ? "" : `?status=${encodeURIComponent(status)}`;
+  const res = await apiRequest("GET", `/api/dividas${suffix}`);
+  return (await res.json()) as Divida[];
+}
 
 export async function createDividaSimples(payload: Record<string, unknown>): Promise<void> {
   await apiRequest("POST", "/api/dividas", payload);
@@ -19,6 +28,14 @@ export async function anteciparParcelas(payload: { dividaId: string; quantidade:
 
 export async function deleteDivida(id: string): Promise<void> {
   await apiRequest("DELETE", `/api/dividas/${id}`);
+}
+
+export async function restoreDivida(id: string): Promise<void> {
+  await apiRequest("PATCH", `/api/dividas/${id}/restore`);
+}
+
+export async function deleteDividaPermanent(id: string): Promise<void> {
+  await apiRequest("DELETE", `/api/dividas/${id}/permanent`);
 }
 
 export async function updateDivida(id: string, payload: Record<string, unknown>): Promise<void> {

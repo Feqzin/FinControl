@@ -7,6 +7,7 @@ type PessoasController = {
   update: RequestHandler;
   delete: RequestHandler;
   restore: RequestHandler;
+  deletePermanent: RequestHandler;
   listOrfas: RequestHandler;
   recoverOrphanLinks: RequestHandler;
 };
@@ -68,6 +69,7 @@ export function registerCoreDomainRoutes(app: Express, controllers: CoreDomainCo
   app.patch("/api/pessoas/:id", requireAuth, pessoasController.update);
   app.delete("/api/pessoas/:id", requireAuth, pessoasController.delete);
   app.patch("/api/pessoas/:id/restore", requireAuth, pessoasController.restore);
+  app.delete("/api/pessoas/:id/permanent", requireAuth, pessoasController.deletePermanent);
   app.get("/api/pessoas/orfas", requireAuth, pessoasController.listOrfas);
   app.post("/api/pessoas/recover-orphan-links", requireAuth, pessoasController.recoverOrphanLinks);
 

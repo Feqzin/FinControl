@@ -176,6 +176,10 @@ function toCartaoInsert(row: JsonRow, label: string): InsertCartaoWithId {
 }
 
 function toDividaInsert(row: JsonRow, label: string): InsertDividaWithId {
+  const deletedAt =
+    readOptionalTimestamp(row, "deletedAt", label)
+    ?? readOptionalTimestamp(row, "deleted_at", label);
+
   return {
     id: readRequiredString(row, "id", label),
     userId: readRequiredString(row, "userId", label),
@@ -195,6 +199,7 @@ function toDividaInsert(row: JsonRow, label: string): InsertDividaWithId {
     descricao: readOptionalString(row, "descricao", label),
     totalParcelas: readOptionalInteger(row, "totalParcelas", label),
     valorTotal: readOptionalDecimal(row, "valorTotal", label),
+    deletedAt,
   };
 }
 

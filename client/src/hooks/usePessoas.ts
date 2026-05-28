@@ -19,6 +19,7 @@ import {
   createPessoaSaldoMovimentacao,
   createDividaPessoa,
   createPessoa,
+  deletePessoaPermanent,
   deletePessoa,
   desvincularPessoaDeCompra,
   getPessoaResumo,
@@ -317,6 +318,18 @@ export function usePessoas({
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
+    },
+  });
+  const deletePessoaPermanentMutation = useMutation({
+    mutationFn: (id: string) => deletePessoaPermanent(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/servico-pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
     },
   });
   const restorePessoaMutation = useMutation({
@@ -774,6 +787,7 @@ export function usePessoas({
     reverterDividaPagamentoMutation,
     updatePessoaMutation,
     deleteMutation,
+    deletePessoaPermanentMutation,
     restorePessoaMutation,
     recoverOrphanLinksMutation,
     marcarServicoPagoMutation,

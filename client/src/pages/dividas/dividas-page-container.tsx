@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Receipt, Search, Trash2, ChevronDown, ChevronUp,
   Check,
-  Pencil, FastForward, Calendar, AlertCircle, X, TrendingUp, TrendingDown, FileText, ExternalLink,
+  Pencil, FastForward, Calendar, AlertCircle, X, TrendingUp, TrendingDown, FileText, ExternalLink, RotateCcw,
 } from "lucide-react";
 import { useUIPreferences } from "@/context/ui-preferences";
 import type { Parcela } from "@shared/schema";
@@ -123,8 +123,11 @@ export default function DividasPage() {
     editParcelaMutation,
     anteciparMutation,
     deleteMutation,
+    restoreMutation,
+    deletePermanentMutation,
     updateDividaMutation,
     recalcularMutation,
+    isRemovedFilter,
   } = useDividas({ search, filterStatus, filterTipo });
 
   const getErrorMessage = (error: unknown) => (
@@ -150,10 +153,10 @@ export default function DividasPage() {
       search,
       filterTipo,
       filterStatus,
-      filterOrigin: filterOrigem,
+      filterOrigin: isRemovedFilter ? "manual" : filterOrigem,
       getPessoaNome,
     }),
-    [filterOrigem, filterStatus, filterTipo, getPessoaNome, search, viewItems],
+    [filterOrigem, filterStatus, filterTipo, getPessoaNome, search, viewItems, isRemovedFilter],
   );
 
   const sortedFiltered = useMemo(
@@ -187,7 +190,7 @@ export default function DividasPage() {
     const highlightParam = params.get("highlight");
     const importarParam = params.get("importar");
 
-    if (statusParam === "vencido" || statusParam === "pendente" || statusParam === "pago") {
+    if (statusParam === "vencido" || statusParam === "pendente" || statusParam === "pago" || statusParam === "removidas") {
       setFilterStatus(statusParam);
     }
 
@@ -275,9 +278,41 @@ export default function DividasPage() {
   };
 
   const handleDeleteDivida = (id: string) => {
+    const confirmed = window.confirm(
+      "Remover esta dívida da lista? Você poderá restaurá-la depois em Dívidas removidas.",
+    );
+    if (!confirmed) return;
+
     deleteMutation.mutate(id, {
       onSuccess: () => {
         toast({ title: "Divida removida" });
+      },
+    });
+  };
+
+  const handleRestoreDivida = (id: string) => {
+    restoreMutation.mutate(id, {
+      onSuccess: () => {
+        toast({ title: "Dívida restaurada" });
+      },
+      onError: (error) => {
+        toast({ title: "Erro", description: getErrorMessage(error), variant: "destructive" });
+      },
+    });
+  };
+
+  const handleDeleteDividaPermanent = (id: string) => {
+    const confirmed = window.confirm(
+      "Excluir esta dívida para sempre? Essa ação não poderá ser desfeita.",
+    );
+    if (!confirmed) return;
+
+    deletePermanentMutation.mutate(id, {
+      onSuccess: () => {
+        toast({ title: "Dívida excluída permanentemente" });
+      },
+      onError: (error) => {
+        toast({ title: "Erro", description: getErrorMessage(error), variant: "destructive" });
       },
     });
   };
@@ -587,6 +622,7 @@ export default function DividasPage() {
             <SelectItem value="todos">Todos status</SelectItem>
             <SelectItem value="pendente">Pendente</SelectItem>
             <SelectItem value="pago">Quitado</SelectItem>
+            <SelectItem value="removidas">Removidas</SelectItem>
           </SelectContent>
         </Select>
         <Select value={sortBy} onValueChange={(value) => setSortBy(value as DividaSortBy)}>
@@ -607,7 +643,7 @@ export default function DividasPage() {
         </Select>
       </div>
 
-      {sortedFiltered.length > 0 && (
+      {sortedFiltered.length > 0 && !isRemovedFilter && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="rounded-md bg-emerald-500/5 border border-emerald-500/10 p-3">
             <p className="text-xs text-muted-foreground mb-1">Total a receber (pendente)</p>
@@ -623,8 +659,14 @@ export default function DividasPage() {
       {sortedFiltered.length === 0 ? (
         <div className="text-center py-16" data-testid="empty-dividas">
           <Receipt className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
-          <p className="text-lg font-medium text-muted-foreground">Nenhuma dívida encontrada</p>
-          <p className="text-sm text-muted-foreground mt-1">Registre uma nova dívida ou ajuste os filtros</p>
+          <p className="text-lg font-medium text-muted-foreground">
+            {isRemovedFilter ? "Nenhuma dívida removida." : "Nenhuma dívida encontrada"}
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isRemovedFilter
+              ? "Dívidas removidas aparecerão aqui para restauração."
+              : "Registre uma nova dívida ou ajuste os filtros"}
+          </p>
         </div>
       ) : prefs.mobileMode ? (
         <div className="space-y-3" data-testid="dividas-mobile-list">
@@ -690,6 +732,7 @@ export default function DividasPage() {
 
             const d = item.manual!;
             const status = getDividaStatus(d);
+            const isRemovedDebt = Boolean((d as { deletedAt?: unknown }).deletedAt);
             const isHighlighted = highlightDividaId === d.id;
             const valorPendente = getDividaValorPendente(d);
             const valorPago = getDividaValorPago(d);
@@ -746,6 +789,11 @@ export default function DividasPage() {
                               {parcelasVencidas} atrasada{parcelasVencidas > 1 ? "s" : ""}
                             </span>
                           )}
+                          {isRemovedDebt && (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+                              Removida
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           {hasParce
@@ -771,7 +819,7 @@ export default function DividasPage() {
                             </p>
                           )}
                         </div>
-                        {hasParce && (
+                        {!isRemovedFilter && hasParce && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -787,7 +835,7 @@ export default function DividasPage() {
                       </div>
                     </div>
 
-                    {hasParce && (
+                    {!isRemovedFilter && hasParce && (
                       <div className="mt-2.5 space-y-1">
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>{parcelasPagas} de {d.parcelas.length} pagas</span>
@@ -799,7 +847,7 @@ export default function DividasPage() {
                   </div>
                 </div>
 
-                {isExpanded && hasParce && (
+                {!isRemovedFilter && isExpanded && hasParce && (
                   <div className="border-t border-border/40 divide-y divide-border/30">
                     {d.parcelas.map((p) => {
                       const overdue = p.status === "pendente" && isOverdueDate(p.dataVencimento);
@@ -841,6 +889,28 @@ export default function DividasPage() {
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {isRemovedFilter && (
+                  <div className="border-t border-border/40 px-3.5 py-3 flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleRestoreDivida(d.id)}
+                      data-testid={`button-restore-divida-mobile-${d.id}`}
+                    >
+                      <RotateCcw className="w-4 h-4 mr-1" />
+                      Restaurar
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleDeleteDividaPermanent(d.id)}
+                      data-testid={`button-permanent-delete-divida-mobile-${d.id}`}
+                    >
+                      Excluir para sempre
+                    </Button>
                   </div>
                 )}
               </div>
@@ -903,6 +973,7 @@ export default function DividasPage() {
 
             const d = item.manual!;
             const status = getDividaStatus(d);
+            const isRemovedDebt = Boolean((d as { deletedAt?: unknown }).deletedAt);
             const isHighlighted = highlightDividaId === d.id;
             const valorPendente = getDividaValorPendente(d);
             const valorPago = getDividaValorPago(d);
@@ -942,6 +1013,11 @@ export default function DividasPage() {
                               {status === "pago" ? "Pago" : simpleOverdue ? "Vencido" : "Pendente"}
                             </Badge>
                           )}
+                          {isRemovedDebt && (
+                            <Badge variant="outline">
+                              Removida
+                            </Badge>
+                          )}
                           {parcelasVencidas > 0 && (
                             <Badge variant="destructive" className="text-xs">
                               <AlertCircle className="w-3 h-3 mr-1" />
@@ -969,14 +1045,14 @@ export default function DividasPage() {
                           <div className="text-xs text-muted-foreground">Pendente: {formatDividaCurrency(valorPendente)}</div>
                         )}
                       </div>
-                      {hasParce && status !== "pago" && (
+                      {!isRemovedFilter && hasParce && status !== "pago" && (
                         <Button variant="ghost" size="icon" onClick={() => { setAnteciparDivida(d); setAnteciparOpen(true); }}
                           aria-label="Antecipar parcelas"
                           title="Antecipar parcelas" data-testid={`button-antecipar-${d.id}`}>
                           <FastForward className="w-4 h-4 text-primary" />
                         </Button>
                       )}
-                      {hasParce && (
+                      {!isRemovedFilter && hasParce && (
                         <Button variant="ghost" size="icon" onClick={() => setExpandedId(isExpanded ? null : d.id)}
                           aria-label={isExpanded ? "Recolher parcelas" : "Expandir parcelas"}
                           title={isExpanded ? "Recolher parcelas" : "Expandir parcelas"}
@@ -984,35 +1060,59 @@ export default function DividasPage() {
                           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                         </Button>
                       )}
-                      <Button variant="ghost" size="icon"
-                        onClick={() => {
-                          setEditingDivida(d);
-                          setEditDividaForm({
-                            pessoaId: d.pessoaId,
-                            tipo: d.tipo,
-                            valor: d.parcelas.length > 0 ? String(d.valorTotal || d.valor) : String(d.valor),
-                            dataVencimento: d.dataVencimento || "",
-                            descricao: d.descricao || "",
-                            formaPagamento: d.formaPagamento || "pix",
-                          });
-                          setRecalcularForm({ novoTotal: String(d.totalParcelas || d.parcelas.length || ""), primeiroVencimento: "" });
-                          setShowRecalcular(false);
-                        }}
-                        aria-label="Editar dívida"
-                        title="Editar dívida"
-                        data-testid={`button-edit-divida-${d.id}`}>
-                        <Pencil className="w-4 h-4 text-muted-foreground" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDeleteDivida(d.id)}
-                        aria-label="Excluir dívida"
-                        title="Excluir dívida"
-                        data-testid={`button-delete-divida-${d.id}`}>
-                        <Trash2 className="w-4 h-4 text-muted-foreground" />
-                      </Button>
+                      {!isRemovedFilter ? (
+                        <>
+                          <Button variant="ghost" size="icon"
+                            onClick={() => {
+                              setEditingDivida(d);
+                              setEditDividaForm({
+                                pessoaId: d.pessoaId,
+                                tipo: d.tipo,
+                                valor: d.parcelas.length > 0 ? String(d.valorTotal || d.valor) : String(d.valor),
+                                dataVencimento: d.dataVencimento || "",
+                                descricao: d.descricao || "",
+                                formaPagamento: d.formaPagamento || "pix",
+                              });
+                              setRecalcularForm({ novoTotal: String(d.totalParcelas || d.parcelas.length || ""), primeiroVencimento: "" });
+                              setShowRecalcular(false);
+                            }}
+                            aria-label="Editar dívida"
+                            title="Editar dívida"
+                            data-testid={`button-edit-divida-${d.id}`}>
+                            <Pencil className="w-4 h-4 text-muted-foreground" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteDivida(d.id)}
+                            aria-label="Excluir dívida"
+                            title="Excluir dívida"
+                            data-testid={`button-delete-divida-${d.id}`}>
+                            <Trash2 className="w-4 h-4 text-muted-foreground" />
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRestoreDivida(d.id)}
+                            data-testid={`button-restore-divida-${d.id}`}
+                          >
+                            <RotateCcw className="w-4 h-4 mr-1" />
+                            Restaurar
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDeleteDividaPermanent(d.id)}
+                            data-testid={`button-permanent-delete-divida-${d.id}`}
+                          >
+                            Excluir para sempre
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  {hasParce && (
+                  {!isRemovedFilter && hasParce && (
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span>{parcelasPagas} de {d.parcelas.length} pagas</span>
@@ -1022,7 +1122,7 @@ export default function DividasPage() {
                     </div>
                   )}
 
-                  {isExpanded && hasParce && (
+                  {!isRemovedFilter && isExpanded && hasParce && (
                     <div className="space-y-1.5 pt-1 border-t border-border/50">
                       <p className="text-xs font-medium text-muted-foreground mb-2">Cronograma de parcelas</p>
                       {d.parcelas.map((p) => (

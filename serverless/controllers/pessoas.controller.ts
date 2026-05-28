@@ -292,6 +292,27 @@ export function createPessoasController(service: PessoasService) {
       return res.json(restored);
     },
 
+    deletePermanent: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const pessoaId = getParam(req, "id");
+      const result = await service.deletePermanent(pessoaId, userId);
+
+      if ("error" in result) {
+        if (result.error === "NOT_FOUND") {
+          return sendNotFound(res);
+        }
+        if (result.error === "PESSOA_ATIVA") {
+          return sendBadRequest(res, "Remova a pessoa antes de excluir permanentemente.");
+        }
+        return sendBadRequest(
+          res,
+          "Não é possível excluir permanentemente uma pessoa com vínculos. Remova ou transfira os vínculos antes.",
+        );
+      }
+
+      return res.json({ success: true });
+    },
+
     listOrfas: async (req: Request, res: Response) => {
       const userId = getUserId(req);
       return res.json(await service.listOrphanLinks(userId));

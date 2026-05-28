@@ -275,6 +275,10 @@ export async function restorePessoa(id: string): Promise<void> {
   await apiRequest("PATCH", `/api/pessoas/${id}/restore`);
 }
 
+export async function deletePessoaPermanent(id: string): Promise<void> {
+  await apiRequest("DELETE", `/api/pessoas/${id}/permanent`);
+}
+
 export async function listPessoasOrfas(): Promise<PessoaOrphanLinksGroup[]> {
   const res = await apiRequest("GET", "/api/pessoas/orfas");
   return (await res.json()) as PessoaOrphanLinksGroup[];

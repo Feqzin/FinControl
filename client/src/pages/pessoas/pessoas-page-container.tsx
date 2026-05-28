@@ -153,6 +153,7 @@ export default function PessoasPage() {
     reverterDividaPagamentoMutation,
     updatePessoaMutation,
     deleteMutation,
+    deletePessoaPermanentMutation,
     restorePessoaMutation,
     recoverOrphanLinksMutation,
     marcarServicoPagoMutation,
@@ -410,6 +411,23 @@ export default function PessoasPage() {
     });
   };
 
+  const handleDeletePessoaPermanent = (pessoa: Pessoa) => {
+    const confirmed = window.confirm(
+      "Excluir esta pessoa para sempre? Essa ação não poderá ser desfeita.",
+    );
+    if (!confirmed) return;
+
+    deletePessoaPermanentMutation.mutate(pessoa.id, {
+      onSuccess: () => {
+        if (historyPessoa?.id === pessoa.id) {
+          setHistoryPessoa(null);
+        }
+        toast({ title: "Pessoa excluída permanentemente" });
+      },
+      onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+    });
+  };
+
   const getOrphanForm = (orphanGroupKey: string, nomeSugerido: string) => {
     return orphanFormByKey[orphanGroupKey] ?? { nome: nomeSugerido, pessoaIdExistente: "" };
   };
@@ -541,6 +559,7 @@ export default function PessoasPage() {
           onDelete={handleDeletePessoa}
           showRemovedActions={isRemovedFilter}
           onRestore={handleRestorePessoa}
+          onPermanentDelete={handleDeletePessoaPermanent}
         />
       )}
 
@@ -1973,31 +1992,46 @@ export default function PessoasPage() {
                     <Plus className="w-4 h-4 mr-2" /> Nova divida
                   </Button>
                 )}
-                <Button
-                  variant={historyPessoa.deletedAt ? "default" : "outline"}
-                  onClick={() => {
-                    if (historyPessoa.deletedAt) {
-                      handleRestorePessoa(historyPessoa);
-                      return;
-                    }
+                {historyPessoa.deletedAt ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleRestorePessoa(historyPessoa)}
+                      data-testid="button-restore-history"
+                    >
+                      <RotateCcw className="w-4 h-4 mr-2" />
+                      Restaurar pessoa
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => handleDeletePessoaPermanent(historyPessoa)}
+                      data-testid="button-permanent-delete-history"
+                    >
+                      Excluir para sempre
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const confirmed = window.confirm(
+                        "Remover esta pessoa da lista? Você poderá restaurá-la depois em Pessoas removidas.",
+                      );
+                      if (!confirmed) return;
 
-                    const confirmed = window.confirm(
-                      "Remover esta pessoa da lista? Você poderá restaurá-la depois em Pessoas removidas.",
-                    );
-                    if (!confirmed) return;
-
-                    deleteMutation.mutate(historyPessoa.id, {
-                      onSuccess: () => {
-                        setHistoryPessoa(null);
-                        toast({ title: "Pessoa removida" });
-                      },
-                      onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
-                    });
-                  }}
-                  data-testid={historyPessoa.deletedAt ? "button-restore-history" : "button-delete-history"}
-                >
-                  {historyPessoa.deletedAt ? "Restaurar pessoa" : <Trash2 className="w-4 h-4" />}
-                </Button>
+                      deleteMutation.mutate(historyPessoa.id, {
+                        onSuccess: () => {
+                          setHistoryPessoa(null);
+                          toast({ title: "Pessoa removida" });
+                        },
+                        onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+                      });
+                    }}
+                    data-testid="button-delete-history"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                )}
               </div>
             </>
           )}

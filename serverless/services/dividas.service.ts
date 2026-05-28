@@ -14,10 +14,15 @@ type RecalcularDividaResult =
   | { ok: true; data: { pagas: number; novas: number; valorRestante: string } }
   | { ok: false; status: number; message: string };
 
+export type DividaListStatus = "active" | "removed" | "all";
+
 export class DividasService {
   constructor(private readonly repository: FinancialRepository) {}
 
-  async list(userId: string) {
+  async list(userId: string, status: DividaListStatus = "active") {
+    if (typeof this.repository.getDividasByStatus === "function") {
+      return this.repository.getDividasByStatus(userId, status);
+    }
     return this.repository.getDividas(userId);
   }
 
@@ -86,10 +91,21 @@ export class DividasService {
   }
 
   async delete(id: string, userId: string) {
-    return runFinancialTransaction(this.repository, async (repository) => {
-      await repository.deleteParcelasByDivida(id, userId);
-      return repository.deleteDivida(id, userId);
-    });
+    return this.repository.deleteDivida(id, userId);
+  }
+
+  async restore(id: string, userId: string) {
+    return this.repository.restoreDivida(id, userId);
+  }
+
+  async deletePermanent(id: string, userId: string) {
+    const divida = await this.repository.getDivida(id, userId);
+    if (!divida) return { error: "NOT_FOUND" as const };
+    if (!divida.deletedAt) return { error: "DIVIDA_ATIVA" as const };
+
+    const deleted = await this.repository.deleteDividaPermanent(id, userId);
+    if (!deleted) return { error: "NOT_FOUND" as const };
+    return { ok: true as const };
   }
 
   async recalcular(

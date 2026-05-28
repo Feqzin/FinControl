@@ -26,6 +26,7 @@ type PessoaCardProps = {
   onDelete: (pessoa: Pessoa) => void;
   showRemovedActions?: boolean;
   onRestore?: (pessoa: Pessoa) => void;
+  onPermanentDelete?: (pessoa: Pessoa) => void;
 };
 
 export function PessoaCard({
@@ -39,6 +40,7 @@ export function PessoaCard({
   onDelete,
   showRemovedActions = false,
   onRestore,
+  onPermanentDelete,
 }: PessoaCardProps) {
   if (showRemovedActions) {
     return (
@@ -63,7 +65,7 @@ export function PessoaCard({
             Esta pessoa foi removida da lista principal e pode ser restaurada a qualquer momento.
           </p>
 
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Button
               size="sm"
               className="h-8 rounded-lg text-xs"
@@ -72,6 +74,15 @@ export function PessoaCard({
             >
               <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
               Restaurar pessoa
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="h-8 rounded-lg text-xs"
+              onClick={() => onPermanentDelete?.(pessoa)}
+              data-testid={`button-permanent-delete-pessoa-${pessoa.id}`}
+            >
+              Excluir para sempre
             </Button>
           </div>
         </CardContent>

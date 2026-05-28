@@ -124,6 +124,12 @@ export type RecoverOrphanLinksResult =
     linkedComprasCount: number;
   };
 
+export type DeletePessoaPermanentResult =
+  | { error: "NOT_FOUND" }
+  | { error: "PESSOA_ATIVA" }
+  | { error: "PESSOA_COM_VINCULOS" }
+  | { ok: true };
+
 const ORPHAN_GROUP_KEY_PREFIX = "pessoa_id:";
 
 type CreatePessoaSaldoMovimentacaoResult =
@@ -858,6 +864,28 @@ export class PessoasService {
 
   async restore(id: string, userId: string) {
     return this.storage.restorePessoa(id, userId);
+  }
+
+  async deletePermanent(id: string, userId: string): Promise<DeletePessoaPermanentResult> {
+    const pessoa = await this.storage.getPessoa(id, userId);
+    if (!pessoa) return { error: "NOT_FOUND" };
+    if (!pessoa.deletedAt) return { error: "PESSOA_ATIVA" };
+
+    const [dividas, compras, servicoPessoas, saldoMovimentacoes] = await Promise.all([
+      this.storage.getDividasByStatus(userId, "all"),
+      this.storage.getComprasByPessoa(id, userId),
+      this.storage.getServicoPessoasByPessoa(id, userId),
+      this.storage.getPessoaSaldoMovimentacoesByPessoa(id, userId),
+    ]);
+
+    const dividasVinculadas = dividas.filter((divida) => divida.pessoaId === id);
+    if (dividasVinculadas.length > 0 || compras.length > 0 || servicoPessoas.length > 0 || saldoMovimentacoes.length > 0) {
+      return { error: "PESSOA_COM_VINCULOS" };
+    }
+
+    const deleted = await this.storage.deletePessoaPermanent(id, userId);
+    if (!deleted) return { error: "NOT_FOUND" };
+    return { ok: true };
   }
 
   async listOrphanLinks(userId: string): Promise<PessoaOrphanLinksGroup[]> {

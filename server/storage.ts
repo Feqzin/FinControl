@@ -2,7 +2,7 @@ import { eq, and, sql, isNull, isNotNull } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos,
-  servicoPessoas, servicoPagamentos, metas, parcelasCompra, rendas, patrimonios, compraAliases,
+  servicoPessoas, servicoPagamentos, metas, parcelasCompra, pessoaSaldoMovimentacoes, rendas, patrimonios, compraAliases,
   type User, type InsertUser,
   type Pessoa, type InsertPessoa,
   type Divida, type InsertDivida,
@@ -14,6 +14,7 @@ import {
   type ServicoPagamento, type InsertServicoPagamento,
   type Meta, type InsertMeta,
   type ParcelaCompra, type InsertParcelaCompra,
+  type PessoaSaldoMovimentacao,
   type Renda, type InsertRenda,
   type Patrimonio, type InsertPatrimonio,
   type CompraAlias, type InsertCompraAlias,
@@ -34,13 +35,18 @@ export interface IStorage {
   updatePessoa(id: string, userId: string, data: Partial<InsertPessoa>): Promise<Pessoa | undefined>;
   deletePessoa(id: string, userId: string): Promise<boolean>;
   restorePessoa(id: string, userId: string): Promise<Pessoa | undefined>;
+  deletePessoaPermanent(id: string, userId: string): Promise<boolean>;
+  getPessoaSaldoMovimentacoesByPessoa(pessoaId: string, userId: string): Promise<PessoaSaldoMovimentacao[]>;
 
   getDividas(userId: string): Promise<Divida[]>;
+  getDividasByStatus(userId: string, status: "active" | "removed" | "all"): Promise<Divida[]>;
   getDividasByPessoa(pessoaId: string, userId: string): Promise<Divida[]>;
   getDivida(id: string, userId: string): Promise<Divida | undefined>;
   createDivida(divida: InsertDivida): Promise<Divida>;
   updateDivida(id: string, userId: string, data: Partial<InsertDivida>): Promise<Divida | undefined>;
   deleteDivida(id: string, userId: string): Promise<boolean>;
+  restoreDivida(id: string, userId: string): Promise<Divida | undefined>;
+  deleteDividaPermanent(id: string, userId: string): Promise<boolean>;
 
   getParcelas(userId: string): Promise<Parcela[]>;
   getParcela(id: string, userId: string): Promise<Parcela | undefined>;
@@ -350,10 +356,51 @@ export class DatabaseStorage implements IStorage {
     if (restored) return restored;
     return this.getPessoa(id, userId);
   }
+  async deletePessoaPermanent(id: string, userId: string) {
+    const deleted = await this.database
+      .delete(pessoas)
+      .where(and(eq(pessoas.id, id), eq(pessoas.userId, userId), isNotNull(pessoas.deletedAt)))
+      .returning();
+    return deleted.length > 0;
+  }
+  async getPessoaSaldoMovimentacoesByPessoa(pessoaId: string, userId: string) {
+    return this.database
+      .select()
+      .from(pessoaSaldoMovimentacoes)
+      .where(and(eq(pessoaSaldoMovimentacoes.pessoaId, pessoaId), eq(pessoaSaldoMovimentacoes.userId, userId)));
+  }
 
-  async getDividas(userId: string) { return this.database.select().from(dividas).where(eq(dividas.userId, userId)); }
+  async getDividas(userId: string) {
+    return this.database
+      .select()
+      .from(dividas)
+      .where(and(eq(dividas.userId, userId), isNull(dividas.deletedAt)));
+  }
+  async getDividasByStatus(userId: string, status: "active" | "removed" | "all") {
+    if (status === "active") {
+      return this.database
+        .select()
+        .from(dividas)
+        .where(and(eq(dividas.userId, userId), isNull(dividas.deletedAt)));
+    }
+
+    if (status === "removed") {
+      return this.database
+        .select()
+        .from(dividas)
+        .where(and(eq(dividas.userId, userId), isNotNull(dividas.deletedAt)));
+    }
+
+    return this.database
+      .select()
+      .from(dividas)
+      .where(eq(dividas.userId, userId));
+  }
   async getDividasByPessoa(pessoaId: string, userId: string) {
-    return this.database.select().from(dividas).where(and(eq(dividas.pessoaId, pessoaId), eq(dividas.userId, userId)));
+    return this.database
+      .select()
+      .from(dividas)
+      .where(and(eq(dividas.pessoaId, pessoaId), eq(dividas.userId, userId), isNull(dividas.deletedAt)));
   }
   async getDivida(id: string, userId: string) {
     const [d] = await this.database.select().from(dividas).where(and(eq(dividas.id, id), eq(dividas.userId, userId)));
@@ -368,7 +415,28 @@ export class DatabaseStorage implements IStorage {
     return d;
   }
   async deleteDivida(id: string, userId: string) {
-    const result = await this.database.delete(dividas).where(and(eq(dividas.id, id), eq(dividas.userId, userId))).returning();
+    const [softDeleted] = await this.database
+      .update(dividas)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(dividas.id, id), eq(dividas.userId, userId), isNull(dividas.deletedAt)))
+      .returning();
+    return Boolean(softDeleted);
+  }
+  async restoreDivida(id: string, userId: string) {
+    const [restored] = await this.database
+      .update(dividas)
+      .set({ deletedAt: null })
+      .where(and(eq(dividas.id, id), eq(dividas.userId, userId), isNotNull(dividas.deletedAt)))
+      .returning();
+
+    if (restored) return restored;
+    return this.getDivida(id, userId);
+  }
+  async deleteDividaPermanent(id: string, userId: string) {
+    const result = await this.database
+      .delete(dividas)
+      .where(and(eq(dividas.id, id), eq(dividas.userId, userId), isNotNull(dividas.deletedAt)))
+      .returning();
     return result.length > 0;
   }
 

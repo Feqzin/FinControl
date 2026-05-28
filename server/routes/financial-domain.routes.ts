@@ -31,7 +31,10 @@ type FinancialController = {
 };
 
 type FinancialDomainControllers = {
-  dividasController: Required<Pick<CrudController, "list" | "listByPessoa" | "create" | "createParcelado" | "update" | "delete" | "recalcular">>;
+  dividasController: Required<Pick<CrudController, "list" | "listByPessoa" | "create" | "createParcelado" | "update" | "delete" | "recalcular">> & {
+    restore: RequestHandler;
+    deletePermanent: RequestHandler;
+  };
   parcelasController: ParcelasController;
   cartoesController: Required<Pick<CrudController, "list" | "create" | "update" | "delete">> & {
     deleteFaturaByCartaoMonth: RequestHandler;
@@ -58,6 +61,8 @@ export function registerFinancialDomainRoutes(app: Express, controllers: Financi
   app.post("/api/dividas/parcelado", requireAuth, dividasController.createParcelado);
   app.patch("/api/dividas/:id", requireAuth, dividasController.update);
   app.delete("/api/dividas/:id", requireAuth, dividasController.delete);
+  app.patch("/api/dividas/:id/restore", requireAuth, dividasController.restore);
+  app.delete("/api/dividas/:id/permanent", requireAuth, dividasController.deletePermanent);
   app.post("/api/dividas/:id/recalcular", requireAuth, dividasController.recalcular);
 
   app.get("/api/parcelas", requireAuth, parcelasController.list);

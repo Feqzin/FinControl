@@ -174,3 +174,62 @@ test("backup/import pessoas: preserva deletedAt quando presente e mantém compat
   assert.equal(pessoaAtiva.deletedAt ?? null, null);
   assert.equal(pessoaRemovida.deletedAt, "2026-04-01T12:00:00.000Z");
 });
+
+test("backup/import dívidas: preserva deletedAt quando presente e mantém compatibilidade sem campo", () => {
+  const parsed = parseBackupJsonImport({
+    exportadoEm: "2026-05-28T10:00:00.000Z",
+    usuario: "demo",
+    pessoas: [
+      {
+        id: "pessoa-old-1",
+        userId: "legacy-user",
+        nome: "Pessoa base",
+        tipo: "me_deve",
+        telefone: null,
+        observacao: null,
+      },
+    ],
+    dividas: [
+      {
+        id: "divida-old-1",
+        userId: "legacy-user",
+        pessoaId: "pessoa-old-1",
+        tipo: "receber",
+        valor: "50.00",
+        dataVencimento: "2026-05-15",
+        status: "pendente",
+        dataPagamento: null,
+        formaPagamento: null,
+        descricao: "Dívida ativa",
+      },
+      {
+        id: "divida-old-2",
+        userId: "legacy-user",
+        pessoaId: "pessoa-old-1",
+        tipo: "pagar",
+        valor: "80.00",
+        dataVencimento: "2026-04-10",
+        status: "pendente",
+        dataPagamento: null,
+        formaPagamento: null,
+        descricao: "Dívida removida",
+        deletedAt: "2026-04-20T12:00:00.000Z",
+      },
+    ],
+    cartoes: [],
+    compras: [],
+    parcelasCompra: [],
+    servicos: [],
+    servicoPessoas: [],
+    servicoPagamentos: [],
+    pessoaSaldoMovimentacoes: [],
+    metas: [],
+  });
+
+  const transformed = transformBackupForPersistence(parsed, "user-target");
+  const dividaAtiva = transformed.dividas[0] as Record<string, unknown>;
+  const dividaRemovida = transformed.dividas[1] as Record<string, unknown>;
+
+  assert.equal(dividaAtiva.deletedAt ?? null, null);
+  assert.equal(dividaRemovida.deletedAt, "2026-04-20T12:00:00.000Z");
+});

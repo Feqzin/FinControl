@@ -7,8 +7,11 @@ import {
   anteciparParcelas,
   createDividaParcelada,
   createDividaSimples,
+  deleteDividaPermanent,
   deleteDivida,
+  listDividas,
   recalcularDivida,
+  restoreDivida,
   updateDivida,
   updateParcela,
 } from "@/services/api/dividas";
@@ -22,7 +25,12 @@ type UseDividasArgs = {
 };
 
 export function useDividas({ search, filterStatus, filterTipo }: UseDividasArgs) {
-  const { data: dividas = [], isLoading } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
+  const isRemovedFilter = filterStatus === "removidas";
+  const dividasStatus = isRemovedFilter ? "removed" : "active";
+  const { data: dividas = [], isLoading } = useQuery<Divida[]>({
+    queryKey: ["/api/dividas", `status=${dividasStatus}`],
+    queryFn: () => listDividas(dividasStatus),
+  });
   const { data: parcelas = [] } = useQuery<Parcela[]>({ queryKey: ["/api/parcelas"] });
   const { data: pessoas = [] } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
   const { data: comprasCartao = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
@@ -69,6 +77,7 @@ export function useDividas({ search, filterStatus, filterTipo }: UseDividasArgs)
         return nomePessoa.includes(termo) || (divida.descricao || "").toLowerCase().includes(termo);
       })
       .filter((divida) => {
+        if (isRemovedFilter) return true;
         const todayIso = new Date().toISOString().slice(0, 10);
         const isOverdue = (dateValue: string | null | undefined) => Boolean(dateValue && dateValue < todayIso);
         if (filterStatus === "todos") return true;
@@ -86,21 +95,25 @@ export function useDividas({ search, filterStatus, filterTipo }: UseDividasArgs)
       })
       .filter((divida) => filterTipo === "todos" || divida.tipo === filterTipo)
       .sort((a, b) => (a.dataVencimento ?? "").localeCompare(b.dataVencimento ?? "")),
-    [dividasComParcelas, filterStatus, filterTipo, search],
+    [dividasComParcelas, filterStatus, filterTipo, search, isRemovedFilter],
   );
 
   const totalReceber = useMemo(
-    () => filtered
-      .filter((divida) => divida.tipo === "receber")
-      .reduce((sum, divida) => sum + getDividaValorPendente(divida), 0),
-    [filtered],
+    () => (isRemovedFilter
+      ? 0
+      : filtered
+        .filter((divida) => divida.tipo === "receber")
+        .reduce((sum, divida) => sum + getDividaValorPendente(divida), 0)),
+    [filtered, isRemovedFilter],
   );
 
   const totalPagar = useMemo(
-    () => filtered
-      .filter((divida) => divida.tipo === "pagar")
-      .reduce((sum, divida) => sum + getDividaValorPendente(divida), 0),
-    [filtered],
+    () => (isRemovedFilter
+      ? 0
+      : filtered
+        .filter((divida) => divida.tipo === "pagar")
+        .reduce((sum, divida) => sum + getDividaValorPendente(divida), 0)),
+    [filtered, isRemovedFilter],
   );
 
   const createSimpleMutation = useMutation({
@@ -154,6 +167,26 @@ export function useDividas({ search, filterStatus, filterTipo }: UseDividasArgs)
     },
   });
 
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => restoreDivida(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
+    },
+  });
+
+  const deletePermanentMutation = useMutation({
+    mutationFn: (id: string) => deleteDividaPermanent(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
+    },
+  });
+
   const updateDividaMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => updateDivida(id, data),
     onSuccess: () => {
@@ -192,8 +225,11 @@ export function useDividas({ search, filterStatus, filterTipo }: UseDividasArgs)
     editParcelaMutation,
     anteciparMutation,
     deleteMutation,
+    restoreMutation,
+    deletePermanentMutation,
     updateDividaMutation,
     recalcularMutation,
+    isRemovedFilter,
   };
 }
 

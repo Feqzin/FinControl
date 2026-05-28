@@ -216,7 +216,7 @@ export class CloudBackupsService {
       metas,
     ] = await Promise.all([
       storage.getPessoas(userId),
-      storage.getDividas(userId),
+      storage.getDividasByStatus(userId, "all"),
       storage.getCartoes(userId),
       storage.getComprasCartao(userId),
       storage.getParcelasCompraByUser(userId),

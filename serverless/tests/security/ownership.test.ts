@@ -5,6 +5,9 @@ import type { AddressInfo } from "node:net";
 import express from "express";
 import { createCloudBackupsController } from "../../controllers/cloud-backups.controller";
 import { createPagamentosTimelineController } from "../../controllers/pagamentos-timeline.controller";
+import { DividasService } from "../../services/dividas.service";
+import { PessoasService } from "../../services/pessoas.service";
+import { createFinancialRepository } from "../../repositories/financial.repository";
 import { shouldRunDbIntegrationTests } from "../../../server/tests/test-db-availability";
 import { createSecurityTestUser } from "./test-user-seed";
 
@@ -20,6 +23,7 @@ type OwnershipFixture = {
   tables: {
     users: any;
     pessoas: any;
+    dividas: any;
     cartoes: any;
     comprasCartao: any;
     parcelasCompra: any;
@@ -28,6 +32,7 @@ type OwnershipFixture = {
   userA: { id: string };
   userB: { id: string };
   pessoaB: { id: string };
+  dividaB: { id: string };
   cartaoB: { id: string };
   compraB: { id: string };
   parcelaB: { id: string };
@@ -46,6 +51,7 @@ async function createOwnershipFixture(): Promise<OwnershipFixture> {
   const {
     users,
     pessoas,
+    dividas,
     cartoes,
     comprasCartao,
     parcelasCompra,
@@ -70,6 +76,18 @@ async function createOwnershipFixture(): Promise<OwnershipFixture> {
     tipo: "me_deve",
     telefone: null,
     observacao: null,
+  }).returning();
+
+  const [dividaB] = await db.insert(dividas).values({
+    userId: userB.id,
+    pessoaId: pessoaB.id,
+    tipo: "receber",
+    valor: "94.38",
+    dataVencimento: "2026-05-20",
+    status: "pendente",
+    dataPagamento: null,
+    formaPagamento: null,
+    descricao: "Dívida IDOR B",
   }).returning();
 
   const [cartaoB] = await db.insert(cartoes).values({
@@ -128,6 +146,7 @@ async function createOwnershipFixture(): Promise<OwnershipFixture> {
     tables: {
       users,
       pessoas,
+      dividas,
       cartoes,
       comprasCartao,
       parcelasCompra,
@@ -136,6 +155,7 @@ async function createOwnershipFixture(): Promise<OwnershipFixture> {
     userA,
     userB,
     pessoaB,
+    dividaB,
     cartaoB,
     compraB,
     parcelaB,
@@ -331,6 +351,99 @@ testOwnershipIntegration("soft delete pessoa: remover move para removidas e rest
       pessoasAtivasDepoisRestore.some((row: { id: string }) => row.id === fixture.pessoaB.id),
       true,
     );
+  } finally {
+    await cleanupOwnershipFixture(fixture);
+  }
+});
+
+testOwnershipIntegration("soft delete dívida: remover move para removidas e restaurar devolve para ativas", async () => {
+  const fixture = await createOwnershipFixture();
+  const service = new DividasService(createFinancialRepository(fixture.storage));
+
+  try {
+    const dividasAtivasAntes = await service.list(fixture.userB.id, "active");
+    assert.equal(dividasAtivasAntes.some((row) => row.id === fixture.dividaB.id), true);
+
+    const deleted = await service.delete(fixture.dividaB.id, fixture.userB.id);
+    assert.equal(deleted, true);
+
+    const dividasAtivasDepoisDelete = await service.list(fixture.userB.id, "active");
+    assert.equal(
+      dividasAtivasDepoisDelete.some((row) => row.id === fixture.dividaB.id),
+      false,
+    );
+
+    const dividasRemovidas = await service.list(fixture.userB.id, "removed");
+    assert.equal(
+      dividasRemovidas.some((row) => row.id === fixture.dividaB.id),
+      true,
+    );
+
+    const restoredByA = await service.restore(fixture.dividaB.id, fixture.userA.id);
+    assert.equal(restoredByA, undefined);
+
+    const restoredByOwner = await service.restore(fixture.dividaB.id, fixture.userB.id);
+    assert.ok(restoredByOwner);
+    assert.equal(restoredByOwner.id, fixture.dividaB.id);
+  } finally {
+    await cleanupOwnershipFixture(fixture);
+  }
+});
+
+testOwnershipIntegration("dívida permanente: exige remoção prévia e respeita ownership", async () => {
+  const fixture = await createOwnershipFixture();
+  const service = new DividasService(createFinancialRepository(fixture.storage));
+
+  try {
+    const blockedActive = await service.deletePermanent(fixture.dividaB.id, fixture.userB.id);
+    assert.deepEqual(blockedActive, { error: "DIVIDA_ATIVA" });
+
+    const softDeleted = await service.delete(fixture.dividaB.id, fixture.userB.id);
+    assert.equal(softDeleted, true);
+
+    const blockedOwnership = await service.deletePermanent(fixture.dividaB.id, fixture.userA.id);
+    assert.deepEqual(blockedOwnership, { error: "NOT_FOUND" });
+
+    const deletedByOwner = await service.deletePermanent(fixture.dividaB.id, fixture.userB.id);
+    assert.deepEqual(deletedByOwner, { ok: true });
+
+    const dividaPersistida = await fixture.storage.getDivida(fixture.dividaB.id, fixture.userB.id);
+    assert.equal(dividaPersistida, undefined);
+  } finally {
+    await cleanupOwnershipFixture(fixture);
+  }
+});
+
+testOwnershipIntegration("pessoa permanente: bloqueia com vínculos e permite sem vínculos", async () => {
+  const fixture = await createOwnershipFixture();
+  const service = new PessoasService(fixture.storage);
+
+  try {
+    const removedWithLinks = await fixture.storage.deletePessoa(fixture.pessoaB.id, fixture.userB.id);
+    assert.equal(removedWithLinks, true);
+
+    const blockedWithLinks = await service.deletePermanent(fixture.pessoaB.id, fixture.userB.id);
+    assert.deepEqual(blockedWithLinks, { error: "PESSOA_COM_VINCULOS" });
+
+    const blockedOwnership = await service.deletePermanent(fixture.pessoaB.id, fixture.userA.id);
+    assert.deepEqual(blockedOwnership, { error: "NOT_FOUND" });
+
+    const pessoaSemVinculos = await fixture.storage.createPessoa({
+      userId: fixture.userB.id,
+      nome: "Pessoa sem vínculos",
+      tipo: "me_deve",
+      telefone: null,
+      observacao: null,
+    });
+
+    const removedSemVinculos = await fixture.storage.deletePessoa(pessoaSemVinculos.id, fixture.userB.id);
+    assert.equal(removedSemVinculos, true);
+
+    const deletedSemVinculos = await service.deletePermanent(pessoaSemVinculos.id, fixture.userB.id);
+    assert.deepEqual(deletedSemVinculos, { ok: true });
+
+    const pessoaPersistida = await fixture.storage.getPessoa(pessoaSemVinculos.id, fixture.userB.id);
+    assert.equal(pessoaPersistida, undefined);
   } finally {
     await cleanupOwnershipFixture(fixture);
   }

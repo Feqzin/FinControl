@@ -62,11 +62,13 @@ export const dividas = pgTable("dividas", {
   descricao: text("descricao"),
   totalParcelas: integer("total_parcelas"),
   valorTotal: decimal("valor_total", { precision: 12, scale: 2 }),
+  deletedAt: timestamp("deleted_at"),
 }, (table) => ({
   dividasUserIdIdx: index("idx_dividas_user_id").on(table.userId),
   dividasPessoaIdIdx: index("idx_dividas_pessoa_id").on(table.pessoaId),
   dividasStatusIdx: index("idx_dividas_status").on(table.status),
   dividasVencimentoIdx: index("idx_dividas_data_vencimento").on(table.dataVencimento),
+  dividasUserDeletedAtIdx: index("idx_dividas_user_deleted_at").on(table.userId, table.deletedAt),
 }));
 
 export const insertDividaSchema = createInsertSchema(dividas).omit({ id: true });

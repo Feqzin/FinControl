@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { formatMoneyFixed } from "../../utils/money.js";
 import { normalizeIsoDate } from "../../utils/date.js";
-import { DividasService } from "../services/dividas.service.js";
+import { DividasService, type DividaListStatus } from "../services/dividas.service.js";
 import {
   dividaBody,
   dividaParceladoBody,
@@ -9,11 +9,19 @@ import {
 } from "../validators/financial.validators.js";
 import { auditRequest, getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils.js";
 
+function resolveDividaListStatus(raw: unknown): DividaListStatus {
+  const normalized = String(raw ?? "").trim().toLowerCase();
+  if (normalized === "all" || normalized === "todos") return "all";
+  if (normalized === "removed" || normalized === "removidas" || normalized === "inativas") return "removed";
+  return "active";
+}
+
 export function createDividasController(service: DividasService) {
   return {
     list: async (req: Request, res: Response) => {
       const userId = getUserId(req);
-      res.json(await service.list(userId));
+      const status = resolveDividaListStatus(req.query.status);
+      res.json(await service.list(userId, status));
     },
 
     listByPessoa: async (req: Request, res: Response) => {
@@ -171,6 +179,71 @@ export function createDividasController(service: DividasService) {
         action: "delete",
         status: "success",
         domain: "dividas",
+        userId,
+        targetId: dividaId,
+      });
+      return res.json({ success: true });
+    },
+
+    restore: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const dividaId = getParam(req, "id");
+      const restored = await service.restore(dividaId, userId);
+      if (!restored) {
+        auditRequest(req, {
+          action: "update",
+          status: "failure",
+          domain: "dividas_restore",
+          userId,
+          targetId: dividaId,
+          details: { reason: "not_found" },
+        });
+        return sendNotFound(res);
+      }
+
+      auditRequest(req, {
+        action: "update",
+        status: "success",
+        domain: "dividas_restore",
+        userId,
+        targetId: restored.id,
+      });
+      return res.json(restored);
+    },
+
+    deletePermanent: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const dividaId = getParam(req, "id");
+      const result = await service.deletePermanent(dividaId, userId);
+
+      if ("error" in result) {
+        if (result.error === "DIVIDA_ATIVA") {
+          auditRequest(req, {
+            action: "delete",
+            status: "failure",
+            domain: "dividas_permanent_delete",
+            userId,
+            targetId: dividaId,
+            details: { reason: "divida_ativa" },
+          });
+          return sendBadRequest(res, "Remova a dívida antes de excluir permanentemente.");
+        }
+
+        auditRequest(req, {
+          action: "delete",
+          status: "failure",
+          domain: "dividas_permanent_delete",
+          userId,
+          targetId: dividaId,
+          details: { reason: "not_found" },
+        });
+        return sendNotFound(res);
+      }
+
+      auditRequest(req, {
+        action: "delete",
+        status: "success",
+        domain: "dividas_permanent_delete",
         userId,
         targetId: dividaId,
       });
