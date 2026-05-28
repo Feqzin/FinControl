@@ -92,7 +92,11 @@ export default function AuthPage() {
     try {
       await login.mutateAsync(loginData);
     } catch (error: any) {
-      toast({ title: "Erro ao entrar", description: error.message, variant: "destructive" });
+      const rawMessage = typeof error?.message === "string" ? error.message : "";
+      const description = rawMessage.includes("401")
+        ? "E-mail/usuário ou senha inválidos."
+        : (rawMessage || "Não foi possível entrar agora.");
+      toast({ title: "Erro ao entrar", description, variant: "destructive" });
     }
   };
 

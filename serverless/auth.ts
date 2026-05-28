@@ -154,6 +154,7 @@ const sessionCookieSettings = {
 function toAuthUserResponse(user: {
   id: string;
   username?: string | null;
+  email?: string | null;
   nomeCompleto?: string | null;
   fullNameVisibility?: unknown;
   subscriptionTier?: unknown;
@@ -164,6 +165,7 @@ function toAuthUserResponse(user: {
   return {
     id: user.id,
     username: publicUsername,
+    email: resolveStoredAccountEmail(user.email),
     nomeCompleto: user.nomeCompleto ?? null,
     fullNameVisibility,
     subscriptionTier: access.subscriptionTier,
@@ -259,11 +261,21 @@ function normalizeUsername(input: unknown): string {
   return input.trim();
 }
 
+function normalizeEmailAddress(input: unknown): string {
+  const normalized = normalizeUsername(input).toLowerCase();
+  return isEmailLikeUsername(normalized) ? normalized : "";
+}
+
+function resolveStoredAccountEmail(input: unknown): string | null {
+  const normalized = normalizeEmailAddress(input);
+  return normalized || null;
+}
+
 function normalizeLoginIdentifier(input: unknown): string {
   const raw = normalizeUsername(input);
   if (!raw) return "";
   if (isEmailLikeUsername(raw)) {
-    return raw.toLowerCase();
+    return normalizeEmailAddress(raw);
   }
   return normalizePublicUsername(raw);
 }
@@ -274,40 +286,77 @@ function resolveRawLoginIdentifierFromBody(body: unknown): string {
   return String(payload.identifier ?? payload.email ?? payload.username ?? "").trim();
 }
 
-async function findUserForLoginIdentifier(rawIdentifier: string) {
+type LoginIdentifierKind = "email" | "username";
+type LoginLookupSource = "email" | "legacyUsernameEmail" | "username" | null;
+
+type LoginLookupResult = {
+  user: Awaited<ReturnType<typeof storage.getUser>> | undefined;
+  normalizedIdentifier: string;
+  identifierKind: LoginIdentifierKind;
+  triedEmailColumn: boolean;
+  triedLegacyUsernameEmail: boolean;
+  foundBy: LoginLookupSource;
+};
+
+async function findUserForLoginIdentifier(rawIdentifier: string): Promise<LoginLookupResult> {
   const normalizedIdentifier = normalizeLoginIdentifier(rawIdentifier);
-  if (!normalizedIdentifier) return undefined;
-
-  if (isEmailLikeUsername(normalizedIdentifier)) {
-    const legacyEmailAsUsernameUser = await storage.getUserByUsername(normalizedIdentifier);
-    if (legacyEmailAsUsernameUser) return legacyEmailAsUsernameUser;
-
-    try {
-      const result = await pool.query<{ id: string }>(
-        `select id from "users" where lower("email") = lower($1) limit 1`,
-        [normalizedIdentifier],
-      );
-      const userId = result.rows[0]?.id;
-      if (!userId) return undefined;
-      return await storage.getUser(userId);
-    } catch (error) {
-      const code = (error as { code?: string } | null)?.code;
-      if (code === "42703") {
-        writeTechnicalLog({
-          event: "auth.login.email_lookup_skipped",
-          source: "auth",
-          level: "warn",
-          data: {
-            reason: "users_email_column_missing",
-          },
-        });
-        return undefined;
-      }
-      throw error;
-    }
+  if (!normalizedIdentifier) {
+    return {
+      user: undefined,
+      normalizedIdentifier: "",
+      identifierKind: "username",
+      triedEmailColumn: false,
+      triedLegacyUsernameEmail: false,
+      foundBy: null,
+    };
   }
 
-  return storage.getUserByUsername(normalizedIdentifier);
+  if (isEmailLikeUsername(normalizedIdentifier)) {
+    let foundBy: LoginLookupSource = null;
+    let user: Awaited<ReturnType<typeof storage.getUser>> | undefined;
+    let triedEmailColumn = false;
+    let triedLegacyUsernameEmail = false;
+
+    triedLegacyUsernameEmail = true;
+    const legacyEmailAsUsernameUser = await storage.getUserByUsername(normalizedIdentifier);
+    if (legacyEmailAsUsernameUser) {
+      user = legacyEmailAsUsernameUser;
+      foundBy = "legacyUsernameEmail";
+      return {
+        user,
+        normalizedIdentifier,
+        identifierKind: "email",
+        triedEmailColumn,
+        triedLegacyUsernameEmail,
+        foundBy,
+      };
+    }
+
+    triedEmailColumn = true;
+    user = await storage.getUserByEmail(normalizedIdentifier);
+    if (user) {
+      foundBy = "email";
+    }
+
+    return {
+      user,
+      normalizedIdentifier,
+      identifierKind: "email",
+      triedEmailColumn,
+      triedLegacyUsernameEmail,
+      foundBy,
+    };
+  }
+
+  const user = await storage.getUserByUsername(normalizedIdentifier);
+  return {
+    user,
+    normalizedIdentifier,
+    identifierKind: "username",
+    triedEmailColumn: false,
+    triedLegacyUsernameEmail: false,
+    foundBy: user ? "username" : null,
+  };
 }
 
 const FULL_NAME_VISIBILITY_VALUES = new Set(["private", "public"]);
@@ -374,8 +423,8 @@ export function setupAuth(app: Express) {
       async (req, _identifier, password, done) => {
         try {
           const rawIdentifier = resolveRawLoginIdentifierFromBody(req.body);
-          const normalizedIdentifier = normalizeLoginIdentifier(rawIdentifier);
-          const user = await findUserForLoginIdentifier(rawIdentifier);
+          const lookup = await findUserForLoginIdentifier(rawIdentifier);
+          const user = lookup.user;
 
           if (!user) {
             writeTechnicalLog({
@@ -383,8 +432,21 @@ export function setupAuth(app: Express) {
               source: "auth",
               level: "info",
               data: {
-                identifier: normalizedIdentifier,
+                identifier: lookup.normalizedIdentifier,
                 userFound: false,
+              },
+            });
+            writeTechnicalLog({
+              event: "auth.login.lookup",
+              source: "auth",
+              level: "info",
+              data: {
+                identifierKind: lookup.identifierKind,
+                triedEmailColumn: lookup.triedEmailColumn,
+                triedLegacyUsernameEmail: lookup.triedLegacyUsernameEmail,
+                foundBy: lookup.foundBy,
+                foundUser: false,
+                passwordValid: false,
               },
             });
             return done(null, false, { message: "E-mail/usuario ou senha invalidos." });
@@ -396,7 +458,7 @@ export function setupAuth(app: Express) {
             source: "auth",
             level: storedPasswordInspection.isComparable ? "info" : "warn",
             data: {
-              identifier: normalizedIdentifier,
+              identifier: lookup.normalizedIdentifier,
               userFound: true,
               hasId: Boolean(user.id),
               hasUsername: typeof user.username === "string" && user.username.length > 0,
@@ -413,10 +475,36 @@ export function setupAuth(app: Express) {
           });
 
           if (!storedPasswordInspection.isComparable) {
+            writeTechnicalLog({
+              event: "auth.login.lookup",
+              source: "auth",
+              level: "warn",
+              data: {
+                identifierKind: lookup.identifierKind,
+                triedEmailColumn: lookup.triedEmailColumn,
+                triedLegacyUsernameEmail: lookup.triedLegacyUsernameEmail,
+                foundBy: lookup.foundBy,
+                foundUser: true,
+                passwordValid: false,
+              },
+            });
             return done(null, false, { message: LEGACY_PASSWORD_RESET_MESSAGE });
           }
 
           const match = await comparePasswords(password, user.password);
+          writeTechnicalLog({
+            event: "auth.login.lookup",
+            source: "auth",
+            level: match ? "info" : "warn",
+            data: {
+              identifierKind: lookup.identifierKind,
+              triedEmailColumn: lookup.triedEmailColumn,
+              triedLegacyUsernameEmail: lookup.triedLegacyUsernameEmail,
+              foundBy: lookup.foundBy,
+              foundUser: true,
+              passwordValid: match,
+            },
+          });
           if (!match) return done(null, false, { message: "E-mail/usuario ou senha invalidos." });
           return done(null, user);
         } catch (err) {
@@ -461,9 +549,11 @@ export function setupAuth(app: Express) {
 
   app.post("/api/auth/register", loginLimiter, async (req, res, next) => {
     let username = "";
+    let email = "";
     try {
       username = normalizePublicUsername(req.body?.username);
       const password = req.body?.password;
+      const rawEmail = req.body?.email;
       const nomeCompleto = req.body?.nomeCompleto;
 
       writeTechnicalLog({
@@ -473,6 +563,7 @@ export function setupAuth(app: Express) {
         requestId: req.requestId ?? undefined,
         data: {
           username,
+          hasEmail: typeof rawEmail === "string" && rawEmail.trim().length > 0,
           hasPassword: typeof password === "string" && password.length > 0,
         },
       });
@@ -495,6 +586,25 @@ export function setupAuth(app: Express) {
           details: { reason: "invalid_public_username" },
         });
         return res.status(400).json({ message: usernameValidationError });
+      }
+      if (rawEmail !== undefined && rawEmail !== null && typeof rawEmail !== "string") {
+        auditAuth(req, {
+          action: "auth",
+          status: "failure",
+          domain: "auth.register",
+          details: { reason: "invalid_email_type" },
+        });
+        return res.status(400).json({ message: "E-mail invalido." });
+      }
+      email = normalizeEmailAddress(rawEmail);
+      if (typeof rawEmail === "string" && rawEmail.trim() !== "" && !email) {
+        auditAuth(req, {
+          action: "auth",
+          status: "failure",
+          domain: "auth.register",
+          details: { username, reason: "invalid_email_format" },
+        });
+        return res.status(400).json({ message: "E-mail invalido." });
       }
       if (password.length < 8) {
         auditAuth(req, {
@@ -527,6 +637,18 @@ export function setupAuth(app: Express) {
         });
         return res.status(400).json({ message: "Este usuario ja esta em uso" });
       }
+      if (email) {
+        const existingByEmail = await storage.getUserByEmail(email);
+        if (existingByEmail) {
+          auditAuth(req, {
+            action: "auth",
+            status: "failure",
+            domain: "auth.register",
+            details: { username, reason: "email_in_use" },
+          });
+          return res.status(400).json({ message: "Este e-mail ja esta em uso" });
+        }
+      }
       const hashedPassword = await hashPassword(password);
       const generatedPasswordInspection = inspectStoredPassword(hashedPassword);
 
@@ -541,7 +663,7 @@ export function setupAuth(app: Express) {
         },
       });
 
-      const user = await storage.createUser({ username, password: hashedPassword });
+      const user = await storage.createUser({ username, email: email || null, password: hashedPassword });
       let persistedPasswordInspection = inspectStoredPassword(user.password);
 
       writeTechnicalLog({
@@ -931,6 +1053,7 @@ export function setupAuth(app: Express) {
       }
       const currentPublicUsername = resolvePublicUsernameForResponse(persistedUser.username);
       const canDefinePublicUsername = currentPublicUsername === null;
+      const currentEmail = resolveStoredAccountEmail(persistedUser.email);
 
       if (Object.prototype.hasOwnProperty.call(body, "nomeCompleto")) {
         const rawNomeCompleto = body.nomeCompleto;
@@ -952,6 +1075,11 @@ export function setupAuth(app: Express) {
             return res.status(403).json({ message: "Usuário público não pode ser alterado." });
           }
         } else {
+          const legacyEmailFromUsername = resolveStoredAccountEmail(persistedUser.username);
+          if (!currentEmail && legacyEmailFromUsername) {
+            updates.email = legacyEmailFromUsername;
+          }
+
           const validationError = validatePublicUsername(normalizedCandidate);
           if (validationError) {
             return res.status(400).json({ message: validationError });
@@ -961,6 +1089,30 @@ export function setupAuth(app: Express) {
             return res.status(409).json({ message: "Este usuário público já está em uso." });
           }
           updates.username = normalizedCandidate;
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(body, "email")) {
+        const rawEmail = body.email;
+        if (rawEmail !== null && rawEmail !== undefined && typeof rawEmail !== "string") {
+          return res.status(400).json({ message: "E-mail invalido." });
+        }
+        const normalizedEmail = normalizeEmailAddress(rawEmail);
+        const hasNonEmptyRawEmail = typeof rawEmail === "string" && rawEmail.trim() !== "";
+        if (hasNonEmptyRawEmail && !normalizedEmail) {
+          return res.status(400).json({ message: "E-mail invalido." });
+        }
+
+        if (currentEmail) {
+          if (normalizedEmail && normalizedEmail !== currentEmail) {
+            return res.status(403).json({ message: "E-mail da conta não pode ser alterado." });
+          }
+        } else if (normalizedEmail) {
+          const existingByEmail = await storage.getUserByEmail(normalizedEmail);
+          if (existingByEmail && existingByEmail.id !== userId) {
+            return res.status(409).json({ message: "Este e-mail já está em uso." });
+          }
+          updates.email = normalizedEmail;
         }
       }
 

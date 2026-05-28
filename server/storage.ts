@@ -22,6 +22,7 @@ import {
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   getUserByResetToken(token: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, data: Partial<User>): Promise<User | undefined>;
@@ -170,7 +171,8 @@ export class DatabaseStorage implements IStorage {
         combined.includes("reset_token") ||
         combined.includes("reset_token_expiry") ||
         combined.includes("public_code") ||
-        combined.includes("full_name_visibility")
+        combined.includes("full_name_visibility") ||
+        combined.includes("email")
       )
     );
   }
@@ -178,6 +180,7 @@ export class DatabaseStorage implements IStorage {
   private toUserWithOptionalDefaults(user: {
     id: string;
     username: string;
+    email?: string | null;
     password: string;
     subscriptionTier?: string | null;
     subscription_tier?: string | null;
@@ -185,6 +188,7 @@ export class DatabaseStorage implements IStorage {
     return {
       id: user.id,
       username: user.username,
+      email: user.email ?? null,
       password: user.password,
       publicCode: null,
       nomeCompleto: null,
@@ -229,13 +233,30 @@ export class DatabaseStorage implements IStorage {
       return user ? this.toUserWithOptionalDefaults(user) : undefined;
     }
   }
+  async getUserByEmail(email: string) {
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) return undefined;
+    try {
+      const [user] = await this.database
+        .select()
+        .from(users)
+        .where(sql`lower(${users.email}) = lower(${normalizedEmail})`)
+        .limit(1);
+      return user;
+    } catch (error) {
+      if (!this.isMissingUsersOptionalColumnsError(error)) throw error;
+      return undefined;
+    }
+  }
   async createUser(insertUser: InsertUser) {
     try {
       const [user] = await this.database.insert(users).values(insertUser).returning();
       return user;
     } catch (error) {
       if (!this.isMissingUsersOptionalColumnsError(error)) throw error;
-      const [user] = await this.database.insert(users).values(insertUser).returning(this.usersBaseProjection);
+      const fallbackInsertUser: InsertUser = { ...insertUser };
+      delete fallbackInsertUser.email;
+      const [user] = await this.database.insert(users).values(fallbackInsertUser).returning(this.usersBaseProjection);
       return this.toUserWithOptionalDefaults(user);
     }
   }
@@ -255,6 +276,7 @@ export class DatabaseStorage implements IStorage {
       delete fallbackData.resetToken;
       delete fallbackData.resetTokenExpiry;
       delete fallbackData.fullNameVisibility;
+      delete fallbackData.email;
 
       if (Object.keys(fallbackData).length === 0) {
         return this.getUser(id);
