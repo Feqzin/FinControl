@@ -20,10 +20,19 @@ export class DividasService {
   constructor(private readonly repository: FinancialRepository) {}
 
   async list(userId: string, status: DividaListStatus = "active") {
-    if (typeof this.repository.getDividasByStatus === "function") {
-      return this.repository.getDividasByStatus(userId, status);
+    const hasGetByStatus = typeof this.repository.getDividasByStatus === "function";
+    const rows = hasGetByStatus
+      ? await this.repository.getDividasByStatus(userId, status)
+      : await this.repository.getDividas(userId);
+
+    if (status === "all") {
+      return rows;
     }
-    return this.repository.getDividas(userId);
+
+    return rows.filter((divida) => {
+      const isRemoved = Boolean(divida.deletedAt);
+      return status === "removed" ? isRemoved : !isRemoved;
+    });
   }
 
   async listByPessoa(pessoaId: string, userId: string) {

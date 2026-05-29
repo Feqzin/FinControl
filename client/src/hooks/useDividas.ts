@@ -39,14 +39,19 @@ export function useDividas({ search, filterStatus, filterTipo }: UseDividasArgs)
 
   const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "—";
 
+  const dividasFiltradasPorRemocao = useMemo(
+    () => dividas.filter((divida) => (isRemovedFilter ? Boolean(divida.deletedAt) : !divida.deletedAt)),
+    [dividas, isRemovedFilter],
+  );
+
   const dividasComParcelas: DividaWithParcelas[] = useMemo(
-    () => dividas.map((divida) => ({
+    () => dividasFiltradasPorRemocao.map((divida) => ({
       ...divida,
       parcelas: parcelas
         .filter((parcela) => parcela.dividaId === divida.id)
         .sort((a, b) => a.numero - b.numero),
     })),
-    [dividas, parcelas],
+    [dividasFiltradasPorRemocao, parcelas],
   );
 
   const getDividaStatus = (divida: DividaWithParcelas) => {
@@ -204,7 +209,7 @@ export function useDividas({ search, filterStatus, filterTipo }: UseDividasArgs)
   });
 
   return {
-    dividas,
+    dividas: dividasFiltradasPorRemocao,
     dividasComParcelas,
     parcelas,
     pessoas,

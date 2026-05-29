@@ -9,8 +9,17 @@ import {
 } from "../validators/financial.validators";
 import { auditRequest, getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils";
 
-function resolveDividaListStatus(raw: unknown): DividaListStatus {
-  const normalized = String(raw ?? "").trim().toLowerCase();
+function normalizeQueryValue(raw: unknown): string {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function resolveDividaListStatus(rawStatus: unknown, rawDeleted: unknown): DividaListStatus {
+  const deleted = normalizeQueryValue(rawDeleted);
+  if (deleted === "removed" || deleted === "true" || deleted === "1" || deleted === "sim") return "removed";
+  if (deleted === "all" || deleted === "todos") return "all";
+
+  const normalized = normalizeQueryValue(rawStatus);
   if (normalized === "all" || normalized === "todos") return "all";
   if (normalized === "removed" || normalized === "removidas" || normalized === "inativas") return "removed";
   return "active";
@@ -20,7 +29,7 @@ export function createDividasController(service: DividasService) {
   return {
     list: async (req: Request, res: Response) => {
       const userId = getUserId(req);
-      const status = resolveDividaListStatus(req.query.status);
+      const status = resolveDividaListStatus(req.query.status, req.query.deleted);
       res.json(await service.list(userId, status));
     },
 

@@ -15,3 +15,4 @@ import "./pessoas-orphan-recovery.test";
 import "./errors-sanitization.test";
 import "./backup-import-servicos-periodicidade.test";
 import "./servicos-categoria-validation.test";
+import "./dividas-removed-filter.test";
