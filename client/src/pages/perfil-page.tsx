@@ -271,6 +271,12 @@ function resolveRestoreSubmissionMode(
   };
 }
 
+function formatRestoreModeLabel(mode: BackupRestoreMode): string {
+  if (mode === "replace") return "Substituir dados atuais";
+  if (mode === "custom") return "Personalizado";
+  return "Mesclar com dados atuais";
+}
+
 export default function PerfilPage() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
@@ -287,8 +293,6 @@ export default function PerfilPage() {
     user?.fullNameVisibility === "public" ? "public" : "private",
   );
   const [arquivoImportacao, setArquivoImportacao] = useState<File | null>(null);
-  const [modoImportacao, setModoImportacao] = useState<ImportMode>("merge");
-  const [modoRestauracaoCloud, setModoRestauracaoCloud] = useState<ImportMode>("merge");
   const [backupRestaurandoId, setBackupRestaurandoId] = useState<string | null>(null);
   const [restoreReviewOpen, setRestoreReviewOpen] = useState(false);
   const [restoreReviewSource, setRestoreReviewSource] = useState<RestoreReviewSource | null>(null);
@@ -450,7 +454,7 @@ export default function PerfilPage() {
       invalidateFinancialQueries();
       toast({
         title: "Backup restaurado da nuvem",
-        description: `Modo: ${resultado.modoImportacao === "replace" ? "Substituir dados atuais" : resultado.modoImportacao === "custom" ? "Personalizado" : "Mesclar com dados atuais"}. Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Vinculos de servico: ${resultado.servicoPessoasImportados ?? 0}, Pagamentos de servico: ${resultado.servicoPagamentosImportados ?? 0}, Movimentações de saldo: ${resultado.saldoMovimentacoesImportados ?? 0}, Metas: ${resultado.metasImportadas}`,
+        description: `Modo: ${formatRestoreModeLabel(resultado.modoImportacao)}. Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Vinculos de servico: ${resultado.servicoPessoasImportados ?? 0}, Pagamentos de servico: ${resultado.servicoPagamentosImportados ?? 0}, Movimentações de saldo: ${resultado.saldoMovimentacoesImportados ?? 0}, Metas: ${resultado.metasImportadas}`,
       });
       if ((resultado.avisos?.length ?? 0) > 0) {
         toast({
@@ -495,7 +499,7 @@ export default function PerfilPage() {
 
       toast({
         title: "Importacao concluida",
-        description: `Modo: ${(resultado.modoImportacao ?? modoImportacao) === "replace" ? "Substituir dados atuais" : (resultado.modoImportacao ?? modoImportacao) === "custom" ? "Personalizado" : "Mesclar com dados atuais"}. Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Vinculos de servico: ${resultado.servicoPessoasImportados ?? 0}, Pagamentos de servico: ${resultado.servicoPagamentosImportados ?? 0}, Movimentações de saldo: ${resultado.saldoMovimentacoesImportadas ?? 0}, Metas: ${resultado.metasImportadas}`,
+        description: `Modo: ${formatRestoreModeLabel(resultado.modoImportacao ?? "custom")}. Pessoas: ${resultado.pessoasImportadas}, Cartoes: ${resultado.cartoesImportados}, Dividas: ${resultado.dividasImportadas}, Compras: ${resultado.comprasImportadas}, Servicos: ${resultado.servicosImportados}, Vinculos de servico: ${resultado.servicoPessoasImportados ?? 0}, Pagamentos de servico: ${resultado.servicoPagamentosImportados ?? 0}, Movimentações de saldo: ${resultado.saldoMovimentacoesImportadas ?? 0}, Metas: ${resultado.metasImportadas}`,
       });
       if ((resultado.avisos?.length ?? 0) > 0) {
         toast({
@@ -728,7 +732,7 @@ export default function PerfilPage() {
     setRestoreReviewOpen(true);
   };
 
-  const importarDados = async () => {
+  const importarDados = async (defaultMode: ImportMode = "replace") => {
     if (!arquivoImportacao) {
       toast({
         title: "Selecione um arquivo",
@@ -755,7 +759,7 @@ export default function PerfilPage() {
 
       openRestoreReviewWithPreview("local", preview, {
         title: arquivoImportacao.name || "Backup local",
-        defaultMode: modoImportacao,
+        defaultMode,
         localBackupPayload: backupPayload,
       });
     } catch (error) {
@@ -769,14 +773,14 @@ export default function PerfilPage() {
     }
   };
 
-  const restaurarBackupNuvem = async (backup: CloudBackupItem) => {
+  const restaurarBackupNuvem = async (backup: CloudBackupItem, defaultMode: ImportMode = "replace") => {
     try {
       setRestoreReviewLoading(true);
       const preview = await previewCloudBackup(backup.id);
       openRestoreReviewWithPreview("cloud", preview, {
         title: backup.fileName,
         backupId: backup.id,
-        defaultMode: modoRestauracaoCloud,
+        defaultMode,
       });
     } catch (error) {
       toast({
@@ -787,6 +791,21 @@ export default function PerfilPage() {
     } finally {
       setRestoreReviewLoading(false);
     }
+  };
+
+  const abrirRestauracaoCloud = () => {
+    const backupsDisponiveis = cloudBackupsQuery.data ?? [];
+    if (backupsDisponiveis.length === 0) {
+      toast({
+        title: "Nenhum backup disponível",
+        description: "Salve um backup na nuvem antes de restaurar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const backupPreferencial = backupsDisponiveis.find((backup) => backup.status === "completed") ?? backupsDisponiveis[0];
+    void restaurarBackupNuvem(backupPreferencial, "replace");
   };
 
   const aplicarRestauracaoRevisada = () => {
@@ -890,6 +909,9 @@ export default function PerfilPage() {
       metas: calculateRemaining(billingLimits.maxMetas, usageSnapshot.usage.metas),
     },
   };
+  const restorePreviewModules = restorePreviewData?.modules ?? [];
+  const restoreModulesFound = restorePreviewModules.filter((module) => module.foundInBackup);
+  const restoreModulesNotFound = restorePreviewModules.filter((module) => !module.foundInBackup);
 
   return (
     <div className="app-page-shell app-section-stack mx-auto max-w-2xl" data-testid="perfil-page">
@@ -1239,94 +1261,91 @@ export default function PerfilPage() {
           <CardTitle className="text-base flex items-center gap-2">
             <Download className="w-4 h-4" /> Backup de dados
           </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Backup local em JSON continua disponivel para todos os planos.
+            Exporte, salve e restaure seus dados com revisão seletiva por módulo.
           </p>
-          <Button
-            variant="outline"
-            onClick={exportarDados}
-            data-testid="button-export"
-            className="w-full touch-feedback"
-          >
-            <Download className="w-4 h-4 mr-2" /> Exportar dados (JSON)
-          </Button>
-          <div className="fintech-surface-subtle space-y-3 p-3">
-            <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border bg-background p-4">
+            <h3 className="text-sm font-semibold">Exportar dados</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Baixe uma cópia local dos seus dados em JSON.
+            </p>
+            <Button
+              variant="outline"
+              onClick={exportarDados}
+              data-testid="button-export"
+              className="mt-3 w-full touch-feedback sm:w-auto"
+            >
+              <Download className="w-4 h-4 mr-2" /> Exportar dados (JSON)
+            </Button>
+          </div>
+
+          <div className="rounded-lg border bg-background p-4">
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
                 <Cloud className="w-4 h-4 text-primary" />
-                <p className="text-sm font-medium">
-                  Backup na nuvem com proteção avançada dos seus dados (Premium)
-                </p>
-              </div>
+                Backup na nuvem
+              </h3>
               <Badge variant={backupNuvemLiberado ? "default" : "secondary"}>
                 {backupNuvemLiberado ? "Premium ativo" : "Premium"}
               </Badge>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {backupNuvemLiberado
-                ? "Seu plano premium permite salvar e restaurar backups na nuvem privada."
-                : "Seu plano free nao inclui backup na nuvem. Upgrade para Premium liberara esse recurso."}
+            <p className="mt-1 text-sm text-muted-foreground">
+              Salve e restaure backups privados na nuvem.
             </p>
-            <p className="text-xs text-muted-foreground rounded-md border border-border/60 bg-muted/20 p-2">
-              Antes de restaurar, você poderá revisar o conteúdo do backup e escolher por módulo se deseja Mesclar, Substituir ou Ignorar.
-            </p>
-            <Button
-              variant="outline"
-              className="w-full touch-feedback"
-              onClick={() => createCloudBackupMutation.mutate()}
-              disabled={!backupNuvemLiberado || createCloudBackupMutation.isPending}
-              data-testid="button-cloud-backup-premium"
-            >
-              {backupNuvemLiberado
-                ? (createCloudBackupMutation.isPending ? "Salvando backup..." : "Salvar backup na nuvem")
-                : "Disponível no plano Premium"}
-            </Button>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Button
+                variant="outline"
+                className="w-full touch-feedback"
+                onClick={() => createCloudBackupMutation.mutate()}
+                disabled={!backupNuvemLiberado || createCloudBackupMutation.isPending}
+                data-testid="button-cloud-backup-premium"
+              >
+                {backupNuvemLiberado
+                  ? (createCloudBackupMutation.isPending ? "Salvando backup..." : "Salvar backup na nuvem")
+                  : "Disponível no plano Premium"}
+              </Button>
+              <Button
+                className="w-full touch-feedback"
+                onClick={abrirRestauracaoCloud}
+                disabled={
+                  !backupNuvemLiberado
+                  || cloudBackupsQuery.isLoading
+                  || (cloudBackupsQuery.data?.length ?? 0) === 0
+                  || restoreCloudBackupMutation.isPending
+                  || restoreReviewApplyPending
+                  || restoreReviewLoading
+                }
+                data-testid="button-cloud-restore-latest"
+              >
+                {restoreReviewLoading
+                  ? "Analisando backup..."
+                  : "Substituir com a nuvem"}
+              </Button>
+            </div>
+
             {backupNuvemLiberado && (
-              <div className="fintech-surface-subtle space-y-2 p-3">
-                <div className="space-y-2">
-                  <Label htmlFor="modo-restauracao-cloud">Modo de restauracao da nuvem</Label>
-                  <select
-                    id="modo-restauracao-cloud"
-                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                    value={modoRestauracaoCloud}
-                    onChange={(event) => setModoRestauracaoCloud(event.target.value as ImportMode)}
-                    disabled={restoreCloudBackupMutation.isPending || restoreReviewApplyPending || restoreReviewLoading}
-                    data-testid="select-cloud-restore-mode"
-                  >
-                    <option value="merge">Mesclar com dados atuais (recomendado)</option>
-                    <option value="replace">Substituir dados atuais pelo backup</option>
-                  </select>
-                  {modoRestauracaoCloud === "replace" ? (
-                    <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-md p-2">
-                      Modo substituir: os dados financeiros atuais serao apagados antes da restauracao.
-                    </p>
-                  ) : (
-                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2">
-                      Modo mesclar: pode manter dados atuais e adicionar registros do backup.
-                    </p>
-                  )}
-                </div>
+              <div className="mt-4 rounded-md border bg-muted/20 p-3">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Backups salvos na nuvem
                 </p>
-                {cloudBackupsQuery.isLoading ? (
-                  <p className="text-sm text-muted-foreground">Carregando backups...</p>
-                ) : cloudBackupsQuery.isError ? (
-                  <p className="text-sm text-red-700">
-                    Nao foi possivel carregar backups na nuvem agora.
-                  </p>
-                ) : (cloudBackupsQuery.data?.length ?? 0) === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Nenhum backup na nuvem salvo ainda.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {cloudBackupsQuery.data?.map((backup) => (
+                <div className="mt-2 space-y-2">
+                  {cloudBackupsQuery.isLoading ? (
+                    <p className="text-sm text-muted-foreground">Carregando backups...</p>
+                  ) : cloudBackupsQuery.isError ? (
+                    <p className="text-sm text-red-700">
+                      Nao foi possivel carregar backups na nuvem agora.
+                    </p>
+                  ) : (cloudBackupsQuery.data?.length ?? 0) === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Nenhum backup na nuvem salvo ainda.
+                    </p>
+                  ) : (
+                    cloudBackupsQuery.data?.map((backup) => (
                       <div
                         key={backup.id}
-                        className="flex items-center justify-between gap-3 rounded-md border bg-muted/20 px-3 py-2"
+                        className="flex flex-col gap-2 rounded-md border bg-background px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">{backup.fileName}</p>
@@ -1334,7 +1353,7 @@ export default function PerfilPage() {
                             {formatDateTimeBR(backup.createdAt)} · {formatBytes(backup.sizeBytes)}
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
                           <Badge variant={backup.status === "completed" ? "default" : "destructive"}>
                             {backup.status}
                           </Badge>
@@ -1342,7 +1361,7 @@ export default function PerfilPage() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => restaurarBackupNuvem(backup)}
+                            onClick={() => restaurarBackupNuvem(backup, "replace")}
                             disabled={restoreCloudBackupMutation.isPending || restoreReviewApplyPending || restoreReviewLoading}
                             data-testid={`button-cloud-restore-${backup.id}`}
                           >
@@ -1350,71 +1369,49 @@ export default function PerfilPage() {
                               ? "Restaurando..."
                               : restoreReviewLoading
                                 ? "Analisando..."
-                                : "Restaurar"}
+                                : "Substituir"}
                           </Button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    ))
+                  )}
+                </div>
               </div>
             )}
           </div>
-          <Separator />
-          <p className="text-sm text-muted-foreground">
-            Importe um backup JSON para restaurar seus dados nesta conta.
-          </p>
-          <p className="text-xs text-muted-foreground rounded-md border border-border/60 bg-muted/20 p-2">
-            O backup local também passa por revisão antes de aplicar qualquer alteração.
-          </p>
-          <div className="space-y-2">
-            <Label htmlFor="modo-importacao-backup">Modo de importacao</Label>
-            <select
-              id="modo-importacao-backup"
-              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-              value={modoImportacao}
-              onChange={(event) => setModoImportacao(event.target.value as ImportMode)}
-              disabled={importBackup.isPending || restoreReviewApplyPending || restoreReviewLoading}
-              data-testid="select-import-mode"
-            >
-              <option value="merge">Mesclar com dados atuais (recomendado)</option>
-              <option value="replace">Substituir dados atuais pelo backup</option>
-            </select>
+
+          <div className="rounded-lg border bg-background p-4">
+            <h3 className="text-sm font-semibold">Substituir por arquivo</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Importe um backup JSON salvo no seu dispositivo.
+            </p>
+            <div className="mt-3 space-y-2">
+              <Input
+                ref={inputImportacaoRef}
+                type="file"
+                accept=".json,application/json"
+                onChange={(e) => setArquivoImportacao(e.target.files?.[0] ?? null)}
+                disabled={importBackup.isPending || restoreReviewApplyPending || restoreReviewLoading}
+                data-testid="input-import-backup"
+              />
+              <Button
+                onClick={() => importarDados("replace")}
+                disabled={!arquivoImportacao || importBackup.isPending || restoreReviewApplyPending || restoreReviewLoading}
+                data-testid="button-import-backup"
+                className="w-full touch-feedback"
+              >
+                {importBackup.isPending || restoreReviewApplyPending ? (
+                  "Restaurando..."
+                ) : restoreReviewLoading ? (
+                  "Analisando backup..."
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" /> Substituir por arquivo
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
-          {modoImportacao === "replace" ? (
-            <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3">
-              Modo substituir: os dados financeiros atuais desta conta serao apagados antes da restauracao.
-              Recomenda-se exportar um backup novo antes de continuar.
-            </p>
-          ) : (
-            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
-              Modo mesclar: importar novamente pode duplicar dados.
-            </p>
-          )}
-          <Input
-            ref={inputImportacaoRef}
-            type="file"
-            accept=".json,application/json"
-            onChange={(e) => setArquivoImportacao(e.target.files?.[0] ?? null)}
-            disabled={importBackup.isPending || restoreReviewApplyPending || restoreReviewLoading}
-            data-testid="input-import-backup"
-          />
-          <Button
-            onClick={importarDados}
-            disabled={!arquivoImportacao || importBackup.isPending || restoreReviewApplyPending || restoreReviewLoading}
-            data-testid="button-import-backup"
-            className="w-full touch-feedback"
-          >
-            {importBackup.isPending || restoreReviewApplyPending ? (
-              "Restaurando..."
-            ) : restoreReviewLoading ? (
-              "Analisando backup..."
-            ) : (
-              <>
-                <Upload className="w-4 h-4 mr-2" /> Revisar restauração (JSON)
-              </>
-            )}
-          </Button>
         </CardContent>
       </Card>
 
@@ -1431,181 +1428,207 @@ export default function PerfilPage() {
           setRestoreReviewOpen(open);
         }}
       >
-        <DialogContent className="max-h-[90vh] w-[min(95vw,980px)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Revisar restauração</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Escolha quais dados deseja restaurar antes de aplicar.
-            </p>
-
-            {restorePreviewData ? (
-              <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
-                <p>
-                  <span className="font-medium text-foreground">Arquivo:</span>{" "}
-                  {(restorePreviewData.backupInfo.fileName ?? restoreReviewTitle) || "Backup"}
-                </p>
-                <p>
-                  <span className="font-medium text-foreground">Gerado em:</span>{" "}
-                  {restorePreviewData.backupInfo.createdAt ? formatDateTimeBR(restorePreviewData.backupInfo.createdAt) : "-"}
-                </p>
-                <p>
-                  <span className="font-medium text-foreground">Tamanho:</span>{" "}
-                  {restorePreviewData.backupInfo.sizeBytes != null ? formatBytes(restorePreviewData.backupInfo.sizeBytes) : "-"}
-                </p>
-                <p>
-                  <span className="font-medium text-foreground">Versão:</span>{" "}
-                  {restorePreviewData.backupInfo.version ?? "não informada"}
-                </p>
-              </div>
-            ) : (
+        <DialogContent className="h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[90vh] sm:w-[min(95vw,980px)] sm:max-w-[980px] sm:rounded-lg">
+          <div className="flex h-full flex-col">
+            <DialogHeader className="shrink-0 border-b bg-background px-4 py-3 sm:px-6">
+              <DialogTitle>Revisar restauração</DialogTitle>
               <p className="text-sm text-muted-foreground">
-                {restoreReviewLoading ? "Analisando backup..." : "Nenhuma prévia disponível."}
+                Escolha quais dados deseja restaurar antes de aplicar.
               </p>
-            )}
+            </DialogHeader>
 
-            {restorePreviewData && (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => applyRestoreActionToAvailableModules("merge")}
-                  disabled={restoreReviewApplyPending}
-                >
-                  Selecionar tudo
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => applyRestoreActionToAvailableModules("ignore")}
-                  disabled={restoreReviewApplyPending}
-                >
-                  Ignorar tudo
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => applyRestoreModeToSelectedModules("merge")}
-                  disabled={restoreReviewApplyPending}
-                >
-                  Aplicar modo global: Mesclar
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => applyRestoreModeToSelectedModules("replace")}
-                  disabled={restoreReviewApplyPending}
-                >
-                  Aplicar modo global: Substituir
-                </Button>
-              </div>
-            )}
+            <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+              <div className="space-y-4">
+                {restorePreviewData ? (
+                  <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+                    <p>
+                      <span className="font-medium text-foreground">Arquivo:</span>{" "}
+                      {(restorePreviewData.backupInfo.fileName ?? restoreReviewTitle) || "Backup"}
+                    </p>
+                    <p>
+                      <span className="font-medium text-foreground">Gerado em:</span>{" "}
+                      {restorePreviewData.backupInfo.createdAt ? formatDateTimeBR(restorePreviewData.backupInfo.createdAt) : "-"}
+                    </p>
+                    <p>
+                      <span className="font-medium text-foreground">Tamanho:</span>{" "}
+                      {restorePreviewData.backupInfo.sizeBytes != null ? formatBytes(restorePreviewData.backupInfo.sizeBytes) : "-"}
+                    </p>
+                    <p>
+                      <span className="font-medium text-foreground">Versão:</span>{" "}
+                      {restorePreviewData.backupInfo.version ?? "não informada"}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {restoreReviewLoading ? "Analisando backup..." : "Nenhuma prévia disponível."}
+                  </p>
+                )}
 
-            {restorePreviewData && (
-              <div className="space-y-2">
-                {restorePreviewData.modules.map((module) => {
-                  const moduleKey = isBackupRestoreModuleKey(module.key) ? module.key : null;
-                  const action: BackupRestoreAction = moduleKey
-                    ? restoreReviewModuleActions[moduleKey]
-                    : "ignore";
-                  return (
-                    <div key={module.key} className="rounded-md border p-3">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="space-y-1">
-                          <p className="text-sm font-medium">{module.label}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Encontrados: {module.count}
-                            {module.activeCount != null && module.removedCount != null
-                              ? ` · Ativos: ${module.activeCount} · Removidos: ${module.removedCount}`
-                              : ""}
-                          </p>
-                          {!module.foundInBackup && (
-                            <p className="text-xs text-amber-700">
-                              Não encontrado no backup.
-                            </p>
-                          )}
-                          {module.warnings.map((warning) => (
-                            <p key={`${module.key}-${warning}`} className="text-xs text-amber-700">
-                              {warning}
-                            </p>
-                          ))}
+                {restorePreviewData && (
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full sm:w-auto"
+                      onClick={() => applyRestoreActionToAvailableModules("merge")}
+                      disabled={restoreReviewApplyPending}
+                    >
+                      Selecionar tudo
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full sm:w-auto"
+                      onClick={() => applyRestoreActionToAvailableModules("ignore")}
+                      disabled={restoreReviewApplyPending}
+                    >
+                      Ignorar tudo
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full sm:w-auto"
+                      onClick={() => applyRestoreModeToSelectedModules("merge")}
+                      disabled={restoreReviewApplyPending}
+                    >
+                      Modo global: Mesclar
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full sm:w-auto"
+                      onClick={() => applyRestoreModeToSelectedModules("replace")}
+                      disabled={restoreReviewApplyPending}
+                    >
+                      Modo global: Substituir
+                    </Button>
+                  </div>
+                )}
+
+                {restoreModulesFound.length > 0 && (
+                  <div className="space-y-2">
+                    {restoreModulesFound.map((module) => {
+                      const moduleKey = isBackupRestoreModuleKey(module.key) ? module.key : null;
+                      const action: BackupRestoreAction = moduleKey
+                        ? restoreReviewModuleActions[moduleKey]
+                        : "ignore";
+                      return (
+                        <div key={module.key} className="rounded-md border p-3">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium">{module.label}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Encontrados: {module.count}
+                                {module.activeCount != null && module.removedCount != null
+                                  ? ` · Ativos: ${module.activeCount} · Removidos: ${module.removedCount}`
+                                  : ""}
+                              </p>
+                              {module.warnings.map((warning) => (
+                                <p key={`${module.key}-${warning}`} className="text-xs text-amber-700">
+                                  {warning}
+                                </p>
+                              ))}
+                            </div>
+                            {moduleKey ? (
+                              <select
+                                className="h-10 min-w-[170px] rounded-md border border-input bg-background px-2 text-sm"
+                                value={action}
+                                onChange={(event) =>
+                                  updateRestoreModuleAction(moduleKey, event.target.value as BackupRestoreAction)}
+                                disabled={restoreReviewApplyPending}
+                              >
+                                <option value="merge">Mesclar</option>
+                                <option value="replace">Substituir</option>
+                                <option value="ignore">Ignorar</option>
+                              </select>
+                            ) : (
+                              <Badge variant="secondary">Não encontrado</Badge>
+                            )}
+                          </div>
                         </div>
-                        {moduleKey ? (
-                          <select
-                            className="h-9 min-w-[170px] rounded-md border border-input bg-background px-2 text-sm"
-                            value={action}
-                            onChange={(event) =>
-                              updateRestoreModuleAction(moduleKey, event.target.value as BackupRestoreAction)}
-                            disabled={!module.foundInBackup || restoreReviewApplyPending}
-                          >
-                            <option value="merge">Mesclar</option>
-                            <option value="replace">Substituir</option>
-                            <option value="ignore">Ignorar</option>
-                          </select>
-                        ) : (
+                      );
+                    })}
+                  </div>
+                )}
+
+                {restoreModulesNotFound.length > 0 && (
+                  <div className="rounded-md border border-dashed p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Não encontrados no backup
+                    </p>
+                    <div className="mt-2 space-y-1">
+                      {restoreModulesNotFound.map((module) => (
+                        <div
+                          key={`not-found-${module.key}`}
+                          className="flex items-center justify-between gap-2 rounded-md bg-muted/30 px-2 py-1.5 text-xs"
+                        >
+                          <span className="font-medium">{module.label} · {module.count}</span>
                           <Badge variant="secondary">Não encontrado</Badge>
-                        )}
-                      </div>
+                        </div>
+                      ))}
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  </div>
+                )}
 
-            {(restorePreviewData?.warnings.length ?? 0) > 0 && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                {restorePreviewData?.warnings.map((warning) => (
-                  <p key={`restore-warning-${warning}`}>{warning}</p>
-                ))}
+                {(restorePreviewData?.warnings.length ?? 0) > 0 && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                    {restorePreviewData?.warnings.map((warning) => (
+                      <p key={`restore-warning-${warning}`}>{warning}</p>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
-            {hasReplaceRestoreAction(restoreReviewModuleActions) && (
-              <div className="space-y-2 rounded-md border border-red-200 bg-red-50 p-3">
-                <p className="text-xs text-red-800">
-                  Você escolheu substituir dados. Dados atuais dos módulos selecionados serão removidos antes da restauração.
-                </p>
-                <Label htmlFor="restore-confirm-text" className="text-xs text-red-900">
-                  Digite RESTAURAR para confirmar
-                </Label>
-                <Input
-                  id="restore-confirm-text"
-                  value={restoreReviewConfirmText}
-                  onChange={(event) => setRestoreReviewConfirmText(event.target.value)}
-                  disabled={restoreReviewApplyPending}
-                />
+            <div className="shrink-0 border-t bg-background px-4 py-3 sm:px-6">
+              <div className="space-y-3">
+                {hasReplaceRestoreAction(restoreReviewModuleActions) && (
+                  <div className="space-y-2 rounded-md border border-red-200 bg-red-50 p-3">
+                    <p className="text-xs text-red-800">
+                      Você escolheu substituir dados. Dados atuais dos módulos selecionados serão removidos antes da restauração.
+                    </p>
+                    <Label htmlFor="restore-confirm-text" className="text-xs text-red-900">
+                      Digite RESTAURAR para confirmar
+                    </Label>
+                    <Input
+                      id="restore-confirm-text"
+                      value={restoreReviewConfirmText}
+                      onChange={(event) => setRestoreReviewConfirmText(event.target.value)}
+                      disabled={restoreReviewApplyPending}
+                    />
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => resetRestoreReviewState()}
+                    disabled={restoreReviewApplyPending || restoreCloudBackupMutation.isPending || importBackup.isPending}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={aplicarRestauracaoRevisada}
+                    disabled={
+                      restoreReviewApplyPending
+                      || restoreCloudBackupMutation.isPending
+                      || importBackup.isPending
+                      || countSelectedRestoreModules(restoreReviewModuleActions) === 0
+                      || (hasReplaceRestoreAction(restoreReviewModuleActions) && restoreReviewConfirmText.trim() !== "RESTAURAR")
+                    }
+                  >
+                    {restoreReviewApplyPending || restoreCloudBackupMutation.isPending || importBackup.isPending
+                      ? "Aplicando..."
+                      : "Aplicar restauração"}
+                  </Button>
+                </div>
               </div>
-            )}
-
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => resetRestoreReviewState()}
-                disabled={restoreReviewApplyPending || restoreCloudBackupMutation.isPending || importBackup.isPending}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="button"
-                onClick={aplicarRestauracaoRevisada}
-                disabled={
-                  restoreReviewApplyPending
-                  || restoreCloudBackupMutation.isPending
-                  || importBackup.isPending
-                  || countSelectedRestoreModules(restoreReviewModuleActions) === 0
-                  || (hasReplaceRestoreAction(restoreReviewModuleActions) && restoreReviewConfirmText.trim() !== "RESTAURAR")
-                }
-              >
-                {restoreReviewApplyPending || restoreCloudBackupMutation.isPending || importBackup.isPending
-                  ? "Aplicando..."
-                  : "Aplicar restauração"}
-              </Button>
             </div>
           </div>
         </DialogContent>
