@@ -49,64 +49,71 @@ export function DashboardPageHeader({
 }: DashboardPageHeaderProps) {
   return (
     <div className="fintech-page-header border border-border/60 bg-card/95 shadow-sm">
-      <div className="fintech-page-header-row gap-4">
-        <div className="flex min-w-0 items-center justify-between gap-3 lg:justify-start">
-          <div className="min-w-0">
-            <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
-            <p className="text-sm text-muted-foreground/90">{subtitle}</p>
-          </div>
-
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full"
-                aria-label="Personalizar painel"
-                title="Personalizar Painel"
-              >
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Personalizar Painel</DialogTitle>
-                <DialogDescription className="sr-only">
-                  Ajuste as opções rápidas e preferências exibidas no topo do dashboard.
-                </DialogDescription>
-              </DialogHeader>
-              {settingsContent}
-            </DialogContent>
-          </Dialog>
+      <div className="fintech-page-header-row items-start gap-4 xl:items-start">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <h1 className="fintech-page-title">{title}</h1>
+          <p className="fintech-page-subtitle max-w-2xl text-muted-foreground/90">{subtitle}</p>
         </div>
 
-        <div className="fintech-actions-wrap w-full lg:w-auto">
-          <Select value={selectedMonth} onValueChange={onMonthChange}>
-            <SelectTrigger className="h-9 w-full min-w-0 rounded-xl text-sm lg:w-[210px]" data-testid="select-month">
-              <SelectValue placeholder="Selecionar mês" />
-            </SelectTrigger>
-            <SelectContent>
-              {monthOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="w-full xl:w-auto">
+          <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(210px,220px)_auto] xl:items-start">
+            <Select value={selectedMonth} onValueChange={onMonthChange}>
+              <SelectTrigger
+                className="h-10 w-full min-w-0 rounded-xl border-border/70 bg-background/95 text-sm shadow-sm"
+                data-testid="select-month"
+              >
+                <SelectValue placeholder="Selecionar mês" />
+              </SelectTrigger>
+              <SelectContent>
+                {monthOptions.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="h-10 w-full rounded-xl border-border/70 bg-background/95 px-3 shadow-sm sm:w-10 sm:px-0"
+                  aria-label="Personalizar painel"
+                  title="Personalizar Painel"
+                >
+                  <Settings2 className="h-4 w-4" />
+                  <span className="ml-2 text-sm font-medium sm:hidden">Personalizar</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Personalizar Painel</DialogTitle>
+                  <DialogDescription className="sr-only">
+                    Ajuste as opções rápidas e preferências exibidas no topo do dashboard.
+                  </DialogDescription>
+                </DialogHeader>
+                {settingsContent}
+              </DialogContent>
+            </Dialog>
+          </div>
 
           {showAdvancedResources &&
             (scoreStatus.isLoading ? (
-              <Skeleton className="h-12 w-full rounded-xl lg:w-[220px]" />
+              <Skeleton className="mt-2 h-14 w-full rounded-2xl xl:max-w-[280px]" />
             ) : scoreStatus.isError ? (
-              <HeaderScoreError message={scoreStatus.message} />
+              <div className="mt-2 xl:max-w-[280px]">
+                <HeaderScoreError message={scoreStatus.message} />
+              </div>
             ) : (
               <div
-                className="flex w-full min-w-0 items-center gap-3 rounded-xl border border-border/50 bg-background px-3 py-2 sm:px-4 lg:w-auto lg:min-w-[220px]"
+                className="mt-2 flex w-full min-w-0 items-center gap-3 rounded-2xl border border-border/50 bg-background/95 px-3.5 py-3 shadow-sm sm:px-4 xl:max-w-[280px]"
                 data-testid="score-financeiro"
               >
                 <div className="flex-1">
-                  <div className="mb-1 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Score financeiro</span>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+                      Score financeiro
+                    </span>
                     <span className={`text-xs font-bold ${scoreLabelColor}`}>{score.classificacao}</span>
                   </div>
                   <div className="flex items-center gap-2">
