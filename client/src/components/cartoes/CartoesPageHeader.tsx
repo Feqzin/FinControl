@@ -12,6 +12,10 @@ export function CartoesPageHeader({ title, subtitle, actions }: CartoesPageHeade
     <FintechPageHeader
       title={title}
       subtitle={subtitle}
+      rowClassName="items-start gap-4 xl:flex-col 2xl:flex-row 2xl:items-start"
+      contentClassName="space-y-2"
+      titleClassName="sm:text-[2rem]"
+      actionsClassName="w-full 2xl:w-auto"
       actions={actions}
     />
   );
