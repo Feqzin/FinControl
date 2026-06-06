@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import { Settings2 } from "lucide-react";
 
 type DashboardSectionStatus = {
@@ -48,13 +49,14 @@ export function DashboardPageHeader({
   scoreLabelColor,
 }: DashboardPageHeaderProps) {
   return (
-    <div className="fintech-page-header border border-border/60 bg-card/95 shadow-sm">
-      <div className="fintech-page-header-row items-start gap-4 xl:items-start">
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <h1 className="fintech-page-title">{title}</h1>
-          <p className="fintech-page-subtitle max-w-2xl text-muted-foreground/90">{subtitle}</p>
-        </div>
-
+    <FintechPageHeader
+      title={title}
+      subtitle={subtitle}
+      rowClassName="items-start gap-4 xl:items-start"
+      contentClassName="space-y-1.5"
+      titleClassName="sm:text-[2rem]"
+      actionsClassName="w-full xl:w-auto"
+      actions={(
         <div className="w-full xl:w-auto">
           <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(210px,220px)_auto] xl:items-start">
             <Select value={selectedMonth} onValueChange={onMonthChange}>
@@ -99,7 +101,16 @@ export function DashboardPageHeader({
 
           {showAdvancedResources &&
             (scoreStatus.isLoading ? (
-              <Skeleton className="mt-2 h-14 w-full rounded-2xl xl:max-w-[280px]" />
+              <div className="mt-2 w-full rounded-2xl border border-border/50 bg-background/95 px-3.5 py-3 shadow-sm sm:px-4 xl:max-w-[280px]">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <Skeleton className="h-3 w-24 rounded-full bg-muted/65" />
+                  <Skeleton className="h-3 w-14 rounded-full bg-muted/55" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-2 flex-1 rounded-full bg-muted/60" />
+                  <Skeleton className="h-5 w-10 rounded-md bg-muted/65" />
+                </div>
+              </div>
             ) : scoreStatus.isError ? (
               <div className="mt-2 xl:max-w-[280px]">
                 <HeaderScoreError message={scoreStatus.message} />
@@ -126,7 +137,7 @@ export function DashboardPageHeader({
               </div>
             ))}
         </div>
-      </div>
-    </div>
+      )}
+    />
   );
 }

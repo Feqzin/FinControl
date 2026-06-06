@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import {
   Dialog,
   DialogContent,
@@ -157,11 +158,70 @@ export default function PatrimonioPage() {
   if (isLoading) {
     return (
       <div className="app-page-shell app-section-stack">
-        <Skeleton className="h-32 w-full" />
-        <div className="fintech-grid-fluid-260">
-          <Skeleton className="h-40" />
-          <Skeleton className="h-40" />
-          <Skeleton className="h-40" />
+        <div className="rounded-[28px] border border-border/60 bg-card/95 p-6 shadow-sm backdrop-blur">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-24 rounded-full" />
+              <Skeleton className="h-10 w-56 rounded-full" />
+              <Skeleton className="h-4 w-72 max-w-full rounded-full" />
+            </div>
+            <Skeleton className="h-11 w-full rounded-2xl sm:w-44" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <Card className="border border-border/60 bg-card/95 shadow-sm">
+            <CardContent className="space-y-6 p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-24 rounded-full" />
+                  <Skeleton className="h-9 w-40 rounded-full" />
+                </div>
+                <Skeleton className="h-12 w-12 rounded-2xl" />
+              </div>
+              <div className="space-y-4">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="space-y-2 rounded-2xl border border-border/50 bg-background/80 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Skeleton className="h-7 w-7 rounded-xl" />
+                        <Skeleton className="h-4 w-28 rounded-full" />
+                      </div>
+                      <Skeleton className="h-4 w-20 rounded-full" />
+                    </div>
+                    <Skeleton className="h-2 w-full rounded-full" />
+                    <Skeleton className="ml-auto h-3 w-10 rounded-full" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="xl:col-span-2 fintech-grid-fluid-280 content-start">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <Card key={index} className="overflow-hidden rounded-[26px] border border-border/60 bg-card/95 shadow-sm">
+                <CardContent className="space-y-4 p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <Skeleton className="h-12 w-12 rounded-2xl" />
+                      <div className="space-y-3">
+                        <Skeleton className="h-5 w-32 rounded-full" />
+                        <Skeleton className="h-4 w-24 rounded-full" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Skeleton className="h-9 w-9 rounded-xl" />
+                      <Skeleton className="h-9 w-9 rounded-xl" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-8 w-36 rounded-full" />
+                    <Skeleton className="h-4 w-28 rounded-full" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -169,206 +229,249 @@ export default function PatrimonioPage() {
 
   return (
     <div className="app-page-shell app-section-stack">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-3xl font-bold tracking-tight">Patrimônio</h1>
-          <p className="text-muted-foreground">
-            Gerencie seus bens, contas e investimentos.
-          </p>
-        </div>
-        <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
-          <DialogTrigger asChild>
-            <Button className="w-full sm:w-auto" data-testid="button-add-patrimonio">
-              <Plus className="w-4 h-4 mr-2" />
-              Adicionar Item
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {editingPatrimonio ? "Editar Patrimônio" : "Novo Patrimônio"}
-              </DialogTitle>
-              <DialogDescription className="sr-only">
-                Cadastre ou edite um item do patrimônio informando descrição, categoria e valor.
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Ícone</Label>
-                <Suspense fallback={<Skeleton className="h-14 w-full" />}>
-                  <IconPicker
-                    value={formData.iconeId || null}
-                    name={formData.nome || ""}
-                    onChange={(v) => setFormData({ ...formData, iconeId: v || undefined })}
-                    size="md"
-                  />
-                </Suspense>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="nome">Nome / Descrição</Label>
-                <Input
-                  id="nome"
-                  data-testid="input-nome"
-                  value={formData.nome}
-                  onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                  placeholder="Ex: Conta Corrente Itaú"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="tipo">Tipo</Label>
-                <Select
-                  value={formData.tipo}
-                  onValueChange={(v) => setFormData({ ...formData, tipo: v })}
-                >
-                  <SelectTrigger data-testid="select-tipo">
-                    <SelectValue placeholder="Selecione o tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TIPOS_PATRIMONIO.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>
-                        {t.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="valorAtual">Valor Atual (R$)</Label>
-                <Input
-                  id="valorAtual"
-                  data-testid="input-valor"
-                  type="number"
-                  step="0.01"
-                  value={formData.valorAtual}
-                  onChange={(e) => setFormData({ ...formData, valorAtual: e.target.value })}
-                  required
-                />
-              </div>
-              <DialogFooter>
-                <Button
-                  type="submit"
-                  data-testid="button-submit-patrimonio"
-                  disabled={createMutation.isPending || updateMutation.isPending}
-                >
-                  {editingPatrimonio ? "Salvar Alterações" : "Adicionar"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+      <FintechPageHeader
+        eyebrow={(
+          <Badge variant="outline" className="w-fit rounded-full border-border/60 bg-background/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground shadow-sm">
+            Visão patrimonial
+          </Badge>
+        )}
+        title="Patrimônio"
+        subtitle="Gerencie seus bens, contas e investimentos."
+        badges={(
+          <>
+            <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-xs font-medium text-foreground shadow-sm">
+              {patrimonios.length} {patrimonios.length === 1 ? "item cadastrado" : "itens cadastrados"}
+            </Badge>
+            <Badge variant="secondary" className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700 shadow-sm dark:text-emerald-300">
+              Total {formatCurrency(totalPatrimonio)}
+            </Badge>
+          </>
+        )}
+        actionsClassName="flex w-full justify-stretch sm:w-auto sm:justify-end"
+        actions={(
+          <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
+            <DialogTrigger asChild>
+              <Button className="h-11 w-full rounded-2xl px-5 shadow-sm sm:w-auto" data-testid="button-add-patrimonio">
+                <Plus className="mr-2 h-4 w-4" />
+                Adicionar Item
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>
+                    {editingPatrimonio ? "Editar Patrimônio" : "Novo Patrimônio"}
+                  </DialogTitle>
+                  <DialogDescription className="sr-only">
+                    Cadastre ou edite um item do patrimônio informando descrição, categoria e valor.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Ícone</Label>
+                    <Suspense fallback={<Skeleton className="h-14 w-full" />}>
+                      <IconPicker
+                        value={formData.iconeId || null}
+                        name={formData.nome || ""}
+                        onChange={(v) => setFormData({ ...formData, iconeId: v || undefined })}
+                        size="md"
+                      />
+                    </Suspense>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="nome">Nome / Descrição</Label>
+                    <Input
+                      id="nome"
+                      data-testid="input-nome"
+                      value={formData.nome}
+                      onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                      placeholder="Ex: Conta Corrente Itaú"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="tipo">Tipo</Label>
+                    <Select
+                      value={formData.tipo}
+                      onValueChange={(v) => setFormData({ ...formData, tipo: v })}
+                    >
+                      <SelectTrigger data-testid="select-tipo">
+                        <SelectValue placeholder="Selecione o tipo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TIPOS_PATRIMONIO.map((t) => (
+                          <SelectItem key={t.value} value={t.value}>
+                            {t.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="valorAtual">Valor Atual (R$)</Label>
+                    <Input
+                      id="valorAtual"
+                      data-testid="input-valor"
+                      type="number"
+                      step="0.01"
+                      value={formData.valorAtual}
+                      onChange={(e) => setFormData({ ...formData, valorAtual: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      type="submit"
+                      data-testid="button-submit-patrimonio"
+                      disabled={createMutation.isPending || updateMutation.isPending}
+                    >
+                      {editingPatrimonio ? "Salvar Alterações" : "Adicionar"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+        )}
+      />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <PiggyBank className="w-5 h-5 text-primary" />
-              Resumo Geral
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Patrimônio Total</p>
-              <h2 className="text-3xl font-bold" data-testid="text-total-patrimonio">
+        <Card className="border border-border/60 bg-card/95 shadow-sm">
+          <CardHeader className="space-y-4 pb-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <CardTitle className="text-base font-semibold text-foreground">
+                  Resumo Geral
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Distribuição atual do seu patrimônio cadastrado.
+                </p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm">
+                <PiggyBank className="h-5 w-5 text-primary" />
+              </div>
+            </div>
+            <div className="rounded-3xl border border-border/60 bg-background/80 px-4 py-4 shadow-inner">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Patrimônio Total
+              </p>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-foreground" data-testid="text-total-patrimonio">
                 {formatCurrency(totalPatrimonio)}
               </h2>
             </div>
-            <div className="space-y-4">
-              {breakdown.map((item) => (
-                <div key={item.value} className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="flex items-center gap-2">
-                      <item.icon className="w-3 h-3" />
-                      {item.label}
+          </CardHeader>
+          <CardContent className="space-y-3 pt-0">
+            {breakdown.map((item) => (
+              <div key={item.value} className="space-y-3 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <span className="flex items-center gap-3 text-sm font-medium text-foreground">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-card shadow-sm">
+                      <item.icon className="h-4 w-4 text-primary" />
                     </span>
-                    <span className="font-medium">{formatCurrency(item.valor)}</span>
-                  </div>
-                  <Progress value={item.percent} className="h-2" data-testid={`progress-${item.value}`} />
-                  <p className="text-[10px] text-right text-muted-foreground">
-                    {item.percent.toFixed(1)}%
-                  </p>
+                    {item.label}
+                  </span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {formatCurrency(item.valor)}
+                  </span>
                 </div>
-              ))}
-            </div>
+                <Progress value={item.percent} className="h-2.5" data-testid={`progress-${item.value}`} />
+                <p className="text-[11px] font-medium text-right text-muted-foreground">
+                  {item.percent.toFixed(1)}%
+                </p>
+              </div>
+            ))}
           </CardContent>
         </Card>
 
-        <div className="lg:col-span-2 fintech-grid-fluid-280 content-start">
+        <div className="xl:col-span-2 fintech-grid-fluid-280 content-start">
           {patrimonios.length === 0 ? (
-            <Card className="col-span-full py-12">
-              <CardContent className="flex flex-col items-center justify-center text-center space-y-2">
-                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-                  <PiggyBank className="w-6 h-6 text-muted-foreground" />
+            <Card className="col-span-full rounded-[28px] border border-dashed border-border/70 bg-card/80 shadow-sm">
+              <CardContent className="flex flex-col items-center justify-center px-6 py-14 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-primary/15 bg-primary/10 shadow-sm">
+                  <PiggyBank className="h-7 w-7 text-primary" />
                 </div>
-                <h3 className="font-semibold">Nenhum patrimônio cadastrado</h3>
-                <p className="text-sm text-muted-foreground max-w-[250px]">
-                  Comece adicionando suas contas bancárias, investimentos ou dinheiro em espécie.
-                </p>
+                <div className="mt-5 space-y-2">
+                  <h3 className="text-lg font-semibold tracking-tight text-foreground">
+                    Nenhum patrimônio cadastrado
+                  </h3>
+                  <p className="mx-auto max-w-sm text-sm leading-6 text-muted-foreground">
+                    Comece adicionando suas contas bancárias, investimentos ou dinheiro em espécie.
+                  </p>
+                </div>
               </CardContent>
             </Card>
           ) : (
             patrimonios.map((p) => {
               const tipoInfo = TIPOS_PATRIMONIO.find((t) => t.value === p.tipo) || TIPOS_PATRIMONIO[4];
               return (
-                <Card key={p.id} className="hover-elevate transition-all overflow-visible" data-testid={`card-patrimonio-${p.id}`}>
-                  <CardContent className="p-4 flex justify-between items-start gap-4">
-                    <div className="space-y-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                <Card key={p.id} className="hover-elevate overflow-visible rounded-[26px] border border-border/60 bg-card/95 shadow-sm transition-all" data-testid={`card-patrimonio-${p.id}`}>
+                  <CardContent className="space-y-4 p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex min-w-0 items-start gap-3">
                         {p.iconeId ? (
-                          <BrandIconDisplay name={p.nome} iconeId={p.iconeId} size="sm" />
+                          <div className="shrink-0 rounded-2xl border border-border/60 bg-background/80 p-2 shadow-sm">
+                            <BrandIconDisplay name={p.nome} iconeId={p.iconeId} size="sm" />
+                          </div>
                         ) : (
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                            <tipoInfo.icon className="w-4 h-4 text-primary" />
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm">
+                            <tipoInfo.icon className="h-5 w-5 text-primary" />
                           </div>
                         )}
-                        <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
-                          {tipoInfo.label}
-                        </Badge>
+                        <div className="min-w-0 space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className="rounded-full border-border/60 bg-background/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground shadow-sm">
+                              {tipoInfo.label}
+                            </Badge>
+                          </div>
+                          <h3 className="truncate text-base font-semibold tracking-tight text-foreground" title={p.nome}>
+                            {p.nome}
+                          </h3>
+                        </div>
                       </div>
-                      <h3 className="font-semibold truncate mt-2" title={p.nome}>
-                        {p.nome}
-                      </h3>
-                      <p className="text-xl font-bold text-primary" data-testid={`text-valor-${p.id}`}>
+                      <div className="flex shrink-0 gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 rounded-xl border border-border/60 bg-background/80 shadow-sm hover:bg-accent"
+                          data-testid={`button-edit-${p.id}`}
+                          aria-label="Editar patrimônio"
+                          title="Editar patrimônio"
+                          onClick={() => {
+                            setEditingPatrimonio(p);
+                            setFormData({
+                              nome: p.nome,
+                              tipo: p.tipo,
+                              valorAtual: p.valorAtual.toString(),
+                              iconeId: p.iconeId || undefined,
+                            });
+                            setOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 rounded-xl border border-destructive/20 bg-background/80 text-destructive shadow-sm hover:bg-destructive/10"
+                          data-testid={`button-delete-${p.id}`}
+                          aria-label="Excluir patrimônio"
+                          title="Excluir patrimônio"
+                          onClick={() => {
+                            if (confirm("Tem certeza que deseja remover este item?")) {
+                              deleteMutation.mutate(p.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-3xl border border-border/60 bg-background/80 px-4 py-4 shadow-inner">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        Valor atual
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold tracking-tight text-primary" data-testid={`text-valor-${p.id}`}>
                         {formatCurrency(p.valorAtual)}
                       </p>
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        data-testid={`button-edit-${p.id}`}
-                        aria-label="Editar patrimônio"
-                        title="Editar patrimônio"
-                        onClick={() => {
-                          setEditingPatrimonio(p);
-                          setFormData({
-                            nome: p.nome,
-                            tipo: p.tipo,
-                            valorAtual: p.valorAtual.toString(),
-                            iconeId: p.iconeId || undefined,
-                          });
-                          setOpen(true);
-                        }}
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-destructive"
-                        data-testid={`button-delete-${p.id}`}
-                        aria-label="Excluir patrimônio"
-                        title="Excluir patrimônio"
-                        onClick={() => {
-                          if (confirm("Tem certeza que deseja remover este item?")) {
-                            deleteMutation.mutate(p.id);
-                          }
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
                     </div>
                   </CardContent>
                 </Card>

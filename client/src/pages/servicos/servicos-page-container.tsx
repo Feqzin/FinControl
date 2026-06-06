@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -442,30 +443,47 @@ export default function ServicosPage() {
 
   return (
     <div className="app-page-shell app-section-stack" data-testid="servicos-page">
-      <div className="fintech-page-header">
-        <div className="fintech-page-header-row">
-          <div className="min-w-0">
-            <h1 className="fintech-page-title">Serviços e Assinaturas</h1>
-            <p className="fintech-page-subtitle">Gerencie seus gastos recorrentes e divisões</p>
-          </div>
-        <Dialog
-          open={open}
-          onOpenChange={(nextOpen) => {
-            setOpen(nextOpen);
-            if (!nextOpen) {
-              setNewServicoIcone(null);
-              setNewServicoIconPersistableId(null);
-              setNewServicoIconManualSelection(false);
-              setCreateSemDataFixa(false);
-            }
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button className="w-full xl:w-auto" data-testid="button-add-servico">
-              <Plus className="w-4 h-4 mr-2" /> Novo serviço
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
+      <FintechPageHeader
+        title="Serviços e Assinaturas"
+        subtitle="Gerencie seus gastos recorrentes e divisões."
+        rowClassName="items-start gap-4 xl:items-center"
+        contentClassName="space-y-2"
+        titleClassName="sm:text-3xl"
+        badges={(
+          <>
+            <span className="rounded-full bg-muted/65 px-3 py-1.5 font-medium text-muted-foreground shadow-sm">
+              {servicos.length} serviço{servicos.length !== 1 ? "s" : ""}
+            </span>
+            {servicoPessoas.length > 0 && (
+              <span className="rounded-full border border-blue-500/10 bg-blue-500/10 px-3 py-1.5 font-medium text-blue-700 shadow-sm dark:text-blue-400">
+                {servicoPessoas.length} vínculo{servicoPessoas.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </>
+        )}
+        actionsClassName="flex w-full justify-stretch sm:w-auto sm:justify-end"
+        actions={(
+          <Dialog
+            open={open}
+            onOpenChange={(nextOpen) => {
+              setOpen(nextOpen);
+              if (!nextOpen) {
+                setNewServicoIcone(null);
+                setNewServicoIconPersistableId(null);
+                setNewServicoIconManualSelection(false);
+                setCreateSemDataFixa(false);
+              }
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button
+                className="h-10 w-full rounded-2xl px-4 font-medium shadow-sm sm:h-11 sm:w-auto sm:min-w-[190px]"
+                data-testid="button-add-servico"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Novo serviço
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
             <DialogHeader>
               <DialogTitle>Novo Serviço</DialogTitle>
               <DialogDescription className="sr-only">
@@ -712,85 +730,87 @@ export default function ServicosPage() {
                 {createMutation.isPending ? "Salvando..." : "Salvar"}
               </Button>
             </form>
-          </DialogContent>
-        </Dialog>
-        </div>
-      </div>
+            </DialogContent>
+          </Dialog>
+        )}
+      />
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <Tabs value={servicosTab} onValueChange={(value) => setServicosTab(value as typeof servicosTab)}>
-          <TabsList className="mobile-tabs-scroll w-full justify-start lg:w-auto">
-            <TabsTrigger value="ativos" data-testid="tab-servicos-ativos">Ativos</TabsTrigger>
-            <TabsTrigger value="pendentes" data-testid="tab-servicos-pendentes">Pendentes</TabsTrigger>
-            <TabsTrigger value="pagos" data-testid="tab-servicos-pagos">Pagos</TabsTrigger>
-            <TabsTrigger value="divisao" data-testid="tab-servicos-divisao">Divisão</TabsTrigger>
-            <TabsTrigger value="vinculos" data-testid="tab-servicos-vinculos">Vínculos cartão</TabsTrigger>
-            <TabsTrigger value="pausados" data-testid="tab-servicos-pausados">Pausados</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end lg:w-auto">
-          <div className="space-y-1">
-            <Label htmlFor="servicos-mes-referencia" className="text-xs text-muted-foreground">
-              Mês referência
-            </Label>
-            <Input
-              id="servicos-mes-referencia"
-              type="month"
-              value={mesReferencia}
-              onChange={(event) => setMesReferencia(event.target.value)}
-              className="h-9 w-full sm:w-[180px]"
-              data-testid="input-servicos-mes-referencia"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="servicos-sort-by" className="text-xs text-muted-foreground">
-              Ordenar por
-            </Label>
-            <Select value={sortBy} onValueChange={(value) => setSortBy(value as ServicoSortBy)}>
-              <SelectTrigger
-                id="servicos-sort-by"
-                className="h-9 w-full sm:w-[240px]"
-                data-testid="select-servicos-sort-by"
-                aria-label="Ordenar serviços por"
-              >
-                <SelectValue placeholder="Ordenar por" />
-              </SelectTrigger>
-              <SelectContent>
-                {SERVICO_SORT_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      <div className="rounded-2xl border border-border/60 bg-card/95 p-3 shadow-sm sm:p-3.5">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <Tabs value={servicosTab} onValueChange={(value) => setServicosTab(value as typeof servicosTab)} className="w-full min-w-0 xl:flex-1">
+            <TabsList className="mobile-tabs-scroll h-10 w-full justify-start rounded-xl border border-border/60 bg-muted/25 p-1 xl:w-auto">
+              <TabsTrigger value="ativos" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-ativos">Ativos</TabsTrigger>
+              <TabsTrigger value="pendentes" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-pendentes">Pendentes</TabsTrigger>
+              <TabsTrigger value="pagos" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-pagos">Pagos</TabsTrigger>
+              <TabsTrigger value="divisao" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-divisao">Divisão</TabsTrigger>
+              <TabsTrigger value="vinculos" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-vinculos">Vínculos cartão</TabsTrigger>
+              <TabsTrigger value="pausados" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-pausados">Pausados</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end xl:w-auto">
+            <div className="space-y-1">
+              <Label htmlFor="servicos-mes-referencia" className="text-xs font-medium text-muted-foreground">
+                Mês referência
+              </Label>
+              <Input
+                id="servicos-mes-referencia"
+                type="month"
+                value={mesReferencia}
+                onChange={(event) => setMesReferencia(event.target.value)}
+                className="h-10 w-full rounded-xl border-border/70 bg-background/95 shadow-sm sm:w-[190px]"
+                data-testid="input-servicos-mes-referencia"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="servicos-sort-by" className="text-xs font-medium text-muted-foreground">
+                Ordenar por
+              </Label>
+              <Select value={sortBy} onValueChange={(value) => setSortBy(value as ServicoSortBy)}>
+                <SelectTrigger
+                  id="servicos-sort-by"
+                  className="h-10 w-full rounded-xl border-border/70 bg-background/95 text-sm shadow-sm sm:w-[250px]"
+                  data-testid="select-servicos-sort-by"
+                  aria-label="Ordenar serviços por"
+                >
+                  <SelectValue placeholder="Ordenar por" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SERVICO_SORT_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </div>
 
       <div className="fintech-grid-fluid-260">
-        <Card className="hover-elevate">
-          <CardContent className="p-5">
+        <Card className="hover-elevate overflow-hidden border border-border/60 bg-card/95 shadow-sm">
+          <CardContent className="p-5 sm:p-6">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <p className="text-sm text-muted-foreground">Total mensal em serviços ativos</p>
-                <p className="fin-value-kpi">{formatCurrencyBRL(totalMensal)}</p>
+                <p className="text-sm text-muted-foreground/90">Total mensal em serviços ativos</p>
+                <p className="fin-value-kpi mt-2 tracking-tight">{formatCurrencyBRL(totalMensal)}</p>
               </div>
-              <div className="flex items-center justify-center w-10 h-10 rounded-md bg-amber-500/10">
-                <Repeat className="w-5 h-5 text-amber-600" />
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-amber-500/10 bg-amber-500/10 shadow-sm">
+                <Repeat className="h-5 w-5 text-amber-600" />
               </div>
             </div>
           </CardContent>
         </Card>
         {servicoPessoas.length > 0 && (
-          <Card className="hover-elevate">
-            <CardContent className="p-5">
+          <Card className="hover-elevate overflow-hidden border border-border/60 bg-card/95 shadow-sm">
+            <CardContent className="p-5 sm:p-6">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <p className="text-sm text-muted-foreground">Pendente de pessoas ({mesReferencia})</p>
-                  <p className="fin-value-kpi text-amber-600">{formatCurrencyBRL(totalPessoasPendente)}</p>
+                  <p className="text-sm text-muted-foreground/90">Pendente de pessoas ({mesReferencia})</p>
+                  <p className="fin-value-kpi mt-2 tracking-tight text-amber-600">{formatCurrencyBRL(totalPessoasPendente)}</p>
                 </div>
-                <div className="flex items-center justify-center w-10 h-10 rounded-md bg-blue-500/10">
-                  <Users className="w-5 h-5 text-blue-600" />
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-500/10 bg-blue-500/10 shadow-sm">
+                  <Users className="h-5 w-5 text-blue-600" />
                 </div>
               </div>
             </CardContent>
@@ -799,26 +819,38 @@ export default function ServicosPage() {
       </div>
 
       {servicos.length === 0 ? (
-        <div className="text-center py-16" data-testid="empty-servicos">
-          <Repeat className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
-          <p className="text-lg font-medium text-muted-foreground">Nenhum serviço cadastrado</p>
-          <p className="text-sm text-muted-foreground mt-1">Adicione seus serviços e assinaturas</p>
+        <div className="rounded-2xl border border-dashed border-border/60 bg-card/95 p-8 text-center shadow-sm sm:p-10" data-testid="empty-servicos">
+          <div className="mx-auto max-w-md">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-background/80 shadow-sm">
+              <Repeat className="h-6 w-6 text-muted-foreground/70" />
+            </div>
+            <p className="text-xl font-semibold tracking-tight">Nenhum serviço cadastrado</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Adicione seus serviços e assinaturas</p>
+          </div>
         </div>
       ) : byCategory.length === 0 ? (
-        <div className="text-center py-12 rounded-md border border-dashed">
-          <p className="text-sm text-muted-foreground">
-            Nenhum serviço encontrado para a aba <span className="font-medium">{servicosTab}</span> no mês {mesReferencia}.
-          </p>
+        <div className="rounded-2xl border border-dashed border-border/60 bg-card/95 p-8 text-center shadow-sm sm:p-10">
+          <div className="mx-auto max-w-lg">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 shadow-sm">
+              <Repeat className="h-5 w-5 text-muted-foreground/70" />
+            </div>
+            <p className="text-base font-semibold tracking-tight">Nenhum serviço encontrado</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Nenhum serviço encontrado para a aba <span className="font-medium">{servicosTab}</span> no mês {mesReferencia}.
+            </p>
+          </div>
         </div>
       ) : (
         <div className="space-y-6">
           {byCategory.map((cat) => (
             <div key={cat.value}>
-              <div className="flex items-center justify-between gap-2 mb-3">
-                <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">{cat.label}</h3>
-                <span className="text-sm font-medium">{formatCurrencyBRL(cat.total)}/mês</span>
+              <div className="mb-3.5 flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card/95 px-4 py-3 shadow-sm">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">{cat.label}</h3>
+                <span className="rounded-full bg-muted/65 px-3 py-1.5 text-sm font-medium shadow-sm">
+                  {formatCurrencyBRL(cat.total)}/mês
+                </span>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {cat.servicos.map((s) => {
                   const isServicoAtivo = s.status === "ativo";
                   const isServicoPausado = !isServicoAtivo;
@@ -831,169 +863,186 @@ export default function ServicosPage() {
                   const cartaoVinculado = compraVinculada ? cartaoById.get(compraVinculada.cartaoId) : null;
                   const origemMesAtual = getOrigemPagamentoMesAtual(s);
                   return (
-                    <Card key={s.id} className="hover-elevate overflow-hidden border-border/60 bg-card/95" data-testid={`card-servico-${s.id}`}>
-                      <CardContent className="space-y-3 p-4 sm:p-5">
-                        <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
-                          <div className="pt-0.5 sm:pt-0 sm:self-start">
+                    <Card
+                      key={s.id}
+                      className="hover-elevate overflow-hidden rounded-2xl border border-border/60 bg-card/95 shadow-sm transition-all duration-200"
+                      data-testid={`card-servico-${s.id}`}
+                    >
+                      <CardContent className="space-y-4 p-4 sm:p-5">
+                        <div className="grid gap-4 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-start">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-muted/25 shadow-sm">
                             <BrandIconDisplay name={s.nome} iconeId={resolveServiceIconId(s)} size="sm" />
                           </div>
-                          <div className="min-w-0">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className={`font-medium leading-tight ${isServicoPausado ? "line-through text-muted-foreground" : ""}`}>
-                                  {s.nome}
-                                </p>
-                                {vinculados.length > 0 && (
-                                  <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                                    <Users className="w-2.5 h-2.5" />
-                                    {vinculados.length} pessoa{vinculados.length !== 1 ? "s" : ""}
-                                    {pendentesHoje > 0 && (
-                                      <span className="text-amber-600 dark:text-amber-400">
-                                        {" "}
-                                        · {pendentesHoje} pendente{pendentesHoje !== 1 ? "s" : ""}
-                                      </span>
-                                    )}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-xs text-muted-foreground mt-0.5">
-                                {formatServicoBillingDayLabel(s.dataCobranca)} | {s.formaPagamento}
+                          <div className="min-w-0 space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className={`text-base font-semibold leading-tight tracking-tight sm:text-lg ${isServicoPausado ? "line-through text-muted-foreground" : ""}`}>
+                                {s.nome}
                               </p>
-                              <p className={`text-xs mt-0.5 ${origemMesAtual.className}`}>
-                                {origemMesAtual.label}
-                              </p>
-                              {compraVinculada && (
-                                <p className="text-xs text-blue-600 mt-0.5 truncate">
-                                  Vínculo de cartão: {cartaoVinculado?.nome ?? "Cartão"} · {compraVinculada.descricao}
-                                </p>
+                              {vinculados.length > 0 && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-blue-500/10 bg-blue-500/10 px-2.5 py-1 text-[11px] font-medium text-blue-700 shadow-sm dark:text-blue-400">
+                                  <Users className="h-3 w-3" />
+                                  {vinculados.length} pessoa{vinculados.length !== 1 ? "s" : ""}
+                                  {pendentesHoje > 0 && (
+                                    <span className="text-amber-600 dark:text-amber-400">
+                                      {" "}
+                                      · {pendentesHoje} pendente{pendentesHoje !== 1 ? "s" : ""}
+                                    </span>
+                                  )}
+                                </span>
                               )}
                             </div>
+                            <div className="flex flex-wrap gap-2 text-[11px]">
+                              <span className="rounded-full bg-muted/65 px-2.5 py-1 font-medium text-muted-foreground shadow-sm">
+                                {formatServicoBillingDayLabel(s.dataCobranca)}
+                              </span>
+                              <span className="rounded-full bg-muted/65 px-2.5 py-1 font-medium text-muted-foreground shadow-sm">
+                                {s.formaPagamento}
+                              </span>
+                            </div>
+                            <span className={`inline-flex w-fit rounded-full border border-transparent bg-muted/45 px-2.5 py-1 text-[11px] font-medium ${origemMesAtual.className}`}>
+                              {origemMesAtual.label}
+                            </span>
+                            {compraVinculada && (
+                              <div className="rounded-xl border border-blue-500/10 bg-blue-500/5 px-3 py-2 text-xs text-blue-700/90 dark:text-blue-400">
+                                Vínculo de cartão: {cartaoVinculado?.nome ?? "Cartão"} · {compraVinculada.descricao}
+                              </div>
+                            )}
                           </div>
-                          <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 sm:col-span-1 sm:col-start-3 sm:justify-end sm:self-start">
-                            <span className="fin-value-person whitespace-nowrap text-right">{formatServicoBillingValue(s)}</span>
-                            <Badge variant={isServicoAtivo ? "default" : "secondary"} className="h-7 px-2.5 text-xs font-semibold whitespace-nowrap">
+                          <div className="flex min-w-[136px] flex-col items-start gap-2 md:items-end">
+                            <span className="fin-value-person whitespace-nowrap leading-none tracking-tight md:text-right">
+                              {formatServicoBillingValue(s)}
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className={`h-7 rounded-full px-3 text-xs font-semibold whitespace-nowrap shadow-sm ${
+                                isServicoAtivo
+                                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-400"
+                                  : "border-border/60 bg-muted/65 text-muted-foreground hover:bg-muted/65"
+                              }`}
+                            >
                               {isServicoAtivo ? "Ativo" : "Pausado"}
                             </Badge>
                           </div>
                         </div>
-                        <div className="flex items-center justify-end">
-                          <div className="flex flex-wrap items-center justify-end gap-1 rounded-lg border border-border/50 bg-muted/20 px-1.5 py-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => toggleDivisao(s.id)}
-                              aria-label={isDivisaoOpen ? "Recolher divisão entre pessoas" : "Abrir divisão entre pessoas"}
-                              title="Divisão entre pessoas"
-                              data-testid={`button-divisao-${s.id}`}
-                            >
-                              {isDivisaoOpen ? <ChevronUp className="w-4 h-4" /> : <Users className="w-4 h-4" />}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() =>
-                                updateMutation.mutate(
-                                  { id: s.id, compraCartaoId: null },
-                                  { onSuccess: () => toast({ title: "Vínculo com cartão removido" }) },
-                                )
-                              }
-                              title="Remover vínculo com cartão"
-                              data-testid={`button-unlink-cartao-servico-${s.id}`}
-                              disabled={!s.compraCartaoId}
-                              aria-label="Remover vínculo com cartão"
-                            >
-                              <Unlink2 className="w-4 h-4 text-muted-foreground" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => {
-                                const billingView = resolveServicoBillingView(s);
-                                const resolvedIcon = resolveEntityIconReference(s.iconeId ?? null, userIconLibrary);
-                                setEditingServico(s);
-                                setEditIcone(resolvedIcon.displayIconId);
-                                setEditIconPersistableId(resolvedIcon.persistableIconId);
-                                setEditIconManualSelection(Boolean(s.iconeId));
-                                const servicoHasFixedBillingDay = hasFixedBillingDay(s.dataCobranca);
-                                setEditSemDataFixa(!servicoHasFixedBillingDay);
-                                setEditForm({
-                                  nome: s.nome,
-                                  categoria: s.categoria,
-                                  valorCobranca: billingView.valorCobranca.toFixed(2),
-                                  periodicidadeCobranca: billingView.periodicidade,
-                                  dataCobranca: servicoHasFixedBillingDay ? String(s.dataCobranca) : "",
-                                  formaPagamento: s.formaPagamento,
-                                  compraCartaoId: s.compraCartaoId ?? COMPRA_NONE_VALUE,
-                                });
-                              }}
-                              data-testid={`button-edit-servico-${s.id}`}
-                              aria-label="Editar serviço"
-                              title="Editar serviço"
-                            >
-                              <Pencil className="w-4 h-4 text-muted-foreground" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => {
-                                const shouldProceed = isServicoAtivo
-                                  ? window.confirm(
-                                    "Este serviço deixará de entrar nos totais ativos, mas o histórico será mantido.",
+                        <div className="flex flex-col gap-3 border-t border-border/50 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {s.compraCartaoId && (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-blue-500/10 bg-blue-500/10 px-2.5 py-1 text-[11px] font-medium text-blue-700 shadow-sm dark:text-blue-400">
+                                <CreditCard className="h-3 w-3" />
+                                Serviço vinculado ao cartão
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-end">
+                            <div className="flex flex-wrap items-center justify-end gap-1.5 rounded-xl border border-border/60 bg-muted/[0.16] px-2 py-1.5 shadow-sm">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg transition-colors hover:bg-background/90"
+                                onClick={() => toggleDivisao(s.id)}
+                                aria-label={isDivisaoOpen ? "Recolher divisão entre pessoas" : "Abrir divisão entre pessoas"}
+                                title="Divisão entre pessoas"
+                                data-testid={`button-divisao-${s.id}`}
+                              >
+                                {isDivisaoOpen ? <ChevronUp className="h-4 w-4" /> : <Users className="h-4 w-4" />}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg transition-colors hover:bg-background/90"
+                                onClick={() =>
+                                  updateMutation.mutate(
+                                    { id: s.id, compraCartaoId: null },
+                                    { onSuccess: () => toast({ title: "Vínculo com cartão removido" }) },
                                   )
-                                  : window.confirm(
-                                    "Este serviço voltará a entrar nos totais ativos.",
-                                  );
-                                if (!shouldProceed) return;
+                                }
+                                title="Remover vínculo com cartão"
+                                data-testid={`button-unlink-cartao-servico-${s.id}`}
+                                disabled={!s.compraCartaoId}
+                                aria-label="Remover vínculo com cartão"
+                              >
+                                <Unlink2 className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg transition-colors hover:bg-background/90"
+                                onClick={() => {
+                                  const billingView = resolveServicoBillingView(s);
+                                  const resolvedIcon = resolveEntityIconReference(s.iconeId ?? null, userIconLibrary);
+                                  setEditingServico(s);
+                                  setEditIcone(resolvedIcon.displayIconId);
+                                  setEditIconPersistableId(resolvedIcon.persistableIconId);
+                                  setEditIconManualSelection(Boolean(s.iconeId));
+                                  const servicoHasFixedBillingDay = hasFixedBillingDay(s.dataCobranca);
+                                  setEditSemDataFixa(!servicoHasFixedBillingDay);
+                                  setEditForm({
+                                    nome: s.nome,
+                                    categoria: s.categoria,
+                                    valorCobranca: billingView.valorCobranca.toFixed(2),
+                                    periodicidadeCobranca: billingView.periodicidade,
+                                    dataCobranca: servicoHasFixedBillingDay ? String(s.dataCobranca) : "",
+                                    formaPagamento: s.formaPagamento,
+                                    compraCartaoId: s.compraCartaoId ?? COMPRA_NONE_VALUE,
+                                  });
+                                }}
+                                data-testid={`button-edit-servico-${s.id}`}
+                                aria-label="Editar serviço"
+                                title="Editar serviço"
+                              >
+                                <Pencil className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg transition-colors hover:bg-background/90"
+                                onClick={() => {
+                                  const shouldProceed = isServicoAtivo
+                                    ? window.confirm(
+                                      "Este serviço deixará de entrar nos totais ativos, mas o histórico será mantido.",
+                                    )
+                                    : window.confirm(
+                                      "Este serviço voltará a entrar nos totais ativos.",
+                                    );
+                                  if (!shouldProceed) return;
 
-                                toggleStatusMutation.mutate(
-                                  { id: s.id, status: s.status },
-                                  {
-                                    onSuccess: () =>
-                                      toast({
-                                        title: isServicoAtivo ? "Serviço pausado" : "Serviço reativado",
-                                        description: isServicoAtivo
-                                          ? "Este serviço deixou de entrar nos totais ativos."
-                                          : "Este serviço voltou a entrar nos totais ativos.",
-                                      }),
-                                  },
-                                );
-                              }}
-                              data-testid={`button-toggle-servico-${s.id}`}
-                              aria-label={isServicoAtivo ? "Pausar serviço" : "Reativar serviço"}
-                              title={isServicoAtivo ? "Pausar serviço" : "Reativar serviço"}
-                            >
-                              {isServicoAtivo ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() =>
-                                deleteMutation.mutate(s.id, {
-                                  onSuccess: () => toast({ title: "Serviço removido" }),
-                                })
-                              }
-                              data-testid={`button-delete-servico-${s.id}`}
-                              aria-label="Excluir serviço"
-                              title="Excluir serviço"
-                            >
-                              <Trash2 className="w-4 h-4 text-muted-foreground" />
-                            </Button>
+                                  toggleStatusMutation.mutate(
+                                    { id: s.id, status: s.status },
+                                    {
+                                      onSuccess: () =>
+                                        toast({
+                                          title: isServicoAtivo ? "Serviço pausado" : "Serviço reativado",
+                                          description: isServicoAtivo
+                                            ? "Este serviço deixou de entrar nos totais ativos."
+                                            : "Este serviço voltou a entrar nos totais ativos.",
+                                        }),
+                                    },
+                                  );
+                                }}
+                                data-testid={`button-toggle-servico-${s.id}`}
+                                aria-label={isServicoAtivo ? "Pausar serviço" : "Reativar serviço"}
+                                title={isServicoAtivo ? "Pausar serviço" : "Reativar serviço"}
+                              >
+                                {isServicoAtivo ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg transition-colors hover:bg-background/90"
+                                onClick={() =>
+                                  deleteMutation.mutate(s.id, {
+                                    onSuccess: () => toast({ title: "Serviço removido" }),
+                                  })
+                                }
+                                data-testid={`button-delete-servico-${s.id}`}
+                                aria-label="Excluir serviço"
+                                title="Excluir serviço"
+                              >
+                                <Trash2 className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                            </div>
                           </div>
                         </div>
-                        {s.compraCartaoId && (
-                          <div className="mt-2">
-                            <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                              <CreditCard className="w-2.5 h-2.5" />
-                              Serviço vinculado ao cartão
-                            </span>
-                          </div>
-                        )}
-
                         {isDivisaoOpen && (
                           <DivisaoPanel
                             servico={s}

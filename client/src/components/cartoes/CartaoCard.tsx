@@ -17,10 +17,12 @@ export function CartaoCard({
   testId,
 }: CartaoCardProps) {
   return (
-    <Card className={`fintech-surface desktop-hover-lift ${className}`.trim()} data-testid={testId}>
-      {header ? <CardHeader className="pb-2">{header}</CardHeader> : null}
+    <Card
+      className={`fintech-surface desktop-hover-lift rounded-[26px] border border-border/60 bg-card/95 shadow-sm transition-all ${className}`.trim()}
+      data-testid={testId}
+    >
+      {header ? <CardHeader className="pb-3">{header}</CardHeader> : null}
       <CardContent className={contentClassName}>{children}</CardContent>
     </Card>
   );
 }
-

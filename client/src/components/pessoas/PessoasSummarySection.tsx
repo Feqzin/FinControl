@@ -14,10 +14,10 @@ export function PessoasSummarySection({
   }
 
   return (
-    <div className="flex justify-center pt-1">
+    <div className="flex justify-center pt-2">
       <Button
         variant="outline"
-        className="h-9 rounded-xl px-4"
+        className="h-10 rounded-2xl border-border/70 bg-background/95 px-4 shadow-sm"
         onClick={onLoadMore}
         data-testid="button-load-more-pessoas"
       >

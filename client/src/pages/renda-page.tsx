@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import {
   Dialog,
   DialogContent,
@@ -151,164 +152,188 @@ export default function RendaPage() {
     .filter((r) => r.ativo && r.tipo === "variavel")
     .reduce((acc, r) => acc + parseFloat(r.valor.toString()), 0);
 
+  const totalAtivas = rendas.filter((r) => r.ativo).length;
+
   return (
     <div className="app-page-shell app-section-stack pb-20 md:pb-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-3xl font-bold tracking-tight">Renda</h1>
-          <p className="text-muted-foreground">Gerencie suas fontes de renda mensais.</p>
-        </div>
-        <Dialog open={open} onOpenChange={(val) => {
-          setOpen(val);
-          if (!val) {
-            setEditingRenda(null);
-            form.reset();
-          }
-        }}>
-          <DialogTrigger asChild>
-            <Button className="w-full sm:w-auto" data-testid="button-add-renda">
-              <Plus className="w-4 h-4 mr-2" />
-              Adicionar Renda
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingRenda ? "Editar Renda" : "Nova Renda"}</DialogTitle>
-              <DialogDescription className="sr-only">
-                Cadastre ou edite uma fonte de renda informando descrição, valor e recorrência.
-              </DialogDescription>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="descricao"
-                  render={({ field }) => (
-                    <FormItem>
-                      <Label>Descrição</Label>
-                      <FormControl>
-                        <Input placeholder="Ex: Salário, Freelance..." {...field} data-testid="input-descricao" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <FintechPageHeader
+        title="Renda"
+        subtitle="Gerencie suas fontes de renda mensais."
+        rowClassName="items-start gap-4 xl:items-center"
+        contentClassName="space-y-2"
+        titleClassName="sm:text-3xl"
+        badges={(
+          <>
+            <span className="rounded-full bg-muted/65 px-3 py-1.5 font-medium text-muted-foreground shadow-sm">
+              {rendas.length} renda{rendas.length !== 1 ? "s" : ""}
+            </span>
+            <span className="rounded-full border border-emerald-500/10 bg-emerald-500/10 px-3 py-1.5 font-medium text-emerald-700 shadow-sm dark:text-emerald-400">
+              {totalAtivas} ativa{totalAtivas !== 1 ? "s" : ""}
+            </span>
+            <span className="rounded-full border border-primary/10 bg-primary/10 px-3 py-1.5 font-medium text-primary shadow-sm">
+              Total ativo {formatCurrency(totalAtivo)}
+            </span>
+          </>
+        )}
+        actionsClassName="flex w-full justify-stretch sm:w-auto sm:justify-end"
+        actions={(
+          <Dialog open={open} onOpenChange={(val) => {
+            setOpen(val);
+            if (!val) {
+              setEditingRenda(null);
+              form.reset();
+            }
+          }}>
+            <DialogTrigger asChild>
+              <Button
+                className="h-10 w-full rounded-2xl px-4 font-medium shadow-sm sm:h-11 sm:w-auto sm:min-w-[190px]"
+                data-testid="button-add-renda"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Adicionar Renda
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{editingRenda ? "Editar Renda" : "Nova Renda"}</DialogTitle>
+                <DialogDescription className="sr-only">
+                  Cadastre ou edite uma fonte de renda informando descrição, valor e recorrência.
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <FormField
                     control={form.control}
-                    name="valor"
+                    name="descricao"
                     render={({ field }) => (
                       <FormItem>
-                        <Label>Valor (R$)</Label>
+                        <Label>Descrição</Label>
                         <FormControl>
-                          <Input type="number" step="0.01" {...field} data-testid="input-valor" />
+                          <Input placeholder="Ex: Salário, Freelance..." {...field} data-testid="input-descricao" />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <FormField
+                      control={form.control}
+                      name="valor"
+                      render={({ field }) => (
+                        <FormItem>
+                          <Label>Valor (R$)</Label>
+                          <FormControl>
+                            <Input type="number" step="0.01" {...field} data-testid="input-valor" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="diaRecebimento"
+                      render={({ field }) => (
+                        <FormItem>
+                          <Label>Dia do Recebimento</Label>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="1"
+                              max="31"
+                              {...field}
+                              onChange={(e) => field.onChange(parseInt(e.target.value))}
+                              data-testid="input-dia-recebimento"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="tipo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <Label>Tipo</Label>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-tipo">
+                              <SelectValue placeholder="Selecione o tipo" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="fixo">Fixo</SelectItem>
+                            <SelectItem value="variavel">Variável</SelectItem>
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                   <FormField
                     control={form.control}
-                    name="diaRecebimento"
+                    name="ativo"
                     render={({ field }) => (
-                      <FormItem>
-                        <Label>Dia do Recebimento</Label>
+                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                        <div className="space-y-0.5">
+                          <Label>Ativo</Label>
+                          <p className="text-xs text-muted-foreground">Rendas inativas não somam no total.</p>
+                        </div>
                         <FormControl>
-                          <Input
-                            type="number"
-                            min="1"
-                            max="31"
-                            {...field}
-                            onChange={(e) => field.onChange(parseInt(e.target.value))}
-                            data-testid="input-dia-recebimento"
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                            data-testid="switch-ativo"
                           />
                         </FormControl>
-                        <FormMessage />
                       </FormItem>
                     )}
                   />
-                </div>
-                <FormField
-                  control={form.control}
-                  name="tipo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <Label>Tipo</Label>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-tipo">
-                            <SelectValue placeholder="Selecione o tipo" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="fixo">Fixo</SelectItem>
-                          <SelectItem value="variavel">Variável</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="ativo"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                      <div className="space-y-0.5">
-                        <Label>Ativo</Label>
-                        <p className="text-xs text-muted-foreground">Rendas inativas não somam no total.</p>
-                      </div>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                          data-testid="switch-ativo"
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-                <DialogFooter>
-                  <Button type="submit" className="w-full" disabled={createRendaMutation.isPending || updateRendaMutation.isPending}>
-                    {editingRenda ? "Atualizar" : "Salvar"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-      </div>
+                  <DialogFooter>
+                    <Button type="submit" className="w-full" disabled={createRendaMutation.isPending || updateRendaMutation.isPending}>
+                      {editingRenda ? "Atualizar" : "Salvar"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        )}
+      />
 
       <div className="fintech-grid-fluid-260">
-        <Card className="hover-elevate">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-1">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Ativo</CardTitle>
-            <DollarSign className="h-4 w-4 text-primary" />
+        <Card className="hover-elevate overflow-hidden border border-border/60 bg-card/95 shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground/90">Total Ativo</CardTitle>
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/10 bg-primary/10 shadow-sm">
+              <DollarSign className="h-4 w-4 text-primary" />
+            </div>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-primary" data-testid="text-total-ativo">
+          <CardContent className="pt-1">
+            <div className="fin-value-kpi tracking-tight text-primary" data-testid="text-total-ativo">
               {formatCurrency(totalAtivo)}
             </div>
           </CardContent>
         </Card>
-        <Card className="hover-elevate">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-1">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Fixo</CardTitle>
-            <Badge variant="outline">Fixo</Badge>
+        <Card className="hover-elevate overflow-hidden border border-border/60 bg-card/95 shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground/90">Fixo</CardTitle>
+            <Badge variant="outline" className="rounded-full border-border/60 bg-background/90 px-2.5 py-0.5 shadow-sm">Fixo</Badge>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-total-fixo">
+          <CardContent className="pt-1">
+            <div className="fin-value-kpi tracking-tight" data-testid="text-total-fixo">
               {formatCurrency(totalFixo)}
             </div>
           </CardContent>
         </Card>
-        <Card className="hover-elevate">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-1">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Variável</CardTitle>
-            <Badge variant="secondary">Variável</Badge>
+        <Card className="hover-elevate overflow-hidden border border-border/60 bg-card/95 shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground/90">Variável</CardTitle>
+            <Badge variant="secondary" className="rounded-full px-2.5 py-0.5 shadow-sm">Variável</Badge>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-total-variavel">
+          <CardContent className="pt-1">
+            <div className="fin-value-kpi tracking-tight" data-testid="text-total-variavel">
               {formatCurrency(totalVariavel)}
             </div>
           </CardContent>
@@ -318,78 +343,125 @@ export default function RendaPage() {
       <div className="fintech-grid-fluid-260">
         {isLoading ? (
           Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i} className="flex flex-col">
-              <CardHeader>
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-3 w-1/3" />
+            <Card key={i} className="flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card/95 shadow-sm">
+              <CardHeader className="space-y-3 pb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-2">
+                    <Skeleton className="h-5 w-32 rounded-lg" />
+                    <div className="flex gap-2">
+                      <Skeleton className="h-5 w-14 rounded-full" />
+                      <Skeleton className="h-5 w-16 rounded-full" />
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <Skeleton className="h-8 w-8 rounded-lg" />
+                    <Skeleton className="h-8 w-8 rounded-lg" />
+                    <Skeleton className="h-8 w-8 rounded-lg" />
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-1/3" />
+              <CardContent className="pt-0">
+                <Skeleton className="h-9 w-32 rounded-lg" />
               </CardContent>
             </Card>
           ))
         ) : rendas.length === 0 ? (
-          <div className="col-span-full text-center py-12 text-muted-foreground">
-            Nenhuma renda cadastrada.
+          <div className="col-span-full rounded-2xl border border-dashed border-border/60 bg-card/95 p-8 text-center shadow-sm sm:p-10">
+            <div className="mx-auto max-w-md">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-background/80 shadow-sm">
+                <DollarSign className="h-6 w-6 text-muted-foreground/70" />
+              </div>
+              <p className="text-xl font-semibold tracking-tight">Nenhuma renda cadastrada</p>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Adicione suas fontes de renda para acompanhar melhor sua entrada mensal.
+              </p>
+            </div>
           </div>
         ) : (
           rendas.map((renda) => (
-            <Card key={renda.id} className={`hover-elevate flex flex-col ${!renda.ativo ? "opacity-60" : ""}`} data-testid={`card-renda-${renda.id}`}>
-              <CardHeader className="flex flex-row items-start justify-between space-y-0 gap-2">
-                <div className="space-y-1">
-                  <CardTitle className="text-base truncate max-w-[150px]" title={renda.descricao}>
-                    {renda.descricao}
-                  </CardTitle>
-                  <div className="flex gap-2 items-center">
-                    <Badge variant={renda.tipo === "fixo" ? "outline" : "secondary"} className="text-[10px] px-1.5 h-4">
-                      {renda.tipo === "fixo" ? "Fixo" : "Variável"}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">Dia {renda.diaRecebimento}</span>
+            <Card
+              key={renda.id}
+              className={`hover-elevate flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card/95 shadow-sm transition-all duration-200 ${!renda.ativo ? "opacity-70" : ""}`}
+              data-testid={`card-renda-${renda.id}`}
+            >
+              <CardHeader className="gap-4 space-y-0 border-b border-border/50 pb-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-2">
+                    <CardTitle className="max-w-[220px] truncate text-base font-semibold tracking-tight sm:max-w-[280px]" title={renda.descricao}>
+                      {renda.descricao}
+                    </CardTitle>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant={renda.tipo === "fixo" ? "outline" : "secondary"}
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] shadow-sm ${
+                          renda.tipo === "fixo" ? "border-border/60 bg-background/90" : ""
+                        }`}
+                      >
+                        {renda.tipo === "fixo" ? "Fixo" : "Variável"}
+                      </Badge>
+                      <span className="rounded-full bg-muted/65 px-2.5 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
+                        Dia {renda.diaRecebimento}
+                      </span>
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-medium shadow-sm ${
+                          renda.ativo
+                            ? "border border-emerald-500/10 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                            : "border border-border/60 bg-muted/65 text-muted-foreground"
+                        }`}
+                      >
+                        {renda.ativo ? "Ativa" : "Inativa"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 rounded-xl border border-border/60 bg-muted/[0.16] px-2 py-1.5 shadow-sm">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-lg transition-colors hover:bg-background/90"
+                      onClick={() => toggleAtivo(renda)}
+                      aria-label={renda.ativo ? "Desativar renda" : "Ativar renda"}
+                      title={renda.ativo ? "Desativar" : "Ativar"}
+                      data-testid={`button-toggle-ativo-${renda.id}`}
+                    >
+                      {renda.ativo ? <Power className="h-4 w-4 text-emerald-600" /> : <PowerOff className="h-4 w-4 text-muted-foreground" />}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-lg transition-colors hover:bg-background/90"
+                      onClick={() => handleEdit(renda)}
+                      aria-label="Editar renda"
+                      title="Editar renda"
+                      data-testid={`button-edit-renda-${renda.id}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-lg text-destructive transition-colors hover:bg-background/90"
+                      onClick={() => {
+                        if (confirm("Tem certeza que deseja excluir esta renda?")) {
+                          deleteRendaMutation.mutate(renda.id);
+                        }
+                      }}
+                      aria-label="Excluir renda"
+                      title="Excluir renda"
+                      data-testid={`button-delete-renda-${renda.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => toggleAtivo(renda)}
-                    aria-label={renda.ativo ? "Desativar renda" : "Ativar renda"}
-                    title={renda.ativo ? "Desativar" : "Ativar"}
-                    data-testid={`button-toggle-ativo-${renda.id}`}
-                  >
-                    {renda.ativo ? <Power className="h-4 w-4 text-green-500" /> : <PowerOff className="h-4 w-4 text-muted-foreground" />}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => handleEdit(renda)}
-                    aria-label="Editar renda"
-                    title="Editar renda"
-                    data-testid={`button-edit-renda-${renda.id}`}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive"
-                    onClick={() => {
-                      if (confirm("Tem certeza que deseja excluir esta renda?")) {
-                        deleteRendaMutation.mutate(renda.id);
-                      }
-                    }}
-                    aria-label="Excluir renda"
-                    title="Excluir renda"
-                    data-testid={`button-delete-renda-${renda.id}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
               </CardHeader>
-              <CardContent className="flex-1">
-                <div className="text-2xl font-bold" data-testid={`text-valor-renda-${renda.id}`}>
-                  {formatCurrency(renda.valor)}
+              <CardContent className="flex-1 pt-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                    Valor mensal
+                  </p>
+                  <div className="text-2xl font-bold tracking-tight sm:text-[1.8rem]" data-testid={`text-valor-renda-${renda.id}`}>
+                    {formatCurrency(renda.valor)}
+                  </div>
                 </div>
               </CardContent>
             </Card>

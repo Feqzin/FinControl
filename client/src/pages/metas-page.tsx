@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -87,132 +88,286 @@ export default function MetasPage() {
 
   const ativas = metasList.filter((m) => m.status === "ativa");
   const concluidas = metasList.filter((m) => m.status === "concluida" || Number(m.valorAtual) >= Number(m.valorAlvo));
+  const totalGuardado = metasList.reduce((acc, meta) => acc + Number(meta.valorAtual), 0);
+  const totalAlvo = metasList.reduce((acc, meta) => acc + Number(meta.valorAlvo), 0);
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
-        <Skeleton className="h-8 w-40" />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2].map((i) => <Skeleton key={i} className="h-48" />)}
+      <div className="app-page-shell app-section-stack max-w-5xl" data-testid="metas-page">
+        <div className="rounded-[28px] border border-border/60 bg-card/95 p-6 shadow-sm backdrop-blur">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-24 rounded-full" />
+              <Skeleton className="h-10 w-64 rounded-full" />
+              <Skeleton className="h-4 w-80 max-w-full rounded-full" />
+            </div>
+            <Skeleton className="h-11 w-full rounded-2xl sm:w-40" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Card key={index} className="border border-border/60 bg-card/95 shadow-sm">
+              <CardContent className="space-y-4 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-24 rounded-full" />
+                    <Skeleton className="h-8 w-24 rounded-full" />
+                  </div>
+                  <Skeleton className="h-10 w-10 rounded-2xl" />
+                </div>
+                <Skeleton className="h-4 w-32 rounded-full" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <div className="space-y-6">
+          {Array.from({ length: 2 }).map((_, groupIndex) => (
+            <div key={groupIndex} className="space-y-3">
+              <Skeleton className="h-4 w-40 rounded-full" />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {Array.from({ length: 2 }).map((__, cardIndex) => (
+                  <Card key={cardIndex} className="rounded-[26px] border border-border/60 bg-card/95 shadow-sm">
+                    <CardContent className="space-y-4 p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <Skeleton className="h-11 w-11 rounded-2xl" />
+                          <div className="space-y-2">
+                            <Skeleton className="h-5 w-32 rounded-full" />
+                            <Skeleton className="h-4 w-24 rounded-full" />
+                          </div>
+                        </div>
+                        <Skeleton className="h-6 w-20 rounded-full" />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between gap-3">
+                          <Skeleton className="h-4 w-20 rounded-full" />
+                          <Skeleton className="h-4 w-20 rounded-full" />
+                        </div>
+                        <Skeleton className="h-3 w-full rounded-full" />
+                        <Skeleton className="ml-auto h-3 w-16 rounded-full" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Skeleton className="h-16 rounded-2xl" />
+                        <Skeleton className="h-16 rounded-2xl" />
+                      </div>
+                      <Skeleton className="h-4 w-28 rounded-full" />
+                      <div className="flex gap-2">
+                        <Skeleton className="h-9 flex-1 rounded-2xl" />
+                        <Skeleton className="h-9 w-9 rounded-xl" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl" data-testid="metas-page">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Metas Financeiras</h1>
-          <p className="text-muted-foreground">Acompanhe seus objetivos e veja quanto economizar por mês</p>
-        </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-meta">
-              <Plus className="w-4 h-4 mr-2" /> Nova meta
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Criar Meta Financeira</DialogTitle>
-              <DialogDescription className="sr-only">
-                Cadastre uma meta financeira informando nome, valor desejado, prazo e progresso atual.
-              </DialogDescription>
-            </DialogHeader>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                createMutation.mutate(form);
-              }}
-              className="space-y-4"
-            >
-              <div className="space-y-2">
-                <Label>Nome da meta</Label>
-                <Input
-                  data-testid="input-meta-nome"
-                  value={form.nome}
-                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                  placeholder="Ex: Viagem para a Europa, Reserva de emergencia"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Descricao (opcional)</Label>
-                <Textarea
-                  value={form.descricao}
-                  onChange={(e) => setForm({ ...form, descricao: e.target.value })}
-                  placeholder="Detalhes sobre a meta"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>Valor alvo</Label>
-                  <Input
-                    data-testid="input-meta-alvo"
-                    type="number"
-                    step="0.01"
-                    value={form.valorAlvo}
-                    onChange={(e) => setForm({ ...form, valorAlvo: e.target.value })}
-                    placeholder="30000"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Ja tenho</Label>
-                  <Input
-                    data-testid="input-meta-atual"
-                    type="number"
-                    step="0.01"
-                    value={form.valorAtual}
-                    onChange={(e) => setForm({ ...form, valorAtual: e.target.value })}
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Prazo</Label>
-                <Input
-                  data-testid="input-meta-prazo"
-                  type="date"
-                  value={form.prazo}
-                  onChange={(e) => setForm({ ...form, prazo: e.target.value })}
-                  required
-                />
-              </div>
-              {form.valorAlvo && form.prazo && (
-                <div className="p-3 rounded-md bg-primary/5 border border-primary/10">
-                  <p className="text-sm">
-                    <span className="text-muted-foreground">Precisa economizar: </span>
-                    <span className="font-bold text-primary">
-                      {formatCurrency(
-                        Math.max(0, (parseFloat(form.valorAlvo) - parseFloat(form.valorAtual || "0")) /
-                          Math.max(1, differenceInMonths(parseISO(form.prazo), new Date())))
-                      )}/mês
-                    </span>
-                  </p>
-                </div>
-              )}
-              <Button type="submit" className="w-full" data-testid="button-save-meta" disabled={createMutation.isPending}>
-                {createMutation.isPending ? "Criando..." : "Criar meta"}
+    <div className="app-page-shell app-section-stack max-w-5xl" data-testid="metas-page">
+      <FintechPageHeader
+        eyebrow={(
+          <Badge variant="outline" className="w-fit rounded-full border-border/60 bg-background/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground shadow-sm">
+            Planejamento financeiro
+          </Badge>
+        )}
+        title="Metas Financeiras"
+        subtitle="Acompanhe seus objetivos e veja quanto economizar por mês."
+        badges={(
+          <>
+            <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-xs font-medium text-foreground shadow-sm">
+              {ativas.length} {ativas.length === 1 ? "meta em andamento" : "metas em andamento"}
+            </Badge>
+            <Badge variant="secondary" className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700 shadow-sm dark:text-emerald-300">
+              {concluidas.length} {concluidas.length === 1 ? "concluída" : "concluídas"}
+            </Badge>
+          </>
+        )}
+        actionsClassName="flex w-full justify-stretch sm:w-auto sm:justify-end"
+        actions={(
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button className="h-11 w-full rounded-2xl px-5 shadow-sm sm:w-auto" data-testid="button-add-meta">
+                <Plus className="mr-2 h-4 w-4" /> Nova meta
               </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Criar Meta Financeira</DialogTitle>
+                <DialogDescription className="sr-only">
+                  Cadastre uma meta financeira informando nome, valor desejado, prazo e progresso atual.
+                </DialogDescription>
+              </DialogHeader>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  createMutation.mutate(form);
+                }}
+                className="space-y-4"
+              >
+                  <div className="space-y-2">
+                    <Label>Nome da meta</Label>
+                    <Input
+                      data-testid="input-meta-nome"
+                      value={form.nome}
+                      onChange={(e) => setForm({ ...form, nome: e.target.value })}
+                      placeholder="Ex: Viagem para a Europa, Reserva de emergencia"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Descricao (opcional)</Label>
+                    <Textarea
+                      value={form.descricao}
+                      onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+                      placeholder="Detalhes sobre a meta"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Valor alvo</Label>
+                      <Input
+                        data-testid="input-meta-alvo"
+                        type="number"
+                        step="0.01"
+                        value={form.valorAlvo}
+                        onChange={(e) => setForm({ ...form, valorAlvo: e.target.value })}
+                        placeholder="30000"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Ja tenho</Label>
+                      <Input
+                        data-testid="input-meta-atual"
+                        type="number"
+                        step="0.01"
+                        value={form.valorAtual}
+                        onChange={(e) => setForm({ ...form, valorAtual: e.target.value })}
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Prazo</Label>
+                    <Input
+                      data-testid="input-meta-prazo"
+                      type="date"
+                      value={form.prazo}
+                      onChange={(e) => setForm({ ...form, prazo: e.target.value })}
+                      required
+                    />
+                  </div>
+                  {form.valorAlvo && form.prazo && (
+                    <div className="rounded-2xl border border-primary/15 bg-primary/5 p-3">
+                      <p className="text-sm">
+                        <span className="text-muted-foreground">Precisa economizar: </span>
+                        <span className="font-bold text-primary">
+                          {formatCurrency(
+                            Math.max(0, (parseFloat(form.valorAlvo) - parseFloat(form.valorAtual || "0")) /
+                              Math.max(1, differenceInMonths(parseISO(form.prazo), new Date())))
+                          )}/mês
+                        </span>
+                      </p>
+                    </div>
+                  )}
+                  <Button type="submit" className="w-full" data-testid="button-save-meta" disabled={createMutation.isPending}>
+                    {createMutation.isPending ? "Criando..." : "Criar meta"}
+                  </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
+      />
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <Card className="border border-border/60 bg-card/95 shadow-sm">
+          <CardContent className="space-y-4 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Em andamento
+                </p>
+                <p className="text-3xl font-semibold tracking-tight text-foreground">{ativas.length}</p>
+              </div>
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm">
+                <Target className="h-5 w-5 text-primary" />
+              </div>
+            </div>
+            <p className="text-sm leading-6 text-muted-foreground">
+              Objetivos que ainda pedem acompanhamento e aporte mensal.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border/60 bg-card/95 shadow-sm">
+          <CardContent className="space-y-4 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Guardado
+                </p>
+                <p className="text-3xl font-semibold tracking-tight text-foreground">{formatCurrency(totalGuardado)}</p>
+              </div>
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm">
+                <TrendingUp className="h-5 w-5 text-primary" />
+              </div>
+            </div>
+            <p className="text-sm leading-6 text-muted-foreground">
+              Soma do valor já acumulado em todas as metas cadastradas.
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-border/60 bg-card/95 shadow-sm">
+          <CardContent className="space-y-4 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Valor alvo
+                </p>
+                <p className="text-3xl font-semibold tracking-tight text-foreground">{formatCurrency(totalAlvo)}</p>
+              </div>
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 shadow-sm">
+                <CheckCircle className="h-5 w-5 text-emerald-600" />
+              </div>
+            </div>
+            <p className="text-sm leading-6 text-muted-foreground">
+              Valor total que suas metas buscam alcançar no conjunto.
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {metasList.length === 0 ? (
-        <div className="text-center py-20">
-          <Target className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
-          <p className="text-lg font-medium text-muted-foreground">Nenhuma meta criada ainda</p>
-          <p className="text-sm text-muted-foreground mt-1">Defina seu primeiro objetivo financeiro</p>
-        </div>
+        <Card className="rounded-[28px] border border-dashed border-border/70 bg-card/80 shadow-sm">
+          <CardContent className="flex flex-col items-center justify-center px-6 py-14 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-primary/15 bg-primary/10 shadow-sm">
+              <Target className="h-7 w-7 text-primary" />
+            </div>
+            <div className="mt-5 space-y-2">
+              <p className="text-lg font-semibold tracking-tight text-foreground">Nenhuma meta criada ainda</p>
+              <p className="mx-auto max-w-sm text-sm leading-6 text-muted-foreground">
+                Defina seu primeiro objetivo financeiro para acompanhar progresso, prazo e valor mensal necessário.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       ) : (
         <div className="space-y-6">
           {ativas.length > 0 && (
             <div>
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                Em andamento ({ativas.length})
-              </h2>
+              <div className="mb-3 flex items-center gap-2">
+                <Badge variant="outline" className="rounded-full border-border/60 bg-background/80 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground shadow-sm">
+                  Em andamento
+                </Badge>
+                <span className="text-sm font-medium text-muted-foreground">{ativas.length}</span>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {ativas.map((meta) => {
                   const progresso = calcularProgresso(meta);
@@ -221,49 +376,49 @@ export default function MetasPage() {
                   const concluida = Number(meta.valorAtual) >= Number(meta.valorAlvo);
 
                   return (
-                    <Card key={meta.id} className="hover-elevate" data-testid={`card-meta-${meta.id}`}>
+                    <Card key={meta.id} className="hover-elevate rounded-[26px] border border-border/60 bg-card/95 shadow-sm" data-testid={`card-meta-${meta.id}`}>
                       <CardContent className="p-5 space-y-4">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 flex-shrink-0">
-                              <Target className="w-5 h-5 text-primary" />
+                            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm">
+                              <Target className="h-5 w-5 text-primary" />
                             </div>
-                            <div className="min-w-0">
-                              <p className="font-semibold truncate">{meta.nome}</p>
+                            <div className="min-w-0 space-y-1">
+                              <p className="truncate text-base font-semibold tracking-tight text-foreground">{meta.nome}</p>
                               {meta.descricao && (
-                                <p className="text-xs text-muted-foreground truncate">{meta.descricao}</p>
+                                <p className="truncate text-xs leading-5 text-muted-foreground">{meta.descricao}</p>
                               )}
                             </div>
                           </div>
                           {concluida
-                            ? <Badge variant="secondary"><CheckCircle className="w-3 h-3 mr-1" />Concluida</Badge>
+                            ? <Badge variant="secondary" className="rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"><CheckCircle className="w-3 h-3 mr-1" />Concluida</Badge>
                             : mesesRestantes <= 1
-                            ? <Badge variant="destructive">Urgente</Badge>
-                            : <Badge variant="outline">{mesesRestantes}m restantes</Badge>
+                            ? <Badge variant="destructive" className="rounded-full shadow-sm">Urgente</Badge>
+                            : <Badge variant="outline" className="rounded-full border-border/60 bg-background/80 shadow-sm">{mesesRestantes}m restantes</Badge>
                           }
                         </div>
 
-                        <div>
+                        <div className="rounded-3xl border border-border/60 bg-background/80 p-4 shadow-inner">
                           <div className="flex justify-between text-sm mb-2">
-                            <span className="font-medium">{formatCurrency(Number(meta.valorAtual))}</span>
+                            <span className="font-semibold text-foreground">{formatCurrency(Number(meta.valorAtual))}</span>
                             <span className="text-muted-foreground">{formatCurrency(Number(meta.valorAlvo))}</span>
                           </div>
                           <Progress value={progresso} className="h-3" />
-                          <p className="text-xs text-muted-foreground mt-1 text-right">{progresso.toFixed(0)}% concluido</p>
+                          <p className="mt-2 text-xs font-medium text-muted-foreground text-right">{progresso.toFixed(0)}% concluido</p>
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
-                          <div className="rounded-md bg-muted/40 p-3">
-                            <p className="text-xs text-muted-foreground">Faltam</p>
-                            <p className="text-base font-bold">{formatCurrency(Math.max(0, Number(meta.valorAlvo) - Number(meta.valorAtual)))}</p>
+                          <div className="rounded-2xl border border-border/50 bg-background/80 p-3 shadow-sm">
+                            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Faltam</p>
+                            <p className="mt-2 text-base font-semibold tracking-tight text-foreground">{formatCurrency(Math.max(0, Number(meta.valorAlvo) - Number(meta.valorAtual)))}</p>
                           </div>
-                          <div className="rounded-md bg-primary/5 p-3">
-                            <p className="text-xs text-muted-foreground">Por mês</p>
-                            <p className="text-base font-bold text-primary">{formatCurrency(mensal)}</p>
+                          <div className="rounded-2xl border border-primary/15 bg-primary/5 p-3 shadow-sm">
+                            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Por mês</p>
+                            <p className="mt-2 text-base font-semibold tracking-tight text-primary">{formatCurrency(mensal)}</p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                           <CalendarClock className="w-3 h-3" />
                           <span>Prazo: {format(parseISO(meta.prazo), "dd/MM/yyyy")}</span>
                         </div>
@@ -274,7 +429,7 @@ export default function MetasPage() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="flex-1"
+                                className="h-9 flex-1 rounded-2xl border-border/60 bg-background/80 shadow-sm"
                                 onClick={() => setEditMeta(meta)}
                                 data-testid={`button-update-meta-${meta.id}`}
                               >
@@ -314,6 +469,7 @@ export default function MetasPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            className="h-9 w-9 rounded-xl border border-border/60 bg-background/80 shadow-sm hover:bg-accent"
                             onClick={() => deleteMutation.mutate(meta.id)}
                             data-testid={`button-delete-meta-${meta.id}`}
                             aria-label="Excluir meta"
@@ -332,23 +488,29 @@ export default function MetasPage() {
 
           {concluidas.length > 0 && (
             <div>
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                Concluidas ({concluidas.length})
-              </h2>
+              <div className="mb-3 flex items-center gap-2">
+                <Badge variant="outline" className="rounded-full border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-emerald-700 shadow-sm dark:text-emerald-300">
+                  Concluidas
+                </Badge>
+                <span className="text-sm font-medium text-muted-foreground">{concluidas.length}</span>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {concluidas.map((meta) => (
-                  <Card key={meta.id} className="opacity-75" data-testid={`card-meta-done-${meta.id}`}>
+                  <Card key={meta.id} className="rounded-[24px] border border-emerald-500/15 bg-emerald-500/[0.05] shadow-sm" data-testid={`card-meta-done-${meta.id}`}>
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="w-5 h-5 text-emerald-600" />
-                          <span className="font-medium">{meta.nome}</span>
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-500/20 bg-background/80 shadow-sm">
+                            <CheckCircle className="w-5 h-5 text-emerald-600" />
+                          </div>
+                          <span className="truncate font-semibold text-foreground">{meta.nome}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-bold text-emerald-600">{formatCurrency(Number(meta.valorAlvo))}</span>
                           <Button
                             variant="ghost"
                             size="icon"
+                            className="h-9 w-9 rounded-xl border border-border/60 bg-background/80 shadow-sm hover:bg-accent"
                             onClick={() => deleteMutation.mutate(meta.id)}
                             aria-label="Excluir meta concluída"
                             title="Excluir meta concluída"

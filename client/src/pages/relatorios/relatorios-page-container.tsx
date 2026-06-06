@@ -3,6 +3,7 @@ import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -343,158 +344,227 @@ export default function RelatoriosPageContainer() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto w-full max-w-[1600px] overflow-x-hidden p-4 sm:p-6 space-y-5">
-        <div className="flex justify-between items-center">
-          <Skeleton className="h-10 w-48" />
-          <Skeleton className="h-10 w-32" />
+      <div className="mx-auto w-full max-w-[1600px] space-y-6 overflow-x-hidden p-4 sm:p-6">
+        <div className="rounded-3xl border border-border/60 bg-card/95 p-5 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div className="space-y-3">
+              <Skeleton className="h-10 w-48 rounded-xl" />
+              <Skeleton className="h-4 w-72 max-w-full rounded-full" />
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Skeleton className="h-11 w-full rounded-2xl sm:w-[190px]" />
+              <Skeleton className="h-11 w-full rounded-2xl sm:w-[152px]" />
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+          {[...Array(6)].map((_, i) => (
+            <div
+              key={i}
+              className="rounded-3xl border border-border/60 bg-card/95 p-5 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1 space-y-3">
+                  <Skeleton className="h-3 w-24 rounded-full" />
+                  <Skeleton className="h-8 w-28 rounded-xl" />
+                </div>
+                <Skeleton className="h-11 w-11 shrink-0 rounded-2xl" />
+              </div>
+            </div>
+          ))}
         </div>
-        <Skeleton className="h-[300px] w-full" />
-        <Skeleton className="h-[400px] w-full" />
+        <div className="rounded-3xl border border-border/60 bg-card/95 p-5 shadow-sm sm:p-6">
+          <div className="mb-4 flex items-center gap-3">
+            <Skeleton className="h-10 w-10 rounded-2xl" />
+            <Skeleton className="h-6 w-52 rounded-xl" />
+          </div>
+          <Skeleton className="h-[320px] w-full rounded-2xl" />
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {[...Array(4)].map((_, i) => (
+            <div
+              key={i}
+              className="rounded-3xl border border-border/60 bg-card/95 p-5 shadow-sm sm:p-6"
+            >
+              <div className="mb-4 flex items-center gap-3">
+                <Skeleton className="h-10 w-10 rounded-2xl" />
+                <Skeleton className="h-6 w-40 rounded-xl" />
+              </div>
+              <div className="rounded-2xl border border-border/50 bg-background/80 p-3 shadow-sm sm:p-4">
+                <div className="space-y-3">
+                  {[...Array(5)].map((__, rowIndex) => (
+                    <div key={rowIndex} className="flex items-center justify-between gap-4">
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-28 rounded-full" />
+                        <Skeleton className="h-3 w-20 rounded-full" />
+                      </div>
+                      <Skeleton className="h-4 w-20 rounded-full" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] overflow-x-hidden p-4 sm:p-6 space-y-5" data-testid="relatorios-page">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Relatórios</h1>
-          <p className="text-muted-foreground">Análise detalhada da sua saúde financeira</p>
-          {isCompatibilityMode ? (
-            <p className="text-xs text-amber-600 mt-1">
-              Exibindo dados em modo compatibilidade.
-            </p>
-          ) : null}
-        </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-          <Select value={periodo} onValueChange={(v: Periodo) => setPeriodo(v)}>
-            <SelectTrigger className="w-full sm:w-[180px]" data-testid="select-periodo">
-              <SelectValue placeholder="Selecione o período" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="mes_atual">Mês atual</SelectItem>
-              <SelectItem value="mes_anterior">Mês anterior</SelectItem>
-              <SelectItem value="ultimos_3_meses">Últimos 3 meses</SelectItem>
-              <SelectItem value="ano_atual">Ano atual</SelectItem>
-              <SelectItem value="total_geral">Total geral</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button onClick={exportPDF} data-testid="button-export-pdf" className="gap-2">
-            <FileDown className="w-4 h-4" />
-            Baixar PDF
-          </Button>
-        </div>
-      </div>
+    <div className="mx-auto w-full max-w-[1600px] space-y-6 overflow-x-hidden p-4 sm:p-6" data-testid="relatorios-page">
+      <FintechPageHeader
+        className="rounded-3xl"
+        rowClassName="xl:items-end"
+        title="Relatórios"
+        titleClassName="sm:text-[2rem]"
+        subtitle="Análise detalhada da sua saúde financeira"
+        badges={isCompatibilityMode ? (
+          <p className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-700">
+            Exibindo dados em modo compatibilidade.
+          </p>
+        ) : undefined}
+        actionsClassName="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center xl:justify-end"
+        actions={(
+          <>
+            <div className="rounded-2xl border border-border/60 bg-background/80 p-2 shadow-sm">
+              <Select value={periodo} onValueChange={(v: Periodo) => setPeriodo(v)}>
+                <SelectTrigger
+                  className="h-10 w-full border-0 bg-transparent px-2 shadow-none sm:w-[190px]"
+                  data-testid="select-periodo"
+                >
+                  <SelectValue placeholder="Selecione o período" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mes_atual">Mês atual</SelectItem>
+                  <SelectItem value="mes_anterior">Mês anterior</SelectItem>
+                  <SelectItem value="ultimos_3_meses">Últimos 3 meses</SelectItem>
+                  <SelectItem value="ano_atual">Ano atual</SelectItem>
+                  <SelectItem value="total_geral">Total geral</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              onClick={exportPDF}
+              data-testid="button-export-pdf"
+              className="h-11 gap-2 rounded-2xl px-5 shadow-sm"
+            >
+              <FileDown className="w-4 h-4" />
+              Baixar PDF
+            </Button>
+          </>
+        )}
+      />
 
       {/* Section 1 — Resumo Geral */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-        <Card className="hover-elevate">
-          <CardContent className="p-4 sm:p-5 min-h-[104px]">
-            <div className="h-full flex items-center justify-center">
-              <div className="flex w-full max-w-[260px] min-w-0 items-center gap-3">
-                <div className="p-2 bg-emerald-500/10 rounded-lg shrink-0">
-                  <Wallet className="w-5 h-5 text-emerald-600" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">Renda Total</p>
-                  <p className="fin-value-kpi truncate text-emerald-600">{fc(filteredData.totalRenda)}</p>
-                </div>
+        <Card className="hover-elevate rounded-3xl border border-border/60 bg-card/95 shadow-sm">
+          <CardContent className="flex min-h-[132px] flex-col justify-between p-5">
+            <div className="flex items-start justify-between gap-4">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+                Renda Total
+              </p>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/15 bg-emerald-500/10 shadow-sm">
+                <Wallet className="w-5 h-5 text-emerald-600" />
               </div>
+            </div>
+            <div className="space-y-1 pt-6">
+              <p className="fin-value-kpi truncate text-emerald-600">{fc(filteredData.totalRenda)}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="hover-elevate">
-          <CardContent className="p-4 sm:p-5 min-h-[104px]">
-            <div className="h-full flex items-center justify-center">
-              <div className="flex w-full max-w-[260px] min-w-0 items-center gap-3">
-                <div className="p-2 bg-red-500/10 rounded-lg shrink-0">
-                  <CreditCard className="w-5 h-5 text-red-600" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">Total Cartões</p>
-                  <p className="fin-value-kpi truncate text-red-600">{fc(filteredData.totalCartoes)}</p>
-                </div>
+        <Card className="hover-elevate rounded-3xl border border-border/60 bg-card/95 shadow-sm">
+          <CardContent className="flex min-h-[132px] flex-col justify-between p-5">
+            <div className="flex items-start justify-between gap-4">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+                Total Cartões
+              </p>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-red-500/15 bg-red-500/10 shadow-sm">
+                <CreditCard className="w-5 h-5 text-red-600" />
               </div>
+            </div>
+            <div className="space-y-1 pt-6">
+              <p className="fin-value-kpi truncate text-red-600">{fc(filteredData.totalCartoes)}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="hover-elevate">
-          <CardContent className="p-4 sm:p-5 min-h-[104px]">
-            <div className="h-full flex items-center justify-center">
-              <div className="flex w-full max-w-[260px] min-w-0 items-center gap-3">
-                <div className="p-2 bg-red-500/10 rounded-lg shrink-0">
-                  <Receipt className="w-5 h-5 text-red-600" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">Total Dívidas</p>
-                  <p className="fin-value-kpi truncate text-red-600">{fc(filteredData.totalDividasPagar)}</p>
-                </div>
+        <Card className="hover-elevate rounded-3xl border border-border/60 bg-card/95 shadow-sm">
+          <CardContent className="flex min-h-[132px] flex-col justify-between p-5">
+            <div className="flex items-start justify-between gap-4">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+                Total Dívidas
+              </p>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-red-500/15 bg-red-500/10 shadow-sm">
+                <Receipt className="w-5 h-5 text-red-600" />
               </div>
+            </div>
+            <div className="space-y-1 pt-6">
+              <p className="fin-value-kpi truncate text-red-600">{fc(filteredData.totalDividasPagar)}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="hover-elevate">
-          <CardContent className="p-4 sm:p-5 min-h-[104px]">
-            <div className="h-full flex items-center justify-center">
-              <div className="flex w-full max-w-[260px] min-w-0 items-center gap-3">
-                <div className="p-2 bg-blue-500/10 rounded-lg shrink-0">
-                  <TrendingUp className="w-5 h-5 text-blue-600" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">A Receber</p>
-                  <p className="fin-value-kpi truncate text-blue-600">{fc(filteredData.totalReceber)}</p>
-                </div>
+        <Card className="hover-elevate rounded-3xl border border-border/60 bg-card/95 shadow-sm">
+          <CardContent className="flex min-h-[132px] flex-col justify-between p-5">
+            <div className="flex items-start justify-between gap-4">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+                A Receber
+              </p>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-blue-500/15 bg-blue-500/10 shadow-sm">
+                <TrendingUp className="w-5 h-5 text-blue-600" />
               </div>
+            </div>
+            <div className="space-y-1 pt-6">
+              <p className="fin-value-kpi truncate text-blue-600">{fc(filteredData.totalReceber)}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="hover-elevate">
-          <CardContent className="p-4 sm:p-5 min-h-[104px]">
-            <div className="h-full flex items-center justify-center">
-              <div className="flex w-full max-w-[260px] min-w-0 items-center gap-3">
-                <div className="p-2 bg-indigo-500/10 rounded-lg shrink-0">
-                  <PiggyBank className="w-5 h-5 text-indigo-600" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">Patrimônio</p>
-                  <p className="fin-value-kpi truncate text-indigo-600">{fc(filteredData.totalPatrimonio)}</p>
-                </div>
+        <Card className="hover-elevate rounded-3xl border border-border/60 bg-card/95 shadow-sm">
+          <CardContent className="flex min-h-[132px] flex-col justify-between p-5">
+            <div className="flex items-start justify-between gap-4">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+                Patrimônio
+              </p>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-indigo-500/15 bg-indigo-500/10 shadow-sm">
+                <PiggyBank className="w-5 h-5 text-indigo-600" />
               </div>
+            </div>
+            <div className="space-y-1 pt-6">
+              <p className="fin-value-kpi truncate text-indigo-600">{fc(filteredData.totalPatrimonio)}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="hover-elevate">
-          <CardContent className="p-4 sm:p-5 min-h-[104px]">
-            <div className="h-full flex items-center justify-center">
-              <div className="flex w-full max-w-[260px] min-w-0 items-center gap-3">
-                <div className="p-2 bg-primary/10 rounded-lg shrink-0">
-                  <div className="w-5 h-5 flex items-center justify-center font-bold text-primary">B$</div>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">Saldo Líquido</p>
-                  <p className={`fin-value-kpi truncate ${filteredData.saldoLiquido >= 0 ? "text-primary" : "text-red-600"}`}>
-                    {fc(filteredData.saldoLiquido)}
-                  </p>
+        <Card className="hover-elevate rounded-3xl border border-border/60 bg-card/95 shadow-sm">
+          <CardContent className="flex min-h-[132px] flex-col justify-between p-5">
+            <div className="flex items-start justify-between gap-4">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+                Saldo Líquido
+              </p>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm">
+                <div className="flex h-5 w-5 items-center justify-center text-sm font-bold text-primary">
+                  B$
                 </div>
               </div>
+            </div>
+            <div className="space-y-1 pt-6">
+              <p className={`fin-value-kpi truncate ${filteredData.saldoLiquido >= 0 ? "text-primary" : "text-red-600"}`}>
+                {fc(filteredData.saldoLiquido)}
+              </p>
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Section 2 — Histórico */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <BarChartIcon className="w-5 h-5" />
+      <Card className="rounded-3xl border border-border/60 bg-card/95 shadow-sm">
+        <CardHeader className="border-b border-border/50 pb-4">
+          <CardTitle className="flex items-center gap-3 text-lg font-semibold tracking-tight">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm">
+              <BarChartIcon className="w-5 h-5 text-primary" />
+            </span>
             Histórico (últimos 6 meses)
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <Suspense fallback={<Skeleton className="h-72 w-full" />}>
+        <CardContent className="pt-6">
+          <Suspense fallback={<Skeleton className="h-72 w-full rounded-2xl" />}>
             <RelatoriosHistoricoChart
               data={chartData}
               formatCurrency={formatCurrency}
@@ -503,31 +573,38 @@ export default function RelatoriosPageContainer() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Section 3 — Detalhamento em Cartões */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <CreditCard className="w-5 h-5" />
+        <Card className="rounded-3xl border border-border/60 bg-card/95 shadow-sm">
+          <CardHeader className="border-b border-border/50 pb-4">
+            <CardTitle className="flex items-center gap-3 text-lg font-semibold tracking-tight">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-red-500/15 bg-red-500/10 shadow-sm">
+                <CreditCard className="w-5 h-5 text-red-600" />
+              </span>
               Detalhamento em Cartões
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="rounded-md border overflow-x-auto">
+          <CardContent className="pt-6">
+            <div className="overflow-x-auto rounded-2xl border border-border/50 bg-background/80 shadow-sm">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Cartão</TableHead>
-                    <TableHead>Descrição</TableHead>
-                    <TableHead>Parcela</TableHead>
-                    <TableHead className="text-right">Valor/Parc</TableHead>
+                  <TableRow className="border-border/60">
+                    <TableHead className="h-11 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cartão</TableHead>
+                    <TableHead className="h-11 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Descrição</TableHead>
+                    <TableHead className="h-11 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Parcela</TableHead>
+                    <TableHead className="h-11 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Valor/Parc</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredData.compras.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                        Nenhuma compra no período
+                      <TableCell colSpan={4} className="py-10">
+                        <div className="flex flex-col items-center gap-3 text-center text-muted-foreground">
+                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border/50 bg-muted/20 shadow-sm">
+                            <CreditCard className="h-5 w-5" />
+                          </div>
+                          <p className="text-sm">Nenhuma compra no período</p>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -540,18 +617,18 @@ export default function RelatoriosPageContainer() {
                       }, {} as Record<string, CompraCartao[]>)
                     ).map(([cardName, items]) => (
                       <Fragment key={cardName}>
-                        <TableRow key={cardName} className="bg-muted/50 font-semibold">
+                        <TableRow key={cardName} className="border-border/50 bg-muted/35 font-semibold">
                           <TableCell colSpan={4}>{cardName}</TableCell>
                         </TableRow>
                         {items.map((item) => (
-                          <TableRow key={item.id}>
+                          <TableRow key={item.id} className="border-border/40 hover:bg-muted/20">
                             <TableCell className="pl-6 text-xs text-muted-foreground">{cardName}</TableCell>
-                            <TableCell className="max-w-[150px] truncate" title={item.descricao}>{item.descricao}</TableCell>
+                            <TableCell className="max-w-[150px] truncate font-medium" title={item.descricao}>{item.descricao}</TableCell>
                             <TableCell>{item.parcelaAtual}/{item.parcelas}</TableCell>
                             <TableCell className="fin-value-table text-right">{fc(Number(item.valorParcela))}</TableCell>
                           </TableRow>
                         ))}
-                        <TableRow className="border-t-2 font-bold">
+                        <TableRow className="border-t-2 border-border/60 bg-muted/20 font-bold">
                           <TableCell colSpan={3} className="text-right">Subtotal {cardName}</TableCell>
                           <TableCell className="fin-value-table text-right">
                             {fc(items.reduce((s, i) => s + Number(i.valorParcela), 0))}
@@ -567,28 +644,35 @@ export default function RelatoriosPageContainer() {
         </Card>
 
         {/* Section 4 — Pessoas */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <Users className="w-5 h-5" />
+        <Card className="rounded-3xl border border-border/60 bg-card/95 shadow-sm">
+          <CardHeader className="border-b border-border/50 pb-4">
+            <CardTitle className="flex items-center gap-3 text-lg font-semibold tracking-tight">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-blue-500/15 bg-blue-500/10 shadow-sm">
+                <Users className="w-5 h-5 text-blue-600" />
+              </span>
               Pessoas
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="rounded-md border overflow-x-auto">
+          <CardContent className="pt-6">
+            <div className="overflow-x-auto rounded-2xl border border-border/50 bg-background/80 shadow-sm">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead className="text-right">Pendente</TableHead>
+                  <TableRow className="border-border/60">
+                    <TableHead className="h-11 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nome</TableHead>
+                    <TableHead className="h-11 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tipo</TableHead>
+                    <TableHead className="h-11 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pendente</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {pessoas.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
-                        Nenhuma pessoa cadastrada
+                      <TableCell colSpan={3} className="py-10">
+                        <div className="flex flex-col items-center gap-3 text-center text-muted-foreground">
+                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border/50 bg-muted/20 shadow-sm">
+                            <Users className="h-5 w-5" />
+                          </div>
+                          <p className="text-sm">Nenhuma pessoa cadastrada</p>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -596,10 +680,10 @@ export default function RelatoriosPageContainer() {
                       const pDividas = filteredData.dividas.filter(d => d.pessoaId === p.id && d.status === "pendente");
                       const total = pDividas.reduce((acc, d) => acc + (d.tipo === "receber" ? Number(d.valor) : -Number(d.valor)), 0);
                       return (
-                        <TableRow key={p.id}>
+                        <TableRow key={p.id} className="border-border/40 hover:bg-muted/20">
                           <TableCell className="max-w-[180px] truncate font-medium" title={p.nome}>{p.nome}</TableCell>
                           <TableCell>
-                            <Badge variant={total >= 0 ? "default" : "destructive"}>
+                            <Badge variant={total >= 0 ? "default" : "destructive"} className="rounded-full px-2.5">
                               {total >= 0 ? "Me deve" : "Eu devo"}
                             </Badge>
                           </TableCell>
@@ -617,59 +701,66 @@ export default function RelatoriosPageContainer() {
         </Card>
 
         {/* Section 5 — Serviços Ativos */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <Receipt className="w-5 h-5" />
+        <Card className="rounded-3xl border border-border/60 bg-card/95 shadow-sm">
+          <CardHeader className="border-b border-border/50 pb-4">
+            <CardTitle className="flex items-center gap-3 text-lg font-semibold tracking-tight">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-amber-500/15 bg-amber-500/10 shadow-sm">
+                <Receipt className="w-5 h-5 text-amber-600" />
+              </span>
               Serviços Ativos
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="rounded-lg border bg-muted/20 px-3 py-2">
-                <p className="text-xs text-muted-foreground">Média mensal de serviços</p>
-                <p className="text-sm font-semibold">{fc(filteredData.totalServicosMediaMensal)}</p>
+          <CardContent className="space-y-4 pt-6">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-border/50 bg-background/80 px-4 py-3 shadow-sm">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Média mensal de serviços</p>
+                <p className="pt-2 text-sm font-semibold">{fc(filteredData.totalServicosMediaMensal)}</p>
               </div>
-              <div className="rounded-lg border bg-muted/20 px-3 py-2">
-                <p className="text-xs text-muted-foreground">Cobrança real no período</p>
-                <p className="text-sm font-semibold">{fc(filteredData.totalServicosCobrancaRealPeriodo)}</p>
+              <div className="rounded-2xl border border-border/50 bg-background/80 px-4 py-3 shadow-sm">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cobrança real no período</p>
+                <p className="pt-2 text-sm font-semibold">{fc(filteredData.totalServicosCobrancaRealPeriodo)}</p>
               </div>
-              <div className="rounded-lg border bg-muted/20 px-3 py-2">
-                <p className="text-xs text-muted-foreground">Vinculados a cartão (real)</p>
-                <p className="text-sm font-semibold">{fc(filteredData.totalServicosVinculadosCartaoCobrancaRealPeriodo)}</p>
+              <div className="rounded-2xl border border-border/50 bg-background/80 px-4 py-3 shadow-sm">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Vinculados a cartão (real)</p>
+                <p className="pt-2 text-sm font-semibold">{fc(filteredData.totalServicosVinculadosCartaoCobrancaRealPeriodo)}</p>
               </div>
-              <div className="rounded-lg border bg-muted/20 px-3 py-2">
-                <p className="text-xs text-muted-foreground">Não vinculados a cartão (real)</p>
-                <p className="text-sm font-semibold">{fc(filteredData.totalServicosNaoVinculadosCartaoCobrancaRealPeriodo)}</p>
+              <div className="rounded-2xl border border-border/50 bg-background/80 px-4 py-3 shadow-sm">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Não vinculados a cartão (real)</p>
+                <p className="pt-2 text-sm font-semibold">{fc(filteredData.totalServicosNaoVinculadosCartaoCobrancaRealPeriodo)}</p>
               </div>
             </div>
 
-            <p className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-700">
+            <p className="rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-700">
               Cobranças vinculadas ao cartão já aparecem na fatura.
             </p>
 
-            <div className="rounded-md border overflow-x-auto">
+            <div className="overflow-x-auto rounded-2xl border border-border/50 bg-background/80 shadow-sm">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Serviço</TableHead>
-                    <TableHead>Categoria</TableHead>
-                    <TableHead>Periodicidade</TableHead>
-                    <TableHead className="text-right">Cobrança</TableHead>
-                    <TableHead className="text-right">Equiv. mensal</TableHead>
-                    <TableHead>Vinculado cartão</TableHead>
+                  <TableRow className="border-border/60">
+                    <TableHead className="h-11 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Serviço</TableHead>
+                    <TableHead className="h-11 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Categoria</TableHead>
+                    <TableHead className="h-11 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Periodicidade</TableHead>
+                    <TableHead className="h-11 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cobrança</TableHead>
+                    <TableHead className="h-11 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Equiv. mensal</TableHead>
+                    <TableHead className="h-11 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vinculado cartão</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredData.activeServicos.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                        Nenhum serviço ativo
+                      <TableCell colSpan={6} className="py-10">
+                        <div className="flex flex-col items-center gap-3 text-center text-muted-foreground">
+                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border/50 bg-muted/20 shadow-sm">
+                            <Receipt className="h-5 w-5" />
+                          </div>
+                          <p className="text-sm">Nenhum serviço ativo</p>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredData.servicosDetalhados.map((s) => (
-                      <TableRow key={s.id}>
+                      <TableRow key={s.id} className="border-border/40 hover:bg-muted/20">
                         <TableCell className="max-w-[180px] truncate font-medium" title={s.nome}>{s.nome}</TableCell>
                         <TableCell>{s.categoria}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{s.periodicidadeLabel}</TableCell>
@@ -680,14 +771,14 @@ export default function RelatoriosPageContainer() {
                           {fc(s.equivalenteMensal)}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={s.vinculadoCartao ? "secondary" : "outline"}>
+                          <Badge variant={s.vinculadoCartao ? "secondary" : "outline"} className="rounded-full px-2.5">
                             {s.vinculadoCartao ? "Sim" : "Não"}
                           </Badge>
                         </TableCell>
                       </TableRow>
                     ))
                   )}
-                  <TableRow className="bg-muted/50 font-bold border-t-2">
+                  <TableRow className="border-t-2 border-border/60 bg-muted/20 font-bold">
                     <TableCell colSpan={3} className="text-right">Totais</TableCell>
                     <TableCell className="fin-value-table text-right">
                       {fc(filteredData.totalServicosCobrancaRealPeriodo)}
@@ -701,7 +792,7 @@ export default function RelatoriosPageContainer() {
               </Table>
             </div>
             {!filteredData.hasDetailedServicosMetrics ? (
-              <p className="mt-2 text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Modo compatibilidade: detalhamento avançado de serviços calculado localmente.
               </p>
             ) : null}
@@ -709,28 +800,35 @@ export default function RelatoriosPageContainer() {
         </Card>
 
         {/* Section 6 — Patrimônio */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <PiggyBank className="w-5 h-5" />
+        <Card className="rounded-3xl border border-border/60 bg-card/95 shadow-sm">
+          <CardHeader className="border-b border-border/50 pb-4">
+            <CardTitle className="flex items-center gap-3 text-lg font-semibold tracking-tight">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-indigo-500/15 bg-indigo-500/10 shadow-sm">
+                <PiggyBank className="w-5 h-5 text-indigo-600" />
+              </span>
               Patrimônio
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="rounded-md border overflow-x-auto">
+          <CardContent className="pt-6">
+            <div className="overflow-x-auto rounded-2xl border border-border/50 bg-background/80 shadow-sm">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Item</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead className="text-right">Valor Atual</TableHead>
+                  <TableRow className="border-border/60">
+                    <TableHead className="h-11 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Item</TableHead>
+                    <TableHead className="h-11 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tipo</TableHead>
+                    <TableHead className="h-11 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Valor Atual</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {patrimonios.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
-                        Nenhum patrimônio cadastrado
+                      <TableCell colSpan={3} className="py-10">
+                        <div className="flex flex-col items-center gap-3 text-center text-muted-foreground">
+                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border/50 bg-muted/20 shadow-sm">
+                            <PiggyBank className="h-5 w-5" />
+                          </div>
+                          <p className="text-sm">Nenhum patrimônio cadastrado</p>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -743,7 +841,7 @@ export default function RelatoriosPageContainer() {
                         outros: "Outros"
                       };
                       return (
-                        <TableRow key={p.id}>
+                        <TableRow key={p.id} className="border-border/40 hover:bg-muted/20">
                           <TableCell className="max-w-[180px] truncate font-medium" title={p.nome}>{p.nome}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">{labels[p.tipo] || p.tipo}</TableCell>
                           <TableCell className="fin-value-table text-right text-indigo-600">
@@ -753,7 +851,7 @@ export default function RelatoriosPageContainer() {
                       );
                     })
                   )}
-                  <TableRow className="bg-muted/50 font-bold border-t-2">
+                  <TableRow className="border-t-2 border-border/60 bg-muted/20 font-bold">
                     <TableCell colSpan={2} className="text-right">Total</TableCell>
                     <TableCell className="fin-value-table text-right text-indigo-600">
                       {fc(filteredData.totalPatrimonio)}

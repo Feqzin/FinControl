@@ -34,7 +34,7 @@ export function CartoesPageToolbar({
             <Button
               variant="outline"
               onClick={onOpenImportDialog}
-              className="min-w-0 flex-1 justify-start text-left whitespace-normal break-words touch-feedback sm:justify-center xl:w-auto xl:flex-none xl:whitespace-nowrap"
+              className="h-11 min-w-0 flex-1 justify-start rounded-2xl border-border/60 bg-background/80 text-left whitespace-normal break-words shadow-sm touch-feedback sm:justify-center xl:w-auto xl:flex-none xl:whitespace-nowrap"
               data-testid="button-importar-fatura"
             >
               <Upload className="mr-2 h-4 w-4 flex-shrink-0" />
@@ -45,7 +45,7 @@ export function CartoesPageToolbar({
             {!smartImportLiberado ? (
               <Badge
                 variant="secondary"
-                className="w-fit shrink-0 whitespace-nowrap self-start sm:self-auto"
+                className="w-fit shrink-0 rounded-full border border-border/60 bg-background/80 px-3 py-1 whitespace-nowrap shadow-sm self-start sm:self-auto"
                 data-testid="badge-smart-import-premium"
               >
                 Premium
@@ -56,7 +56,7 @@ export function CartoesPageToolbar({
             variant="outline"
             onClick={onOpenDeleteFaturaDialog}
             disabled={cartoesCount === 0}
-            className="min-w-0 w-full justify-start text-left whitespace-normal break-words touch-feedback sm:justify-center xl:w-auto xl:flex-none xl:whitespace-nowrap"
+            className="h-11 min-w-0 w-full justify-start rounded-2xl border-border/60 bg-background/80 text-left whitespace-normal break-words shadow-sm touch-feedback sm:justify-center xl:w-auto xl:flex-none xl:whitespace-nowrap"
             data-testid="button-excluir-fatura"
           >
             <Trash2 className="mr-2 h-4 w-4 flex-shrink-0" />
@@ -65,7 +65,7 @@ export function CartoesPageToolbar({
           {smartImportLiberado && lastImportLogId ? (
             <Button
               variant="outline"
-              className="min-w-0 w-full justify-start text-left whitespace-normal break-words touch-feedback sm:col-span-2 sm:justify-center xl:w-auto xl:flex-none xl:whitespace-nowrap"
+              className="h-11 min-w-0 w-full justify-start rounded-2xl border-border/60 bg-background/80 text-left whitespace-normal break-words shadow-sm touch-feedback sm:col-span-2 sm:justify-center xl:w-auto xl:flex-none xl:whitespace-nowrap"
               onClick={onRollbackLastImport}
               disabled={rollbackImportPending}
               data-testid="button-rollback-import"
@@ -75,7 +75,7 @@ export function CartoesPageToolbar({
             </Button>
           ) : null}
           <Button
-            className="w-full touch-feedback sm:col-span-2 xl:w-auto xl:flex-none"
+            className="h-11 w-full rounded-2xl px-5 shadow-sm touch-feedback sm:col-span-2 xl:w-auto xl:flex-none"
             data-testid="button-add-cartao"
             onClick={onOpenNewCardDialog}
           >

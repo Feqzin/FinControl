@@ -31,7 +31,7 @@ export function PessoasGrid({
 }: PessoasGridProps) {
   if (mobileMode) {
     return (
-      <div className="space-y-2.5">
+      <div className="space-y-3">
         {pessoas.map((pessoa) => (
           <PessoaCard
             key={pessoa.id}
@@ -53,7 +53,7 @@ export function PessoasGrid({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 2xl:gap-5">
       {pessoas.map((pessoa) => (
         <PessoaCard
           key={pessoa.id}

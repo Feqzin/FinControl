@@ -259,23 +259,23 @@
   }
 
   .fintech-page-header {
-    @apply rounded-2xl border border-border/60 bg-card/90 p-4 sm:p-5;
+    @apply rounded-[28px] border border-border/60 bg-card/95 p-5 sm:p-6;
   }
 
   .fintech-page-header-row {
-    @apply flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between;
+    @apply flex min-w-0 flex-col gap-5 xl:flex-row xl:items-start xl:justify-between;
   }
 
   .fintech-page-title {
-    @apply text-2xl font-bold tracking-tight sm:text-3xl;
+    @apply text-3xl font-semibold tracking-tight text-foreground sm:text-4xl;
   }
 
   .fintech-page-subtitle {
-    @apply text-sm text-muted-foreground sm:text-base;
+    @apply text-sm leading-6 text-muted-foreground sm:text-base;
   }
 
   .fintech-page-actions {
-    @apply grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 xl:flex xl:w-auto xl:flex-wrap xl:items-center xl:justify-end;
+    @apply grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 xl:w-auto xl:auto-cols-max xl:grid-flow-col xl:flex-wrap xl:items-center xl:justify-end;
   }
 
   .fintech-inline-kpi {

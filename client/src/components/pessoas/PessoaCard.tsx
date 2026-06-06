@@ -45,13 +45,13 @@ export function PessoaCard({
   if (showRemovedActions) {
     return (
       <Card
-        className="rounded-2xl border border-border/60 bg-card shadow-sm"
+        className="rounded-2xl border border-border/60 bg-card/95 shadow-sm"
         data-testid={`card-pessoa-removed-${pessoa.id}`}
       >
         <CardContent className="flex flex-col gap-3 p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate text-lg font-semibold leading-tight">{pessoa.nome}</p>
+              <p className="truncate text-lg font-semibold leading-tight tracking-tight">{pessoa.nome}</p>
               {pessoa.telefone && (
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">{pessoa.telefone}</p>
               )}
@@ -101,49 +101,65 @@ export function PessoaCard({
   if (mobileMode) {
     return (
       <div
-        className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm transition-all active:scale-[0.998]"
+        className="overflow-hidden rounded-2xl border border-border/60 bg-card/95 shadow-sm transition-all duration-200 active:scale-[0.998]"
         data-testid={`card-pessoa-${pessoa.id}`}
       >
-        <div className="space-y-2.5 px-3.5 py-3.5">
+        <div className="space-y-3.5 px-4 py-4">
           <div className="flex items-start justify-between gap-2.5">
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/10">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-black/5 bg-muted/45 text-primary shadow-sm">
                 <span className="text-sm font-semibold">
                   {pessoa.nome.charAt(0).toUpperCase()}
                 </span>
               </div>
               <div className="min-w-0">
-                <p className="truncate text-[17px] font-semibold leading-tight">{pessoa.nome}</p>
+                <p className="truncate text-[17px] font-semibold leading-tight tracking-tight">{pessoa.nome}</p>
                 {pessoa.telefone && (
                   <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{pessoa.telefone}</p>
                 )}
               </div>
             </div>
-            <div className="flex flex-col items-end gap-1 text-right">
+            <div className="flex min-w-[120px] flex-col items-end gap-1.5 text-right">
               <Badge variant={isMeDeve ? "default" : "destructive"} className="h-5 rounded-full px-2 py-0 text-[10px] font-medium shadow-sm">
                 {isMeDeve ? "Me deve" : "Eu devo"}
               </Badge>
-              <p className="text-[clamp(18px,5vw,22px)] font-semibold leading-[1.1] tracking-[-0.2px]">
+              <p className="text-[clamp(18px,5vw,22px)] font-semibold leading-none tracking-tight">
                 {formatCurrencyBRL(resumo.consolidadoPendente)}
               </p>
             </div>
           </div>
 
-          <p className="text-[11px] text-muted-foreground">
-            Dívidas {formatCurrencyBRL(dividasPendentesValor)} • Compras {formatCurrencyBRL(comprasPendentesValor)} • Serviços {formatCurrencyBRL(servicosPendentesValor)}
-          </p>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-xl border border-border/50 bg-muted/[0.16] px-2.5 py-2">
+              <p className="text-[10px] font-medium uppercase tracking-[0.04em] text-muted-foreground/85">Dívidas</p>
+              <p className="mt-1 truncate text-[11px] font-semibold text-foreground/90">{formatCurrencyBRL(dividasPendentesValor)}</p>
+            </div>
+            <div className="rounded-xl border border-border/50 bg-muted/[0.16] px-2.5 py-2">
+              <p className="text-[10px] font-medium uppercase tracking-[0.04em] text-muted-foreground/85">Compras</p>
+              <p className="mt-1 truncate text-[11px] font-semibold text-foreground/90">{formatCurrencyBRL(comprasPendentesValor)}</p>
+            </div>
+            <div className="rounded-xl border border-border/50 bg-muted/[0.16] px-2.5 py-2">
+              <p className="text-[10px] font-medium uppercase tracking-[0.04em] text-muted-foreground/85">Serviços</p>
+              <p className="mt-1 truncate text-[11px] font-semibold text-foreground/90">{formatCurrencyBRL(servicosPendentesValor)}</p>
+            </div>
+          </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-            <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-400">
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <span className="rounded-full border border-emerald-500/10 bg-emerald-500/10 px-2.5 py-1 text-emerald-700 shadow-sm dark:text-emerald-400">
               Saldo + {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}
             </span>
-            <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
+            <span className="rounded-full bg-muted/65 px-2.5 py-1 text-muted-foreground shadow-sm">
               {totalDividas} dívida(s)
             </span>
+            {comprasVinculadas > 0 && (
+              <span className="rounded-full bg-muted/65 px-2.5 py-1 text-muted-foreground shadow-sm">
+                Compras vinculadas {comprasVinculadas}
+              </span>
+            )}
           </div>
 
           {hasAtraso && (
-            <div className="rounded-md border border-red-200/70 bg-red-50/70 px-2.5 py-1.5 text-[11px] text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
+            <div className="rounded-xl border border-red-200/70 bg-red-50/70 px-3 py-2 text-[11px] text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
               <div className="flex items-center gap-2">
                 <span className="h-4 w-1 rounded-full bg-red-500" />
                 <span className="truncate">Pendência encontrada</span>
@@ -155,14 +171,14 @@ export function PessoaCard({
 
           <div className="flex flex-wrap items-center gap-2">
             <button
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/60 bg-background px-3 text-xs font-medium text-primary transition-colors hover:bg-muted/50"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/60 bg-background/95 px-3.5 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-muted/50"
               onClick={() => onOpenHistory(pessoa)}
               data-testid={`button-history-pessoa-${pessoa.id}`}
             >
               <Eye className="h-3.5 w-3.5" /> Ver detalhes
             </button>
             <button
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-border/60 bg-background px-3 text-xs font-medium text-primary transition-colors hover:bg-muted/50"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/60 bg-background/95 px-3.5 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-muted/50"
               onClick={() => onAddDivida(pessoa)}
               data-testid={`button-add-divida-pessoa-${pessoa.id}`}
             >
@@ -170,7 +186,7 @@ export function PessoaCard({
             </button>
             <div className="ml-auto flex items-center gap-1">
               <button
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/50"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-transparent bg-background/95 text-muted-foreground shadow-sm transition-colors hover:bg-muted/50"
                 onClick={() => onEdit(pessoa)}
                 data-testid={`button-edit-pessoa-${pessoa.id}`}
                 title="Editar"
@@ -178,7 +194,7 @@ export function PessoaCard({
                 <Pencil className="h-3.5 w-3.5" />
               </button>
               <button
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-950/30"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-transparent bg-background/95 text-red-500 shadow-sm transition-colors hover:bg-red-50 dark:hover:bg-red-950/30"
                 onClick={() => onDelete(pessoa)}
                 data-testid={`button-delete-pessoa-${pessoa.id}`}
                 title="Excluir"
@@ -194,47 +210,58 @@ export function PessoaCard({
 
   return (
     <Card
-      className="rounded-2xl border border-border/60 bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+      className="rounded-2xl border border-border/60 bg-card/95 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
       data-testid={`card-pessoa-${pessoa.id}`}
     >
-      <CardContent className="flex h-full min-h-[210px] flex-col gap-3 p-5">
+      <CardContent className="flex h-full min-h-[220px] flex-col gap-4 p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/10">
+            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-black/5 bg-muted/45 text-primary shadow-sm">
               <span className="text-sm font-semibold">
                 {pessoa.nome.charAt(0).toUpperCase()}
               </span>
             </div>
             <div className="min-w-0">
-              <p className="truncate text-lg font-semibold leading-tight">{pessoa.nome}</p>
+              <p className="truncate text-xl font-semibold leading-tight tracking-tight">{pessoa.nome}</p>
               {pessoa.telefone && (
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">{pessoa.telefone}</p>
               )}
             </div>
           </div>
-          <div className="flex min-w-[132px] flex-col items-end justify-center gap-1.5 text-right">
+          <div className="flex min-w-[132px] flex-col items-end justify-center gap-2 text-right">
             <Badge variant={isMeDeve ? "default" : "destructive"} className="h-6 px-2.5 text-[11px] shadow-sm">
               {isMeDeve ? "Me deve" : "Eu devo"}
             </Badge>
-            <p className="text-[clamp(20px,2vw,24px)] font-semibold leading-[1.1] tracking-[-0.2px]">
+            <p className="text-[clamp(20px,2vw,24px)] font-semibold leading-none tracking-tight">
               {formatCurrencyBRL(resumo.consolidadoPendente)}
             </p>
           </div>
         </div>
 
-        <p className="text-[13px] text-muted-foreground">
-          Dívidas {formatCurrencyBRL(dividasPendentesValor)} • Compras {formatCurrencyBRL(comprasPendentesValor)} • Serviços {formatCurrencyBRL(servicosPendentesValor)}
-        </p>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-xl border border-border/50 bg-muted/[0.16] px-3 py-2.5">
+            <p className="text-[10px] font-medium uppercase tracking-[0.04em] text-muted-foreground/85">Dívidas</p>
+            <p className="mt-1 text-sm font-semibold text-foreground/90">{formatCurrencyBRL(dividasPendentesValor)}</p>
+          </div>
+          <div className="rounded-xl border border-border/50 bg-muted/[0.16] px-3 py-2.5">
+            <p className="text-[10px] font-medium uppercase tracking-[0.04em] text-muted-foreground/85">Compras</p>
+            <p className="mt-1 text-sm font-semibold text-foreground/90">{formatCurrencyBRL(comprasPendentesValor)}</p>
+          </div>
+          <div className="rounded-xl border border-border/50 bg-muted/[0.16] px-3 py-2.5">
+            <p className="text-[10px] font-medium uppercase tracking-[0.04em] text-muted-foreground/85">Serviços</p>
+            <p className="mt-1 text-sm font-semibold text-foreground/90">{formatCurrencyBRL(servicosPendentesValor)}</p>
+          </div>
+        </div>
 
         <div className="flex flex-wrap items-center gap-2 text-[11px]">
-          <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-400">
+          <span className="rounded-full border border-emerald-500/10 bg-emerald-500/10 px-2.5 py-1 text-emerald-700 shadow-sm dark:text-emerald-400">
             Saldo + {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}
           </span>
-          <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
+          <span className="rounded-full bg-muted/65 px-2.5 py-1 text-muted-foreground shadow-sm">
             {totalDividas} dívida(s)
           </span>
           {comprasVinculadas > 0 && (
-            <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
+            <span className="rounded-full bg-muted/65 px-2.5 py-1 text-muted-foreground shadow-sm">
               Compras vinculadas {comprasVinculadas}
             </span>
           )}
@@ -255,7 +282,7 @@ export function PessoaCard({
           <Button
             variant="outline"
             size="sm"
-            className="h-8 w-full rounded-lg text-xs font-medium sm:min-w-[130px] sm:flex-1"
+            className="h-9 w-full rounded-xl border-border/70 bg-background/95 text-xs font-medium shadow-sm sm:min-w-[130px] sm:flex-1"
             onClick={() => onOpenHistory(pessoa)}
             data-testid={`button-history-pessoa-${pessoa.id}`}
           >
@@ -264,14 +291,14 @@ export function PessoaCard({
           <Button
             variant="outline"
             size="sm"
-            className="h-8 w-full rounded-lg text-xs font-medium sm:min-w-[130px] sm:flex-1"
+            className="h-9 w-full rounded-xl border-border/70 bg-background/95 text-xs font-medium shadow-sm sm:min-w-[130px] sm:flex-1"
             onClick={() => onAddDivida(pessoa)}
             data-testid={`button-add-divida-pessoa-${pessoa.id}`}
           >
             <Plus className="mr-1 h-3.5 w-3.5" /> Nova dívida
           </Button>
           <button
-            className="inline-flex h-8 w-full items-center justify-center gap-1 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 sm:min-w-[110px] sm:flex-1 sm:justify-start"
+            className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-border/60 bg-muted/[0.16] px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 sm:min-w-[110px] sm:flex-1 sm:justify-start"
             onClick={() => onOpenHistory(pessoa)}
             data-testid={`button-history-secondary-pessoa-${pessoa.id}`}
           >
@@ -281,7 +308,7 @@ export function PessoaCard({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-lg"
+              className="h-9 w-9 rounded-xl border border-transparent bg-background/95 shadow-sm"
               onClick={() => onEdit(pessoa)}
               data-testid={`button-edit-pessoa-${pessoa.id}`}
               aria-label="Editar pessoa"
@@ -292,7 +319,7 @@ export function PessoaCard({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-lg text-red-500 hover:text-red-600"
+              className="h-9 w-9 rounded-xl border border-transparent bg-background/95 text-red-500 shadow-sm hover:text-red-600"
               onClick={() => onDelete(pessoa)}
               data-testid={`button-delete-pessoa-${pessoa.id}`}
               aria-label="Excluir pessoa"
