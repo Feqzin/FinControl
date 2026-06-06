@@ -77,6 +77,10 @@ app.use((req, res, next) => {
 
 registerRoutes(app);
 
+app.use("/api", (_req, res) => {
+  return res.status(404).json({ message: "Route not found" });
+});
+
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   const status = err.status || err.statusCode || 500;
   const message = err.message || "Internal Server Error";

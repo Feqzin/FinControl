@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ServicosService } from "../services/servicos.service";
+import { servicoUpdateBody } from "../validators/core-domain.validators";
 
 test("ServicosService.createServicoPessoa falha quando servico nao pertence ao usuario", async () => {
   let createCalled = false;
@@ -125,5 +126,48 @@ test("ServicosService.createServicoPagamento cria pagamento quando ownership est
     mes: "2026-04",
     status: "pago",
     dataPagamento: "2026-04-20",
+  });
+});
+
+test("servicoUpdateBody aceita compraCartaoId nulo ou preenchido no update", () => {
+  const parsedNull = servicoUpdateBody.safeParse({ compraCartaoId: null });
+  assert.equal(parsedNull.success, true);
+  if (parsedNull.success) {
+    assert.equal(parsedNull.data.compraCartaoId, null);
+  }
+
+  const parsedTrimmed = servicoUpdateBody.safeParse({ compraCartaoId: "  compra-123  " });
+  assert.equal(parsedTrimmed.success, true);
+  if (parsedTrimmed.success) {
+    assert.equal(parsedTrimmed.data.compraCartaoId, "compra-123");
+  }
+});
+
+test("ServicosService.updateServico propaga compraCartaoId quando enviado pela tela de edicao", async () => {
+  let payload: Record<string, unknown> | null = null;
+
+  const storage = {
+    getServico: async () => ({
+      id: "serv-1",
+      valorMensal: "59.90",
+      valorCobranca: "59.90",
+      periodicidadeCobranca: "mensal",
+      compraCartaoId: "compra-antiga",
+    }),
+    updateServico: async (_id: string, _userId: string, nextPayload: Record<string, unknown>) => {
+      payload = nextPayload;
+      return { id: "serv-1", ...nextPayload };
+    },
+  } as any;
+
+  const service = new ServicosService(storage);
+  await service.updateServico("serv-1", "user-1", {
+    nome: "Servico atualizado",
+    compraCartaoId: null,
+  });
+
+  assert.deepEqual(payload, {
+    nome: "Servico atualizado",
+    compraCartaoId: null,
   });
 });

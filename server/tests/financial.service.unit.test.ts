@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Renda, Servico } from "@shared/schema";
 import { addMonths, format } from "date-fns";
 import { FinancialService } from "../services/financial.service";
+import { buildServicoFixture } from "./fixtures/servico.fixture";
 
 type FinancialFixture = {
   dividas: Divida[];

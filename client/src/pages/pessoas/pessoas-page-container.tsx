@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,33 +8,45 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { usePessoas } from "@/hooks/usePessoas";
-import { PessoasPageHeader } from "@/components/pessoas/PessoasPageHeader";
-import { PessoasSummarySection } from "@/components/pessoas/PessoasSummarySection";
-import { PessoasFilterBar } from "@/components/pessoas/PessoasFilterBar";
-import { PessoasGrid } from "@/components/pessoas/PessoasGrid";
-import { PessoasEmptyState } from "@/components/pessoas/PessoasEmptyState";
 import { PessoasDialogs } from "@/components/pessoas/PessoasDialogs";
 import {
   buildPlanLimitFriendlyMessage,
   parsePlanLimitError,
 } from "@/lib/subscription-plan-limit";
 import { CompraCartaoSearchPicker } from "@/components/compra-cartao-search-picker";
-import { PaymentTimeline } from "@/pages/pessoas/components/payment-timeline";
-import { sortPessoasForView, type PessoaSortBy } from "@/pages/pessoas/pessoas-sort.utils";
+import {
+  OrphanLinksAlert,
+  PessoasHistoryBalanceSummary,
+  PaymentTimeline,
+  PessoasHistoryOverviewSection,
+  PessoasHistorySheetSummary,
+  PessoasListSection,
+  PessoasPageToolbar,
+} from "@/pages/pessoas/components";
+import {
+  EditPessoaDialog,
+  NewPessoaDialog,
+  OrphanRecoveryDialog,
+  PayDividaDialog,
+} from "@/pages/pessoas/dialogs";
+import {
+  usePessoasDialogState,
+  usePessoasFilters,
+  usePessoasPaginationState,
+} from "@/pages/pessoas/hooks";
+import { sortPessoasForView } from "@/pages/pessoas/pessoas-sort.utils";
 import {
   Plus, Trash2, Receipt, Check,
-  ArrowUpRight, ArrowDownRight, CreditCard, Repeat, AlertTriangle, ExternalLink, RotateCcw, Wallet, ArrowUpCircle, ArrowDownCircle,
+  ArrowUpRight, ArrowDownRight, CreditCard, Repeat, ExternalLink, RotateCcw, Wallet, ArrowUpCircle, ArrowDownCircle,
 } from "lucide-react";
 import { useUIPreferences } from "@/context/ui-preferences";
 import type { Pessoa, Divida, CompraCartao, Cartao, ServicoPessoa, ServicoPagamento, Servico } from "@shared/schema";
@@ -61,26 +73,51 @@ export default function PessoasPage() {
   const { toast } = useToast();
   const { prefs } = useUIPreferences();
   const [, setLocation] = useLocation();
-  const [openPessoa, setOpenPessoa] = useState(false);
-  const [openDivida, setOpenDivida] = useState(false);
-  const [openOrphanRecovery, setOpenOrphanRecovery] = useState(false);
-  const [selectedPessoa, setSelectedPessoa] = useState<Pessoa | null>(null);
-  const [historyPessoa, setHistoryPessoa] = useState<Pessoa | null>(null);
-  const [search, setSearch] = useState("");
-  const [filterTipo, setFilterTipo] = useState<string>("todos");
-  const [sortBy, setSortBy] = useState<PessoaSortBy>("nome_az");
-  const [payOpen, setPayOpen] = useState(false);
-  const [payingDivida, setPayingDivida] = useState<Divida | null>(null);
+  const {
+    search,
+    setSearch,
+    filterTipo,
+    setFilterTipo,
+    sortBy,
+    setSortBy,
+    isRemovedFilter,
+  } = usePessoasFilters();
+  const {
+    openPessoa,
+    setOpenPessoa,
+    openDivida,
+    setOpenDivida,
+    openOrphanRecovery,
+    setOpenOrphanRecovery,
+    selectedPessoa,
+    setSelectedPessoa,
+    historyPessoa,
+    setHistoryPessoa,
+    payOpen,
+    setPayOpen,
+    payingDivida,
+    setPayingDivida,
+    abaterSaldoOpen,
+    setAbaterSaldoOpen,
+    abaterSaldoDivida,
+    setAbaterSaldoDivida,
+    abaterSaldoServicoOpen,
+    setAbaterSaldoServicoOpen,
+    abaterSaldoServicoPessoaId,
+    setAbaterSaldoServicoPessoaId,
+    editingPessoa,
+    setEditingPessoa,
+    vincularCompraOpen,
+    setVincularCompraOpen,
+    compraSelecionadaParaVinculo,
+    setCompraSelecionadaParaVinculo,
+  } = usePessoasDialogState();
   const [payForm, setPayForm] = useState({ formaPagamento: "pix" });
-  const [abaterSaldoOpen, setAbaterSaldoOpen] = useState(false);
-  const [abaterSaldoDivida, setAbaterSaldoDivida] = useState<Divida | null>(null);
   const [abaterSaldoForm, setAbaterSaldoForm] = useState({
     valor: "",
     data: format(new Date(), "yyyy-MM-dd"),
     observacao: "",
   });
-  const [abaterSaldoServicoOpen, setAbaterSaldoServicoOpen] = useState(false);
-  const [abaterSaldoServicoPessoaId, setAbaterSaldoServicoPessoaId] = useState<string | null>(null);
   const [abaterSaldoServicoForm, setAbaterSaldoServicoForm] = useState({
     mes: format(new Date(), "yyyy-MM"),
     valor: "",
@@ -96,7 +133,6 @@ export default function PessoasPage() {
     comprovanteReferencia: "",
   });
 
-  const [editingPessoa, setEditingPessoa] = useState<Pessoa | null>(null);
   const [editForm, setEditForm] = useState<{ nome: string; tipo: PessoaKind; telefone: string; observacao: string }>({
     nome: "",
     tipo: "me_deve",
@@ -110,9 +146,6 @@ export default function PessoasPage() {
     compras: 6,
     servicos: 6,
   });
-  const [visiblePessoasCount, setVisiblePessoasCount] = useState(prefs.mobileMode ? 12 : 18);
-  const [vincularCompraOpen, setVincularCompraOpen] = useState(false);
-  const [compraSelecionadaParaVinculo, setCompraSelecionadaParaVinculo] = useState<string | null>(null);
   const [orphanFormByKey, setOrphanFormByKey] = useState<Record<string, { nome: string; pessoaIdExistente: string }>>({});
   const [ignoredOrphanGroups, setIgnoredOrphanGroups] = useState<string[]>([]);
 
@@ -124,6 +157,12 @@ export default function PessoasPage() {
   });
   const [dividaForm, setDividaForm] = useState({
     tipo: "receber", valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
+  });
+  const { visiblePessoasCount, loadMorePessoas } = usePessoasPaginationState({
+    mobileMode: prefs.mobileMode,
+    search,
+    filterTipo,
+    sortBy,
   });
 
   const {
@@ -174,11 +213,6 @@ export default function PessoasPage() {
     historyPessoa,
     historyFilter,
   });
-  const isRemovedFilter = filterTipo === "removidas";
-
-  useEffect(() => {
-    setVisiblePessoasCount(prefs.mobileMode ? 12 : 18);
-  }, [prefs.mobileMode, search, filterTipo, sortBy]);
 
   if (isLoading) {
     return (
@@ -318,6 +352,19 @@ export default function PessoasPage() {
       return sum + (Number(row.valor) || 0);
     }, 0);
   };
+  const historyOverviewCompositionItems = composicaoPendenteItems.map((item) => ({
+    key: item.key,
+    label: item.label,
+    colorClass: item.colorClass,
+    widthPercent: composicaoPendenteTotal > 0 ? (item.valor / composicaoPendenteTotal) * 100 : 0,
+    formattedValue: formatCurrencyBRL(item.valor),
+  }));
+  const historyOverviewCompositionTotalLabel = formatCurrencyBRL(historyResumo?.consolidadoPendente ?? 0);
+  const historyOverviewAvailableCreditsLabel = formatCurrencyBRL(historySaldoCreditos);
+  const historyOverviewTotalPagoLabel = `${formatCurrencyBRL(historyResumo?.totalPago ?? 0)} (${progressoPagoPercent}%)`;
+  const historyOverviewTotalPendenteLabel = `${formatCurrencyBRL(historyResumo?.consolidadoPendente ?? 0)} (${progressoPendentePercent}%)`;
+  const historyOverviewShowOverdueAlert = (historyResumo?.alertas.comprasAtrasadas ?? 0) > 0 || (historyResumo?.dividas.comigo.vencidas ?? 0) > 0;
+  const historyOverviewOverdueAlertText = `Atrasos: ${historyResumo?.dividas.comigo.vencidas ?? 0} dívida(s) vencida(s), ${historyResumo?.alertas.comprasAtrasadas ?? 0} compra(s) com atraso e ${historyParcelasVencidas} parcela(s) vencida(s).`;
 
   const handleOpenCompraNoCartao = (cartaoId: string, compraId: string) => {
     const params = new URLSearchParams({
@@ -370,6 +417,60 @@ export default function PessoasPage() {
       formaPagamento: "pix",
     });
     setOpenDivida(true);
+  };
+
+  const handleCreatePessoaSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    createPessoaMutation.mutate(pessoaForm, {
+      onSuccess: () => {
+        setOpenPessoa(false);
+        setPessoaForm({ nome: "", tipo: "me_deve", telefone: "", observacao: "" });
+        toast({ title: "Pessoa adicionada" });
+      },
+      onError: (err: Error) => {
+        const planLimitError = parsePlanLimitError(err);
+        if (planLimitError) {
+          toast({
+            title: "Limite do plano Free atingido",
+            description: buildPlanLimitFriendlyMessage(planLimitError),
+            variant: "destructive",
+          });
+          return;
+        }
+
+        toast({ title: "Erro", description: err.message, variant: "destructive" });
+      },
+    });
+  };
+
+  const handleConfirmPayHistory = () => {
+    if (!payingDivida) return;
+    payMutation.mutate(
+      { id: payingDivida.id, formaPagamento: payForm.formaPagamento },
+      {
+        onSuccess: () => {
+          setPayOpen(false);
+          setPayingDivida(null);
+          toast({ title: "Marcado como pago" });
+        },
+        onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+      },
+    );
+  };
+
+  const handleEditPessoaSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingPessoa) return;
+    updatePessoaMutation.mutate(
+      { id: editingPessoa.id, ...editForm },
+      {
+        onSuccess: () => {
+          setEditingPessoa(null);
+          toast({ title: "Pessoa atualizada" });
+        },
+        onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
+      },
+    );
   };
 
   const handleEditPessoa = (pessoa: Pessoa) => {
@@ -499,14 +600,11 @@ export default function PessoasPage() {
 
   return (
     <div className="app-page-shell app-section-stack" data-testid="pessoas-page">
-      <PessoasPageHeader
+      <PessoasPageToolbar
         onAddPessoa={() => setOpenPessoa(true)}
         totalPessoas={headerTotalPessoas}
         totalPendente={headerTotalPendente}
         totalAReceber={headerTotalAReceber}
-      />
-
-      <PessoasFilterBar
         search={search}
         filterTipo={filterTipo}
         sortBy={sortBy}
@@ -516,211 +614,56 @@ export default function PessoasPage() {
       />
 
       {!isRemovedFilter && !isOrphanGroupsLoading && visibleOrphanGroups.length > 0 && (
-        <div className="rounded-xl border border-amber-300/80 bg-amber-50/70 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <p>
-                Encontramos vínculos sem pessoa cadastrada.
-                Revise para restaurar os relacionamentos das dívidas e vínculos antigos.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="border-amber-400/70 bg-white/80 text-amber-900 hover:bg-white dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-100"
-              onClick={() => setOpenOrphanRecovery(true)}
-              data-testid="button-review-orphan-links"
-            >
-              Revisar vínculos
-            </Button>
-          </div>
-        </div>
+        <OrphanLinksAlert onReview={() => setOpenOrphanRecovery(true)} />
       )}
 
-      {sortedFilteredByStatus.length === 0 ? (
-        <PessoasEmptyState
-          onAddPessoa={isRemovedFilter ? undefined : () => setOpenPessoa(true)}
-          title={isRemovedFilter ? "Nenhuma pessoa removida." : undefined}
-          description={isRemovedFilter
-            ? "Pessoas removidas aparecerão aqui para restauração."
-            : undefined}
-          actionLabel={isRemovedFilter ? undefined : "Adicionar pessoa"}
-        />
-      ) : (
-        <PessoasGrid
-          pessoas={visiblePessoas}
-          mobileMode={prefs.mobileMode}
-          getPessoaResumoConsolidado={getPessoaResumoConsolidado}
-          getPessoaStats={getPessoaStats}
-          onAddDivida={handleAddDividaFromPessoa}
-          onOpenHistory={setHistoryPessoa}
-          onEdit={handleEditPessoa}
-          onDelete={handleDeletePessoa}
-          showRemovedActions={isRemovedFilter}
-          onRestore={handleRestorePessoa}
-          onPermanentDelete={handleDeletePessoaPermanent}
-        />
-      )}
-
-      <PessoasSummarySection
+      <PessoasListSection
+        sortedFilteredByStatusLength={sortedFilteredByStatus.length}
+        isRemovedFilter={isRemovedFilter}
+        visiblePessoas={visiblePessoas}
+        mobileMode={prefs.mobileMode}
+        getPessoaResumoConsolidado={getPessoaResumoConsolidado}
+        getPessoaStats={getPessoaStats}
+        onAddDivida={handleAddDividaFromPessoa}
+        onOpenHistory={setHistoryPessoa}
+        onEdit={handleEditPessoa}
+        onDelete={handleDeletePessoa}
+        onAddPessoa={() => setOpenPessoa(true)}
+        onRestore={handleRestorePessoa}
+        onPermanentDelete={handleDeletePessoaPermanent}
         hasMorePessoas={hasMorePessoas}
-        onLoadMore={() => setVisiblePessoasCount((prev) => prev + (prefs.mobileMode ? 8 : 12))}
+        onLoadMore={loadMorePessoas}
       />
 
       <PessoasDialogs>
-      <Dialog open={openPessoa} onOpenChange={setOpenPessoa}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nova Pessoa</DialogTitle>
-          </DialogHeader>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              createPessoaMutation.mutate(pessoaForm, {
-                onSuccess: () => {
-                  setOpenPessoa(false);
-                  setPessoaForm({ nome: "", tipo: "me_deve", telefone: "", observacao: "" });
-                  toast({ title: "Pessoa adicionada" });
-                },
-                onError: (err: Error) => {
-                  const planLimitError = parsePlanLimitError(err);
-                  if (planLimitError) {
-                    toast({
-                      title: "Limite do plano Free atingido",
-                      description: buildPlanLimitFriendlyMessage(planLimitError),
-                      variant: "destructive",
-                    });
-                    return;
-                  }
+      <NewPessoaDialog
+        open={openPessoa}
+        onOpenChange={setOpenPessoa}
+        pessoaForm={pessoaForm}
+        onPessoaFormChange={setPessoaForm}
+        duplicatePessoa={duplicatePessoa}
+        onSubmit={handleCreatePessoaSubmit}
+        isPending={createPessoaMutation.isPending}
+      />
 
-                  toast({ title: "Erro", description: err.message, variant: "destructive" });
-                },
-              });
-            }}
-            className="space-y-4"
-          >
-            <div className="space-y-2">
-              <Label>Nome</Label>
-              <Input
-                data-testid="input-pessoa-nome"
-                value={pessoaForm.nome}
-                onChange={(e) => setPessoaForm({ ...pessoaForm, nome: e.target.value })}
-                placeholder="Nome da pessoa"
-                required
-              />
-              {duplicatePessoa && (
-                <p className="text-xs text-amber-600 dark:text-amber-400" data-testid="warning-duplicate-pessoa">
-                  Atenção: já existe uma pessoa com nome similar: <strong>{duplicatePessoa.nome}</strong>
-                </p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Tipo</Label>
-              <Select value={pessoaForm.tipo} onValueChange={(v) => setPessoaForm({ ...pessoaForm, tipo: v as PessoaKind })}>
-                <SelectTrigger data-testid="select-pessoa-tipo"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="me_deve">Me deve</SelectItem>
-                  <SelectItem value="eu_devo">Eu devo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Telefone (opcional)</Label>
-              <Input
-                data-testid="input-pessoa-telefone"
-                value={pessoaForm.telefone}
-                onChange={(e) => setPessoaForm({ ...pessoaForm, telefone: e.target.value })}
-                placeholder="(00) 00000-0000"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Observacao</Label>
-              <Textarea
-                data-testid="input-pessoa-obs"
-                value={pessoaForm.observacao}
-                onChange={(e) => setPessoaForm({ ...pessoaForm, observacao: e.target.value })}
-                placeholder="Notas sobre essa pessoa"
-              />
-            </div>
-            <Button type="submit" className="w-full" data-testid="button-save-pessoa" disabled={createPessoaMutation.isPending}>
-              {createPessoaMutation.isPending ? "Salvando..." : "Salvar"}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!editingPessoa} onOpenChange={(v) => { if (!v) setEditingPessoa(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar pessoa</DialogTitle>
-          </DialogHeader>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!editingPessoa) return;
-              updatePessoaMutation.mutate(
-                { id: editingPessoa.id, ...editForm },
-                {
-                  onSuccess: () => {
-                    setEditingPessoa(null);
-                    toast({ title: "Pessoa atualizada" });
-                  },
-                  onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
-                },
-              );
-            }}
-            className="space-y-4"
-          >
-            <div className="space-y-2">
-              <Label>Nome</Label>
-              <Input
-                data-testid="input-edit-pessoa-nome"
-                value={editForm.nome}
-                onChange={(e) => setEditForm({ ...editForm, nome: e.target.value })}
-                placeholder="Nome da pessoa"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Tipo</Label>
-              <Select value={editForm.tipo} onValueChange={(v) => setEditForm({ ...editForm, tipo: v as PessoaKind })}>
-                <SelectTrigger data-testid="select-edit-pessoa-tipo"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="me_deve">Me deve</SelectItem>
-                  <SelectItem value="eu_devo">Eu devo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Telefone (opcional)</Label>
-              <Input
-                data-testid="input-edit-pessoa-telefone"
-                value={editForm.telefone}
-                onChange={(e) => setEditForm({ ...editForm, telefone: e.target.value })}
-                placeholder="(00) 00000-0000"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Observacao</Label>
-              <Textarea
-                data-testid="input-edit-pessoa-obs"
-                value={editForm.observacao}
-                onChange={(e) => setEditForm({ ...editForm, observacao: e.target.value })}
-                placeholder="Notas sobre essa pessoa"
-              />
-            </div>
-            <Button type="submit" className="w-full" data-testid="button-save-edit-pessoa" disabled={updatePessoaMutation.isPending}>
-              {updatePessoaMutation.isPending ? "Salvando..." : "Salvar alteracoes"}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <EditPessoaDialog
+        open={!!editingPessoa}
+        onOpenChange={(value) => {
+          if (!value) setEditingPessoa(null);
+        }}
+        editForm={editForm}
+        onEditFormChange={setEditForm}
+        onSubmit={handleEditPessoaSubmit}
+        isPending={updatePessoaMutation.isPending}
+      />
 
       <Dialog open={openDivida} onOpenChange={setOpenDivida}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nova divida — {selectedPessoa?.nome}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Registre uma nova dívida para a pessoa selecionada informando tipo, valor, vencimento e forma de pagamento.
+            </DialogDescription>
           </DialogHeader>
           <form
             onSubmit={(e) => {
@@ -811,103 +754,18 @@ export default function PessoasPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={openOrphanRecovery} onOpenChange={setOpenOrphanRecovery}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Revisar vínculos órfãos</DialogTitle>
-          </DialogHeader>
-          {visibleOrphanGroups.length === 0 ? (
-            <div className="rounded-md border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
-              Nenhum vínculo órfão pendente para revisão.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {visibleOrphanGroups.map((group) => {
-                const form = getOrphanForm(group.orphanGroupKey, group.nomeSugerido);
-                return (
-                  <div key={group.orphanGroupKey} className="rounded-lg border border-border/70 bg-background/95 p-3 space-y-3">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-semibold">{group.nomeSugerido}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {group.dividasCount} dívida(s) · {group.linkedComprasCount} compra(s) · {group.linkedServicosCount} serviço(s)
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          A receber: {formatCurrencyBRL(group.totalAReceber)} · A pagar: {formatCurrencyBRL(group.totalAPagar)}
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setIgnoredOrphanGroups((prev) => [...prev, group.orphanGroupKey])}
-                      >
-                        Ignorar
-                      </Button>
-                    </div>
-
-                    <div className="grid gap-2 md:grid-cols-2">
-                      <div className="space-y-1">
-                        <Label>Nome para restaurar</Label>
-                        <Input
-                          value={form.nome}
-                          onChange={(event) => setOrphanFormValue(group.orphanGroupKey, group.nomeSugerido, { nome: event.target.value })}
-                          placeholder="Nome da pessoa"
-                          data-testid={`input-orphan-name-${group.orphanGroupKey}`}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Vincular a pessoa existente</Label>
-                        <Select
-                          value={form.pessoaIdExistente || undefined}
-                          onValueChange={(value) => setOrphanFormValue(group.orphanGroupKey, group.nomeSugerido, { pessoaIdExistente: value })}
-                        >
-                          <SelectTrigger data-testid={`select-orphan-person-${group.orphanGroupKey}`}>
-                            <SelectValue placeholder="Selecione uma pessoa" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {pessoasAtivasParaVinculo.map((pessoa) => (
-                              <SelectItem key={pessoa.id} value={pessoa.id}>
-                                {pessoa.nome}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    {group.exemplos.length > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Exemplo: {group.exemplos[0].descricao?.trim() || `Dívida ${group.exemplos[0].dividaId.slice(0, 8)}`}
-                      </p>
-                    )}
-
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => handleRecoverOrphanAsNewPessoa(group.orphanGroupKey, group.nomeSugerido)}
-                        disabled={recoverOrphanLinksMutation.isPending}
-                        data-testid={`button-recover-orphan-new-${group.orphanGroupKey}`}
-                      >
-                        Restaurar como pessoa
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={() => handleRecoverOrphanToExistingPessoa(group.orphanGroupKey, group.nomeSugerido)}
-                        disabled={recoverOrphanLinksMutation.isPending}
-                        data-testid={`button-recover-orphan-existing-${group.orphanGroupKey}`}
-                      >
-                        Vincular a pessoa existente
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <OrphanRecoveryDialog
+        open={openOrphanRecovery}
+        onOpenChange={setOpenOrphanRecovery}
+        visibleOrphanGroups={visibleOrphanGroups}
+        pessoasAtivasParaVinculo={pessoasAtivasParaVinculo}
+        getOrphanForm={getOrphanForm}
+        onSetOrphanFormValue={setOrphanFormValue}
+        onIgnoreGroup={(orphanGroupKey) => setIgnoredOrphanGroups((prev) => [...prev, orphanGroupKey])}
+        onRecoverAsNewPessoa={handleRecoverOrphanAsNewPessoa}
+        onRecoverToExistingPessoa={handleRecoverOrphanToExistingPessoa}
+        isRecoverPending={recoverOrphanLinksMutation.isPending}
+      />
 
       <Sheet open={!!historyPessoa} onOpenChange={(v) => {
         if (!v) {
@@ -943,64 +801,28 @@ export default function PessoasPage() {
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto px-4 sm:px-6">
           {historyPessoa && historyStats && historyResumo && (
             <>
-              <SheetHeader className="mb-4 border-b border-border/50 pb-2">
-                <SheetTitle className="text-base sm:text-lg">Histórico de {historyPessoa.nome}</SheetTitle>
-              </SheetHeader>
-
-              <div className="mb-4 rounded-lg border border-border/60 bg-muted/30 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold">{historyPessoa.nome}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Total pendente consolidado: {formatCurrencyBRL(historyResumo.consolidadoPendente)}
-                    </p>
-                  </div>
-                  <Badge variant={historyResumo.consolidadoPendente > 0 ? "outline" : "secondary"}>
-                    {historyResumo.consolidadoPendente > 0 ? "Em aberto" : "Quitado"}
-                  </Badge>
-                </div>
-                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                  <div className="rounded-md bg-emerald-500/5 p-2.5">
-                    <p className="text-muted-foreground">Saldo positivo</p>
-                    <p className="font-semibold text-emerald-600">{formatCurrencyBRL(historyResumo.saldoPessoa.saldoAtual)}</p>
-                  </div>
-                  <div className="rounded-md bg-muted/40 p-2.5">
-                    <p className="text-muted-foreground">Parcelas pendentes</p>
-                    <p className="font-semibold">{historyResumo.alertas.parcelasPendentesPessoa}</p>
-                  </div>
-                  <div className="rounded-md bg-muted/40 p-2.5">
-                    <p className="text-muted-foreground">Parcelas vencidas</p>
-                    <p className="font-semibold text-red-600">{historyParcelasVencidas}</p>
-                  </div>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setSelectedPessoa(historyPessoa);
-                      setDividaForm({
-                        tipo: historyPessoa.tipo === "me_deve" ? "receber" : "pagar",
-                        valor: "",
-                        dataVencimento: "",
-                        descricao: "",
-                        formaPagamento: "pix",
-                      });
-                      setOpenDivida(true);
-                    }}
-                    data-testid="button-quick-add-divida-history"
-                  >
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Nova dívida
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setHistoryTab("saldo")}
-                    data-testid="button-quick-open-saldo-history"
-                  >
-                    <Wallet className="w-3.5 h-3.5 mr-1" /> Saldo
-                  </Button>
-                </div>
-              </div>
+              <PessoasHistorySheetSummary
+                title={`Histórico de ${historyPessoa.nome}`}
+                personName={historyPessoa.nome}
+                consolidatedPendingLabel={formatCurrencyBRL(historyResumo.consolidadoPendente)}
+                statusLabel={historyResumo.consolidadoPendente > 0 ? "Em aberto" : "Quitado"}
+                statusVariant={historyResumo.consolidadoPendente > 0 ? "outline" : "secondary"}
+                positiveBalanceLabel={formatCurrencyBRL(historyResumo.saldoPessoa.saldoAtual)}
+                pendingInstallmentsLabel={String(historyResumo.alertas.parcelasPendentesPessoa)}
+                overdueInstallmentsLabel={String(historyParcelasVencidas)}
+                onOpenNewDivida={() => {
+                  setSelectedPessoa(historyPessoa);
+                  setDividaForm({
+                    tipo: historyPessoa.tipo === "me_deve" ? "receber" : "pagar",
+                    valor: "",
+                    dataVencimento: "",
+                    descricao: "",
+                    formaPagamento: "pix",
+                  });
+                  setOpenDivida(true);
+                }}
+                onOpenSaldo={() => setHistoryTab("saldo")}
+              />
 
               <Tabs
                 value={historyTab}
@@ -1035,114 +857,30 @@ export default function PessoasPage() {
                 </Button>
               </div>
 
-              <div className={`space-y-3 mb-3 ${historyTab === "visao_geral" ? "" : "hidden"}`}>
-                {hasVisaoComposicao && (
-                  <div className="rounded-md border border-border/60 bg-card p-3 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold">Composição do pendente</p>
-                      <Badge variant="outline" className="text-[11px]">
-                        {formatCurrencyBRL(historyResumo.consolidadoPendente)}
-                      </Badge>
-                    </div>
-                    {composicaoPendenteItems.length > 0 && composicaoPendenteTotal > 0 && (
-                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted/60">
-                        <div className="h-full flex">
-                          {composicaoPendenteItems.map((item) => (
-                            <div
-                              key={item.key}
-                              className={item.colorClass}
-                              style={{ width: `${(item.valor / composicaoPendenteTotal) * 100}%` }}
-                              aria-hidden
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                      {composicaoPendenteItems.map((item) => (
-                        <div key={item.key} className="rounded-md bg-muted/40 px-2.5 py-2 flex items-center justify-between gap-2">
-                          <span className="inline-flex items-center gap-2 text-muted-foreground">
-                            <span className={`h-2 w-2 rounded-full ${item.colorClass}`} />
-                            {item.label}
-                          </span>
-                          <span className="font-semibold text-foreground">{formatCurrencyBRL(item.valor)}</span>
-                        </div>
-                      ))}
-                      {historySaldoCreditos > 0 && (
-                        <div className="rounded-md bg-emerald-500/5 px-2.5 py-2 flex items-center justify-between gap-2">
-                          <span className="inline-flex items-center gap-2 text-emerald-700">
-                            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                            Saldo / créditos disponíveis
-                          </span>
-                          <span className="font-semibold text-emerald-700">{formatCurrencyBRL(historySaldoCreditos)}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {hasVisaoProgresso && (
-                  <div className="rounded-md border border-border/60 bg-card p-3 space-y-2.5">
-                    <p className="text-sm font-semibold">Evolução financeira</p>
-                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted/60">
-                      <div className="h-full flex">
-                        <div className="bg-emerald-500" style={{ width: `${progressoPagoPercent}%` }} aria-hidden />
-                        <div className="bg-amber-500" style={{ width: `${progressoPendentePercent}%` }} aria-hidden />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-md bg-emerald-500/5 px-2.5 py-2 flex items-center justify-between">
-                        <span className="text-emerald-700">Total pago</span>
-                        <span className="font-semibold text-emerald-700">
-                          {formatCurrencyBRL(historyResumo.totalPago)} ({progressoPagoPercent}%)
-                        </span>
-                      </div>
-                      <div className="rounded-md bg-amber-500/5 px-2.5 py-2 flex items-center justify-between">
-                        <span className="text-amber-700">Total pendente</span>
-                        <span className="font-semibold text-amber-700">
-                          {formatCurrencyBRL(historyResumo.consolidadoPendente)} ({progressoPendentePercent}%)
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {insightVisaoGeral && (
-                  <div className="rounded-md border border-blue-200/60 bg-blue-50/70 px-3 py-2.5 text-xs text-blue-900">
-                    <p className="font-medium mb-1">Insight</p>
-                    <p>{insightVisaoGeral}</p>
-                  </div>
-                )}
-              </div>
-
-              {historyTab === "visao_geral" && (historyResumo.alertas.comprasAtrasadas > 0 || historyResumo.dividas.comigo.vencidas > 0) && (
-                <div className="mb-6 rounded-md border border-red-300/40 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
-                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>
-                    Atrasos: {historyResumo.dividas.comigo.vencidas} dívida(s) vencida(s), {historyResumo.alertas.comprasAtrasadas} compra(s) com atraso e {historyParcelasVencidas} parcela(s) vencida(s).
-                  </span>
-                </div>
-              )}
+              <PessoasHistoryOverviewSection
+                isVisible={historyTab === "visao_geral"}
+                showComposition={hasVisaoComposicao}
+                compositionTotalLabel={historyOverviewCompositionTotalLabel}
+                compositionItems={historyOverviewCompositionItems}
+                showAvailableCredits={historySaldoCreditos > 0}
+                availableCreditsLabel={historyOverviewAvailableCreditsLabel}
+                showProgress={hasVisaoProgresso}
+                progressoPagoPercent={progressoPagoPercent}
+                progressoPendentePercent={progressoPendentePercent}
+                totalPagoLabel={historyOverviewTotalPagoLabel}
+                totalPendenteLabel={historyOverviewTotalPendenteLabel}
+                insightText={insightVisaoGeral}
+                showInsight={!!insightVisaoGeral}
+                showOverdueAlert={historyOverviewShowOverdueAlert}
+                overdueAlertText={historyOverviewOverdueAlertText}
+              />
 
               <div className={`mb-6 rounded-md border border-border/60 p-4 space-y-4 ${historyTab === "saldo" ? "" : "hidden"}`}>
-                <div className="flex items-center gap-2">
-                  <Wallet className="w-4 h-4 text-emerald-600" />
-                  <h3 className="text-sm font-semibold">Saldo positivo da pessoa</h3>
-                </div>
-                <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
-                  <div className="rounded-md bg-emerald-500/5 p-3">
-                    <p className="text-muted-foreground">Saldo atual</p>
-                    <p className="text-sm font-bold text-emerald-600">{formatCurrencyBRL(historySaldoResumo?.saldoAtual ?? 0)}</p>
-                  </div>
-                  <div className="rounded-md bg-muted/40 p-3">
-                    <p className="text-muted-foreground">Créditos</p>
-                    <p className="text-sm font-bold">{formatCurrencyBRL(historySaldoResumo?.creditos ?? 0)}</p>
-                  </div>
-                  <div className="rounded-md bg-muted/40 p-3">
-                    <p className="text-muted-foreground">Débitos</p>
-                    <p className="text-sm font-bold">{formatCurrencyBRL(historySaldoResumo?.debitos ?? 0)}</p>
-                  </div>
-                </div>
+                <PessoasHistoryBalanceSummary
+                  currentBalanceLabel={formatCurrencyBRL(historySaldoResumo?.saldoAtual ?? 0)}
+                  creditsLabel={formatCurrencyBRL(historySaldoResumo?.creditos ?? 0)}
+                  debitsLabel={formatCurrencyBRL(historySaldoResumo?.debitos ?? 0)}
+                />
 
                 <form
                   className="grid grid-cols-1 sm:grid-cols-2 gap-2"
@@ -1340,64 +1078,23 @@ export default function PessoasPage() {
                 </Badge>
               </div>
 
-              <Dialog open={payOpen} onOpenChange={setPayOpen}>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Confirmar pagamento</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    {payingDivida && (
-                      <div className="p-4 rounded-md bg-muted/50">
-                        <p className="text-sm text-muted-foreground">Valor</p>
-                        <p className="text-lg font-bold">{formatCurrencyBRL(Number(payingDivida.valor))}</p>
-                        {payingDivida.descricao && (
-                          <p className="text-sm text-muted-foreground mt-1">{payingDivida.descricao}</p>
-                        )}
-                      </div>
-                    )}
-                    <div className="space-y-2">
-                      <Label>Forma de pagamento</Label>
-                      <Select value={payForm.formaPagamento} onValueChange={(v) => setPayForm({ formaPagamento: v })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pix">PIX</SelectItem>
-                          <SelectItem value="dinheiro">Dinheiro</SelectItem>
-                          <SelectItem value="cartao">Cartao</SelectItem>
-                          <SelectItem value="transferencia">Transferencia</SelectItem>
-                          <SelectItem value="boleto">Boleto</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button
-                      className="w-full"
-                      data-testid="button-confirm-pay-history"
-                      onClick={() => {
-                        if (payingDivida) {
-                          payMutation.mutate(
-                            { id: payingDivida.id, formaPagamento: payForm.formaPagamento },
-                            {
-                              onSuccess: () => {
-                                setPayOpen(false);
-                                setPayingDivida(null);
-                                toast({ title: "Marcado como pago" });
-                              },
-                              onError: (err: Error) => toast({ title: "Erro", description: err.message, variant: "destructive" }),
-                            },
-                          );
-                        }
-                      }}
-                      disabled={payMutation.isPending}
-                    >
-                      {payMutation.isPending ? "Processando..." : "Confirmar pagamento"}
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+              <PayDividaDialog
+                open={payOpen}
+                onOpenChange={setPayOpen}
+                payingDivida={payingDivida}
+                formaPagamento={payForm.formaPagamento}
+                onFormaPagamentoChange={(value) => setPayForm({ formaPagamento: value })}
+                onConfirm={handleConfirmPayHistory}
+                isPending={payMutation.isPending}
+              />
 
               <Dialog open={abaterSaldoOpen} onOpenChange={setAbaterSaldoOpen}>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Abater com saldo positivo</DialogTitle>
+                    <DialogDescription className="sr-only">
+                      Use o saldo positivo disponível da pessoa para abater parte do valor pendente selecionado.
+                    </DialogDescription>
                   </DialogHeader>
                   <form
                     className="space-y-4"
@@ -1492,6 +1189,9 @@ export default function PessoasPage() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Abater saldo em serviço</DialogTitle>
+                    <DialogDescription className="sr-only">
+                      Use o saldo positivo disponível da pessoa para abater parte do valor pendente deste serviço.
+                    </DialogDescription>
                   </DialogHeader>
                   <form
                     className="space-y-4"
@@ -1739,6 +1439,9 @@ export default function PessoasPage() {
                     <DialogContent>
                       <DialogHeader>
                         <DialogTitle>Vincular compra de cartão</DialogTitle>
+                        <DialogDescription className="sr-only">
+                          Selecione uma compra de cartão para vincular à pessoa e acompanhar esse relacionamento no histórico financeiro.
+                        </DialogDescription>
                       </DialogHeader>
                       <div className="space-y-3">
                         <p className="text-sm text-muted-foreground">

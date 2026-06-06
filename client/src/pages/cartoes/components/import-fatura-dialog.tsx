@@ -7,16 +7,24 @@ import type { ServicoPessoa } from "@shared/schema";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
 import { findPossibleExistingPurchaseMatch } from "@/pages/cartoes/import-existing-purchase-match";
 import type { CompraAliasApiModel, ImportConfirmResponse, ImportLogEntry } from "@/services/api/cartoes";
-import { FileText, Pencil, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ImportFaturaConfirmFooter } from "./import-fatura-confirm-footer";
+import { ImportFaturaConfirmSummary } from "./import-fatura-confirm-summary";
+import { ImportFaturaHistorySection } from "./import-fatura-history-section";
+import { ImportFaturaIssuerMismatchWarning } from "./import-fatura-issuer-mismatch-warning";
+import { ImportFaturaPreviewItemActions } from "./import-fatura-preview-item-actions";
+import { ImportFaturaPreviewHeader } from "./import-fatura-preview-header";
+import { ImportFaturaPreviewItemNotices } from "./import-fatura-preview-item-notices";
+import { ImportFaturaPreviewItemReconcileInfo } from "./import-fatura-preview-item-reconcile-info";
+import { ImportFaturaPreviewItemServiceInfo } from "./import-fatura-preview-item-service-info";
+import { ImportFaturaPreviewItemSummary } from "./import-fatura-preview-item-summary";
+import { ImportFaturaSourceTabsSection } from "./import-fatura-source-tabs-section";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 
 type ImportTab = "texto" | "arquivo";
 type CanonicalImportStatus = "novo" | "duplicata_exata" | "possivel_duplicata" | "invalido";
@@ -247,6 +255,26 @@ export function ImportFaturaDialog({
     reconciledExistingCount: 0,
   };
   const hasConfirmSummary = Boolean(confirmResult);
+  const historyItems = importLogs.map((log) => {
+    const status = getHistoryStatusMeta(log.status);
+    return {
+      id: log.id,
+      createdAtLabel: formatHistoryDateTime(log.createdAt),
+      batchId: log.id.slice(0, 8),
+      cartaoNome: cartoes.find((cartao) => cartao.id === log.cartaoId)?.nome ?? `Cartão ${log.cartaoId.slice(0, 8)}`,
+      statusLabel: status.label,
+      statusClassName: status.className,
+      importedItems: log.importedItems,
+      skippedItems: log.skippedItems,
+      canRollback: log.status === "confirmed",
+      isRollbackPending: rollbackImportLogLoadingId === log.id,
+      isRolledBack: log.status === "rolled_back",
+      rollbackServicesRemovedCount: log.rollbackServicesRemovedCount ?? 0,
+      rollbackServicesUnlinkedCount: log.rollbackServicesUnlinkedCount ?? 0,
+      rollbackServicesRestoredCount: log.rollbackServicesRestoredCount ?? 0,
+      rollbackWarningsCount: log.rollbackWarningsCount ?? 0,
+    };
+  });
   const servicoPessoasCountByServicoId = useMemo(() => {
     const map = new Map<string, number>();
     for (const vinculo of servicoPessoas) {
@@ -306,193 +334,36 @@ export function ImportFaturaDialog({
             )}
           </div>
 
-          <div className="rounded-md border px-3 py-2">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm font-medium">Histórico</p>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-full text-xs sm:w-auto"
-                onClick={() => setShowHistory((current) => !current)}
-                data-testid="button-toggle-import-history"
-              >
-                {showHistory ? "Ocultar" : "Ver importações anteriores"}
-              </Button>
-            </div>
-            {showHistory ? (
-              <div className="mt-2 space-y-2 max-h-52 overflow-y-auto">
-                {isImportLogsLoading ? (
-                  <p className="text-xs text-muted-foreground">Carregando histórico...</p>
-                ) : importLogs.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Nenhuma importação anterior encontrada.</p>
-                ) : (
-                  importLogs.map((log) => {
-                    const status = getHistoryStatusMeta(log.status);
-                    return (
-                      <div key={log.id} className="rounded-md border px-3 py-2 space-y-1">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <div className="min-w-0">
-                            <p className="text-xs text-muted-foreground">
-                              {formatHistoryDateTime(log.createdAt)} · Lote {log.id.slice(0, 8)}
-                            </p>
-                            <p className="text-sm font-medium truncate">
-                              {cartoes.find((cartao) => cartao.id === log.cartaoId)?.nome ?? `Cartão ${log.cartaoId.slice(0, 8)}`}
-                            </p>
-                          </div>
-                          <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs ${status.className}`}>
-                            {status.label}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <p className="text-xs text-muted-foreground">
-                            Criadas: {log.importedItems} · Ignoradas: {log.skippedItems}
-                          </p>
-                          {log.status === "confirmed" ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 text-xs"
-                              disabled={rollbackImportLogLoadingId === log.id}
-                              onClick={() => onRollbackImportLog?.(log.id)}
-                              data-testid={`button-rollback-log-${log.id}`}
-                            >
-                              {rollbackImportLogLoadingId === log.id ? "Desfazendo..." : "Desfazer"}
-                            </Button>
-                          ) : null}
-                        </div>
-                        {log.status === "rolled_back" ? (
-                          <div className="text-[11px] text-muted-foreground space-y-0.5">
-                            <p>
-                              Serviços removidos: {log.rollbackServicesRemovedCount ?? 0}
-                              {" · "}
-                              Desvinculados: {log.rollbackServicesUnlinkedCount ?? 0}
-                              {" · "}
-                              Restaurados: {log.rollbackServicesRestoredCount ?? 0}
-                            </p>
-                            {(log.rollbackWarningsCount ?? 0) > 0 ? (
-                              <p className="text-amber-700">
-                                Avisos de segurança: {log.rollbackWarningsCount}
-                              </p>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            ) : null}
-          </div>
+          <ImportFaturaHistorySection
+            showHistory={showHistory}
+            onToggleHistory={() => setShowHistory((current) => !current)}
+            isImportLogsLoading={isImportLogsLoading}
+            items={historyItems}
+            onRollbackImportLog={onRollbackImportLog}
+          />
 
           <div className={hasConfirmSummary ? "hidden" : "space-y-4"}>
-          <Tabs value={importTab} onValueChange={(value) => setImportTab(value as ImportTab)}>
-            <TabsList className="w-full">
-              <TabsTrigger value="texto" className="flex-1">Colar texto / CSV</TabsTrigger>
-              <TabsTrigger value="arquivo" className="flex-1">Enviar arquivo</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="texto" className="space-y-3">
-              <Label>Cole o extrato da fatura (texto livre, CSV, ou linha por linha)</Label>
-              <Textarea
-                data-testid="textarea-import-texto"
-                value={importTexto}
-                onChange={(event) => setImportTexto(event.target.value)}
-                placeholder={"Exemplos:\n25/02 NETFLIX 60,00 1/1\n01/02 LOJA ABC 150,00 3/10\n\nOu CSV:\nData,Descricao,Valor\n25/02/2026,NETFLIX,60.00"}
-                rows={6}
-                className="font-mono text-sm"
-              />
-              <Button
-                onClick={onParseTexto}
-                className="w-full"
-                data-testid="button-parse-texto"
-              >
-                <FileText className="w-4 h-4 mr-2" /> Detectar compras
-              </Button>
-            </TabsContent>
-
-            <TabsContent value="arquivo" className="space-y-3">
-              <div className="space-y-3 rounded-lg border-2 border-dashed p-4 text-center sm:p-8">
-                <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
-                <div>
-                  <p className="text-sm font-medium">Arraste ou selecione o arquivo</p>
-                  <p className="text-xs text-muted-foreground">
-                    Formatos suportados: CSV, OFX, QFX, TXT e PDF textual (PDF escaneado ainda não)
-                  </p>
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv,.ofx,.qfx,.txt,.pdf"
-                  className="hidden"
-                  onChange={(event) => {
-                    const selected = event.target.files?.[0];
-                    if (selected) onFileUpload(selected);
-                    event.currentTarget.value = "";
-                  }}
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={importLoading}
-                  data-testid="button-upload-file"
-                >
-                  {importLoading ? "Processando..." : "Selecionar arquivo"}
-                </Button>
-              </div>
-            </TabsContent>
-          </Tabs>
+          <ImportFaturaSourceTabsSection
+            importTab={importTab}
+            onImportTabChange={setImportTab}
+            importTexto={importTexto}
+            onImportTextoChange={setImportTexto}
+            onParseTexto={onParseTexto}
+            fileInputRef={fileInputRef}
+            onFileSelected={onFileUpload}
+            onUploadClick={() => fileInputRef.current?.click()}
+            isUploadDisabled={importLoading}
+            uploadButtonLabel={importLoading ? "Processando..." : "Selecionar arquivo"}
+          />
 
           {importItems.length > 0 && (
             <div className="space-y-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm font-semibold">{importItems.length} compra(s) detectada(s)</p>
-                <div className="flex w-full flex-wrap gap-1 sm:w-auto sm:justify-end">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => setImportItems((items) => items.map((item) => {
-                      const status = getEffectiveStatus(item);
-                      if (status === "invalido") {
-                        return {
-                          ...item,
-                          action: "skip",
-                          forceImport: false,
-                          reconcileAction: "none",
-                          reconcileExistingCompraCartaoId: null,
-                          reconcileConfirmValueChange: false,
-                          reconcileUpdateNameFromImport: false,
-                        };
-                      }
-                      if (status === "duplicata_exata") {
-                        return {
-                          ...item,
-                          action: "skip",
-                          forceImport: false,
-                          reconcileAction: "none",
-                          reconcileExistingCompraCartaoId: null,
-                          reconcileConfirmValueChange: false,
-                          reconcileUpdateNameFromImport: false,
-                        };
-                      }
-                      return {
-                        ...item,
-                        action: "import",
-                        forceImport: false,
-                        reconcileAction: "none",
-                        reconcileExistingCompraCartaoId: null,
-                        reconcileConfirmValueChange: false,
-                        reconcileUpdateNameFromImport: false,
-                      };
-                    }))}
-                  >
-                    Marcar todas
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => setImportItems((items) => items.map((item) => ({
+              <ImportFaturaPreviewHeader
+                detectedCount={importItems.length}
+                onMarkAll={() => setImportItems((items) => items.map((item) => {
+                  const status = getEffectiveStatus(item);
+                  if (status === "invalido") {
+                    return {
                       ...item,
                       action: "skip",
                       forceImport: false,
@@ -500,31 +371,43 @@ export function ImportFaturaDialog({
                       reconcileExistingCompraCartaoId: null,
                       reconcileConfirmValueChange: false,
                       reconcileUpdateNameFromImport: false,
-                    })))}
-                  >
-                    Ignorar todas
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <Label className="text-xs sm:flex-shrink-0">Vencimento da fatura (opcional):</Label>
-                <Input
-                  type="date"
-                  className="h-8 text-xs sm:h-7 sm:flex-1"
-                  value={importVencimento}
-                  onChange={(event) => setImportVencimento(event.target.value)}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs sm:h-7 sm:flex-shrink-0"
-                  onClick={onApplyVencimentoToAll}
-                  disabled={!importVencimento}
-                >
-                  Aplicar a todos
-                </Button>
-              </div>
+                    };
+                  }
+                  if (status === "duplicata_exata") {
+                    return {
+                      ...item,
+                      action: "skip",
+                      forceImport: false,
+                      reconcileAction: "none",
+                      reconcileExistingCompraCartaoId: null,
+                      reconcileConfirmValueChange: false,
+                      reconcileUpdateNameFromImport: false,
+                    };
+                  }
+                  return {
+                    ...item,
+                    action: "import",
+                    forceImport: false,
+                    reconcileAction: "none",
+                    reconcileExistingCompraCartaoId: null,
+                    reconcileConfirmValueChange: false,
+                    reconcileUpdateNameFromImport: false,
+                  };
+                }))}
+                onIgnoreAll={() => setImportItems((items) => items.map((item) => ({
+                  ...item,
+                  action: "skip",
+                  forceImport: false,
+                  reconcileAction: "none",
+                  reconcileExistingCompraCartaoId: null,
+                  reconcileConfirmValueChange: false,
+                  reconcileUpdateNameFromImport: false,
+                })))}
+                importVencimento={importVencimento}
+                onImportVencimentoChange={setImportVencimento}
+                onApplyVencimentoToAll={onApplyVencimentoToAll}
+                isApplyVencimentoDisabled={!importVencimento}
+              />
 
               <div className="border rounded-md overflow-hidden divide-y divide-border/40">
                 {importItems.map((item, idx) => {
@@ -563,6 +446,14 @@ export function ImportFaturaDialog({
                           : item.action === "skip"
                             ? "bg-muted/20 opacity-60"
                             : "";
+                  const confidenceClassName =
+                    typeof item.confidenceScore === "number"
+                      ? item.confidenceScore >= 85
+                        ? "text-emerald-600"
+                        : item.confidenceScore >= 65
+                          ? "text-amber-600"
+                          : "text-red-600"
+                      : undefined;
 
                   return (
                     <div
@@ -703,248 +594,179 @@ export function ImportFaturaDialog({
                           </Select>
 
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1 flex-wrap">
-                              <p className="font-medium truncate">{item.descricao}</p>
-                              <span className={`inline-flex items-center text-xs px-1.5 py-0.5 rounded ${statusBadge.className}`}>
-                                {statusBadge.label}
-                              </span>
-                              {item.reviewRequired && (
-                                <span className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-700">
-                                  Revisar
-                                </span>
-                              )}
-                              {item.tipo === "taxa" && (
-                                <span className="inline-flex items-center text-xs px-1 py-0.5 rounded bg-blue-500/10 text-blue-600 flex-shrink-0">
-                                  Taxa
-                                </span>
-                              )}
-                              {isServiceCandidate ? (
-                                <span className="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-700">
-                                  Possível serviço
-                                </span>
-                              ) : null}
-                            </div>
-                            <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5 flex-wrap">
-                              <span className="font-semibold text-foreground">{formatCurrency(item.valorParcela)}/parc</span>
-                              <span>Total: {formatCurrency(item.valor)}</span>
-                              <span className="flex items-center gap-0.5">
-                                Parc <strong className="text-foreground">{item.parcelaAtual}/{item.parcelas}</strong>
-                                {item.parcelasRestantes > 0 && <span className="text-amber-600"> · faltam {item.parcelasRestantes}</span>}
-                              </span>
-                              <span>Compra: {item.dataCompra}</span>
-                              {item.vencimentoFatura && <span className="text-emerald-600">Venc: {item.vencimentoFatura}</span>}
-                              {typeof item.confidenceScore === "number" && (
-                                <span
-                                  className={
-                                    item.confidenceScore >= 85
-                                      ? "text-emerald-600"
-                                      : item.confidenceScore >= 65
-                                      ? "text-amber-600"
-                                      : "text-red-600"
-                                  }
-                                >
-                                  Confiança: {Math.round(item.confidenceScore)}%
-                                </span>
-                              )}
-                              {status === "duplicata_exata" && item.forceImport !== true && (
-                                <span className="text-orange-700">Marque "Forçar" para importar esta duplicata exata</span>
-                              )}
-                            </div>
+                            <ImportFaturaPreviewItemSummary
+                              descricao={item.descricao}
+                              statusLabel={statusBadge.label}
+                              statusClassName={statusBadge.className}
+                              showReviewBadge={item.reviewRequired === true}
+                              showTaxaBadge={item.tipo === "taxa"}
+                              showServiceBadge={isServiceCandidate}
+                              valorParcelaLabel={`${formatCurrency(item.valorParcela)}/parc`}
+                              totalLabel={`Total: ${formatCurrency(item.valor)}`}
+                              parcelaLabel={`Parc ${item.parcelaAtual}/${item.parcelas}`}
+                              parcelasRestantesLabel={item.parcelasRestantes > 0 ? ` · faltam ${item.parcelasRestantes}` : null}
+                              dataCompraLabel={`Compra: ${item.dataCompra}`}
+                              vencimentoLabel={item.vencimentoFatura ? `Venc: ${item.vencimentoFatura}` : null}
+                              confidenceLabel={typeof item.confidenceScore === "number" ? `Confiança: ${Math.round(item.confidenceScore)}%` : null}
+                              confidenceClassName={confidenceClassName}
+                              showDuplicateForceWarning={status === "duplicata_exata" && item.forceImport !== true}
+                            />
                             {isServiceCandidate ? (
                               <div className="mt-2 rounded-md border border-indigo-200 bg-indigo-50/60 px-2 py-2 space-y-2">
-                                <div className="flex items-center justify-between gap-2 flex-wrap">
-                                  <p className="text-xs text-indigo-800">
-                                    {serviceCandidate?.matchedProvider
+                                <ImportFaturaPreviewItemServiceInfo
+                                  serviceInfoLabel={`${
+                                    serviceCandidate?.matchedProvider
                                       ? `Parece ${serviceCandidate.matchedProvider}`
-                                      : "Possível serviço recorrente"}{" "}
-                                    · {formatServiceCategoryLabel(serviceCandidate?.categorySuggestion)}
-                                  </p>
-                                  <span className="text-[11px] text-indigo-700">
-                                    Confiança {serviceCandidate?.confidence ?? "baixa"}
-                                  </span>
-                                </div>
-
-                                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                                  <Select
-                                    value={serviceAction}
-                                    onValueChange={(value) => {
-                                      const nextAction = value as "ignore" | "link_existing" | "create_new";
-                                      setImportItems((items) => items.map((current, index) => {
-                                        if (index !== idx) return current;
-                                        return {
-                                          ...current,
-                                          serviceSuggestionAction: nextAction,
-                                          linkedServiceId: nextAction === "link_existing"
-                                            ? (current.linkedServiceId ?? null)
-                                            : null,
-                                          replaceExistingServiceLink: nextAction === "link_existing"
-                                            ? current.replaceExistingServiceLink === true
-                                            : false,
-                                        };
-                                      }));
-                                    }}
-                                  >
-                                    <SelectTrigger className="h-8 text-xs">
-                                      <SelectValue placeholder="Ação do serviço" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="ignore">Ignorar sugestão</SelectItem>
-                                      <SelectItem value="link_existing">Vincular serviço existente</SelectItem>
-                                      <SelectItem value="create_new">Criar novo serviço</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-
-                                  {serviceAction === "link_existing" ? (
+                                      : "Possível serviço recorrente"
+                                  } · ${formatServiceCategoryLabel(serviceCandidate?.categorySuggestion)}`}
+                                  serviceConfidenceLabel={`Confiança ${serviceCandidate?.confidence ?? "baixa"}`}
+                                  sharedServiceNotice={
+                                    serviceAction === "link_existing" && selectedLinkedService && selectedLinkedServiceSharedPeopleCount > 0
+                                      ? "Este serviço é compartilhado. A cobrança foi vinculada, mas o mês só será marcado como pago quando a pessoa pagar a parte dela."
+                                      : null
+                                  }
+                                  createSuggestionName={
+                                    serviceAction === "create_new" && item.createServiceSuggestion
+                                      ? item.createServiceSuggestion.nome
+                                      : null
+                                  }
+                                  createSuggestionDetailsLabel={
+                                    serviceAction === "create_new" && item.createServiceSuggestion
+                                      ? `(${formatCurrency(item.createServiceSuggestion.valorMensal)}/mês, cobrança dia ${item.createServiceSuggestion.dataCobranca}, categoria ${formatServiceCategoryLabel(item.createServiceSuggestion.categoria)}). O serviço será criado ao confirmar a importação deste item.`
+                                      : null
+                                  }
+                                  serviceSuggestionWarning={item.serviceSuggestionWarning ?? null}
+                                  selectLinkedServiceWarning={
+                                    serviceAction === "link_existing" && selectedLinkedService == null
+                                      ? "Selecione um serviço para concluir o vínculo sugerido."
+                                      : null
+                                  }
+                                >
+                                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                                     <Select
-                                      value={item.linkedServiceId ?? "__none"}
+                                      value={serviceAction}
                                       onValueChange={(value) => {
+                                        const nextAction = value as "ignore" | "link_existing" | "create_new";
                                         setImportItems((items) => items.map((current, index) => {
                                           if (index !== idx) return current;
                                           return {
                                             ...current,
-                                            linkedServiceId: value === "__none" ? null : value,
-                                            replaceExistingServiceLink: false,
+                                            serviceSuggestionAction: nextAction,
+                                            linkedServiceId: nextAction === "link_existing"
+                                              ? (current.linkedServiceId ?? null)
+                                              : null,
+                                            replaceExistingServiceLink: nextAction === "link_existing"
+                                              ? current.replaceExistingServiceLink === true
+                                              : false,
                                           };
                                         }));
                                       }}
                                     >
                                       <SelectTrigger className="h-8 text-xs">
-                                        <SelectValue placeholder="Selecione o serviço" />
+                                        <SelectValue placeholder="Ação do serviço" />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        <SelectItem value="__none">Sem vínculo</SelectItem>
-                                        {servicos.length === 0 ? (
-                                          <SelectItem value="__empty" disabled>
-                                            Nenhum serviço cadastrado
-                                          </SelectItem>
-                                        ) : (
-                                          servicos.map((servico) => (
-                                            <SelectItem key={servico.id} value={servico.id}>
-                                              {servico.nome} · {formatCurrency(Number(servico.valorMensal) || 0)}
-                                            </SelectItem>
-                                          ))
-                                        )}
+                                        <SelectItem value="ignore">Ignorar sugestão</SelectItem>
+                                        <SelectItem value="link_existing">Vincular serviço existente</SelectItem>
+                                        <SelectItem value="create_new">Criar novo serviço</SelectItem>
                                       </SelectContent>
                                     </Select>
-                                  ) : null}
-                                </div>
 
-                                {serviceAction === "link_existing" && selectedLinkedService?.compraCartaoId ? (
-                                  <div className="rounded-md border border-amber-300 bg-amber-50 px-2 py-2">
-                                    <p className="text-xs text-amber-800">
-                                      Este serviço já está vinculado a outra compra. Deseja substituir o vínculo?
-                                    </p>
-                                    <label className="mt-1 inline-flex items-center gap-2 text-xs text-amber-900">
-                                      <input
-                                        type="checkbox"
-                                        className="h-3.5 w-3.5"
-                                        checked={item.replaceExistingServiceLink === true}
-                                        onChange={(event) => {
-                                          const checked = event.target.checked;
-                                          setImportItems((items) => items.map((current, index) => (
-                                            index === idx
-                                              ? { ...current, replaceExistingServiceLink: checked }
-                                              : current
-                                          )));
+                                    {serviceAction === "link_existing" ? (
+                                      <Select
+                                        value={item.linkedServiceId ?? "__none"}
+                                        onValueChange={(value) => {
+                                          setImportItems((items) => items.map((current, index) => {
+                                            if (index !== idx) return current;
+                                            return {
+                                              ...current,
+                                              linkedServiceId: value === "__none" ? null : value,
+                                              replaceExistingServiceLink: false,
+                                            };
+                                          }));
                                         }}
-                                      />
-                                      <span>Estou ciente e quero substituir o vínculo existente.</span>
-                                    </label>
+                                      >
+                                        <SelectTrigger className="h-8 text-xs">
+                                          <SelectValue placeholder="Selecione o serviço" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="__none">Sem vínculo</SelectItem>
+                                          {servicos.length === 0 ? (
+                                            <SelectItem value="__empty" disabled>
+                                              Nenhum serviço cadastrado
+                                            </SelectItem>
+                                          ) : (
+                                            servicos.map((servico) => (
+                                              <SelectItem key={servico.id} value={servico.id}>
+                                                {servico.nome} · {formatCurrency(Number(servico.valorMensal) || 0)}
+                                              </SelectItem>
+                                            ))
+                                          )}
+                                        </SelectContent>
+                                      </Select>
+                                    ) : null}
                                   </div>
-                                ) : null}
 
-                                {serviceAction === "link_existing" && selectedLinkedService && selectedLinkedServiceSharedPeopleCount > 0 ? (
-                                  <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-2">
-                                    <p className="text-xs text-blue-800">
-                                      Este serviço é compartilhado. A cobrança foi vinculada, mas o mês só será marcado
-                                      como pago quando a pessoa pagar a parte dela.
-                                    </p>
-                                  </div>
-                                ) : null}
-
-                                {serviceAction === "create_new" && item.createServiceSuggestion ? (
-                                  <p className="text-xs text-indigo-900">
-                                    Sugestão: criar serviço <strong>{item.createServiceSuggestion.nome}</strong>{" "}
-                                    ({formatCurrency(item.createServiceSuggestion.valorMensal)}/mês, cobrança dia{" "}
-                                    {item.createServiceSuggestion.dataCobranca}, categoria{" "}
-                                    {formatServiceCategoryLabel(item.createServiceSuggestion.categoria)}).
-                                    O serviço será criado ao confirmar a importação deste item.
-                                  </p>
-                                ) : null}
-
-                                {item.serviceSuggestionWarning ? (
-                                  <p className="text-xs text-amber-700">{item.serviceSuggestionWarning}</p>
-                                ) : null}
-                                {serviceAction === "link_existing" && selectedLinkedService == null ? (
-                                  <p className="text-xs text-amber-700">
-                                    Selecione um serviço para concluir o vínculo sugerido.
-                                  </p>
-                                ) : null}
+                                  {serviceAction === "link_existing" && selectedLinkedService?.compraCartaoId ? (
+                                    <div className="rounded-md border border-amber-300 bg-amber-50 px-2 py-2">
+                                      <p className="text-xs text-amber-800">
+                                        Este serviço já está vinculado a outra compra. Deseja substituir o vínculo?
+                                      </p>
+                                      <label className="mt-1 inline-flex items-center gap-2 text-xs text-amber-900">
+                                        <input
+                                          type="checkbox"
+                                          className="h-3.5 w-3.5"
+                                          checked={item.replaceExistingServiceLink === true}
+                                          onChange={(event) => {
+                                            const checked = event.target.checked;
+                                            setImportItems((items) => items.map((current, index) => (
+                                              index === idx
+                                                ? { ...current, replaceExistingServiceLink: checked }
+                                                : current
+                                            )));
+                                          }}
+                                        />
+                                        <span>Estou ciente e quero substituir o vínculo existente.</span>
+                                      </label>
+                                    </div>
+                                  ) : null}
+                                </ImportFaturaPreviewItemServiceInfo>
                               </div>
                             ) : null}
-                            {item.validationIssues && item.validationIssues.length > 0 && (
-                              <p className="text-xs text-red-600 mt-0.5">
-                                {item.validationIssues.join(" · ")}
-                              </p>
-                            )}
-                            {item.duplicata && (
-                              <p className="text-xs text-amber-600 mt-0.5">
-                                Similar a: "{item.duplicata.descricao}" ({formatCurrency(Number(item.duplicata.valorParcela))})
-                              </p>
-                            )}
-                            {isCompraAliasesLoading && possibleExisting ? (
-                              <p className="text-[11px] text-sky-700">
-                                Carregando equivalências salvas...
-                              </p>
-                            ) : null}
+                            <ImportFaturaPreviewItemNotices
+                              validationIssues={item.validationIssues}
+                              duplicateNotice={
+                                item.duplicata
+                                  ? `Similar a: "${item.duplicata.descricao}" (${formatCurrency(Number(item.duplicata.valorParcela))})`
+                                  : null
+                              }
+                              showAliasesLoadingNotice={isCompraAliasesLoading && possibleExisting != null}
+                            />
                             {possibleExisting ? (
                               <div className="mt-2 space-y-1.5 rounded-md border border-sky-200 bg-sky-50/60 px-2 py-2">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="text-xs font-medium text-sky-800">
-                                    {possibleExisting.aliasMatched
-                                      ? "Essa compra parece já existir"
-                                      : "Essa compra pode já existir"}
-                                  </p>
-                                  {possibleExisting.aliasMatched ? (
-                                    <span className="inline-flex items-center rounded bg-sky-200 px-2 py-0.5 text-[11px] font-medium text-sky-900">
-                                      Já reconhecido
-                                    </span>
-                                  ) : null}
-                                </div>
-                                {possibleExisting.aliasMatched ? (
-                                  <div className="rounded border border-sky-300 bg-sky-100/70 px-2 py-1">
-                                    <p className="text-[11px] text-sky-900">
-                                      A fatura trouxe o nome: <strong>{item.descricao}</strong>
-                                    </p>
-                                    <p className="text-[11px] text-sky-900">
-                                      Mas você já salvou essa compra como:{" "}
-                                      <strong>{possibleExisting.aliasMatchedNameOriginal ?? possibleExisting.existing.descricao}</strong>
-                                    </p>
-                                    <p className="text-[11px] text-sky-900">
-                                      O sistema reconheceu que esses dois nomes representam a mesma compra.
-                                    </p>
-                                  </div>
-                                ) : (
-                                  <div className="rounded border border-sky-300 bg-sky-100/70 px-2 py-1">
-                                    <p className="text-[11px] text-sky-900">
-                                      A fatura trouxe: <strong>{item.descricao}</strong>
-                                    </p>
-                                    <p className="text-[11px] text-sky-900">
-                                      Encontramos uma compra parecida: <strong>{possibleExisting.existing.descricao}</strong>
-                                    </p>
-                                    <p className="text-[11px] text-sky-900">
-                                      Os valores e parcelas são muito parecidos.
-                                    </p>
-                                  </div>
-                                )}
-                                <p className="text-xs text-sky-900">
-                                  Recomendado: use a compra já existente para evitar duplicidade.
-                                </p>
-                                <p className="text-[11px] text-sky-700">
-                                  O nome <strong>{possibleExisting.existing.descricao}</strong> será mantido por padrão.{" "}
-                                  <strong>{item.descricao}</strong> ficará salvo apenas como apelido para próximas
-                                  faturas.
-                                </p>
+                                <ImportFaturaPreviewItemReconcileInfo
+                                  title={possibleExisting.aliasMatched
+                                    ? "Essa compra parece já existir"
+                                    : "Essa compra pode já existir"}
+                                  showRecognizedBadge={possibleExisting.aliasMatched}
+                                  recognizedBadgeLabel="Já reconhecido"
+                                  firstInfoPrefix={possibleExisting.aliasMatched
+                                    ? "A fatura trouxe o nome:"
+                                    : "A fatura trouxe:"}
+                                  firstInfoValue={item.descricao}
+                                  secondInfoPrefix={possibleExisting.aliasMatched
+                                    ? "Mas você já salvou essa compra como:"
+                                    : "Encontramos uma compra parecida:"}
+                                  secondInfoValue={possibleExisting.aliasMatched
+                                    ? (possibleExisting.aliasMatchedNameOriginal ?? possibleExisting.existing.descricao)
+                                    : possibleExisting.existing.descricao}
+                                  thirdInfoText={possibleExisting.aliasMatched
+                                    ? "O sistema reconheceu que esses dois nomes representam a mesma compra."
+                                    : "Os valores e parcelas são muito parecidos."}
+                                  recommendationText="Recomendado: use a compra já existente para evitar duplicidade."
+                                  keepExistingNameText={possibleExisting.existing.descricao}
+                                  keepAliasNameText={item.descricao}
+                                />
                                 <div className="max-w-xs">
                                   <Select
                                     value={possibleExistingAction}
@@ -1105,40 +927,26 @@ export function ImportFaturaDialog({
                             ) : null}
                           </div>
 
-                          <div className="ml-auto flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="mt-0.5 h-7 w-7 flex-shrink-0 sm:mt-0"
-                              aria-label={`Editar item ${idx + 1} da importação`}
-                              title="Editar item"
-                              onClick={() => {
-                                setImportEditingId(item.id);
-                                  setImportEditForm({
-                                    descricao: item.descricao,
-                                    valor: String(item.valorParcela),
-                                    dataCompra: item.dataCompra,
-                                    parcelas: String(item.parcelas),
-                                    parcelaAtual: String(item.parcelaAtual),
-                                    vencimentoFatura: item.vencimentoFatura ?? "",
-                                  });
-                                }}
-                                data-testid={`button-edit-import-item-${idx}`}
-                            >
-                              <Pencil className="w-3 h-3 text-muted-foreground" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="mt-0.5 h-7 w-7 flex-shrink-0 sm:mt-0"
-                              aria-label={`Remover item ${idx + 1} da importação`}
-                              title="Remover item"
-                              onClick={() => setImportItems((items) => items.filter((_, index) => index !== idx))}
-                              data-testid={`button-remove-import-item-${idx}`}
-                            >
-                              <X className="w-3 h-3 text-muted-foreground" />
-                            </Button>
-                          </div>
+                          <ImportFaturaPreviewItemActions
+                            editAriaLabel={`Editar item ${idx + 1} da importação`}
+                            editTitle="Editar item"
+                            editTestId={`button-edit-import-item-${idx}`}
+                            onEdit={() => {
+                              setImportEditingId(item.id);
+                              setImportEditForm({
+                                descricao: item.descricao,
+                                valor: String(item.valorParcela),
+                                dataCompra: item.dataCompra,
+                                parcelas: String(item.parcelas),
+                                parcelaAtual: String(item.parcelaAtual),
+                                vencimentoFatura: item.vencimentoFatura ?? "",
+                              });
+                            }}
+                            removeAriaLabel={`Remover item ${idx + 1} da importação`}
+                            removeTitle="Remover item"
+                            removeTestId={`button-remove-import-item-${idx}`}
+                            onRemove={() => setImportItems((items) => items.filter((_, index) => index !== idx))}
+                          />
                         </div>
                       )}
                     </div>
@@ -1146,155 +954,50 @@ export function ImportFaturaDialog({
                 })}
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-1">
-                  {issuerMismatchWarning ? (
-                    <div className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
-                      <p>{issuerMismatchWarning}</p>
-                      {issuerMismatchRequiresAcknowledgement ? (
-                        <label className="mt-1 inline-flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            className="h-3.5 w-3.5"
-                            checked={issuerMismatchAcknowledged}
-                            onChange={(event) => onIssuerMismatchAcknowledgedChange?.(event.target.checked)}
-                          />
-                          <span>Estou ciente e quero importar neste cartão mesmo assim.</span>
-                        </label>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  <p className="text-sm text-muted-foreground">
-                    {totalImportar} de {importItems.length} serão importadas
-                    {totalReconciliar > 0 ? ` · ${totalReconciliar} serão reconciliadas` : ""}
-                    {" · "}Total: {formatCurrency(totalMensalImportar)}/mês
-                  </p>
-                  {hasReconcileWithoutTarget ? (
-                    <p className="text-xs text-red-600">Há item de reconciliação sem compra existente vinculada.</p>
-                  ) : null}
-                  {hasReconcilePendingValueConfirmation ? (
-                    <p className="text-xs text-amber-700">Confirme alterações de valor antes de concluir a reconciliação.</p>
-                  ) : null}
-                  {hasInvalidImportAttempt ? (
-                    <p className="text-xs text-red-600">Itens inválidos não podem ser confirmados para importação.</p>
-                  ) : null}
-                  {hasDuplicateExactWithoutForce ? (
-                    <p className="text-xs text-orange-700">Duplicatas exatas exigem ação de "Forçar" para confirmar.</p>
-                  ) : null}
-                </div>
-                <Button
-                  className="w-full sm:w-auto"
-                  data-testid="button-confirmar-importacao"
-                  disabled={
-                    (totalImportar === 0 && totalReconciliar === 0)
-                    || isBatchImportPending
-                    || !importCartaoId
-                    || hasInvalidImportAttempt
-                    || hasDuplicateExactWithoutForce
-                    || hasReconcileWithoutTarget
-                    || hasReconcilePendingValueConfirmation
-                    || (issuerMismatchRequiresAcknowledgement && !issuerMismatchAcknowledged)
-                  }
-                  onClick={onConfirmImport}
-                >
-                  {isBatchImportPending ? "Importando..." : "Confirmar importação"}
-                </Button>
-              </div>
+              <ImportFaturaConfirmFooter
+                totalImportar={totalImportar}
+                totalItems={importItems.length}
+                totalReconciliar={totalReconciliar}
+                totalMensalImportarLabel={formatCurrency(totalMensalImportar)}
+                hasReconcileWithoutTarget={hasReconcileWithoutTarget}
+                hasReconcilePendingValueConfirmation={hasReconcilePendingValueConfirmation}
+                hasInvalidImportAttempt={hasInvalidImportAttempt}
+                hasDuplicateExactWithoutForce={hasDuplicateExactWithoutForce}
+                isConfirmDisabled={
+                  (totalImportar === 0 && totalReconciliar === 0)
+                  || isBatchImportPending
+                  || !importCartaoId
+                  || hasInvalidImportAttempt
+                  || hasDuplicateExactWithoutForce
+                  || hasReconcileWithoutTarget
+                  || hasReconcilePendingValueConfirmation
+                  || (issuerMismatchRequiresAcknowledgement && !issuerMismatchAcknowledged)
+                }
+                isBatchImportPending={isBatchImportPending}
+                onConfirmImport={onConfirmImport}
+              >
+                {issuerMismatchWarning ? (
+                  <ImportFaturaIssuerMismatchWarning
+                    warning={issuerMismatchWarning}
+                    requiresAcknowledgement={issuerMismatchRequiresAcknowledgement}
+                    acknowledged={issuerMismatchAcknowledged}
+                    onAcknowledgedChange={onIssuerMismatchAcknowledgedChange}
+                  />
+                ) : null}
+              </ImportFaturaConfirmFooter>
             </div>
           )}
           </div>
 
           {hasConfirmSummary ? (
-            <div className="space-y-4" data-testid="import-confirm-summary">
-              <div className="rounded-lg border border-emerald-200 bg-emerald-500/5 px-4 py-3">
-                <p className="text-base font-semibold text-emerald-700">Importação concluída</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Lote {confirmResult?.importLogId.slice(0, 8)} processado.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-                <div className="rounded-md border p-3">
-                  <p className="text-muted-foreground">Compras criadas</p>
-                  <p className="text-lg font-semibold">{confirmSummary.createdCount}</p>
-                </div>
-                <div className="rounded-md border p-3">
-                  <p className="text-muted-foreground">Compras reconciliadas</p>
-                  <p className="text-lg font-semibold">{confirmSummary.reconciledExistingCount ?? 0}</p>
-                </div>
-                <div className="rounded-md border p-3">
-                  <p className="text-muted-foreground">Itens ignorados</p>
-                  <p className="text-lg font-semibold">{confirmSummary.ignoredCount}</p>
-                </div>
-                <div className="rounded-md border p-3">
-                  <p className="text-muted-foreground">Duplicatas bloqueadas</p>
-                  <p className="text-lg font-semibold">{confirmSummary.blockedExactDuplicates}</p>
-                </div>
-                <div className="rounded-md border p-3">
-                  <p className="text-muted-foreground">Duplicatas forçadas</p>
-                  <p className="text-lg font-semibold">{confirmSummary.forcedExactDuplicates}</p>
-                </div>
-                <div className="rounded-md border p-3">
-                  <p className="text-muted-foreground">Itens inválidos</p>
-                  <p className="text-lg font-semibold">{confirmSummary.invalidCount}</p>
-                </div>
-                <div className="rounded-md border p-3">
-                  <p className="text-muted-foreground">Itens com erro</p>
-                  <p className="text-lg font-semibold">{confirmSummary.errorCount}</p>
-                </div>
-                <div className="rounded-md border p-3 sm:col-span-2">
-                  <p className="text-muted-foreground">Serviços criados</p>
-                  <p className="text-lg font-semibold">{confirmSummary.servicesCreatedCount ?? 0}</p>
-                </div>
-                <div className="rounded-md border p-3 sm:col-span-2">
-                  <p className="text-muted-foreground">Serviços vinculados</p>
-                  <p className="text-lg font-semibold">{confirmSummary.servicesLinkedCount ?? 0}</p>
-                </div>
-              </div>
-
-              <div className="rounded-md border px-4 py-3">
-                <p className="text-sm">
-                  <span className="text-muted-foreground">Total processado:</span>{" "}
-                  <span className="font-semibold">{confirmSummary.totalProcessed}</span>
-                </p>
-                {confirmSummary.createdCount === 0 ? (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Nenhuma compra foi criada. Revise itens ignorados, inválidos ou duplicatas exatas bloqueadas.
-                  </p>
-                ) : null}
-                {confirmSummary.blockedExactDuplicates > 0 ? (
-                  <p className="text-xs text-amber-700 mt-1">
-                    Há duplicatas exatas bloqueadas. Use "Forçar" no preview apenas quando necessário.
-                  </p>
-                ) : null}
-                {confirmSummary.invalidCount > 0 ? (
-                  <p className="text-xs text-red-600 mt-1">
-                    Há itens inválidos que precisam de revisão antes de nova confirmação.
-                  </p>
-                ) : null}
-              </div>
-
-              <div className="flex flex-wrap justify-end gap-2">
-                {onStartNewImport ? (
-                  <Button variant="outline" onClick={onStartNewImport}>
-                    Nova importação
-                  </Button>
-                ) : null}
-                {onRollbackImport ? (
-                  <Button
-                    variant="outline"
-                    onClick={onRollbackImport}
-                    disabled={isRollbackPending}
-                    data-testid="button-rollback-import-summary"
-                  >
-                    {isRollbackPending ? "Desfazendo..." : "Desfazer importação"}
-                  </Button>
-                ) : null}
-                <Button onClick={() => onOpenChange(false)}>
-                  Fechar
-                </Button>
-              </div>
-            </div>
+            <ImportFaturaConfirmSummary
+              batchId={confirmResult?.importLogId.slice(0, 8)}
+              summary={confirmSummary}
+              onStartNewImport={onStartNewImport}
+              onRollbackImport={onRollbackImport}
+              isRollbackPending={isRollbackPending}
+              onClose={() => onOpenChange(false)}
+            />
           ) : null}
         </div>
       </DialogContent>

@@ -1,19 +1,12 @@
-import { useState, lazy, Suspense, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { usePremiumAccess } from "@/hooks/use-premium-access";
 import { useLocation } from "wouter";
-import {
-  Plus, Trash2, Upload, ChevronRight, RefreshCw,
-} from "lucide-react";
 import { useUIPreferences } from "@/context/ui-preferences";
 import { queryClient } from "@/lib/queryClient";
-import type { Cartao, CompraCartao, ParcelaCompra, Servico } from "@shared/schema";
-import { addMonths, format, parseISO } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import type { Cartao, CompraCartao, ParcelaCompra } from "@shared/schema";
+import { format } from "date-fns";
 import {
   detectItauInvoiceText,
   detectMercadoPagoInvoiceText,
@@ -30,21 +23,47 @@ import {
 } from "@/pages/cartoes/import-parser";
 import { extractPdfTextVariantsFromPdfBuffer, isExtractedPdfTextUsable } from "@/pages/cartoes/import-pdf-utils";
 import { buildCompraAliasDraft } from "@/pages/cartoes/import-existing-purchase-match";
-import { ImportFaturaDialog } from "@/pages/cartoes/components/import-fatura-dialog";
+import {
+  applyServiceSuggestionMetadata,
+  extractCardLast4FromName,
+  extractItauDebugSectionLines,
+  formatImportFileSize,
+  getImportFileExtension,
+  getImportItemEffectiveStatus,
+  isImportItemStructurallyInvalid,
+  isImportMimeAllowed,
+  isItauCardLikeName,
+  isMercadoPagoCardLikeName,
+  isNubankCardLikeName,
+  listToHumanReadable,
+  mergePreviewItemsWithLocalSignals,
+  normalizeCartoesTab,
+  toIndexedImportDebugLines,
+} from "@/pages/cartoes/cartoes-import.utils";
+import {
+  CartaoFaturaSection,
+  CartoesListSection,
+  CartoesPageLoadingState,
+  CartoesPageToolbar,
+  ImportFaturaDialog,
+} from "@/pages/cartoes/components";
 import { formatImportCardOptionLabel, suggestImportCardByText } from "@/pages/cartoes/import-card-matching";
 import { useCartoes } from "@/hooks/useCartoes";
-import { CartoesPageHeader } from "@/components/cartoes/CartoesPageHeader";
 import { CartoesSummarySection } from "@/components/cartoes/CartoesSummarySection";
 import { CartoesFilterBar } from "@/components/cartoes/CartoesFilterBar";
-import { CartoesGrid } from "@/components/cartoes/CartoesGrid";
-import { CartoesEmptyState } from "@/components/cartoes/CartoesEmptyState";
-import { CartoesDialogs } from "@/components/cartoes/CartoesDialogs";
-import { CartoesInsights, type CartaoInsightItem } from "@/components/cartoes/CartoesInsights";
-import { CartaoFormDialog } from "@/components/cartoes/CartaoFormDialog";
-import { EditarCompraCartaoDialog, NovaCompraCartaoDialog } from "@/components/cartoes/CompraCartaoDialog";
-import { CartoesMobileTabs } from "@/components/cartoes/CartoesMobileTabs";
-import { CartoesComprasGrid } from "@/components/cartoes/CartoesComprasGrid";
+import { CartoesInsights } from "@/components/cartoes/CartoesInsights";
 import { ParcelasTab } from "@/components/cartoes/ParcelasTab";
+import {
+  CartaoCreateEditDialogs,
+  DeleteCompraFaturaDialogs,
+  EditCompraDialog,
+  NewCompraDialog,
+} from "@/pages/cartoes/dialogs";
+import {
+  useCartoesDeleteDialogState,
+  useCartoesFilters,
+  useCartoesSelectionState,
+} from "@/pages/cartoes/hooks";
 import {
   deleteFaturaCartaoMes,
   deleteFaturasMes,
@@ -60,8 +79,6 @@ import {
   reconcileImportedPurchase,
   type ParcelaComprovanteResumo,
   type DeleteCompraScope,
-  type DeleteCompraResponse,
-  type DeleteFaturaResponse,
   uploadParcelaComprovante,
 } from "@/services/api/cartoes";
 import { createIconMatchRules, fetchIconMatchRules, type IconMatchRuleApiModel } from "@/services/api/icon-match-rules";
@@ -75,19 +92,12 @@ import {
 } from "@/lib/entity-icon-suggestion";
 import {
   calculateCardInvoiceForCompetency,
-  compraHasInstallmentInCompetency,
-  getInvoiceCompetency,
   groupParcelasCompraByCompraId,
   isParcelaComprometendoLimite,
 } from "@/lib/card-limit-usage";
 import {
-  buildPlanLimitFriendlyMessage,
   parsePlanLimitError,
 } from "@/lib/subscription-plan-limit";
-import {
-  buildPremiumFeatureFriendlyMessage,
-  parsePremiumFeatureError,
-} from "@/lib/subscription-premium-feature";
 import {
   formatCartaoCurrency,
   getDaysUntilInvoice,
@@ -95,45 +105,24 @@ import {
   isParcelaVencida,
 } from "@/pages/cartoes/cartoes.utils";
 import {
+  formatInvoiceCompetencyLabel,
+  formatMesExibicao,
+  getErrorMessage,
+} from "@/pages/cartoes/cartoes-page.utils";
+import { buildCartoesInsightsItems } from "@/pages/cartoes/cartoes-page-insights";
+import {
   buildEditCompraIconUpdatePatch,
   resolveEditCompraIconPresentation,
   resolvePersistableCompraIconId,
   resolveEditCompraIconRuleTarget,
 } from "@/pages/cartoes/edit-compra-icon.utils";
-import type { IconPickerSelectMeta } from "@/components/icon-picker";
-
-const IconPicker = lazy(() =>
-  import("@/components/icon-picker").then((mod) => ({ default: mod.IconPicker })),
-);
+import type { CartoesTab } from "@/pages/cartoes/types";
 
 const DELETE_MODAL_TIMEOUT_MS = 20_000;
 const IS_DEV = import.meta.env.DEV;
 const IMPORT_FILE_MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 const IMPORT_ALLOWED_EXTENSIONS = new Set(["csv", "ofx", "qfx", "txt", "pdf"]);
-const IMPORT_PDF_DEBUG_MAX_LINES = 80;
-const IMPORT_PDF_DEBUG_MAX_LINE_CHARS = 220;
-
-const IMPORT_ALLOWED_MIME_BY_EXTENSION: Record<string, string[]> = {
-  csv: ["text/csv", "application/csv", "application/vnd.ms-excel", "text/plain"],
-  txt: ["text/plain"],
-  ofx: ["application/ofx", "application/x-ofx", "application/octet-stream", "text/plain"],
-  qfx: ["application/ofx", "application/x-ofx", "application/octet-stream", "text/plain"],
-  pdf: ["application/pdf"],
-};
-
-type CartoesTab = "resumo" | "compras";
-type CanonicalImportStatus = "novo" | "duplicata_exata" | "possivel_duplicata" | "invalido";
 type CompraReembolsoModo = "total" | "metade" | "valor_custom" | "percentual_custom";
-type InvoiceMonthOption = { value: string; label: string };
-
-function normalizeImportDebugText(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 function isImportPdfDebugEnabled(): boolean {
   if (typeof window === "undefined") return false;
@@ -142,54 +131,6 @@ function isImportPdfDebugEnabled(): boolean {
   } catch {
     return false;
   }
-}
-
-function clampImportDebugLine(line: string): string {
-  if (line.length <= IMPORT_PDF_DEBUG_MAX_LINE_CHARS) return line;
-  return `${line.slice(0, IMPORT_PDF_DEBUG_MAX_LINE_CHARS)}…`;
-}
-
-function toIndexedImportDebugLines(lines: string[]): string[] {
-  const limited = lines.slice(0, IMPORT_PDF_DEBUG_MAX_LINES);
-  const indexed = limited.map((line, index) => `${index + 1}. ${clampImportDebugLine(line)}`);
-  if (lines.length > IMPORT_PDF_DEBUG_MAX_LINES) {
-    indexed.push(`... +${lines.length - IMPORT_PDF_DEBUG_MAX_LINES} linha(s) ocultas`);
-  }
-  return indexed;
-}
-
-function extractItauDebugSectionLines(text: string): string[] {
-  const lines = text
-    .replace(/\r/g, "\n")
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  if (lines.length === 0) return [];
-
-  const startIndex = lines.findIndex((line) => {
-    const normalized = normalizeImportDebugText(line);
-    return normalized.includes("LANCAMENTOS: COMPRAS E SAQUES")
-      || normalized.includes("LANCAMENTOS COMPRAS E SAQUES");
-  });
-
-  if (startIndex < 0) {
-    return lines.slice(0, 120);
-  }
-
-  const endIndex = lines.findIndex((line, index) => {
-    if (index <= startIndex) return false;
-    const normalized = normalizeImportDebugText(line);
-    return normalized.startsWith("LANCAMENTOS NO CARTAO")
-      || normalized.startsWith("TOTAL DOS LANCAMENTOS ATUAIS")
-      || normalized.startsWith("COMPRAS PARCELADAS - PROXIMAS FATURAS")
-      || normalized.startsWith("COMPRAS PARCELADAS PROXIMAS FATURAS")
-      || normalized.startsWith("LIMITES DE CREDITO")
-      || normalized.startsWith("ENCARGOS COBRADOS NESTA FATURA");
-  });
-
-  const finalEnd = endIndex > startIndex ? endIndex : Math.min(lines.length, startIndex + 180);
-  return lines.slice(startIndex, finalEnd);
 }
 
 function logItauImportDebugSnapshot(debugData: {
@@ -212,45 +153,6 @@ function logItauImportDebugSnapshot(debugData: {
   console.groupEnd();
 }
 
-function normalizeCartoesTab(value: string | null | undefined): CartoesTab {
-  if (value === "compras" || value === "resumo") {
-    return value;
-  }
-  if (value === "fatura") {
-    return "compras";
-  }
-  if (value === "parcelas") {
-    return "compras";
-  }
-  if (value === "limite") {
-    return "resumo";
-  }
-  return "resumo";
-}
-
-function isImportItemStructurallyInvalid(item: ParsedItem): boolean {
-  if (!item.descricao?.trim()) return true;
-  if (!Number.isFinite(item.valor) || item.valor <= 0) return true;
-  if (!Number.isFinite(item.valorParcela) || item.valorParcela <= 0) return true;
-  if (!Number.isInteger(item.parcelas) || item.parcelas < 1 || item.parcelas > 360) return true;
-  if (!Number.isInteger(item.parcelaAtual) || item.parcelaAtual < 1 || item.parcelaAtual > item.parcelas) return true;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(item.dataCompra)) return true;
-  return false;
-}
-
-function getImportItemEffectiveStatus(item: ParsedItem): CanonicalImportStatus {
-  const hasDuplicate = Boolean(item.duplicateId || item.duplicata);
-  if (isImportItemStructurallyInvalid(item)) return "invalido";
-
-  if (item.status === "duplicata_exata" || item.status === "possivel_duplicata" || item.status === "novo") {
-    return item.status;
-  }
-  if (item.status === "invalido") {
-    return hasDuplicate ? "possivel_duplicata" : "novo";
-  }
-  return hasDuplicate ? "possivel_duplicata" : "novo";
-}
-
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   return new Promise<T>((resolve, reject) => {
@@ -268,216 +170,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: 
   });
 }
 
-function tryParseApiErrorMessage(rawMessage: string): string | null {
-  const marker = ":";
-  const firstColon = rawMessage.indexOf(marker);
-  if (firstColon <= 0) return null;
-  const maybeJson = rawMessage.slice(firstColon + 1).trim();
-  if (!maybeJson.startsWith("{")) return null;
-
-  try {
-    const parsed = JSON.parse(maybeJson) as { message?: unknown; error?: unknown };
-    if (typeof parsed.message === "string" && parsed.message.trim().length > 0) {
-      return parsed.message.trim();
-    }
-    if (typeof parsed.error === "string" && parsed.error.trim().length > 0) {
-      return parsed.error.trim();
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function formatImportFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatInvoiceCompetencyLabel(monthReference: string): string {
-  const [year, month] = monthReference.split("-");
-  const monthNumber = Number(month);
-  const yearNumber = Number(year);
-  if (!Number.isFinite(yearNumber) || !Number.isFinite(monthNumber) || monthNumber < 1 || monthNumber > 12) {
-    return monthReference;
-  }
-  const asDate = new Date(yearNumber, monthNumber - 1, 1);
-  return format(asDate, "MMMM 'de' yyyy", { locale: ptBR }).replace(/^\w/, (char) => char.toUpperCase());
-}
-
-function getImportFileExtension(fileName: string): string {
-  const normalized = fileName.trim().toLowerCase();
-  const dotIndex = normalized.lastIndexOf(".");
-  if (dotIndex < 0 || dotIndex === normalized.length - 1) return "";
-  return normalized.slice(dotIndex + 1);
-}
-
-function isImportMimeAllowed(extension: string, mimeType: string): boolean {
-  const normalizedMime = mimeType.trim().toLowerCase();
-  if (!normalizedMime) return true;
-  const allowed = IMPORT_ALLOWED_MIME_BY_EXTENSION[extension];
-  if (!allowed || allowed.length === 0) return true;
-  return allowed.includes(normalizedMime);
-}
-
-function isNubankCardLikeName(cardName: string): boolean {
-  const normalized = cardName
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!normalized) return false;
-  if (normalized.includes("NUBANK")) return true;
-  return /\bNU\b/.test(normalized) && /\b(MASTERCARD|CREDITO|CARTAO)\b/.test(normalized);
-}
-
-function isItauCardLikeName(cardName: string): boolean {
-  const normalized = cardName
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!normalized) return false;
-  return normalized.includes("ITAU") || normalized.includes("ITAUCARD");
-}
-
-function isMercadoPagoCardLikeName(cardName: string): boolean {
-  const normalized = cardName
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!normalized) return false;
-  return normalized.includes("MERCADO PAGO") || normalized.includes("MERCADOPAGO") || normalized.includes("CARTAO MP");
-}
-
-function extractCardLast4FromName(cardName: string): string | null {
-  const explicitFinal = cardName.match(/(?:final|ending)\s*(\d{4})/i);
-  if (explicitFinal?.[1]) return explicitFinal[1];
-
-  const masked = cardName.match(/\*{2,}\s*(\d{4})/);
-  if (masked?.[1]) return masked[1];
-
-  const allLast4 = cardName.match(/\b(\d{4})\b/g);
-  if (allLast4 && allLast4.length > 0) {
-    return allLast4[allLast4.length - 1] ?? null;
-  }
-
-  return null;
-}
-
-function listToHumanReadable(values: string[]): string {
-  if (values.length <= 1) return values[0] ?? "";
-  if (values.length === 2) return `${values[0]} e ${values[1]}`;
-  return `${values.slice(0, -1).join(", ")} e ${values[values.length - 1]}`;
-}
-
-function normalizeServiceText(value: string | null | undefined): string {
-  return (value ?? "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function findMatchingServiceForImportItem(item: ParsedItem, servicos: Servico[]): Servico | null {
-  const provider = normalizeServiceText(item.recurringServiceCandidate?.matchedProvider);
-  const descricao = normalizeServiceText(item.descricao);
-  if (!provider && !descricao) return null;
-
-  const expectedValue = Number(item.valorParcela) || 0;
-  let best: { servico: Servico; score: number } | null = null;
-
-  for (const servico of servicos) {
-    const nome = normalizeServiceText(servico.nome);
-    if (!nome) continue;
-
-    const valueDiff = Math.abs((Number(servico.valorMensal) || 0) - expectedValue);
-    const providerMatch = provider.length > 0 && (nome.includes(provider) || provider.includes(nome));
-    const descricaoMatch = descricao.length > 0 && (nome.includes(descricao) || descricao.includes(nome));
-
-    let score = 0;
-    if (providerMatch) score += 4;
-    if (descricaoMatch) score += 2;
-    if (valueDiff <= 0.05) score += 2;
-    else if (valueDiff <= 3) score += 1;
-
-    if (score < 3) continue;
-    if (!best || score > best.score) {
-      best = { servico, score };
-    }
-  }
-
-  return best?.servico ?? null;
-}
-
-function applyServiceSuggestionMetadata(items: ParsedItem[], servicos: Servico[]): ParsedItem[] {
-  return items.map((item) => {
-    const candidate = item.recurringServiceCandidate ?? detectRecurringServiceCandidate(item.descricao);
-    if (!candidate.isServiceCandidate) {
-      return {
-        ...item,
-        recurringServiceCandidate: candidate,
-        serviceSuggestionAction: item.serviceSuggestionAction ?? "ignore",
-        linkedServiceId: null,
-        replaceExistingServiceLink: false,
-        serviceSuggestionWarning: null,
-      };
-    }
-
-    const matchedService = findMatchingServiceForImportItem(item, servicos);
-    const hasPotentialDuplicate = Boolean(matchedService);
-    const action = item.serviceSuggestionAction ?? (matchedService ? "link_existing" : "ignore");
-    const linkedServiceId = action === "link_existing"
-      ? (item.linkedServiceId ?? matchedService?.id ?? null)
-      : null;
-
-    return {
-      ...item,
-      recurringServiceCandidate: candidate,
-      serviceSuggestionAction: action,
-      linkedServiceId,
-      replaceExistingServiceLink: action === "link_existing" ? item.replaceExistingServiceLink === true : false,
-      serviceSuggestionWarning: hasPotentialDuplicate
-        ? `Serviço parecido encontrado: ${matchedService?.nome}. Prefira vincular ao existente para evitar duplicidade.`
-        : null,
-    };
-  });
-}
-
-function mergePreviewItemsWithLocalSignals(previewItems: ParsedItem[], parsedItems: ParsedItem[], servicos: Servico[]): ParsedItem[] {
-  const parsedById = new Map(parsedItems.map((item) => [item.id, item]));
-  const merged = previewItems.map((item) => {
-    const local = parsedById.get(item.id);
-    if (!local) return item;
-
-    return {
-      ...item,
-      recurringServiceCandidate: local.recurringServiceCandidate ?? item.recurringServiceCandidate,
-      serviceSuggestionAction: local.serviceSuggestionAction ?? item.serviceSuggestionAction ?? "ignore",
-      linkedServiceId: local.linkedServiceId ?? item.linkedServiceId ?? null,
-      replaceExistingServiceLink: local.replaceExistingServiceLink ?? item.replaceExistingServiceLink ?? false,
-      createServiceSuggestion: local.createServiceSuggestion ?? item.createServiceSuggestion ?? null,
-      serviceSuggestionWarning: local.serviceSuggestionWarning ?? item.serviceSuggestionWarning ?? null,
-      cardLast4: local.cardLast4 ?? item.cardLast4 ?? null,
-      invoiceIssuerDetected: local.invoiceIssuerDetected ?? item.invoiceIssuerDetected,
-      parserUsed: local.parserUsed ?? item.parserUsed,
-      duplicata: local.duplicata ?? item.duplicata,
-    };
-  });
-
-  return applyServiceSuggestionMetadata(merged, servicos);
-}
-
 export default function CartoesPage() {
   const { toast } = useToast();
   const premiumAccess = usePremiumAccess();
@@ -487,7 +179,6 @@ export default function CartoesPage() {
 
   const [openCard, setOpenCard] = useState(false);
   const [openCompra, setOpenCompra] = useState(false);
-  const [selectedCartao, setSelectedCartao] = useState<string>("");
   const [cardForm, setCardForm] = useState({ nome: "", limite: "", melhorDiaCompra: "", diaVencimento: "" });
   const [compraForm, setCompraForm] = useState<{
     descricao: string;
@@ -577,32 +268,61 @@ export default function CartoesPage() {
   const [isReconcilingImport, setIsReconcilingImport] = useState(false);
   const [rememberingCompraAliasByItemId, setRememberingCompraAliasByItemId] = useState<Record<string, boolean>>({});
   const [savedCompraAliasByItemId, setSavedCompraAliasByItemId] = useState<Record<string, boolean>>({});
-  const [comprasCartaoFocadoId, setComprasCartaoFocadoId] = useState<string | null>(null);
-  const [cartoesTab, setCartoesTab] = useState<CartoesTab>(() => {
-    if (typeof window === "undefined") return "resumo";
-    const params = new URLSearchParams(window.location.search);
-    return normalizeCartoesTab(params.get("tab"));
+  const {
+    selectedCartao,
+    setSelectedCartao,
+    cartoesTab,
+    setCartoesTab,
+    selectedInvoiceMonth,
+    setSelectedInvoiceMonth,
+    compraSearch,
+    setCompraSearch,
+    comprasCartaoFocadoId,
+    setComprasCartaoFocadoId,
+    handleCartoesTabChange,
+  } = useCartoesSelectionState({
+    initialCartoesTab: () => {
+      if (typeof window === "undefined") return "resumo";
+      const params = new URLSearchParams(window.location.search);
+      return normalizeCartoesTab(params.get("tab"));
+    },
+    initialInvoiceMonth: () => format(new Date(), "yyyy-MM"),
   });
-  const [selectedInvoiceMonth, setSelectedInvoiceMonth] = useState(() => format(new Date(), "yyyy-MM"));
-  const [compraSearch, setCompraSearch] = useState("");
   const [importEditForm, setImportEditForm] = useState({
     descricao: "", valor: "", dataCompra: "", parcelas: "", parcelaAtual: "", vencimentoFatura: "",
   });
-  const [openDeleteFaturaDialog, setOpenDeleteFaturaDialog] = useState(false);
-  const [deleteFaturaScope, setDeleteFaturaScope] = useState<"cartao" | "todos">("cartao");
-  const [deleteFaturaMes, setDeleteFaturaMes] = useState(format(new Date(), "yyyy-MM"));
-  const [deleteFaturaCartaoId, setDeleteFaturaCartaoId] = useState("");
-  const [deleteFaturaImpact, setDeleteFaturaImpact] = useState<DeleteFaturaResponse | null>(null);
-  const [deleteFaturaImpactLoading, setDeleteFaturaImpactLoading] = useState(false);
-  const [deleteFaturaImpactError, setDeleteFaturaImpactError] = useState<string | null>(null);
-
-  const [openDeleteCompraDialog, setOpenDeleteCompraDialog] = useState(false);
-  const [deleteCompraTarget, setDeleteCompraTarget] = useState<CompraCartao | null>(null);
-  const [deleteCompraScope, setDeleteCompraScope] = useState<DeleteCompraScope>("all_parcelas");
-  const [deleteCompraImpact, setDeleteCompraImpact] = useState<DeleteCompraResponse | null>(null);
-  const [deleteCompraImpactLoading, setDeleteCompraImpactLoading] = useState(false);
-  const [deleteCompraImpactError, setDeleteCompraImpactError] = useState<string | null>(null);
-  const [deleteCompraSubmitting, setDeleteCompraSubmitting] = useState(false);
+  const {
+    openDeleteFaturaDialog,
+    setOpenDeleteFaturaDialog,
+    deleteFaturaScope,
+    setDeleteFaturaScope,
+    deleteFaturaMes,
+    setDeleteFaturaMes,
+    deleteFaturaCartaoId,
+    setDeleteFaturaCartaoId,
+    deleteFaturaImpact,
+    setDeleteFaturaImpact,
+    deleteFaturaImpactLoading,
+    setDeleteFaturaImpactLoading,
+    deleteFaturaImpactError,
+    setDeleteFaturaImpactError,
+    openDeleteCompraDialog,
+    setOpenDeleteCompraDialog,
+    deleteCompraTarget,
+    deleteCompraScope,
+    setDeleteCompraScope,
+    deleteCompraImpact,
+    setDeleteCompraImpact,
+    deleteCompraImpactLoading,
+    setDeleteCompraImpactLoading,
+    deleteCompraImpactError,
+    setDeleteCompraImpactError,
+    deleteCompraSubmitting,
+    setDeleteCompraSubmitting,
+    resetDeleteCompraDialog,
+    openDeleteCompraConfirm,
+    handleOpenDeleteFaturaDialog,
+  } = useCartoesDeleteDialogState();
   const [parcelaSubmittingId, setParcelaSubmittingId] = useState<string | null>(null);
   const [comprovanteUploadParcelaId, setComprovanteUploadParcelaId] = useState<string | null>(null);
   const [comprovanteDeleteParcelaId, setComprovanteDeleteParcelaId] = useState<string | null>(null);
@@ -865,21 +585,6 @@ export default function CartoesPage() {
       return changed ? next : current;
     });
   }, [importItems]);
-  const getErrorMessage = (error: unknown) => {
-    const planLimitError = parsePlanLimitError(error);
-    if (planLimitError) {
-      return buildPlanLimitFriendlyMessage(planLimitError);
-    }
-    const premiumFeatureError = parsePremiumFeatureError(error);
-    if (premiumFeatureError) {
-      return buildPremiumFeatureFriendlyMessage(premiumFeatureError);
-    }
-    if (error instanceof Error) {
-      return tryParseApiErrorMessage(error.message) ?? error.message;
-    }
-    return "Erro inesperado";
-  };
-
   const logDev = (event: string, payload?: Record<string, unknown>) => {
     if (!IS_DEV) return;
     console.info("[cartoes][dev]", event, payload ?? {});
@@ -941,7 +646,6 @@ export default function CartoesPage() {
     return Math.max(0, Number((valor - abatido).toFixed(2)));
   };
 
-  const compraSearchNormalized = compraSearch.trim().toLowerCase();
   const normalizedIconMatchRules = useMemo<UserIconMatchRule[]>(
     () => iconMatchRules.map((rule) => ({
       id: rule.id,
@@ -1052,54 +756,22 @@ export default function CartoesPage() {
     () => groupParcelasCompraByCompraId(parcelasCompraByUser),
     [parcelasCompraByUser],
   );
-  const invoiceMonthOptions = useMemo<InvoiceMonthOption[]>(() => {
-    const monthSet = new Set<string>();
-
-    for (let offset = -12; offset <= 12; offset += 1) {
-      monthSet.add(format(addMonths(new Date(), offset), "yyyy-MM"));
-    }
-
-    for (const parcela of parcelasCompraByUser) {
-      const competency = getInvoiceCompetency(parcela.dataVencimento);
-      if (competency) monthSet.add(competency);
-    }
-
-    for (const compra of compras) {
-      const parcelasMaterializadas = parcelasCompraByCompraId.get(compra.id);
-      if (parcelasMaterializadas && parcelasMaterializadas.length > 0) {
-        continue;
-      }
-
-      const totalParcelas = Math.max(1, Math.trunc(Number(compra.parcelas) || 1));
-      const baseRaw = String(compra.dataCompra ?? "").trim();
-      if (!baseRaw) continue;
-
-      let baseDate: Date | null = null;
-      try {
-        const parsed = parseISO(baseRaw);
-        if (!Number.isNaN(parsed.getTime())) {
-          baseDate = parsed;
-        }
-      } catch {
-        baseDate = null;
-      }
-
-      if (!baseDate) continue;
-      for (let installmentIndex = 0; installmentIndex < totalParcelas; installmentIndex += 1) {
-        monthSet.add(format(addMonths(baseDate, installmentIndex), "yyyy-MM"));
-      }
-    }
-
-    return Array.from(monthSet)
-      .filter((month) => /^\d{4}-\d{2}$/.test(month))
-      .sort((a, b) => b.localeCompare(a))
-      .map((month) => ({ value: month, label: formatInvoiceCompetencyLabel(month) }));
-  }, [compras, parcelasCompraByCompraId, parcelasCompraByUser]);
-  const selectedInvoiceMonthLabel = useMemo(() => {
-    const selectedOption = invoiceMonthOptions.find((option) => option.value === selectedInvoiceMonth);
-    if (selectedOption) return selectedOption.label;
-    return formatInvoiceCompetencyLabel(selectedInvoiceMonth);
-  }, [invoiceMonthOptions, selectedInvoiceMonth]);
+  const {
+    invoiceMonthOptions,
+    selectedInvoiceMonthLabel,
+    getFilteredCardFaturaCompras,
+  } = useCartoesFilters({
+    cartoes,
+    compras,
+    parcelasCompraByUser,
+    parcelasCompraByCompraId,
+    selectedInvoiceMonth,
+    setSelectedInvoiceMonth,
+    currentInvoiceMonthReference,
+    compraSearch,
+    getCardCompras,
+    formatInvoiceCompetencyLabel,
+  });
   const getCardTotalForSelectedMonth = (cartaoId: string) =>
     calculateCardInvoiceForCompetency(
       cartaoId,
@@ -1111,14 +783,6 @@ export default function CartoesPage() {
     () => cartoes.reduce((sum, cartao) => sum + getCardTotalForSelectedMonth(cartao.id), 0),
     [cartoes, compras, parcelasCompraByCompraId, selectedInvoiceMonth],
   );
-
-  useEffect(() => {
-    if (invoiceMonthOptions.length === 0) return;
-    const hasSelectedMonth = invoiceMonthOptions.some((option) => option.value === selectedInvoiceMonth);
-    if (!hasSelectedMonth) {
-      setSelectedInvoiceMonth(currentInvoiceMonthReference);
-    }
-  }, [currentInvoiceMonthReference, invoiceMonthOptions, selectedInvoiceMonth]);
 
   const parcelaComprovanteMutation = useMutation({
     mutationFn: async ({ parcelaId, file }: { parcelaId: string; file: File }) => {
@@ -1248,58 +912,6 @@ export default function CartoesPage() {
     };
   };
 
-  const getFilteredCardCompras = (cartaoId: string) => {
-    const card = cartoes.find((item) => item.id === cartaoId);
-    return getCardCompras(cartaoId).filter((compra) => {
-      if (!compraSearchNormalized) return true;
-      const texto = [
-        compra.descricao,
-        card?.nome,
-        compra.dataCompra,
-        String(compra.valorParcela),
-        String(compra.valorTotal),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return texto.includes(compraSearchNormalized);
-    });
-  };
-
-  const getFilteredCardFaturaCompras = (cartaoId: string) => {
-    const card = cartoes.find((item) => item.id === cartaoId);
-    return getCardCompras(cartaoId).filter((compra) => {
-      const parcelasMaterializadas = parcelasCompraByCompraId.get(compra.id);
-      const isFromSelectedInvoiceCompetency = compraHasInstallmentInCompetency(
-        compra,
-        parcelasMaterializadas,
-        selectedInvoiceMonth,
-        { includePaid: true, includeCanceled: false },
-      );
-      if (!isFromSelectedInvoiceCompetency) return false;
-      if (!compraSearchNormalized) return true;
-      const texto = [
-        compra.descricao,
-        card?.nome,
-        compra.dataCompra,
-        String(compra.valorParcela),
-        String(compra.valorTotal),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return texto.includes(compraSearchNormalized);
-    });
-  };
-
-  const formatMesExibicao = (mes: string) => {
-    const [ano, mesNumero] = mes.split("-");
-    const parsedMonth = Number(mesNumero);
-    if (!ano || !Number.isFinite(parsedMonth) || parsedMonth < 1 || parsedMonth > 12) return mes;
-    const data = new Date(Number(ano), parsedMonth - 1, 1);
-    return format(data, "MMMM 'de' yyyy", { locale: ptBR }).replace(/^\w/, (char) => char.toUpperCase());
-  };
-
   const retryDeleteFaturaImpact = async () => {
     if (!deleteFaturaMes) return;
     if (deleteFaturaScope === "cartao" && !deleteFaturaCartaoId) return;
@@ -1392,24 +1004,6 @@ export default function CartoesPage() {
       if (!canUpdate()) return;
       setDeleteCompraImpactLoading(false);
     }
-  };
-
-  const resetDeleteCompraDialog = () => {
-    setOpenDeleteCompraDialog(false);
-    setDeleteCompraTarget(null);
-    setDeleteCompraScope("all_parcelas");
-    setDeleteCompraImpact(null);
-    setDeleteCompraImpactLoading(false);
-    setDeleteCompraImpactError(null);
-    setDeleteCompraSubmitting(false);
-  };
-
-  const openDeleteCompraConfirm = (compra: CompraCartao) => {
-    setDeleteCompraTarget(compra);
-    setDeleteCompraScope(Number(compra.parcelas) > 1 ? "single_parcela" : "all_parcelas");
-    setDeleteCompraImpact(null);
-    setDeleteCompraImpactError(null);
-    setOpenDeleteCompraDialog(true);
   };
 
   const openAbaterSaldoParcelaDialog = (parcelaId: string, pessoaId: string) => {
@@ -2762,145 +2356,64 @@ export default function CartoesPage() {
   };
 
   const showCompraSearch = activeCartoesTab === "compras";
-  const handleCartoesTabChange = (tab: CartoesTab) => {
-    setCartoesTab(tab);
-    setComprasCartaoFocadoId(null);
+  const cartoesInsightsItems = buildCartoesInsightsItems({
+    cartoes,
+    compras,
+    getCardUsedLimit,
+    getCardAvailableLimit,
+  });
+  const handleEditCartaoFromFatura = (cartao: Cartao) => {
+    const resolvedIcon = resolveEntityIconReference(cartao.iconeId ?? null, userIconLibrary);
+    setEditingCard(cartao);
+    setEditCardForm({
+      nome: cartao.nome,
+      limite: String(cartao.limite),
+      melhorDiaCompra: String(cartao.melhorDiaCompra),
+      diaVencimento: String(cartao.diaVencimento),
+    });
+    setEditCardIcone(resolvedIcon.displayIconId);
+    setEditCardIconPersistableId(resolvedIcon.persistableIconId);
+    setEditCardIconManualSelection(Boolean(cartao.iconeId));
   };
-  const cartoesInsightsItems = (() => {
-    if (cartoes.length === 0) return [] as CartaoInsightItem[];
-
-    const items: CartaoInsightItem[] = [];
-    const rankedByUtil = cartoes
-      .map((cartao) => {
-        const limite = Number(cartao.limite) || 0;
-        const comprometido = getCardUsedLimit(cartao.id);
-        const percentual = limite > 0 ? (comprometido / limite) * 100 : 0;
-        return { cartao, percentual };
-      })
-      .sort((a, b) => b.percentual - a.percentual);
-
-    const critical = rankedByUtil.find((item) => item.percentual >= 85);
-    if (critical) {
-      items.push({
-        id: `critical-${critical.cartao.id}`,
-        severity: "critical",
-        title: `${critical.cartao.nome} quase comprometido`,
-        description: `${critical.percentual.toFixed(0)}% do limite já utilizado.`,
-      });
-    }
-
-    const warning = rankedByUtil.find((item) => item.percentual >= 65 && item.percentual < 85);
-    if (warning) {
-      items.push({
-        id: `warning-${warning.cartao.id}`,
-        severity: "warning",
-        title: `${warning.cartao.nome} exige atenção`,
-        description: `Uso de limite em ${warning.percentual.toFixed(0)}%.`,
-      });
-    }
-
-    const compraLonga = compras.find((compra) => Number(compra.parcelas) >= 24);
-    if (compraLonga) {
-      items.push({
-        id: `long-${compraLonga.id}`,
-        severity: "info",
-        title: "Parcelamento longo identificado",
-        description: `${compraLonga.descricao} em ${compraLonga.parcelas} parcelas.`,
-      });
-    }
-
-    const bestAvailable = cartoes
-      .map((cartao) => ({ cartao, disponivel: getCardAvailableLimit(cartao.id) }))
-      .sort((a, b) => b.disponivel - a.disponivel)[0];
-    if (bestAvailable && bestAvailable.disponivel > 0) {
-      items.push({
-        id: `best-${bestAvailable.cartao.id}`,
-        severity: "info",
-        title: "Melhor disponibilidade atual",
-        description: `${bestAvailable.cartao.nome} com ${formatCartaoCurrency(bestAvailable.disponivel)} disponível.`,
-      });
-    }
-
-    return items.slice(0, 4);
-  })();
-
+  const handleAddCompraFromFatura = (cartaoId: string) => {
+    setSelectedCartao(cartaoId);
+    setOpenCompra(true);
+  };
+  const handleEditCompraFromFatura = (compra: CompraCartao) => {
+    setEditingCompra(compra);
+    setEditCompraIcone(compra.iconeId ?? null);
+    setEditCompraIconDirty(false);
+    setEditCompraIconPersistableId(undefined);
+    setApplyEditCompraIconRule(false);
+    setEditCompraForm({
+      descricao: compra.descricao,
+      valorTotal: String(compra.valorTotal),
+      parcelas: String(compra.parcelas),
+      pessoaId: compra.pessoaId ?? "",
+      statusPessoa: compra.statusPessoa ?? "pendente",
+      reembolsoModo: (compra.reembolsoModo as "total" | "metade" | "valor_custom" | "percentual_custom" | null | undefined) ?? "total",
+      reembolsoValorTotal: compra.reembolsoValorTotal ? String(compra.reembolsoValorTotal) : "",
+      reembolsoPercentual: compra.reembolsoPercentual ? String(compra.reembolsoPercentual) : "",
+    });
+  };
+  const handleMarcarReembolsoFromFatura = (compraId: string) => {
+    handleMarcarReembolso(compraId, true);
+  };
   if (isLoading) {
-    return (
-      <div className="app-page-shell app-section-stack">
-        <Skeleton className="h-8 w-32" />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2].map((i) => <Skeleton key={i} className="h-64" />)}
-        </div>
-      </div>
-    );
+    return <CartoesPageLoadingState />;
   }
 
   return (
     <div className="app-page-shell app-section-stack" data-testid="cartoes-page">
-      <CartoesPageHeader
-        title="Cartoes de Credito"
-        subtitle="Gerencie seus cartoes e compras parceladas"
-        actions={(
-          <>
-            <div className="flex min-w-0 flex-col items-stretch gap-2 sm:col-span-2 md:flex-row md:items-center xl:col-span-1">
-              <Button
-                variant="outline"
-                onClick={openImportDialog}
-                className="min-w-0 flex-1 justify-start text-left whitespace-normal break-words touch-feedback sm:justify-center xl:w-auto xl:flex-none xl:whitespace-nowrap"
-                data-testid="button-importar-fatura"
-              >
-                <Upload className="mr-2 h-4 w-4 flex-shrink-0" />
-                <span className="leading-tight">
-                  {smartImportLiberado ? "Importar Fatura" : "Importação inteligente (Premium)"}
-                </span>
-              </Button>
-              {!smartImportLiberado ? (
-                <Badge
-                  variant="secondary"
-                  className="w-fit shrink-0 whitespace-nowrap self-start sm:self-auto"
-                  data-testid="badge-smart-import-premium"
-                >
-                  Premium
-                </Badge>
-              ) : null}
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setDeleteFaturaScope("cartao");
-                setDeleteFaturaMes(format(new Date(), "yyyy-MM"));
-                setDeleteFaturaImpact(null);
-                setDeleteFaturaImpactError(null);
-                setOpenDeleteFaturaDialog(true);
-              }}
-              disabled={cartoes.length === 0}
-              className="min-w-0 w-full justify-start text-left whitespace-normal break-words touch-feedback sm:justify-center xl:w-auto xl:flex-none xl:whitespace-nowrap"
-              data-testid="button-excluir-fatura"
-            >
-              <Trash2 className="mr-2 h-4 w-4 flex-shrink-0" />
-              Excluir fatura
-            </Button>
-            {smartImportLiberado && lastImportLogId ? (
-              <Button
-                variant="outline"
-                className="min-w-0 w-full justify-start text-left whitespace-normal break-words touch-feedback sm:col-span-2 sm:justify-center xl:w-auto xl:flex-none xl:whitespace-nowrap"
-                onClick={handleRollbackLastImport}
-                disabled={rollbackImportMutation.isPending}
-                data-testid="button-rollback-import"
-              >
-                <RefreshCw className="mr-2 h-4 w-4 flex-shrink-0" />
-                {rollbackImportMutation.isPending ? "Revertendo..." : "Desfazer Ultima Importacao"}
-              </Button>
-            ) : null}
-            <Button
-              className="w-full touch-feedback sm:col-span-2 xl:w-auto xl:flex-none"
-              data-testid="button-add-cartao"
-              onClick={() => setOpenCard(true)}
-            >
-              <Plus className="mr-2 h-4 w-4" /> Novo cartao
-            </Button>
-          </>
-        )}
+      <CartoesPageToolbar
+        smartImportLiberado={smartImportLiberado}
+        cartoesCount={cartoes.length}
+        lastImportLogId={lastImportLogId}
+        rollbackImportPending={rollbackImportMutation.isPending}
+        onOpenImportDialog={openImportDialog}
+        onOpenDeleteFaturaDialog={handleOpenDeleteFaturaDialog}
+        onRollbackLastImport={handleRollbackLastImport}
+        onOpenNewCardDialog={() => setOpenCard(true)}
       />
 
       <CartoesSummarySection
@@ -2925,224 +2438,66 @@ export default function CartoesPage() {
         )}
       />
 
-      <NovaCompraCartaoDialog
-        open={openCompra}
-        onOpenChange={setOpenCompra}
-        form={compraForm}
-        setForm={setCompraForm}
+      <NewCompraDialog
+        openCompra={openCompra}
+        setOpenCompra={setOpenCompra}
+        compraForm={compraForm}
+        setCompraForm={setCompraForm}
         pessoas={pessoas}
         formatCurrency={formatCartaoCurrency}
-        onSubmit={handleCreateCompra}
-        isPending={createCompraMutation.isPending}
+        onCreateCompra={handleCreateCompra}
+        createCompraPending={createCompraMutation.isPending}
       />
 
-      <CartaoFormDialog
-        open={openCard}
-        onOpenChange={(open) => {
-          setOpenCard(open);
-          if (!open) {
-            setNewCardIcone(null);
-            setNewCardIconPersistableId(null);
-            setNewCardIconManualSelection(false);
-          }
-        }}
-        title="Novo Cartao"
-        form={cardForm}
-        setForm={setCardForm}
-        iconPicker={(
-          <div className="space-y-2">
-            <Suspense fallback={<Skeleton className="h-14 w-full" />}>
-              <IconPicker
-                value={newCardPreviewIconId}
-                name={cardForm.nome}
-                autoApplySuggestion={false}
-                onChange={(nextIconId) => {
-                  setNewCardIcone(nextIconId);
-                  if (nextIconId === null) {
-                    setNewCardIconPersistableId(null);
-                    setNewCardIconManualSelection(false);
-                  }
-                }}
-                onSelectMeta={(meta: IconPickerSelectMeta) => {
-                  if (meta.source === "reset") {
-                    setNewCardIcone(null);
-                    setNewCardIconPersistableId(null);
-                    setNewCardIconManualSelection(false);
-                    return;
-                  }
-
-                  setNewCardIcone(meta.displayValue);
-                  setNewCardIconPersistableId(meta.persistableIconId ?? null);
-                  setNewCardIconManualSelection(true);
-                }}
-                size="md"
-              />
-            </Suspense>
-            {newCardIconManualSelection ? (
-              <p className="text-xs text-muted-foreground">Ícone manual selecionado.</p>
-            ) : newCardStrongIconSuggestion.shouldAutoApply ? (
-              <p className="text-xs text-emerald-600">Ícone aplicado automaticamente por palavra-chave.</p>
-            ) : null}
-            {showNewCardMediumSuggestion ? (
-              <div className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-                <p>
-                  Ícone sugerido: {newCardStrongIconSuggestion.label ?? "Biblioteca"}
-                </p>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-auto px-0 text-xs"
-                  onClick={() => {
-                    setNewCardIcone(newCardStrongIconSuggestion.displayIconId);
-                    setNewCardIconPersistableId(newCardStrongIconSuggestion.persistableIconId);
-                    setNewCardIconManualSelection(true);
-                  }}
-                >
-                  Usar este ícone
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        )}
-        onSubmit={handleCreateCard}
-        isPending={createCardMutation.isPending}
-        pendingLabel="Salvando..."
-        submitLabel="Salvar"
-        testIds={{
-          nome: "input-cartao-nome",
-          limite: "input-cartao-limite",
-          melhorDiaCompra: "input-cartao-melhordia",
-          diaVencimento: "input-cartao-vencimento",
-          submit: "button-save-cartao",
-        }}
+      <CartaoCreateEditDialogs
+        openCard={openCard}
+        setOpenCard={setOpenCard}
+        cardForm={cardForm}
+        setCardForm={setCardForm}
+        newCardPreviewIconId={newCardPreviewIconId}
+        setNewCardIcone={setNewCardIcone}
+        setNewCardIconPersistableId={setNewCardIconPersistableId}
+        setNewCardIconManualSelection={setNewCardIconManualSelection}
+        newCardIconManualSelection={newCardIconManualSelection}
+        newCardStrongIconSuggestion={newCardStrongIconSuggestion}
+        showNewCardMediumSuggestion={showNewCardMediumSuggestion}
+        onCreateCard={handleCreateCard}
+        createCardPending={createCardMutation.isPending}
+        editingCard={editingCard}
+        setEditingCard={setEditingCard}
+        editCardForm={editCardForm}
+        setEditCardForm={setEditCardForm}
+        editCardPreviewIconId={editCardPreviewIconId}
+        setEditCardIcone={setEditCardIcone}
+        setEditCardIconPersistableId={setEditCardIconPersistableId}
+        setEditCardIconManualSelection={setEditCardIconManualSelection}
+        editCardIconManualSelection={editCardIconManualSelection}
+        editCardStrongIconSuggestion={editCardStrongIconSuggestion}
+        showEditCardMediumSuggestion={showEditCardMediumSuggestion}
+        onUpdateCard={handleUpdateCard}
+        updateCardPending={updateCardMutation.isPending}
       />
 
-      <CartaoFormDialog
-        open={!!editingCard}
-        onOpenChange={(open) => {
-          if (!open) {
-            setEditingCard(null);
-            setEditCardIcone(null);
-            setEditCardIconPersistableId(null);
-            setEditCardIconManualSelection(false);
-          }
-        }}
-        title="Editar Cartao"
-        form={editCardForm}
-        setForm={setEditCardForm}
-        iconPicker={(
-          <div className="space-y-2">
-            <Suspense fallback={<Skeleton className="h-14 w-full" />}>
-              <IconPicker
-                value={editCardPreviewIconId}
-                name={editCardForm.nome}
-                autoApplySuggestion={false}
-                onChange={(nextIconId) => {
-                  setEditCardIcone(nextIconId);
-                  if (nextIconId === null) {
-                    setEditCardIconPersistableId(null);
-                    setEditCardIconManualSelection(false);
-                  }
-                }}
-                onSelectMeta={(meta: IconPickerSelectMeta) => {
-                  if (meta.source === "reset") {
-                    setEditCardIcone(null);
-                    setEditCardIconPersistableId(null);
-                    setEditCardIconManualSelection(false);
-                    return;
-                  }
-
-                  setEditCardIcone(meta.displayValue);
-                  setEditCardIconPersistableId(meta.persistableIconId ?? null);
-                  setEditCardIconManualSelection(true);
-                }}
-                size="md"
-              />
-            </Suspense>
-            {editCardIconManualSelection ? (
-              <p className="text-xs text-muted-foreground">Ícone manual selecionado.</p>
-            ) : editCardStrongIconSuggestion.shouldAutoApply ? (
-              <p className="text-xs text-emerald-600">Ícone aplicado automaticamente por palavra-chave.</p>
-            ) : null}
-            {showEditCardMediumSuggestion ? (
-              <div className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-                <p>
-                  Ícone sugerido: {editCardStrongIconSuggestion.label ?? "Biblioteca"}
-                </p>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-auto px-0 text-xs"
-                  onClick={() => {
-                    setEditCardIcone(editCardStrongIconSuggestion.displayIconId);
-                    setEditCardIconPersistableId(editCardStrongIconSuggestion.persistableIconId);
-                    setEditCardIconManualSelection(true);
-                  }}
-                >
-                  Usar este ícone
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        )}
-        onSubmit={handleUpdateCard}
-        isPending={updateCardMutation.isPending}
-        pendingLabel="Salvando..."
-        submitLabel="Salvar alteracoes"
-        testIds={{
-          nome: "input-edit-cartao-nome",
-          limite: "input-edit-cartao-limite",
-          melhorDiaCompra: "input-edit-cartao-melhordia",
-          diaVencimento: "input-edit-cartao-vencimento",
-          submit: "button-save-edit-cartao",
-        }}
-      />
-
-      <EditarCompraCartaoDialog
-        open={!!editingCompra}
-        onOpenChange={(open) => {
-          if (!open) {
-            setEditingCompra(null);
-            setEditCompraIcone(null);
-            setEditCompraIconDirty(false);
-            setEditCompraIconPersistableId(undefined);
-            setApplyEditCompraIconRule(false);
-          }
-        }}
-        form={editCompraForm}
-        setForm={setEditCompraForm}
+      <EditCompraDialog
+        editingCompra={editingCompra}
+        setEditingCompra={setEditingCompra}
+        editCompraForm={editCompraForm}
+        setEditCompraForm={setEditCompraForm}
         pessoas={pessoas}
         formatCurrency={formatCartaoCurrency}
-        iconPreviewId={editCompraIconPreviewId}
-        iconPreviewLabel={editCompraIconPreviewLabel}
-        iconPreviewHint={editCompraIconPreviewHint}
-        applyIconToSimilarPurchases={applyEditCompraIconRule}
-        onApplyIconToSimilarPurchasesChange={setApplyEditCompraIconRule}
-        iconPicker={(
-          <Suspense fallback={<Skeleton className="h-14 w-full sm:w-44" />}>
-            <IconPicker
-              value={editCompraIconPreviewId}
-              name={editCompraForm.descricao}
-              autoApplySuggestion={false}
-              onChange={(nextIconId) => {
-                setEditCompraIconDirty(true);
-                setEditCompraIcone(nextIconId);
-                setEditCompraIconPersistableId(undefined);
-              }}
-              onSelectMeta={(meta: IconPickerSelectMeta) => {
-                setEditCompraIconDirty(true);
-                setEditCompraIcone(meta.displayValue);
-                setEditCompraIconPersistableId(meta.persistableIconId ?? null);
-              }}
-              size="md"
-            />
-          </Suspense>
-        )}
-        onSubmit={handleUpdateCompra}
-        isPending={updateCompraMutation.isPending}
+        editCompraIconPreviewId={editCompraIconPreviewId}
+        editCompraIconPreviewLabel={editCompraIconPreviewLabel}
+        editCompraIconPreviewHint={editCompraIconPreviewHint}
+        applyEditCompraIconRule={applyEditCompraIconRule}
+        setApplyEditCompraIconRule={setApplyEditCompraIconRule}
+        setEditCompraIconDirty={setEditCompraIconDirty}
+        setEditCompraIcone={setEditCompraIcone}
+        setEditCompraIconPersistableId={setEditCompraIconPersistableId}
+        onUpdateCompra={handleUpdateCompra}
+        updateCompraPending={updateCompraMutation.isPending}
       />
 
-      <CartoesDialogs
+      <DeleteCompraFaturaDialogs
         openDeleteFaturaDialog={openDeleteFaturaDialog}
         setOpenDeleteFaturaDialog={setOpenDeleteFaturaDialog}
         deleteFaturaScope={deleteFaturaScope}
@@ -3370,103 +2725,52 @@ export default function CartoesPage() {
         }}
       />
 
-      <div data-testid={`cartoes-tab-${activeCartoesTab}`}>
-        <CartoesGrid
-          cartoes={cartoes}
-          cartoesTab={activeCartoesTab}
-          getCardTotal={getCardTotalForSelectedMonth}
-          getCardUsedLimit={getCardUsedLimit}
-          getCardAvailableLimit={getCardAvailableLimit}
-          getCardCompras={getCardCompras}
-          formatCartaoCurrency={formatCartaoCurrency}
-          onOpenCompras={(cartaoId) => {
-            setCartoesTab("compras");
-            setSelectedCartao(cartaoId);
-            setComprasCartaoFocadoId(cartaoId);
-          }}
-          resolveCardIconId={resolveCardAutoIconId}
-        />
-      </div>
+      <CartoesListSection
+        activeCartoesTab={activeCartoesTab}
+        cartoes={cartoes}
+        getCardTotal={getCardTotalForSelectedMonth}
+        getCardUsedLimit={getCardUsedLimit}
+        getCardAvailableLimit={getCardAvailableLimit}
+        getCardCompras={getCardCompras}
+        formatCartaoCurrency={formatCartaoCurrency}
+        onOpenCompras={(cartaoId) => {
+          setCartoesTab("compras");
+          setSelectedCartao(cartaoId);
+          setComprasCartaoFocadoId(cartaoId);
+        }}
+        resolveCardIconId={resolveCardAutoIconId}
+      />
 
-      <div className={activeCartoesTab === "compras" || cartoes.length === 0 ? "" : "hidden"}>
-      {cartoes.length === 0 ? (
-        <CartoesEmptyState />
-      ) : prefs.mobileMode ? (
-        <CartoesMobileTabs
-          cartoes={cartoes}
-          selectedCartao={selectedCartao}
-          setSelectedCartao={setSelectedCartao}
-          setOpenCompra={setOpenCompra}
-          totalFaturas={totalFaturasForSelectedMonth}
-          formatCurrency={formatCartaoCurrency}
-          getCardTotal={getCardTotalForSelectedMonth}
-          getCardAvailableLimit={getCardAvailableLimit}
-          getFilteredCardCompras={getFilteredCardFaturaCompras}
-          invoiceMonthLabel={selectedInvoiceMonthLabel}
-          servicos={servicos}
-          onOpenParcelas={setViewingCompra}
-          onDeleteCompra={openDeleteCompraConfirm}
-          resolveCompraIconSuggestion={resolveCompraIconSuggestion}
-          resolveCardIconId={resolveCardAutoIconId}
-        />
-      ) : (
-        <CartoesComprasGrid
-          cartoes={cartoes}
-          invoiceMonthLabel={selectedInvoiceMonthLabel}
-          pessoas={pessoas}
-          servicos={servicos}
-          formatCurrency={formatCartaoCurrency}
-          getCardTotal={getCardTotalForSelectedMonth}
-          getCardUsedLimit={getCardUsedLimit}
-          getCardAvailableLimit={getCardAvailableLimit}
-          getFilteredCardCompras={getFilteredCardFaturaCompras}
-          getDaysUntilInvoice={getDaysUntilInvoice}
-          getNextInvoiceDate={getNextInvoiceDate}
-          focusedCartaoId={comprasCartaoFocadoId}
-          onEditCartao={(cartao) => {
-            const resolvedIcon = resolveEntityIconReference(cartao.iconeId ?? null, userIconLibrary);
-            setEditingCard(cartao);
-            setEditCardForm({
-              nome: cartao.nome,
-              limite: String(cartao.limite),
-              melhorDiaCompra: String(cartao.melhorDiaCompra),
-              diaVencimento: String(cartao.diaVencimento),
-            });
-            setEditCardIcone(resolvedIcon.displayIconId);
-            setEditCardIconPersistableId(resolvedIcon.persistableIconId);
-            setEditCardIconManualSelection(Boolean(cartao.iconeId));
-          }}
-          onDeleteCartao={handleDeleteCard}
-          onAddCompra={(cartaoId) => {
-            setSelectedCartao(cartaoId);
-            setOpenCompra(true);
-          }}
-          onOpenParcelas={setViewingCompra}
-          onEditCompra={(compra) => {
-            setEditingCompra(compra);
-            setEditCompraIcone(compra.iconeId ?? null);
-            setEditCompraIconDirty(false);
-            setEditCompraIconPersistableId(undefined);
-            setApplyEditCompraIconRule(false);
-            setEditCompraForm({
-              descricao: compra.descricao,
-              valorTotal: String(compra.valorTotal),
-              parcelas: String(compra.parcelas),
-              pessoaId: compra.pessoaId ?? "",
-              statusPessoa: compra.statusPessoa ?? "pendente",
-              reembolsoModo: (compra.reembolsoModo as "total" | "metade" | "valor_custom" | "percentual_custom" | null | undefined) ?? "total",
-              reembolsoValorTotal: compra.reembolsoValorTotal ? String(compra.reembolsoValorTotal) : "",
-              reembolsoPercentual: compra.reembolsoPercentual ? String(compra.reembolsoPercentual) : "",
-            });
-          }}
-          onDeleteCompra={openDeleteCompraConfirm}
-          onMarcarReembolso={(compraId) => handleMarcarReembolso(compraId, true)}
-          resolveCompraIconSuggestion={resolveCompraIconSuggestion}
-          onSaveCompraIconRule={handleSaveCompraIconRule}
-          resolveCardIconId={resolveCardAutoIconId}
-        />
-      )}
-      </div>
+      <CartaoFaturaSection
+        activeCartoesTab={activeCartoesTab}
+        cartoes={cartoes}
+        mobileMode={prefs.mobileMode}
+        selectedCartao={selectedCartao}
+        setSelectedCartao={setSelectedCartao}
+        setOpenCompra={setOpenCompra}
+        totalFaturasForSelectedMonth={totalFaturasForSelectedMonth}
+        formatCartaoCurrency={formatCartaoCurrency}
+        getCardTotalForSelectedMonth={getCardTotalForSelectedMonth}
+        getCardUsedLimit={getCardUsedLimit}
+        getCardAvailableLimit={getCardAvailableLimit}
+        getFilteredCardFaturaCompras={getFilteredCardFaturaCompras}
+        selectedInvoiceMonthLabel={selectedInvoiceMonthLabel}
+        servicos={servicos}
+        pessoas={pessoas}
+        onOpenParcelas={setViewingCompra}
+        onDeleteCompra={openDeleteCompraConfirm}
+        onEditCompra={handleEditCompraFromFatura}
+        onMarcarReembolso={handleMarcarReembolsoFromFatura}
+        onSaveCompraIconRule={handleSaveCompraIconRule}
+        resolveCompraIconSuggestion={resolveCompraIconSuggestion}
+        resolveCardIconId={resolveCardAutoIconId}
+        comprasCartaoFocadoId={comprasCartaoFocadoId}
+        onEditCartao={handleEditCartaoFromFatura}
+        onDeleteCartao={handleDeleteCard}
+        onAddCompra={handleAddCompraFromFatura}
+        getDaysUntilInvoice={getDaysUntilInvoice}
+        getNextInvoiceDate={getNextInvoiceDate}
+      />
     </div>
   );
 }

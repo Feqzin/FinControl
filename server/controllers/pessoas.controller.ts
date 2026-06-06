@@ -14,6 +14,31 @@ function resolvePessoaListStatus(raw: unknown): PessoaListStatus {
 
 export function createPessoasController(service: PessoasService) {
   return {
+    listSaldoMovimentacoesByUser: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      return res.json(await service.listSaldoMovimentacoesByUser(userId));
+    },
+
+    listSaldoMovimentacoes: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const pessoaId = getParam(req, "pessoaId");
+      const result = await service.listSaldoMovimentacoes(pessoaId, userId);
+      if (!result) {
+        return sendNotFound(res, "Pessoa not found");
+      }
+      return res.json(result);
+    },
+
+    getResumo: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const pessoaId = getParam(req, "pessoaId");
+      const resumo = await service.getResumo(pessoaId, userId);
+      if (!resumo) {
+        return sendNotFound(res, "Pessoa not found");
+      }
+      return res.json(resumo);
+    },
+
     list: async (req: Request, res: Response) => {
       const userId = getUserId(req);
       const status = resolvePessoaListStatus(req.query.status);

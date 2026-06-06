@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -319,6 +320,9 @@ export default function Dashboard() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Ajustes do painel</DialogTitle>
+                    <DialogDescription className="sr-only">
+                      Ajuste o modo de interface e as preferências rápidas exibidas no painel essencial.
+                    </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 pt-2">
                     <div className="space-y-2">
@@ -515,6 +519,9 @@ export default function Dashboard() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Personalizar Painel</DialogTitle>
+                    <DialogDescription className="sr-only">
+                      Escolha quais cards ficam visíveis e ajuste as preferências do painel no modo celular.
+                    </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-3 pt-4">
                     <div className="flex items-center justify-between p-3 rounded-xl border bg-muted/30">

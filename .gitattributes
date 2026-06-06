@@ -1,16 +1,27 @@
 # Exclude local/operational artifacts from git archive exports.
 .env export-ignore
 .env.* export-ignore
+.env.test export-ignore
+.env.test.* export-ignore
 .envrc export-ignore
 .git export-ignore
 node_modules export-ignore
 dist export-ignore
 artifacts export-ignore
+artifacts/** export-ignore
 diagnostics export-ignore
+diagnostics/** export-ignore
 attached_assets export-ignore
+attached_assets/** export-ignore
+Debt-Control export-ignore
+Debt-Control/** export-ignore
+**/Debt-Control/** export-ignore
 .agents export-ignore
+.agents/** export-ignore
 .config export-ignore
+.config/** export-ignore
 .local export-ignore
+.local/** export-ignore
 *.zip export-ignore
 *.7z export-ignore
 *.tar export-ignore

@@ -175,6 +175,45 @@ export class ParcelasService {
     });
   }
 
+  async listParcelasCompraByUser(userId: string) {
+    return runFinancialTransaction(this.repository, async (repository) => {
+      try {
+        const rows = await repository.getParcelasCompraByUser(userId);
+        const compras = await repository.getComprasCartao(userId);
+
+        if (compras.length === 0) {
+          return rows;
+        }
+
+        const compraIdsWithParcelas = new Set(rows.map((row) => row.compraCartaoId));
+        const comprasSemParcelas = compras.filter((compra) => !compraIdsWithParcelas.has(compra.id));
+
+        if (comprasSemParcelas.length === 0) {
+          return rows;
+        }
+
+        for (const compra of comprasSemParcelas) {
+          await materializeParcelasCompraIfMissing(repository, compra);
+          await recomputeCardPurchaseAggregate(repository, compra.id, userId);
+        }
+
+        return repository.getParcelasCompraByUser(userId);
+      } catch (error) {
+        writeTechnicalLog({
+          event: "parcelas_compra.list.error",
+          source: "parcelas.service",
+          level: "error",
+          data: {
+            userId,
+            scope: "by_user",
+            error: toErrorLog(error),
+          },
+        });
+        throw error;
+      }
+    });
+  }
+
   async updateParcelaCompra(id: string, userId: string, data: ParcelaCompraUpdateBodyInput) {
     return runFinancialTransaction(this.repository, async (repository) => {
       const updated = await repository.updateParcelaCompra(id, userId, data);

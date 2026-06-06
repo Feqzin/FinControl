@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -187,6 +188,9 @@ export default function PatrimonioPage() {
               <DialogTitle>
                 {editingPatrimonio ? "Editar Patrimônio" : "Novo Patrimônio"}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                Cadastre ou edite um item do patrimônio informando descrição, categoria e valor.
+              </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">

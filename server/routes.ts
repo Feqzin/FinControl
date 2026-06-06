@@ -32,6 +32,7 @@ import { createCompraAliasesController } from "./controllers/compra-aliases.cont
 import { createIconMatchRulesController } from "./controllers/icon-match-rules.controller";
 import { createUserIconLibraryController } from "./controllers/user-icon-library.controller";
 import { createOfficialIconsController } from "./controllers/official-icons.controller";
+import { getUserId } from "./controllers/controller-utils";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes";
 import { PagamentosTimelineService } from "./services/pagamentos-timeline.service";
@@ -41,6 +42,8 @@ import { CompraAliasesService } from "./services/compra-aliases.service";
 import { IconMatchRulesService } from "./services/icon-match-rules.service";
 import { UserIconLibraryService } from "./services/user-icon-library.service";
 import { OfficialIconLibraryService } from "./services/official-icons.service";
+import { BillingService } from "../serverless/services/billing.service";
+import { calculateRemaining } from "../shared/subscription";
 import { requirePremiumFeature } from "./subscription-access";
 import { importRateLimit } from "./middleware/rate-limit";
 import {
@@ -101,6 +104,7 @@ export function registerRoutes(app: Express): void {
   const iconMatchRulesController = createIconMatchRulesController(new IconMatchRulesService());
   const userIconLibraryController = createUserIconLibraryController(new UserIconLibraryService());
   const officialIconsController = createOfficialIconsController(new OfficialIconLibraryService());
+  const billingService = new BillingService();
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -149,6 +153,39 @@ export function registerRoutes(app: Express): void {
   app.patch("/api/admin/icons/packs/:id", requireAuth, officialIconsController.adminUpdatePack);
   app.post("/api/admin/icons/official", requireAuth, officialIconsController.adminCreateOfficialIcon);
   app.patch("/api/admin/icons/official/:id", requireAuth, officialIconsController.adminUpdateOfficialIcon);
+  app.get("/api/subscription/usage", requireAuth, async (req, res) => {
+    const userId = getUserId(req);
+    const access = await billingService.syncUserSubscriptionTier(userId, "subscription_usage_read");
+    const [cartoes, pessoas, servicos, metas] = await Promise.all([
+      storage.getCartoes(userId),
+      storage.getPessoas(userId),
+      storage.getServicos(userId),
+      storage.getMetas(userId),
+    ]);
+
+    const usage = {
+      cartoes: cartoes.length,
+      pessoas: pessoas.length,
+      servicos: servicos.length,
+      metas: metas.length,
+    };
+
+    return res.json({
+      subscriptionTier: access.effectiveTier,
+      limits: access.limits,
+      usage,
+      remaining: {
+        cartoes: calculateRemaining(access.limits.maxCartoes, usage.cartoes),
+        pessoas: calculateRemaining(access.limits.maxPessoas, usage.pessoas),
+        servicos: calculateRemaining(access.limits.maxServicos, usage.servicos),
+        metas: calculateRemaining(access.limits.maxMetas, usage.metas),
+      },
+    });
+  });
+  app.get("/api/billing/status", requireAuth, async (req, res) => {
+    const userId = getUserId(req);
+    return res.json(await billingService.getStatus(userId));
+  });
 
   app.get("/api/pessoas/:pessoaId/timeline-pagamentos", requireAuth, pagamentosTimelineController.listByPessoa);
   app.patch("/api/pagamentos/:sourceType/:sourceId/observacao", requireAuth, pagamentosTimelineController.updateObservacao);

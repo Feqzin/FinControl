@@ -23,21 +23,32 @@ export function StatCard({
   const card = (
     <Card className={`hover-elevate rounded-2xl border border-border/60 bg-card/95 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${compact ? "min-h-[96px]" : "min-h-[112px]"}`}>
       <CardContent className={`${compact ? "p-[14px] md:p-[18px]" : "p-[14px] md:p-[18px]"} h-full`}>
-        <div className="flex h-full items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
-            <p className="truncate text-[11px] font-medium uppercase tracking-[0.04em] text-muted-foreground">{title}</p>
+        <div className="flex h-full flex-col justify-between gap-3">
+          <div className="flex items-start justify-between gap-3">
+            <p className="min-w-0 flex-1 truncate text-[11px] font-medium uppercase tracking-[0.05em] text-muted-foreground/85">
+              {title}
+            </p>
+            <div
+              className={`flex flex-shrink-0 items-center justify-center rounded-xl border border-black/5 shadow-sm ${compact ? "h-9 w-9" : "h-10 w-10"} ${color}`}
+            >
+              <Icon className={`${compact ? "h-4 w-4" : "h-[18px] w-[18px]"}`} />
+            </div>
+          </div>
+
+          <div className="min-w-0 space-y-1.5">
             <p
-              className={`fin-value-kpi ${valueColor || ""}`}
+              className={`fin-value-kpi leading-none tracking-tight ${valueColor || ""}`}
               title={value}
             >
               {value}
             </p>
-            {trend && <p className="truncate text-[11px] text-muted-foreground/90">{trend}</p>}
-          </div>
-          <div
-            className={`flex items-center justify-center ${compact ? "h-8 w-8" : "h-9 w-9"} rounded-lg flex-shrink-0 ${color}`}
-          >
-            <Icon className={`${compact ? "w-4 h-4" : "w-5 h-5"}`} />
+            {trend ? (
+              <p className="truncate text-[11px] leading-relaxed text-muted-foreground/75">
+                {trend}
+              </p>
+            ) : (
+              <div className="h-[16px]" aria-hidden="true" />
+            )}
           </div>
         </div>
       </CardContent>

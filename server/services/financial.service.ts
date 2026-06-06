@@ -1,6 +1,6 @@
 import { format } from "date-fns";
-import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Renda, Servico } from "@shared/schema";
-import type { FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
+import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
+import type { DashboardOverviewResponse, FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
 import {
   calculateServicoEquivalentMonthlyAmount,
   calculateServicoRealChargeForCompetency,
@@ -712,6 +712,36 @@ export class FinancialService {
         valorPago: round2(sumMoneyBy(parcelasPagas, (p) => p.valor)),
         valorPendente: round2(sumMoneyBy(parcelasPendentes, (p) => p.valor)),
       },
+    };
+  }
+
+  async getDashboardOverview(
+    userId: string,
+    monthReference?: string,
+    simulation?: FinancialSimulationInput,
+  ): Promise<DashboardOverviewResponse> {
+    const [ctx, pessoas, patrimonios, financialSummary] = await Promise.all([
+      this.loadContext(userId),
+      this.loadContextSlice(userId, "pessoas", () => this.repository.getPessoas(userId), [] as Pessoa[]),
+      this.loadContextSlice(userId, "patrimonios", () => this.repository.getPatrimonios(userId), [] as Patrimonio[]),
+      this.getSummary(userId, monthReference, simulation),
+    ]);
+
+    const simulated = applyFinancialSimulation(ctx, simulation);
+
+    return {
+      mesReferencia: financialSummary.mesReferencia,
+      dividas: simulated.dividas,
+      servicos: simulated.servicos,
+      pessoas,
+      cartoes: simulated.cartoes,
+      compras: simulated.compras,
+      parcelasCompra: simulated.parcelasCompra,
+      rendas: simulated.rendas,
+      patrimonios,
+      financialSummary,
+      financialScore: calculateScoreFromContext(simulated),
+      financialInsights: generateInsightsFromContext(simulated),
     };
   }
 

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Settings2 } from "lucide-react";
@@ -71,6 +71,9 @@ export function DashboardPageHeader({
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Personalizar Painel</DialogTitle>
+                <DialogDescription className="sr-only">
+                  Ajuste as opções rápidas e preferências exibidas no topo do dashboard.
+                </DialogDescription>
               </DialogHeader>
               {settingsContent}
             </DialogContent>

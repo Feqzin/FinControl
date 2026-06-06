@@ -36,6 +36,7 @@ export interface IStorage {
   deletePessoa(id: string, userId: string): Promise<boolean>;
   restorePessoa(id: string, userId: string): Promise<Pessoa | undefined>;
   deletePessoaPermanent(id: string, userId: string): Promise<boolean>;
+  getPessoaSaldoMovimentacoes(userId: string): Promise<PessoaSaldoMovimentacao[]>;
   getPessoaSaldoMovimentacoesByPessoa(pessoaId: string, userId: string): Promise<PessoaSaldoMovimentacao[]>;
 
   getDividas(userId: string): Promise<Divida[]>;
@@ -362,6 +363,12 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(pessoas.id, id), eq(pessoas.userId, userId), isNotNull(pessoas.deletedAt)))
       .returning();
     return deleted.length > 0;
+  }
+  async getPessoaSaldoMovimentacoes(userId: string) {
+    return this.database
+      .select()
+      .from(pessoaSaldoMovimentacoes)
+      .where(eq(pessoaSaldoMovimentacoes.userId, userId));
   }
   async getPessoaSaldoMovimentacoesByPessoa(pessoaId: string, userId: string) {
     return this.database

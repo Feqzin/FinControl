@@ -7,7 +7,7 @@ type PessoaResumoParaFiltro = {
   servicosMesAtual: { pendente: number };
 };
 
-type PessoaFilterTipo = "todos" | "me_deve" | "eu_devo" | "atrasados";
+type PessoaFilterTipo = "todos" | "me_deve" | "eu_devo" | "atrasados" | "removidas";
 
 function toNumber(value: unknown): number {
   const numeric = Number(value);

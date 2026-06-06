@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -252,6 +253,9 @@ export function DivisaoPanel({
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Adicionar pessoa ao serviço</DialogTitle>
+                  <DialogDescription className="sr-only">
+                    Adicione uma pessoa a este serviço e defina o valor mensal devido para acompanhar a divisão.
+                  </DialogDescription>
                 </DialogHeader>
                 <form
                   onSubmit={(e) => {

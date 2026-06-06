@@ -5,6 +5,13 @@ import { resolveServicoCategoryValue } from "@shared/service-categories";
 const nonEmptyUpdateMessage = "Informe ao menos um campo para atualizar";
 const moneyField = z.string().or(z.number()).transform(String);
 const servicoPeriodicidadeField = z.enum(["mensal", "anual", "semestral", "trimestral", "bimestral", "semanal"]);
+const optionalNullableRelationIdField = z.preprocess((value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") return value;
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}, z.string().trim().min(1).nullable());
 const servicoDataCobrancaField = z.preprocess((value) => {
   if (value === null || value === undefined) return null;
   if (typeof value === "string" && value.trim() === "") return null;
@@ -55,6 +62,7 @@ export const servicoUpdateBody = z.object({
   periodicidadeCobranca: servicoPeriodicidadeField.optional(),
   dataCobranca: servicoDataCobrancaField.optional(),
   formaPagamento: z.string().min(1).optional(),
+  compraCartaoId: optionalNullableRelationIdField.optional(),
   status: z.string().min(1).optional(),
   iconeId: z.string().optional().nullable(),
 }).strict().refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });

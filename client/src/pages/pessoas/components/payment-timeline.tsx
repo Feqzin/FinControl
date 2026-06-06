@@ -3,7 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -190,6 +196,9 @@ export function PaymentTimeline({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Detalhe do evento</DialogTitle>
+            <DialogDescription className="sr-only">
+              Consulte os detalhes da movimentação selecionada na linha do tempo de pagamentos.
+            </DialogDescription>
           </DialogHeader>
 
           {selected && (

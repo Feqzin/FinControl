@@ -4,9 +4,22 @@ Este guia sobe um Postgres local isolado para rodar testes de seguranca (incluin
 
 ## 1) Preparar ambiente de teste
 
-1. Copie o exemplo:
-   - `cp .env.test.example .env.test`
-2. Revise os valores de `.env.test` (porta padrao `54329`).
+1. Copie o exemplo base:
+   - `cp .env.example .env.test`
+2. Ajuste no minimo as variaveis abaixo em `.env.test`:
+
+```env
+NODE_ENV=test
+SESSION_SECRET=fincontrol_test_session_secret
+TEST_DATABASE_URL=postgresql://fincontrol_test:fincontrol_test@127.0.0.1:54329/debt_control_test
+# Opcional legado:
+# DATABASE_URL_TEST=postgresql://fincontrol_test:fincontrol_test@127.0.0.1:54329/debt_control_test
+TEST_DB_HOST=127.0.0.1
+TEST_DB_PORT=54329
+TEST_DB_USER=fincontrol_test
+TEST_DB_PASSWORD=fincontrol_test
+TEST_DB_NAME=debt_control_test
+```
 
 > Importante: nao use credenciais reais ou URL de producao em `.env.test`.
 

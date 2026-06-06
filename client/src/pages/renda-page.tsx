@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -173,6 +174,9 @@ export default function RendaPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{editingRenda ? "Editar Renda" : "Nova Renda"}</DialogTitle>
+              <DialogDescription className="sr-only">
+                Cadastre ou edite uma fonte de renda informando descrição, valor e recorrência.
+              </DialogDescription>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">

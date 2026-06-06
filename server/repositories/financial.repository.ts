@@ -17,6 +17,10 @@ function createFinancialRepositoryBase(targetStorage: IStorage) {
       return targetStorage.getDividas(userId);
     },
 
+    async getDividasByStatus(userId: string, status: "active" | "removed" | "all") {
+      return targetStorage.getDividasByStatus(userId, status);
+    },
+
     async getDividasByPessoa(pessoaId: string, userId: string) {
       return targetStorage.getDividasByPessoa(pessoaId, userId);
     },
@@ -35,6 +39,14 @@ function createFinancialRepositoryBase(targetStorage: IStorage) {
 
     async deleteDivida(id: string, userId: string) {
       return targetStorage.deleteDivida(id, userId);
+    },
+
+    async restoreDivida(id: string, userId: string) {
+      return targetStorage.restoreDivida(id, userId);
+    },
+
+    async deleteDividaPermanent(id: string, userId: string) {
+      return targetStorage.deleteDividaPermanent(id, userId);
     },
 
     async deleteParcelasByDivida(dividaId: string, userId: string) {

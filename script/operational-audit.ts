@@ -285,7 +285,7 @@ async function auditFrontendExposure(findings: Finding[]): Promise<void> {
       );
     }
 
-    if ((/import\.meta\.env\.(?!VITE_)[A-Za-z0-9_]+/).test(content)) {
+    if ((/import\.meta\.env\.(?!(?:VITE_[A-Za-z0-9_]*|DEV|PROD|SSR|MODE|BASE_URL)\b)[A-Za-z0-9_]+/).test(content)) {
       addFinding(
         findings,
         "warn",
@@ -322,6 +322,10 @@ async function auditTrackedSensitivePaths(findings: Finding[]): Promise<void> {
   const dedupeByTopLevel = new Set<string>();
   for (const file of tracked) {
     const normalized = normalizePath(file);
+    const absolutePath = path.join(ROOT_DIR, normalized);
+    if (!(await exists(absolutePath))) {
+      continue;
+    }
     const classification = classifyTrackedPath(normalized);
     if (!classification) continue;
 
@@ -340,7 +344,7 @@ async function auditTrackedSensitivePaths(findings: Finding[]): Promise<void> {
       findings,
       classification.severity,
       "git-tracked-sensitive",
-      path.join(ROOT_DIR, normalized),
+      absolutePath,
       classification.message,
     );
   }

@@ -5,9 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -34,10 +32,26 @@ import {
   type BillingStatusResponse,
 } from "@/services/api/billing";
 import {
-  User, Download, Shield, Database, LogOut, CheckCircle, HelpCircle, Upload, Cloud
+  Download, Shield, Upload
 } from "lucide-react";
 import { useUIPreferences, type UsageMode } from "@/context/ui-preferences";
-import { TourRestartButton } from "@/components/onboarding-tour";
+import {
+  PerfilAccountStatusCard,
+  PerfilBackupCloudCard,
+  PerfilBackupExportCard,
+  PerfilBackupImportCard,
+  PerfilDataSummaryCard,
+  PerfilHelpCard,
+  PerfilLogoutCard,
+  PerfilPersonalInfoCard,
+  PerfilPlanActionsCard,
+  PerfilPlanBenefitsCard,
+  PerfilPageHeader,
+  PerfilPlanStatusCard,
+  PerfilPlanUsageCard,
+  PerfilTabsNav,
+  PerfilUsageModeCard,
+} from "@/pages/perfil/components";
 import type {
   Cartao,
   CompraCartao,
@@ -335,6 +349,12 @@ export default function PerfilPage() {
       : isProMode
         ? "Modo Pro ativo: máxima visibilidade para análise avançada."
         : "Modo Completo ativo: todos os recursos e análises visíveis.";
+  const usageModeItems: ReadonlyArray<{ value: UsageMode; title: string; description: string }> = [
+    { value: "essencial", title: "Essencial", description: "Simples, fonte maior e foco no básico." },
+    { value: "guiado", title: "Guiado", description: "Equilíbrio com dicas contextuais." },
+    { value: "completo", title: "Completo", description: "Todos os filtros e análises visíveis." },
+    { value: "pro", title: "Pro", description: "Experiência avançada, foco total em produtividade." },
+  ];
 
   useEffect(() => {
     if (!user || !billingStatus) return;
@@ -912,186 +932,112 @@ export default function PerfilPage() {
   const restorePreviewModules = restorePreviewData?.modules ?? [];
   const restoreModulesFound = restorePreviewModules.filter((module) => module.foundInBackup);
   const restoreModulesNotFound = restorePreviewModules.filter((module) => !module.foundInBackup);
+  const startTrialButtonLabel = startTrialMutation.isPending
+    ? "Iniciando teste grátis..."
+    : "Testar Premium grátis por 7 dias";
+  const subscribeButtonLabel = createBillingCheckoutMutation.isPending
+    ? "Redirecionando..."
+    : billingStatus?.billingStatus === "pending"
+      ? "Continuar pagamento"
+      : "Assinar Premium";
+  const cancelSubscriptionButtonLabel = cancelBillingSubscriptionMutation.isPending
+    ? "Cancelando assinatura..."
+    : "Cancelar assinatura";
+  const createCloudBackupButtonLabel = backupNuvemLiberado
+    ? (createCloudBackupMutation.isPending ? "Salvando backup..." : "Salvar backup na nuvem")
+    : "Disponível no plano Premium";
+  const restoreLatestCloudBackupLabel = restoreReviewLoading
+    ? "Analisando backup..."
+    : "Substituir com a nuvem";
+  const cloudBackupItems = (cloudBackupsQuery.data ?? []).map((backup) => ({
+    backup,
+    metaLabel: `${formatDateTimeBR(backup.createdAt)} · ${formatBytes(backup.sizeBytes)}`,
+    statusVariant: backup.status === "completed" ? "default" as const : "destructive" as const,
+    restoreLabel:
+      restoreCloudBackupMutation.isPending && backupRestaurandoId === backup.id
+        ? "Restaurando..."
+        : restoreReviewLoading
+          ? "Analisando..."
+          : "Substituir",
+    restoreDisabled:
+      restoreCloudBackupMutation.isPending || restoreReviewApplyPending || restoreReviewLoading,
+  }));
+  const cloudBackupsState =
+    cloudBackupsQuery.isLoading
+      ? "loading"
+      : cloudBackupsQuery.isError
+        ? "error"
+        : cloudBackupItems.length === 0
+          ? "empty"
+          : "ready";
+  const planUsageItems = [
+    {
+      label: "Cartões",
+      value: `${usageComLimitesAtuais.usage.cartoes} / ${formatPlanLimit(usageComLimitesAtuais.limits.maxCartoes)}`,
+      remainingLabel: `Restante: ${formatRemainingLimit(usageComLimitesAtuais.remaining.cartoes)}`,
+    },
+    {
+      label: "Pessoas",
+      value: `${usageComLimitesAtuais.usage.pessoas} / ${formatPlanLimit(usageComLimitesAtuais.limits.maxPessoas)}`,
+      remainingLabel: `Restante: ${formatRemainingLimit(usageComLimitesAtuais.remaining.pessoas)}`,
+    },
+    {
+      label: "Serviços",
+      value: `${usageComLimitesAtuais.usage.servicos} / ${formatPlanLimit(usageComLimitesAtuais.limits.maxServicos)}`,
+      remainingLabel: `Restante: ${formatRemainingLimit(usageComLimitesAtuais.remaining.servicos)}`,
+    },
+  ] as const;
+  const personalInfoAvatarText = (user?.nomeCompleto || resolvedPublicUsername || "U")[0].toUpperCase();
+  const personalInfoDisplayName = user?.nomeCompleto || (resolvedPublicUsername ? `@${resolvedPublicUsername}` : "Usuário");
+  const personalInfoUsernameLabel = resolvedPublicUsername ? `@${resolvedPublicUsername}` : "Usuário sem username público";
+  const publicUsernameInputValue = canDefinePublicUsername ? publicUsername : `@${resolvedPublicUsername}`;
+  const publicUsernameHelperText = canDefinePublicUsername
+    ? "Como sua conta foi criada antes dessa atualização, você pode definir seu usuário público uma vez."
+    : "Seu usuário público é usado em packs e recursos compartilhados. Para alterar, entre em contato com o suporte.";
+  const saveProfileButtonLabel = updateProfile.isPending ? "Salvando..." : "Salvar alteracoes";
 
   return (
     <div className="app-page-shell app-section-stack mx-auto max-w-2xl" data-testid="perfil-page">
-      <div className="fintech-page-header">
-        <div className="space-y-1">
-          <h1 className="fintech-page-title">Meu Perfil</h1>
-          <p className="fintech-page-subtitle">Gerencie sua conta, planos e backups</p>
-        </div>
-      </div>
+      <PerfilPageHeader
+        title="Meu Perfil"
+        subtitle="Gerencie sua conta, planos e backups"
+      />
 
-      <Tabs value={perfilTab} onValueChange={(value) => setPerfilTab(value as typeof perfilTab)}>
-        <TabsList className="mobile-tabs-scroll w-full justify-start bg-muted/30">
-          <TabsTrigger value="planos" data-testid="tab-perfil-planos">Planos</TabsTrigger>
-          <TabsTrigger value="backup" data-testid="tab-perfil-backup">Backup</TabsTrigger>
-          <TabsTrigger value="conta" data-testid="tab-perfil-conta">Conta</TabsTrigger>
-          <TabsTrigger value="ajuda" data-testid="tab-perfil-ajuda">Ajuda</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <PerfilTabsNav value={perfilTab} onValueChange={setPerfilTab} />
 
-      <Card className={perfilTab === "conta" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base flex items-center gap-2">
-            <User className="w-4 h-4" /> Informacoes pessoais
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 text-primary font-bold text-2xl flex-shrink-0">
-              {(user?.nomeCompleto || resolvedPublicUsername || "U")[0].toUpperCase()}
-            </div>
-            <div>
-              <p className="font-semibold text-lg">{user?.nomeCompleto || (resolvedPublicUsername ? `@${resolvedPublicUsername}` : "Usuário")}</p>
-              <p className="text-sm text-muted-foreground">{resolvedPublicUsername ? `@${resolvedPublicUsername}` : "Usuário sem username público"}</p>
-            </div>
-          </div>
-          <Separator />
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <Label>Nome completo</Label>
-              <Input
-                data-testid="input-nome-completo"
-                value={nomeCompleto}
-                onChange={(e) => setNomeCompleto(e.target.value)}
-                placeholder="Seu nome completo"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Usuário público</Label>
-              <Input
-                value={canDefinePublicUsername ? publicUsername : `@${resolvedPublicUsername}`}
-                onChange={(event) => setPublicUsername(event.target.value)}
-                placeholder="ex: fernandoq87"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                disabled={!canDefinePublicUsername}
-              />
-              {canDefinePublicUsername ? (
-                <p className="text-xs text-muted-foreground">
-                  Como sua conta foi criada antes dessa atualização, você pode definir seu usuário público uma vez.
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Seu usuário público é usado em packs e recursos compartilhados. Para alterar, entre em contato com o suporte.
-                </p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label>Privacidade do nome completo</Label>
-              <Select
-                value={fullNameVisibility}
-                onValueChange={(value) => setFullNameVisibility(value as "private" | "public")}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="private">Não exibir publicamente</SelectItem>
-                  <SelectItem value="public">Exibir publicamente</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Por padrão, outros usuários veem apenas seu usuário público.
-              </p>
-            </div>
-          </div>
-          <Button
-            onClick={() => updateProfile.mutate()}
-            disabled={updateProfile.isPending}
-            data-testid="button-save-profile"
-          >
-            {updateProfile.isPending ? "Salvando..." : "Salvar alteracoes"}
-          </Button>
-        </CardContent>
-      </Card>
+      <PerfilPersonalInfoCard
+        isVisible={perfilTab === "conta"}
+        title="Informacoes pessoais"
+        avatarText={personalInfoAvatarText}
+        displayName={personalInfoDisplayName}
+        usernameLabel={personalInfoUsernameLabel}
+        nomeCompleto={nomeCompleto}
+        onNomeCompletoChange={setNomeCompleto}
+        publicUsername={publicUsernameInputValue}
+        onPublicUsernameChange={setPublicUsername}
+        publicUsernameDisabled={!canDefinePublicUsername}
+        publicUsernameHelperText={publicUsernameHelperText}
+        fullNameVisibility={fullNameVisibility}
+        onFullNameVisibilityChange={setFullNameVisibility}
+        onSave={() => updateProfile.mutate()}
+        saveDisabled={updateProfile.isPending}
+        saveLabel={saveProfileButtonLabel}
+      />
 
-      <Card className={perfilTab === "conta" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Shield className="w-4 h-4" /> Status da conta
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 p-3 rounded-md bg-emerald-500/5 border border-emerald-500/20 text-sm text-emerald-700">
-              <CheckCircle className="w-4 h-4 flex-shrink-0" />
-              <span>Dados isolados — apenas voce acessa sua conta</span>
-            </div>
-            <div className="flex items-center gap-2 p-3 rounded-md bg-emerald-500/5 border border-emerald-500/20 text-sm text-emerald-700">
-              <CheckCircle className="w-4 h-4 flex-shrink-0" />
-              <span>Senha protegida com criptografia segura</span>
-            </div>
-            <div className="flex items-center gap-2 p-3 rounded-md bg-emerald-500/5 border border-emerald-500/20 text-sm text-emerald-700">
-              <CheckCircle className="w-4 h-4 flex-shrink-0" />
-              <span>Sessao segura com cookie httpOnly</span>
-            </div>
-            <div className="fintech-surface-subtle flex min-w-0 flex-wrap items-center justify-between gap-3 p-3">
-              <div>
-                <p className="text-sm font-medium">Plano atual</p>
-                <p className="text-xs text-muted-foreground">
-                  {premiumAtivoNaUi
-                    ? "Recursos premium liberados para sua conta."
-                    : "Plano free ativo. Recursos premium aparecem bloqueados."}
-                </p>
-              </div>
-              <Badge variant={premiumAtivoNaUi ? "default" : "secondary"}>
-                {premiumAtivoNaUi ? "Premium" : "Free"}
-              </Badge>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <PerfilAccountStatusCard
+        isVisible={perfilTab === "conta"}
+        premiumAtivoNaUi={premiumAtivoNaUi}
+      />
 
-      <Card className={perfilTab === "conta" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base flex items-center gap-2">
-            <HelpCircle className="w-4 h-4" /> Modo de uso
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Escolha como prefere navegar no FinControl. Você pode trocar a qualquer momento.
-          </p>
-          <Select
-            value={prefs.usageMode}
-            onValueChange={(value) => setUsageMode(value as UsageMode)}
-          >
-            <SelectTrigger data-testid="select-usage-mode">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="essencial">Essencial</SelectItem>
-              <SelectItem value="guiado">Guiado</SelectItem>
-              <SelectItem value="completo">Completo</SelectItem>
-              <SelectItem value="pro">Pro</SelectItem>
-            </SelectContent>
-          </Select>
-          <div className="fintech-surface-subtle p-3 text-xs text-muted-foreground">
-            {modoUsoTexto}
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <div className={`rounded-md border p-2 text-xs ${prefs.usageMode === "essencial" ? "border-primary/40 bg-primary/5" : "border-border/50 bg-muted/20"}`}>
-              <p className="font-semibold">Essencial</p>
-              <p className="text-muted-foreground">Simples, fonte maior e foco no básico.</p>
-            </div>
-            <div className={`rounded-md border p-2 text-xs ${prefs.usageMode === "guiado" ? "border-primary/40 bg-primary/5" : "border-border/50 bg-muted/20"}`}>
-              <p className="font-semibold">Guiado</p>
-              <p className="text-muted-foreground">Equilíbrio com dicas contextuais.</p>
-            </div>
-            <div className={`rounded-md border p-2 text-xs ${prefs.usageMode === "completo" ? "border-primary/40 bg-primary/5" : "border-border/50 bg-muted/20"}`}>
-              <p className="font-semibold">Completo</p>
-              <p className="text-muted-foreground">Todos os filtros e análises visíveis.</p>
-            </div>
-            <div className={`rounded-md border p-2 text-xs ${prefs.usageMode === "pro" ? "border-primary/40 bg-primary/5" : "border-border/50 bg-muted/20"}`}>
-              <p className="font-semibold">Pro</p>
-              <p className="text-muted-foreground">Experiência avançada, foco total em produtividade.</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <PerfilUsageModeCard
+        isVisible={perfilTab === "conta"}
+        title="Modo de uso"
+        introText="Escolha como prefere navegar no FinControl. Você pode trocar a qualquer momento."
+        usageMode={prefs.usageMode}
+        onUsageModeChange={setUsageMode}
+        currentModeDescription={modoUsoTexto}
+        items={usageModeItems}
+      />
 
       <Card className={perfilTab === "planos" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
         <CardHeader className="pb-4">
@@ -1100,161 +1046,51 @@ export default function PerfilPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="fintech-surface-subtle flex min-w-0 flex-wrap items-center justify-between gap-3 p-3">
-            <div>
-              <p className="text-sm font-medium">{billingStatusUi.title}</p>
-              <p className="text-xs text-muted-foreground">{billingStatusUi.description}</p>
-            </div>
-            <Badge variant={billingStatusUi.tone}>
-              {premiumAtivoNaUi ? "Premium" : "Free"}
-            </Badge>
-          </div>
+          <PerfilPlanStatusCard
+            title={billingStatusUi.title}
+            description={billingStatusUi.description}
+            tone={billingStatusUi.tone}
+            premiumAtivoNaUi={premiumAtivoNaUi}
+          />
 
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Uso atual do plano</p>
-            <div className="fintech-grid-fluid-260">
-              <div className="fintech-stat-card">
-                <p className="text-xs text-muted-foreground">Cartões</p>
-                <p className="text-lg font-semibold">
-                  {usageComLimitesAtuais.usage.cartoes} / {formatPlanLimit(usageComLimitesAtuais.limits.maxCartoes)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Restante: {formatRemainingLimit(usageComLimitesAtuais.remaining.cartoes)}
-                </p>
-              </div>
-              <div className="fintech-stat-card">
-                <p className="text-xs text-muted-foreground">Pessoas</p>
-                <p className="text-lg font-semibold">
-                  {usageComLimitesAtuais.usage.pessoas} / {formatPlanLimit(usageComLimitesAtuais.limits.maxPessoas)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Restante: {formatRemainingLimit(usageComLimitesAtuais.remaining.pessoas)}
-                </p>
-              </div>
-              <div className="fintech-stat-card">
-                <p className="text-xs text-muted-foreground">Serviços</p>
-                <p className="text-lg font-semibold">
-                  {usageComLimitesAtuais.usage.servicos} / {formatPlanLimit(usageComLimitesAtuais.limits.maxServicos)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Restante: {formatRemainingLimit(usageComLimitesAtuais.remaining.servicos)}
-                </p>
-              </div>
-            </div>
-            {usageQuery.isError && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2">
-                Não foi possível atualizar o uso do plano agora. Exibindo contagem local como fallback.
-              </p>
-            )}
-          </div>
+          <PerfilPlanUsageCard
+            title="Uso atual do plano"
+            items={planUsageItems}
+            showError={usageQuery.isError}
+            errorText="Não foi possível atualizar o uso do plano agora. Exibindo contagem local como fallback."
+          />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="fintech-surface-subtle p-3">
-              <p className="text-sm font-semibold mb-2">Plano Free</p>
-              <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-                <li>Dashboard financeiro básico</li>
-                <li>Pessoas até 20</li>
-                <li>Cartões até 4</li>
-                <li>Serviços até 10</li>
-                <li>Export/import local JSON</li>
-                <li>Saldo por pessoa e abatimentos</li>
-              </ul>
-            </div>
-            <div className="fintech-surface-subtle border-primary/25 bg-primary/5 p-3">
-              <p className="text-sm font-semibold mb-2">Plano Premium</p>
-              <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
-                <li>Backup na nuvem</li>
-                <li>Restauração na nuvem</li>
-                <li>Pessoas ilimitadas</li>
-                <li>Cartões ilimitados</li>
-                <li>Serviços ilimitados</li>
-                <li>Relatórios avançados</li>
-                <li>Previsão financeira</li>
-                <li>Importação inteligente</li>
-                <li>Automações futuras</li>
-              </ul>
-            </div>
-          </div>
+          <PerfilPlanBenefitsCard />
 
-          {!premiumAtivoNaUi && canStartTrial && (
-            <Button
-              className="w-full touch-feedback"
-              variant="secondary"
-              onClick={() => startTrialMutation.mutate()}
-              data-testid="button-start-trial"
-              disabled={startTrialMutation.isPending}
-            >
-              {startTrialMutation.isPending
-                ? "Iniciando teste grátis..."
-                : "Testar Premium grátis por 7 dias"}
-            </Button>
-          )}
-
-          {!premiumAtivoNaUi && canSubscribe && (
-            <Button
-              className="w-full touch-feedback"
-              onClick={() => createBillingCheckoutMutation.mutate()}
-              data-testid="button-upgrade-premium"
-              disabled={createBillingCheckoutMutation.isPending}
-            >
-              {createBillingCheckoutMutation.isPending
-                ? "Redirecionando..."
-                : billingStatus?.billingStatus === "pending"
-                  ? "Continuar pagamento"
-                  : "Assinar Premium"}
-            </Button>
-          )}
-
-          {canCancelSubscription && (
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full touch-feedback"
-              onClick={handleCancelSubscription}
-              disabled={cancelBillingSubscriptionMutation.isPending}
-              data-testid="button-cancel-premium"
-            >
-              {cancelBillingSubscriptionMutation.isPending ? "Cancelando assinatura..." : "Cancelar assinatura"}
-            </Button>
-          )}
+          <PerfilPlanActionsCard
+            showStartTrial={!premiumAtivoNaUi && canStartTrial}
+            showSubscribe={!premiumAtivoNaUi && canSubscribe}
+            showCancelSubscription={canCancelSubscription}
+            startTrialPending={startTrialMutation.isPending}
+            subscribePending={createBillingCheckoutMutation.isPending}
+            cancelSubscriptionPending={cancelBillingSubscriptionMutation.isPending}
+            startTrialLabel={startTrialButtonLabel}
+            subscribeLabel={subscribeButtonLabel}
+            cancelSubscriptionLabel={cancelSubscriptionButtonLabel}
+            onStartTrial={() => startTrialMutation.mutate()}
+            onSubscribe={() => createBillingCheckoutMutation.mutate()}
+            onCancelSubscription={handleCancelSubscription}
+          />
         </CardContent>
       </Card>
 
-      <Card className={perfilTab === "conta" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Database className="w-4 h-4" /> Resumo dos dados
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {[
-              { label: "Pessoas", value: pessoas.length },
-              { label: "Dividas", value: dividas.length },
-              { label: "Cartoes", value: cartoes.length },
-              { label: "Servicos", value: servicos.length },
-              { label: "Metas", value: metas.length },
-              { label: "Compras", value: compras.length },
-              { label: "Mov. saldo", value: pessoaSaldoMovimentacoes.length },
-            ].map(({ label, value }) => (
-              <div key={label} className="fintech-stat-card text-center">
-                <p className="text-2xl font-bold">{value}</p>
-                <p className="text-xs text-muted-foreground">{label}</p>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="fintech-surface-subtle border-emerald-500/20 bg-emerald-500/5 p-3">
-              <p className="text-xs text-muted-foreground">A receber</p>
-              <p className="font-bold text-emerald-600">{formatCurrency(totalReceber)}</p>
-            </div>
-            <div className="fintech-surface-subtle border-red-500/20 bg-red-500/5 p-3">
-              <p className="text-xs text-muted-foreground">A pagar</p>
-              <p className="font-bold text-red-600">{formatCurrency(totalPagar)}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <PerfilDataSummaryCard
+        isVisible={perfilTab === "conta"}
+        pessoasCount={pessoas.length}
+        dividasCount={dividas.length}
+        cartoesCount={cartoes.length}
+        servicosCount={servicos.length}
+        metasCount={metas.length}
+        comprasCount={compras.length}
+        movimentacoesSaldoCount={pessoaSaldoMovimentacoes.length}
+        totalReceberFormatted={formatCurrency(totalReceber)}
+        totalPagarFormatted={formatCurrency(totalPagar)}
+      />
 
       <Card className={perfilTab === "backup" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
         <CardHeader className="pb-4">
@@ -1266,152 +1102,49 @@ export default function PerfilPage() {
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-lg border bg-background p-4">
-            <h3 className="text-sm font-semibold">Exportar dados</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Baixe uma cópia local dos seus dados em JSON.
-            </p>
-            <Button
-              variant="outline"
-              onClick={exportarDados}
-              data-testid="button-export"
-              className="mt-3 w-full touch-feedback sm:w-auto"
-            >
-              <Download className="w-4 h-4 mr-2" /> Exportar dados (JSON)
-            </Button>
-          </div>
+          <PerfilBackupExportCard onExport={exportarDados} />
 
-          <div className="rounded-lg border bg-background p-4">
-            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold flex items-center gap-2">
-                <Cloud className="w-4 h-4 text-primary" />
-                Backup na nuvem
-              </h3>
-              <Badge variant={backupNuvemLiberado ? "default" : "secondary"}>
-                {backupNuvemLiberado ? "Premium ativo" : "Premium"}
-              </Badge>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Salve e restaure backups privados na nuvem.
-            </p>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Button
-                variant="outline"
-                className="w-full touch-feedback"
-                onClick={() => createCloudBackupMutation.mutate()}
-                disabled={!backupNuvemLiberado || createCloudBackupMutation.isPending}
-                data-testid="button-cloud-backup-premium"
-              >
-                {backupNuvemLiberado
-                  ? (createCloudBackupMutation.isPending ? "Salvando backup..." : "Salvar backup na nuvem")
-                  : "Disponível no plano Premium"}
-              </Button>
-              <Button
-                className="w-full touch-feedback"
-                onClick={abrirRestauracaoCloud}
-                disabled={
-                  !backupNuvemLiberado
-                  || cloudBackupsQuery.isLoading
-                  || (cloudBackupsQuery.data?.length ?? 0) === 0
-                  || restoreCloudBackupMutation.isPending
-                  || restoreReviewApplyPending
-                  || restoreReviewLoading
-                }
-                data-testid="button-cloud-restore-latest"
-              >
-                {restoreReviewLoading
-                  ? "Analisando backup..."
-                  : "Substituir com a nuvem"}
-              </Button>
-            </div>
+          <PerfilBackupCloudCard
+            backupNuvemLiberado={backupNuvemLiberado}
+            premiumBadgeVariant={backupNuvemLiberado ? "default" : "secondary"}
+            premiumBadgeLabel={backupNuvemLiberado ? "Premium ativo" : "Premium"}
+            createBackupLabel={createCloudBackupButtonLabel}
+            createBackupDisabled={!backupNuvemLiberado || createCloudBackupMutation.isPending}
+            restoreLatestLabel={restoreLatestCloudBackupLabel}
+            restoreLatestDisabled={
+              !backupNuvemLiberado
+              || cloudBackupsQuery.isLoading
+              || cloudBackupItems.length === 0
+              || restoreCloudBackupMutation.isPending
+              || restoreReviewApplyPending
+              || restoreReviewLoading
+            }
+            showSavedBackups={backupNuvemLiberado}
+            cloudBackupsState={cloudBackupsState}
+            cloudBackupItems={cloudBackupItems}
+            onCreateBackup={() => createCloudBackupMutation.mutate()}
+            onRestoreLatest={abrirRestauracaoCloud}
+            onRestoreBackup={(backup) => restaurarBackupNuvem(backup, "replace")}
+          />
 
-            {backupNuvemLiberado && (
-              <div className="mt-4 rounded-md border bg-muted/20 p-3">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Backups salvos na nuvem
-                </p>
-                <div className="mt-2 space-y-2">
-                  {cloudBackupsQuery.isLoading ? (
-                    <p className="text-sm text-muted-foreground">Carregando backups...</p>
-                  ) : cloudBackupsQuery.isError ? (
-                    <p className="text-sm text-red-700">
-                      Nao foi possivel carregar backups na nuvem agora.
-                    </p>
-                  ) : (cloudBackupsQuery.data?.length ?? 0) === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      Nenhum backup na nuvem salvo ainda.
-                    </p>
-                  ) : (
-                    cloudBackupsQuery.data?.map((backup) => (
-                      <div
-                        key={backup.id}
-                        className="flex flex-col gap-2 rounded-md border bg-background px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{backup.fileName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatDateTimeBR(backup.createdAt)} · {formatBytes(backup.sizeBytes)}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 self-end sm:self-auto">
-                          <Badge variant={backup.status === "completed" ? "default" : "destructive"}>
-                            {backup.status}
-                          </Badge>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => restaurarBackupNuvem(backup, "replace")}
-                            disabled={restoreCloudBackupMutation.isPending || restoreReviewApplyPending || restoreReviewLoading}
-                            data-testid={`button-cloud-restore-${backup.id}`}
-                          >
-                            {restoreCloudBackupMutation.isPending && backupRestaurandoId === backup.id
-                              ? "Restaurando..."
-                              : restoreReviewLoading
-                                ? "Analisando..."
-                                : "Substituir"}
-                          </Button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-lg border bg-background p-4">
-            <h3 className="text-sm font-semibold">Substituir por arquivo</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Importe um backup JSON salvo no seu dispositivo.
-            </p>
-            <div className="mt-3 space-y-2">
-              <Input
-                ref={inputImportacaoRef}
-                type="file"
-                accept=".json,application/json"
-                onChange={(e) => setArquivoImportacao(e.target.files?.[0] ?? null)}
-                disabled={importBackup.isPending || restoreReviewApplyPending || restoreReviewLoading}
-                data-testid="input-import-backup"
-              />
-              <Button
-                onClick={() => importarDados("replace")}
-                disabled={!arquivoImportacao || importBackup.isPending || restoreReviewApplyPending || restoreReviewLoading}
-                data-testid="button-import-backup"
-                className="w-full touch-feedback"
-              >
-                {importBackup.isPending || restoreReviewApplyPending ? (
-                  "Restaurando..."
-                ) : restoreReviewLoading ? (
-                  "Analisando backup..."
-                ) : (
-                  <>
-                    <Upload className="w-4 h-4 mr-2" /> Substituir por arquivo
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
+          <PerfilBackupImportCard
+            inputRef={inputImportacaoRef}
+            onFileChange={(e) => setArquivoImportacao(e.target.files?.[0] ?? null)}
+            onImport={() => importarDados("replace")}
+            inputDisabled={importBackup.isPending || restoreReviewApplyPending || restoreReviewLoading}
+            importDisabled={!arquivoImportacao || importBackup.isPending || restoreReviewApplyPending || restoreReviewLoading}
+            buttonContent={
+              importBackup.isPending || restoreReviewApplyPending ? (
+                "Restaurando..."
+              ) : restoreReviewLoading ? (
+                "Analisando backup..."
+              ) : (
+                <>
+                  <Upload className="w-4 h-4 mr-2" /> Substituir por arquivo
+                </>
+              )
+            }
+          />
         </CardContent>
       </Card>
 
@@ -1634,32 +1367,12 @@ export default function PerfilPage() {
         </DialogContent>
       </Dialog>
 
-      <Card className={perfilTab === "ajuda" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base flex items-center gap-2">
-            <HelpCircle className="w-4 h-4" /> Ajuda e Tutorial
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Precisa de uma ajuda para entender como o sistema funciona?
-          </p>
-          <TourRestartButton />
-        </CardContent>
-      </Card>
+      <PerfilHelpCard isVisible={perfilTab === "ajuda"} />
 
-      <Card className={perfilTab === "conta" ? "fintech-surface" : "hidden"}>
-        <CardContent className="p-4">
-          <Button
-            variant="destructive"
-            onClick={() => logout.mutate()}
-            className="w-full"
-            data-testid="button-logout-profile"
-          >
-            <LogOut className="w-4 h-4 mr-2" /> Sair da conta
-          </Button>
-        </CardContent>
-      </Card>
+      <PerfilLogoutCard
+        isVisible={perfilTab === "conta"}
+        onLogout={() => logout.mutate()}
+      />
     </div>
   );
 }

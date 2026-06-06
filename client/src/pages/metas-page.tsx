@@ -10,7 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -115,6 +115,9 @@ export default function MetasPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Criar Meta Financeira</DialogTitle>
+              <DialogDescription className="sr-only">
+                Cadastre uma meta financeira informando nome, valor desejado, prazo e progresso atual.
+              </DialogDescription>
             </DialogHeader>
             <form
               onSubmit={(e) => {
@@ -281,6 +284,9 @@ export default function MetasPage() {
                             <DialogContent>
                               <DialogHeader>
                                 <DialogTitle>Atualizar {meta.nome}</DialogTitle>
+                                <DialogDescription className="sr-only">
+                                  Atualize o valor atual economizado para acompanhar o progresso desta meta financeira.
+                                </DialogDescription>
                               </DialogHeader>
                               <form
                                 onSubmit={(e) => {

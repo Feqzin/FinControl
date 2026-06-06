@@ -8,33 +8,55 @@ Set-StrictMode -Version Latest
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Push-Location $repoRoot
 
+function Test-PathSegment {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [Parameter(Mandatory = $true)][string]$Segment
+  )
+
+  $escapedSegment = [Regex]::Escape($Segment)
+  return $Path -match "(^|/)$escapedSegment(/|$)"
+}
+
 try {
   $trackedFiles = git ls-files
   if (-not $trackedFiles) {
     throw "Nenhum arquivo rastreado encontrado. Verifique se este diretorio e um repositorio git."
   }
 
-  $blockedCriticalDirectories = @(
+  $blockedCriticalPathSegments = @(
     ".git",
     "node_modules",
     "dist"
   )
 
-  $excludedDirectories = @(
+  $excludedPathSegments = @(
     "artifacts",
     "diagnostics",
     "attached_assets",
     ".local",
     ".agents",
-    ".config"
+    ".config",
+    ".cache"
   )
 
-  $blockedExtensions = @(".zip", ".7z", ".tar", ".tgz", ".tar.gz")
-  $blockedSensitiveExtensions = @(".pem", ".key", ".p12", ".pfx", ".kdbx")
+  $repoLeafName = Split-Path -Path $repoRoot -Leaf
+  $duplicateProjectSegments = @("Debt-Control", $repoLeafName) `
+    | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } `
+    | Sort-Object -Unique
+  $excludedPathSegments += $duplicateProjectSegments
+
+  $blockedExtensions = @(".zip", ".7z", ".tar.gz", ".tar", ".tgz")
+  $blockedSensitiveExtensions = @(".pem", ".key", ".p12", ".pfx", ".kdbx", ".crt")
   $excludedTracked = New-Object 'System.Collections.Generic.HashSet[string]'
 
-  foreach ($file in $trackedFiles) {
+  :trackedLoop foreach ($file in $trackedFiles) {
     $normalized = $file -replace "\\", "/"
+    $sourcePath = Join-Path $repoRoot $file
+
+    if (-not (Test-Path -LiteralPath $sourcePath)) {
+      continue
+    }
 
     if ($normalized -match '(^|/)\.env(\..+)?$' -and $normalized -ne ".env.example") {
       throw "Arquivo sensivel rastreado no git: '$normalized'. Corrija antes de gerar pacote."
@@ -44,16 +66,16 @@ try {
       throw "Arquivo sensivel rastreado no git: '$normalized'. Corrija antes de gerar pacote."
     }
 
-    foreach ($blocked in $blockedCriticalDirectories) {
-      if ($normalized -eq $blocked -or $normalized.StartsWith("$blocked/")) {
+    foreach ($blocked in $blockedCriticalPathSegments) {
+      if (Test-PathSegment -Path $normalized -Segment $blocked) {
         throw "Pasta critica indevida rastreada no git: '$normalized'. Corrija antes de gerar pacote."
       }
     }
 
-    foreach ($excluded in $excludedDirectories) {
-      if ($normalized -eq $excluded -or $normalized.StartsWith("$excluded/")) {
+    foreach ($excluded in $excludedPathSegments) {
+      if (Test-PathSegment -Path $normalized -Segment $excluded) {
         $excludedTracked.Add($normalized) | Out-Null
-        continue
+        continue trackedLoop
       }
     }
 

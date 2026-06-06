@@ -75,11 +75,11 @@ export function DashboardFinancialOverview({
   return (
     <>
       <Card className="border-border/60 bg-card/95 shadow-sm">
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-4">
           <CardTitle className="flex flex-wrap items-center gap-2 text-base">
             <CalendarClock className="h-4 w-4" /> Próximos vencimentos
             {!pagarSemanaStatus.isLoading && !pagarSemanaStatus.isError && pagarSemana.length > 0 ? (
-              <span className="ml-auto rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+              <span className="ml-auto rounded-full border border-amber-500/15 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-700 shadow-sm">
                 {pagarSemana.length} na semana
               </span>
             ) : null}
@@ -101,7 +101,7 @@ export function DashboardFinancialOverview({
               description="Sem contas próximas para este período."
             />
           ) : (
-            <div className="space-y-1.5">
+            <div className="space-y-2.5">
               {proximosVencimentos.map((item) => {
                 const isPast = item.dataVenc < today;
                 const isToday = item.dataVenc === today;
@@ -109,26 +109,35 @@ export function DashboardFinancialOverview({
                 const dotColor = isPast ? "bg-red-500" : isToday ? "bg-red-500" : isThisWeek ? "bg-amber-400" : "bg-emerald-400";
                 const TipoIcon = item.tipo === "cartao" ? CreditCard : item.tipo === "servico" ? Receipt : ArrowDownRight;
                 const tipoBg = item.tipo === "cartao" ? "bg-blue-500/10 text-blue-600" : item.tipo === "servico" ? "bg-amber-500/10 text-amber-600" : "bg-red-500/10 text-red-600";
+                const itemSurface = isPast || isToday
+                  ? "border-red-500/15 bg-red-500/[0.03]"
+                  : isThisWeek
+                    ? "border-amber-500/15 bg-amber-500/[0.03]"
+                    : "border-border/55 bg-muted/[0.16]";
 
                 return (
                   <div
                     key={item.id}
-                    className="flex items-center gap-3 rounded-lg p-2.5 transition-colors hover:bg-muted/50"
+                    className={`group flex items-start gap-3 rounded-2xl border p-3 transition-all duration-200 hover:border-border/80 hover:bg-muted/[0.24] ${itemSurface}`}
                     data-testid={`vencimento-${item.id}`}
                   >
-                    <div className={`h-8 w-8 flex-shrink-0 rounded-lg ${tipoBg} flex items-center justify-center`}>
-                      <TipoIcon className="h-3.5 w-3.5" />
+                    <div className={`mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-black/5 shadow-sm ${tipoBg}`}>
+                      <TipoIcon className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{item.nome}</p>
-                      <div className="mt-0.5 flex items-center gap-1.5">
-                        <div className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${dotColor}`} />
-                        <p className={`text-xs ${isPast || isToday ? "text-red-600 font-medium" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="truncate pr-1 text-sm font-semibold text-foreground/95">{item.nome}</p>
+                        <span className="flex-shrink-0 text-sm font-semibold tracking-tight text-foreground/95">
+                          {formatMoney(item.valor)}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <div className={`h-2 w-2 flex-shrink-0 rounded-full shadow-[0_0_0_3px] shadow-background ${dotColor}`} />
+                        <p className={`text-xs leading-relaxed ${isPast || isToday ? "font-medium text-red-600" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
                           {item.subtitulo}
                         </p>
                       </div>
                     </div>
-                    <span className="flex-shrink-0 text-sm font-semibold">{formatMoney(item.valor)}</span>
                   </div>
                 );
               })}
@@ -136,18 +145,20 @@ export function DashboardFinancialOverview({
           )}
 
           {!proximosStatus.isLoading && !proximosStatus.isError ? (
-            <div className="mt-3 border-t border-border/60 pt-3">
+            <div className="mt-4 border-t border-border/60 pt-4">
               {pagarSemanaStatus.isLoading ? (
                 <Skeleton className="h-11 rounded-lg" />
               ) : pagarSemanaStatus.isError ? (
                 <p className="text-xs text-muted-foreground">Resumo da semana indisponível no momento.</p>
               ) : pagarSemana.length > 0 ? (
-                <div className="flex items-center justify-between rounded-lg bg-amber-500/5 px-3 py-2">
+                <div className="flex items-center justify-between rounded-2xl border border-amber-500/15 bg-amber-500/[0.06] px-3.5 py-3 shadow-sm">
                   <div className="min-w-0">
-                    <p className="text-xs font-medium text-muted-foreground">A pagar em 7 dias</p>
-                    <p className="truncate text-sm font-semibold text-red-600">{formatMoney(pagarSemanaTotal)}</p>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
+                      A pagar em 7 dias
+                    </p>
+                    <p className="mt-1 truncate text-sm font-semibold tracking-tight text-red-600">{formatMoney(pagarSemanaTotal)}</p>
                   </div>
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                  <span className="rounded-full border border-border/50 bg-background/80 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                     {pagarSemana.length} item(ns)
                   </span>
                 </div>

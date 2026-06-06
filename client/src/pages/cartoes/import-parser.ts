@@ -425,8 +425,6 @@ const ITAU_DEBUG_MAX_STRING_CHARS = 220;
 const ITAU_MIN_CONFIDENT_TRANSACTIONS = 3;
 
 function isItauParserDebugEnabled(options?: ParseItauOptions): boolean {
-  const runningInTest = typeof process !== "undefined" && process.env.NODE_ENV === "test";
-  if (runningInTest) return true;
   return options?.debugImportPdf === true;
 }
 

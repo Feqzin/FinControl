@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -49,6 +49,9 @@ export function CartaoFormDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Preencha as informações do cartão, como nome, limite, vencimento e ícone.
+          </DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(event) => {
@@ -117,4 +120,3 @@ export function CartaoFormDialog({
     </Dialog>
   );
 }
-

@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -467,6 +468,9 @@ export default function ServicosPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Novo Serviço</DialogTitle>
+              <DialogDescription className="sr-only">
+                Cadastre um serviço informando nome, categoria, valor, periodicidade, forma de pagamento e vínculo opcional com compra de cartão.
+              </DialogDescription>
             </DialogHeader>
             <form
               onSubmit={(e) => {
@@ -1024,6 +1028,9 @@ export default function ServicosPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Editar Serviço</DialogTitle>
+            <DialogDescription className="sr-only">
+              Atualize os dados do serviço selecionado, incluindo cobrança, periodicidade, forma de pagamento e vínculo com compra de cartão.
+            </DialogDescription>
           </DialogHeader>
           <form
             onSubmit={(e) => {
