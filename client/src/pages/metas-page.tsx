@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
+import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -345,19 +346,13 @@ export default function MetasPage() {
       </div>
 
       {metasList.length === 0 ? (
-        <Card className="rounded-[28px] border border-dashed border-border/70 bg-card/80 shadow-sm">
-          <CardContent className="flex flex-col items-center justify-center px-6 py-14 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-primary/15 bg-primary/10 shadow-sm">
-              <Target className="h-7 w-7 text-primary" />
-            </div>
-            <div className="mt-5 space-y-2">
-              <p className="text-lg font-semibold tracking-tight text-foreground">Nenhuma meta criada ainda</p>
-              <p className="mx-auto max-w-sm text-sm leading-6 text-muted-foreground">
-                Defina seu primeiro objetivo financeiro para acompanhar progresso, prazo e valor mensal necessário.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <FintechEmptyState
+          icon={<Target className="h-7 w-7 text-primary" />}
+          title="Nenhuma meta criada ainda"
+          description="Defina seu primeiro objetivo financeiro para acompanhar progresso, prazo e valor mensal necessário."
+          className="bg-card/80"
+          iconWrapClassName="border-primary/15 bg-primary/10"
+        />
       ) : (
         <div className="space-y-6">
           {ativas.length > 0 && (

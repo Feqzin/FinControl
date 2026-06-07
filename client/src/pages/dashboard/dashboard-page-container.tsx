@@ -38,6 +38,7 @@ import { DashboardPageHeader } from "@/components/dashboard/DashboardPageHeader"
 import { DashboardSummaryCards } from "@/components/dashboard/DashboardSummaryCards";
 import { DashboardInsights } from "@/components/dashboard/DashboardInsights";
 import { DashboardFinancialOverview } from "@/components/dashboard/DashboardFinancialOverview";
+import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
 
 const insightIconMap: Record<string, any> = {
   trophy: Trophy,
@@ -425,7 +426,13 @@ export default function Dashboard() {
               ) : sectionStatus.proximosVencimentos.isError ? (
                 <SectionErrorState compact message={sectionStatus.proximosVencimentos.message} />
               ) : !proximoVencimento ? (
-                <p className="text-sm text-muted-foreground">Nenhuma conta pendente no período.</p>
+                <FintechEmptyState
+                  icon={<CalendarClock className="h-5 w-5 text-muted-foreground/70" />}
+                  title="Nenhuma conta pendente no período."
+                  size="compact"
+                  className="min-h-[132px] bg-background/80 px-4 py-6"
+                  titleClassName="text-sm"
+                />
               ) : (
                 <>
                   <p className="text-sm text-muted-foreground">
@@ -824,8 +831,14 @@ export default function Dashboard() {
                 <SectionErrorState compact message={sectionStatus.proximosVencimentos.message} />
               </div>
             ) : proximosVencimentos.length === 0 ? (
-              <div className="px-4 pb-4 text-center">
-                <p className="text-sm text-muted-foreground py-2">Nenhum vencimento pendente</p>
+              <div className="px-4 pb-4">
+                <FintechEmptyState
+                  icon={<CalendarClock className="h-5 w-5 text-muted-foreground/70" />}
+                  title="Nenhum vencimento pendente"
+                  size="compact"
+                  className="bg-background/80 px-4 py-6"
+                  titleClassName="text-sm"
+                />
               </div>
             ) : (
               <div className="divide-y divide-border/30">

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
+import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
 import { ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown, Wallet } from "lucide-react";
 import type { Divida, Servico, Renda } from "@shared/schema";
 import { format, getDaysInMonth } from "date-fns";
@@ -343,10 +344,14 @@ export default function PrevisaoPage() {
                 </div>
               ))}
               {rendasAtivas.length === 0 && entradasDividas.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-border/70 bg-background/60 px-6 py-10 text-center shadow-sm">
-                  <p className="text-sm font-medium text-foreground">Nenhuma entrada prevista.</p>
-                  <p className="mt-2 text-sm text-muted-foreground">Cadastre fontes de renda ou valores a receber.</p>
-                </div>
+                <FintechEmptyState
+                  icon={<ArrowUpRight className="h-5 w-5 text-emerald-600" />}
+                  title="Nenhuma entrada prevista."
+                  description="Cadastre fontes de renda ou valores a receber."
+                  size="compact"
+                  className="bg-background/80"
+                  iconWrapClassName="border-emerald-500/15 bg-emerald-500/10"
+                />
               )}
             </div>
           </CardContent>
@@ -386,9 +391,13 @@ export default function PrevisaoPage() {
                 </div>
               ))}
               {saidasDividas.length === 0 && servicosAtivos.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-border/70 bg-background/60 px-6 py-10 text-center shadow-sm">
-                  <p className="text-sm font-medium text-foreground">Nenhuma saída prevista</p>
-                </div>
+                <FintechEmptyState
+                  icon={<ArrowDownRight className="h-5 w-5 text-red-600" />}
+                  title="Nenhuma saída prevista"
+                  size="compact"
+                  className="bg-background/80"
+                  iconWrapClassName="border-red-500/15 bg-red-500/10"
+                />
               )}
             </div>
           </CardContent>

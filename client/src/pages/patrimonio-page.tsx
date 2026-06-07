@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
+import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
 import {
   Dialog,
   DialogContent,
@@ -383,21 +384,13 @@ export default function PatrimonioPage() {
 
         <div className="xl:col-span-2 fintech-grid-fluid-280 content-start">
           {patrimonios.length === 0 ? (
-            <Card className="col-span-full rounded-[28px] border border-dashed border-border/70 bg-card/80 shadow-sm">
-              <CardContent className="flex flex-col items-center justify-center px-6 py-14 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-primary/15 bg-primary/10 shadow-sm">
-                  <PiggyBank className="h-7 w-7 text-primary" />
-                </div>
-                <div className="mt-5 space-y-2">
-                  <h3 className="text-lg font-semibold tracking-tight text-foreground">
-                    Nenhum patrimônio cadastrado
-                  </h3>
-                  <p className="mx-auto max-w-sm text-sm leading-6 text-muted-foreground">
-                    Comece adicionando suas contas bancárias, investimentos ou dinheiro em espécie.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+            <FintechEmptyState
+              icon={<PiggyBank className="h-7 w-7 text-primary" />}
+              title="Nenhum patrimônio cadastrado"
+              description="Comece adicionando suas contas bancárias, investimentos ou dinheiro em espécie."
+              className="col-span-full bg-card/80"
+              iconWrapClassName="border-primary/15 bg-primary/10"
+            />
           ) : (
             patrimonios.map((p) => {
               const tipoInfo = TIPOS_PATRIMONIO.find((t) => t.value === p.tipo) || TIPOS_PATRIMONIO[4];

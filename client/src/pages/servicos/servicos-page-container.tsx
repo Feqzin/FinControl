@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
+import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -819,27 +820,24 @@ export default function ServicosPage() {
       </div>
 
       {servicos.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border/60 bg-card/95 p-8 text-center shadow-sm sm:p-10" data-testid="empty-servicos">
-          <div className="mx-auto max-w-md">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-background/80 shadow-sm">
-              <Repeat className="h-6 w-6 text-muted-foreground/70" />
-            </div>
-            <p className="text-xl font-semibold tracking-tight">Nenhum serviço cadastrado</p>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Adicione seus serviços e assinaturas</p>
-          </div>
-        </div>
+        <FintechEmptyState
+          icon={<Repeat className="h-6 w-6 text-muted-foreground/70" />}
+          title="Nenhum serviço cadastrado"
+          description="Adicione seus serviços e assinaturas"
+          testId="empty-servicos"
+        />
       ) : byCategory.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border/60 bg-card/95 p-8 text-center shadow-sm sm:p-10">
-          <div className="mx-auto max-w-lg">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/80 shadow-sm">
-              <Repeat className="h-5 w-5 text-muted-foreground/70" />
-            </div>
-            <p className="text-base font-semibold tracking-tight">Nenhum serviço encontrado</p>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+        <FintechEmptyState
+          icon={<Repeat className="h-5 w-5 text-muted-foreground/70" />}
+          title="Nenhum serviço encontrado"
+          description={
+            <>
               Nenhum serviço encontrado para a aba <span className="font-medium">{servicosTab}</span> no mês {mesReferencia}.
-            </p>
-          </div>
-        </div>
+            </>
+          }
+          size="compact"
+          contentClassName="max-w-lg"
+        />
       ) : (
         <div className="space-y-6">
           {byCategory.map((cat) => (

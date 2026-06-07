@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
+import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -599,12 +600,12 @@ export default function RelatoriosPageContainer() {
                   {filteredData.compras.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={4} className="py-10">
-                        <div className="flex flex-col items-center gap-3 text-center text-muted-foreground">
-                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border/50 bg-muted/20 shadow-sm">
-                            <CreditCard className="h-5 w-5" />
-                          </div>
-                          <p className="text-sm">Nenhuma compra no período</p>
-                        </div>
+                        <FintechEmptyState
+                          icon={<CreditCard className="h-5 w-5 text-muted-foreground/70" />}
+                          title="Nenhuma compra no período"
+                          size="compact"
+                          className="mx-auto max-w-sm bg-background/80"
+                        />
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -667,12 +668,12 @@ export default function RelatoriosPageContainer() {
                   {pessoas.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={3} className="py-10">
-                        <div className="flex flex-col items-center gap-3 text-center text-muted-foreground">
-                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border/50 bg-muted/20 shadow-sm">
-                            <Users className="h-5 w-5" />
-                          </div>
-                          <p className="text-sm">Nenhuma pessoa cadastrada</p>
-                        </div>
+                        <FintechEmptyState
+                          icon={<Users className="h-5 w-5 text-muted-foreground/70" />}
+                          title="Nenhuma pessoa cadastrada"
+                          size="compact"
+                          className="mx-auto max-w-sm bg-background/80"
+                        />
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -750,12 +751,12 @@ export default function RelatoriosPageContainer() {
                   {filteredData.activeServicos.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="py-10">
-                        <div className="flex flex-col items-center gap-3 text-center text-muted-foreground">
-                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border/50 bg-muted/20 shadow-sm">
-                            <Receipt className="h-5 w-5" />
-                          </div>
-                          <p className="text-sm">Nenhum serviço ativo</p>
-                        </div>
+                        <FintechEmptyState
+                          icon={<Receipt className="h-5 w-5 text-muted-foreground/70" />}
+                          title="Nenhum serviço ativo"
+                          size="compact"
+                          className="mx-auto max-w-sm bg-background/80"
+                        />
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -823,12 +824,12 @@ export default function RelatoriosPageContainer() {
                   {patrimonios.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={3} className="py-10">
-                        <div className="flex flex-col items-center gap-3 text-center text-muted-foreground">
-                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border/50 bg-muted/20 shadow-sm">
-                            <PiggyBank className="h-5 w-5" />
-                          </div>
-                          <p className="text-sm">Nenhum patrimônio cadastrado</p>
-                        </div>
+                        <FintechEmptyState
+                          icon={<PiggyBank className="h-5 w-5 text-muted-foreground/70" />}
+                          title="Nenhum patrimônio cadastrado"
+                          size="compact"
+                          className="mx-auto max-w-sm bg-background/80"
+                        />
                       </TableCell>
                     </TableRow>
                   ) : (

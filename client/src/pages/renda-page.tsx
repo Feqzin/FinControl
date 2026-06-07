@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
+import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
 import {
   Dialog,
   DialogContent,
@@ -366,17 +367,12 @@ export default function RendaPage() {
             </Card>
           ))
         ) : rendas.length === 0 ? (
-          <div className="col-span-full rounded-2xl border border-dashed border-border/60 bg-card/95 p-8 text-center shadow-sm sm:p-10">
-            <div className="mx-auto max-w-md">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border/60 bg-background/80 shadow-sm">
-                <DollarSign className="h-6 w-6 text-muted-foreground/70" />
-              </div>
-              <p className="text-xl font-semibold tracking-tight">Nenhuma renda cadastrada</p>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Adicione suas fontes de renda para acompanhar melhor sua entrada mensal.
-              </p>
-            </div>
-          </div>
+          <FintechEmptyState
+            icon={<DollarSign className="h-6 w-6 text-muted-foreground/70" />}
+            title="Nenhuma renda cadastrada"
+            description="Adicione suas fontes de renda para acompanhar melhor sua entrada mensal."
+            className="col-span-full"
+          />
         ) : (
           rendas.map((renda) => (
             <Card
