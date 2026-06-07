@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowDownRight, CalendarClock, CreditCard, Receipt, TrendingUp } from "lucide-react";
 import { DashboardEmptyState } from "@/components/dashboard/DashboardEmptyState";
+import { FintechLoadingListItem, FintechLoadingSurface } from "@/components/layout/fintech-loading-shell";
 
 type DashboardSectionStatus = {
   isLoading: boolean;
@@ -89,16 +90,13 @@ export function DashboardFinancialOverview({
           {proximosStatus.isLoading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((idx) => (
-                <div key={idx} className="flex items-start gap-3 rounded-2xl border border-border/55 bg-muted/[0.16] p-3 shadow-sm">
-                  <Skeleton className="h-10 w-10 flex-shrink-0 rounded-xl bg-muted/70" />
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <Skeleton className="h-4 w-1/2 rounded-full bg-muted/65" />
-                      <Skeleton className="h-4 w-16 rounded-full bg-muted/60" />
-                    </div>
-                    <Skeleton className="h-3 w-3/4 rounded-full bg-muted/55" />
-                  </div>
-                </div>
+                <FintechLoadingListItem
+                  key={idx}
+                  titleWidth="w-1/2"
+                  subtitleWidth="w-3/4"
+                  trailingWidth="w-16"
+                  tone="muted"
+                />
               ))}
             </div>
           ) : proximosStatus.isError ? (
@@ -156,13 +154,15 @@ export function DashboardFinancialOverview({
           {!proximosStatus.isLoading && !proximosStatus.isError ? (
             <div className="mt-4 border-t border-border/60 pt-4">
               {pagarSemanaStatus.isLoading ? (
-                <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-muted/[0.16] px-3.5 py-3 shadow-sm">
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <Skeleton className="h-3 w-24 rounded-full bg-muted/60" />
-                    <Skeleton className="h-4 w-20 rounded-full bg-muted/70" />
+                <FintechLoadingSurface tone="muted" className="rounded-2xl">
+                  <div className="flex items-center justify-between px-3.5 py-3">
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <Skeleton className="h-3 w-24 rounded-full bg-muted/60" />
+                      <Skeleton className="h-4 w-20 rounded-full bg-muted/70" />
+                    </div>
+                    <Skeleton className="h-6 w-20 rounded-full bg-muted/60" />
                   </div>
-                  <Skeleton className="h-6 w-20 rounded-full bg-muted/60" />
-                </div>
+                </FintechLoadingSurface>
               ) : pagarSemanaStatus.isError ? (
                 <p className="text-xs text-muted-foreground">Resumo da semana indisponível no momento.</p>
               ) : pagarSemana.length > 0 ? (
@@ -195,7 +195,7 @@ export function DashboardFinancialOverview({
           <CardContent>
             {scoreDetalhadoStatus.isLoading ? (
               <div className="space-y-3">
-                <div className="rounded-xl border border-border/60 bg-muted/[0.16] p-3 shadow-sm">
+                <FintechLoadingSurface tone="muted" className="rounded-xl">
                   <div className="flex items-center justify-between gap-3">
                     <Skeleton className="h-4 w-28 rounded-full bg-muted/60" />
                     <div className="flex items-center gap-2">
@@ -203,12 +203,14 @@ export function DashboardFinancialOverview({
                       <Skeleton className="h-4 w-12 rounded-full bg-muted/70" />
                     </div>
                   </div>
-                </div>
+                </FintechLoadingSurface>
                 {[1, 2].map((idx) => (
-                  <div key={idx} className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/[0.14] p-2.5 shadow-sm">
-                    <Skeleton className="h-3 w-32 rounded-full bg-muted/60" />
-                    <Skeleton className="h-4 w-10 rounded-full bg-muted/70" />
-                  </div>
+                  <FintechLoadingSurface key={idx} tone="muted" className="rounded-xl">
+                    <div className="flex items-center justify-between p-2.5">
+                      <Skeleton className="h-3 w-32 rounded-full bg-muted/60" />
+                      <Skeleton className="h-4 w-10 rounded-full bg-muted/70" />
+                    </div>
+                  </FintechLoadingSurface>
                 ))}
               </div>
             ) : scoreDetalhadoStatus.isError ? (

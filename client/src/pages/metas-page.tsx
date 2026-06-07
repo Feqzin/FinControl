@@ -12,6 +12,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
 import {
+  FintechLoadingMetricCard,
+  FintechLoadingPageHeader,
+  FintechLoadingSurface,
+} from "@/components/layout/fintech-loading-shell";
+import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -95,31 +100,21 @@ export default function MetasPage() {
   if (isLoading) {
     return (
       <div className="app-page-shell app-section-stack max-w-5xl" data-testid="metas-page">
-        <div className="rounded-[28px] border border-border/60 bg-card/95 p-6 shadow-sm backdrop-blur">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-3">
-              <Skeleton className="h-4 w-24 rounded-full" />
-              <Skeleton className="h-10 w-64 rounded-full" />
-              <Skeleton className="h-4 w-80 max-w-full rounded-full" />
-            </div>
-            <Skeleton className="h-11 w-full rounded-2xl sm:w-40" />
-          </div>
-        </div>
+        <FintechLoadingPageHeader
+          titleWidth="w-64"
+          subtitleWidth="w-80 max-w-full"
+          actions={<Skeleton className="h-11 w-full rounded-2xl bg-muted/65 sm:w-40" />}
+        />
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {Array.from({ length: 3 }).map((_, index) => (
-            <Card key={index} className="border border-border/60 bg-card/95 shadow-sm">
-              <CardContent className="space-y-4 p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-2">
-                    <Skeleton className="h-4 w-24 rounded-full" />
-                    <Skeleton className="h-8 w-24 rounded-full" />
-                  </div>
-                  <Skeleton className="h-10 w-10 rounded-2xl" />
-                </div>
-                <Skeleton className="h-4 w-32 rounded-full" />
-              </CardContent>
-            </Card>
+            <FintechLoadingMetricCard
+              key={index}
+              titleWidth="w-24"
+              valueWidth="w-24"
+              detailWidth="w-32"
+              iconSizeClassName="h-10 w-10"
+            />
           ))}
         </div>
 
@@ -129,37 +124,41 @@ export default function MetasPage() {
               <Skeleton className="h-4 w-40 rounded-full" />
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {Array.from({ length: 2 }).map((__, cardIndex) => (
-                  <Card key={cardIndex} className="rounded-[26px] border border-border/60 bg-card/95 shadow-sm">
-                    <CardContent className="space-y-4 p-5">
+                  <FintechLoadingSurface key={cardIndex}>
+                    <div className="space-y-4 p-5">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3">
-                          <Skeleton className="h-11 w-11 rounded-2xl" />
+                          <Skeleton className="h-11 w-11 rounded-2xl bg-muted/70" />
                           <div className="space-y-2">
-                            <Skeleton className="h-5 w-32 rounded-full" />
-                            <Skeleton className="h-4 w-24 rounded-full" />
+                            <Skeleton className="h-5 w-32 rounded-full bg-muted/65" />
+                            <Skeleton className="h-4 w-24 rounded-full bg-muted/60" />
                           </div>
                         </div>
-                        <Skeleton className="h-6 w-20 rounded-full" />
+                        <Skeleton className="h-6 w-20 rounded-full bg-muted/65" />
                       </div>
                       <div className="space-y-2">
                         <div className="flex justify-between gap-3">
-                          <Skeleton className="h-4 w-20 rounded-full" />
-                          <Skeleton className="h-4 w-20 rounded-full" />
+                          <Skeleton className="h-4 w-20 rounded-full bg-muted/60" />
+                          <Skeleton className="h-4 w-20 rounded-full bg-muted/60" />
                         </div>
-                        <Skeleton className="h-3 w-full rounded-full" />
-                        <Skeleton className="ml-auto h-3 w-16 rounded-full" />
+                        <Skeleton className="h-3 w-full rounded-full bg-muted/60" />
+                        <Skeleton className="ml-auto h-3 w-16 rounded-full bg-muted/55" />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
-                        <Skeleton className="h-16 rounded-2xl" />
-                        <Skeleton className="h-16 rounded-2xl" />
+                        <FintechLoadingSurface tone="inset" className="rounded-2xl">
+                          <div className="h-16" />
+                        </FintechLoadingSurface>
+                        <FintechLoadingSurface tone="inset" className="rounded-2xl">
+                          <div className="h-16" />
+                        </FintechLoadingSurface>
                       </div>
-                      <Skeleton className="h-4 w-28 rounded-full" />
+                      <Skeleton className="h-4 w-28 rounded-full bg-muted/60" />
                       <div className="flex gap-2">
-                        <Skeleton className="h-9 flex-1 rounded-2xl" />
-                        <Skeleton className="h-9 w-9 rounded-xl" />
+                        <Skeleton className="h-9 flex-1 rounded-2xl bg-muted/65" />
+                        <Skeleton className="h-9 w-9 rounded-xl bg-muted/65" />
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </FintechLoadingSurface>
                 ))}
               </div>
             </div>

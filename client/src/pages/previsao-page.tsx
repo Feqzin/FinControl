@@ -5,6 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
+import {
+  FintechLoadingListItem,
+  FintechLoadingMetricCard,
+  FintechLoadingPageHeader,
+  FintechLoadingSurface,
+} from "@/components/layout/fintech-loading-shell";
 import { ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown, Wallet } from "lucide-react";
 import type { Divida, Servico, Renda } from "@shared/schema";
 import { format, getDaysInMonth } from "date-fns";
@@ -102,68 +108,56 @@ export default function PrevisaoPage() {
   if (isLoading) {
     return (
       <div className="app-page-shell app-section-stack max-w-6xl">
-        <div className="rounded-[28px] border border-border/60 bg-card/95 p-6 shadow-sm backdrop-blur">
-          <div className="space-y-3">
-            <Skeleton className="h-4 w-28 rounded-full" />
-            <Skeleton className="h-10 w-72 rounded-full" />
-            <Skeleton className="h-4 w-96 max-w-full rounded-full" />
-          </div>
-        </div>
+        <FintechLoadingPageHeader
+          titleWidth="w-72"
+          subtitleWidth="w-96 max-w-full"
+          eyebrowWidth="w-28"
+        />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="rounded-[26px] border border-border/60 bg-card/95 p-5 shadow-sm">
-              <div className="space-y-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-2">
-                    <Skeleton className="h-4 w-24 rounded-full" />
-                    <Skeleton className="h-8 w-28 rounded-full" />
-                  </div>
-                  <Skeleton className="h-11 w-11 rounded-2xl" />
-                </div>
-                <div className="space-y-2">
-                  <Skeleton className="h-3 w-full rounded-full" />
-                  <Skeleton className="h-3 w-4/5 rounded-full" />
-                </div>
-              </div>
-            </div>
+            <FintechLoadingMetricCard
+              key={i}
+              titleWidth="w-24"
+              valueWidth="w-28"
+              detailWidth="w-full"
+              iconSizeClassName="h-11 w-11"
+            />
           ))}
         </div>
 
-        <div className="rounded-[26px] border border-border/60 bg-card/95 p-5 shadow-sm">
+        <FintechLoadingSurface>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Skeleton className="h-5 w-56 rounded-full" />
-              <Skeleton className="h-4 w-48 rounded-full" />
+              <Skeleton className="h-5 w-56 rounded-full bg-muted/65" />
+              <Skeleton className="h-4 w-48 rounded-full bg-muted/60" />
             </div>
-            <Skeleton className="h-64 w-full rounded-3xl" />
-            <Skeleton className="mx-auto h-3 w-64 rounded-full" />
+            <Skeleton className="h-64 w-full rounded-3xl bg-muted/70" />
+            <Skeleton className="mx-auto h-3 w-64 rounded-full bg-muted/60" />
           </div>
-        </div>
+        </FintechLoadingSurface>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {Array.from({ length: 2 }).map((_, i) => (
-            <div key={i} className="rounded-[26px] border border-border/60 bg-card/95 p-5 shadow-sm">
+            <FintechLoadingSurface key={i}>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Skeleton className="h-5 w-44 rounded-full" />
-                  <Skeleton className="h-4 w-20 rounded-full" />
+                  <Skeleton className="h-5 w-44 rounded-full bg-muted/65" />
+                  <Skeleton className="h-4 w-20 rounded-full bg-muted/60" />
                 </div>
                 <div className="space-y-3">
                   {Array.from({ length: 3 }).map((__, itemIndex) => (
-                    <div key={itemIndex} className="rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-2">
-                          <Skeleton className="h-4 w-32 rounded-full" />
-                          <Skeleton className="h-3 w-20 rounded-full" />
-                        </div>
-                        <Skeleton className="h-4 w-20 rounded-full" />
-                      </div>
-                    </div>
+                    <FintechLoadingListItem
+                      key={itemIndex}
+                      tone="inset"
+                      titleWidth="w-32"
+                      subtitleWidth="w-20"
+                      trailingWidth="w-20"
+                    />
                   ))}
                 </div>
               </div>
-            </div>
+            </FintechLoadingSurface>
           ))}
         </div>
       </div>

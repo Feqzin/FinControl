@@ -6,6 +6,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
 import {
+  FintechLoadingActionCluster,
+  FintechLoadingListItem,
+  FintechLoadingMetricCard,
+  FintechLoadingPageHeader,
+  FintechLoadingSurface,
+} from "@/components/layout/fintech-loading-shell";
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -346,65 +353,58 @@ export default function RelatoriosPageContainer() {
   if (isLoading) {
     return (
       <div className="mx-auto w-full max-w-[1600px] space-y-6 overflow-x-hidden p-4 sm:p-6">
-        <div className="rounded-3xl border border-border/60 bg-card/95 p-5 shadow-sm sm:p-6">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-            <div className="space-y-3">
-              <Skeleton className="h-10 w-48 rounded-xl" />
-              <Skeleton className="h-4 w-72 max-w-full rounded-full" />
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Skeleton className="h-11 w-full rounded-2xl sm:w-[190px]" />
-              <Skeleton className="h-11 w-full rounded-2xl sm:w-[152px]" />
-            </div>
-          </div>
-        </div>
+        <FintechLoadingPageHeader
+          className="rounded-3xl"
+          showEyebrow={false}
+          titleWidth="w-48"
+          subtitleWidth="w-72 max-w-full"
+          actions={
+            <FintechLoadingActionCluster
+              widths={["w-full sm:w-[190px]", "w-full sm:w-[152px]"]}
+              className="grid-cols-1 sm:grid-cols-2"
+            />
+          }
+        />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
           {[...Array(6)].map((_, i) => (
-            <div
+            <FintechLoadingMetricCard
               key={i}
-              className="rounded-3xl border border-border/60 bg-card/95 p-5 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1 space-y-3">
-                  <Skeleton className="h-3 w-24 rounded-full" />
-                  <Skeleton className="h-8 w-28 rounded-xl" />
-                </div>
-                <Skeleton className="h-11 w-11 shrink-0 rounded-2xl" />
-              </div>
-            </div>
+              className="rounded-3xl"
+              titleWidth="w-24"
+              valueWidth="w-28"
+              iconSizeClassName="h-11 w-11"
+            />
           ))}
         </div>
-        <div className="rounded-3xl border border-border/60 bg-card/95 p-5 shadow-sm sm:p-6">
+        <FintechLoadingSurface className="rounded-3xl">
           <div className="mb-4 flex items-center gap-3">
-            <Skeleton className="h-10 w-10 rounded-2xl" />
-            <Skeleton className="h-6 w-52 rounded-xl" />
+            <Skeleton className="h-10 w-10 rounded-2xl bg-muted/70" />
+            <Skeleton className="h-6 w-52 rounded-xl bg-muted/65" />
           </div>
-          <Skeleton className="h-[320px] w-full rounded-2xl" />
-        </div>
+          <Skeleton className="h-[320px] w-full rounded-2xl bg-muted/70" />
+        </FintechLoadingSurface>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {[...Array(4)].map((_, i) => (
-            <div
-              key={i}
-              className="rounded-3xl border border-border/60 bg-card/95 p-5 shadow-sm sm:p-6"
-            >
+            <FintechLoadingSurface key={i} className="rounded-3xl">
               <div className="mb-4 flex items-center gap-3">
-                <Skeleton className="h-10 w-10 rounded-2xl" />
-                <Skeleton className="h-6 w-40 rounded-xl" />
+                <Skeleton className="h-10 w-10 rounded-2xl bg-muted/70" />
+                <Skeleton className="h-6 w-40 rounded-xl bg-muted/65" />
               </div>
-              <div className="rounded-2xl border border-border/50 bg-background/80 p-3 shadow-sm sm:p-4">
+              <FintechLoadingSurface tone="inset" className="rounded-2xl">
                 <div className="space-y-3">
                   {[...Array(5)].map((__, rowIndex) => (
-                    <div key={rowIndex} className="flex items-center justify-between gap-4">
-                      <div className="space-y-2">
-                        <Skeleton className="h-4 w-28 rounded-full" />
-                        <Skeleton className="h-3 w-20 rounded-full" />
-                      </div>
-                      <Skeleton className="h-4 w-20 rounded-full" />
-                    </div>
+                    <FintechLoadingListItem
+                      key={rowIndex}
+                      tone="inset"
+                      titleWidth="w-28"
+                      subtitleWidth="w-20"
+                      trailingWidth="w-20"
+                      className="border-0 bg-transparent shadow-none"
+                    />
                   ))}
                 </div>
-              </div>
-            </div>
+              </FintechLoadingSurface>
+            </FintechLoadingSurface>
           ))}
         </div>
       </div>

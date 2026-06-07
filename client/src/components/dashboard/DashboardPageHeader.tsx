@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
+import { FintechLoadingSurface } from "@/components/layout/fintech-loading-shell";
 import { Settings2 } from "lucide-react";
 
 type DashboardSectionStatus = {
@@ -101,7 +102,7 @@ export function DashboardPageHeader({
 
           {showAdvancedResources &&
             (scoreStatus.isLoading ? (
-              <div className="mt-2 w-full rounded-2xl border border-border/50 bg-background/95 px-3.5 py-3 shadow-sm sm:px-4 xl:max-w-[280px]">
+              <FintechLoadingSurface tone="inset" className="mt-2 w-full rounded-2xl xl:max-w-[280px]">
                 <div className="mb-1.5 flex items-center justify-between gap-2">
                   <Skeleton className="h-3 w-24 rounded-full bg-muted/65" />
                   <Skeleton className="h-3 w-14 rounded-full bg-muted/55" />
@@ -110,7 +111,7 @@ export function DashboardPageHeader({
                   <Skeleton className="h-2 flex-1 rounded-full bg-muted/60" />
                   <Skeleton className="h-5 w-10 rounded-md bg-muted/65" />
                 </div>
-              </div>
+              </FintechLoadingSurface>
             ) : scoreStatus.isError ? (
               <div className="mt-2 xl:max-w-[280px]">
                 <HeaderScoreError message={scoreStatus.message} />

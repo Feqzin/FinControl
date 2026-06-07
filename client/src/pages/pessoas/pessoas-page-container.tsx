@@ -53,6 +53,7 @@ import type { Pessoa, Divida, CompraCartao, Cartao, ServicoPessoa, ServicoPagame
 import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
 import { format } from "date-fns";
 import { formatCurrencyBRL } from "@/utils/formatters";
+import { FintechLoadingPageHeader, FintechLoadingSurface } from "@/components/layout/fintech-loading-shell";
 
 type PessoaKind = Pessoa["tipo"];
 
@@ -217,9 +218,47 @@ export default function PessoasPage() {
   if (isLoading) {
     return (
       <div className="app-page-shell app-section-stack">
-        <Skeleton className="h-8 w-32" />
+        <FintechLoadingPageHeader
+          showEyebrow={false}
+          titleWidth="w-44"
+          subtitleWidth="w-80 max-w-full"
+          actions={
+            <div className="grid w-full gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:min-w-[360px]">
+              <Skeleton className="h-11 w-full rounded-2xl bg-muted/65" />
+              <Skeleton className="h-11 w-full rounded-2xl bg-muted/65 sm:w-40" />
+            </div>
+          }
+        />
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-52" />)}
+          {[1, 2, 3].map((i) => (
+            <FintechLoadingSurface key={i}>
+              <div className="space-y-4 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <Skeleton className="h-12 w-12 rounded-2xl bg-muted/70" />
+                    <div className="space-y-2">
+                      <Skeleton className="h-5 w-36 rounded-full bg-muted/65" />
+                      <Skeleton className="h-4 w-24 rounded-full bg-muted/60" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-8 w-20 rounded-full bg-muted/65" />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[1, 2, 3].map((metric) => (
+                    <div key={metric} className="rounded-2xl border border-border/50 bg-background/80 p-3 shadow-sm">
+                      <Skeleton className="h-3 w-full rounded-full bg-muted/55" />
+                      <Skeleton className="mt-2 h-4 w-4/5 rounded-full bg-muted/65" />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Skeleton className="h-9 flex-1 rounded-2xl bg-muted/65" />
+                  <Skeleton className="h-9 w-9 rounded-xl bg-muted/65" />
+                  <Skeleton className="h-9 w-9 rounded-xl bg-muted/65" />
+                </div>
+              </div>
+            </FintechLoadingSurface>
+          ))}
         </div>
       </div>
     );

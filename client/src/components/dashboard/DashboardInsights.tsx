@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, Lightbulb, Target } from "lucide-react";
+import { FintechLoadingListItem } from "@/components/layout/fintech-loading-shell";
 
 type DashboardSectionStatus = {
   isLoading: boolean;
@@ -64,15 +65,15 @@ export function DashboardInsights({
             {alertasStatus.isLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map((idx) => (
-                  <div key={idx} className="rounded-xl border border-border/60 bg-muted/[0.16] p-3 shadow-sm">
-                    <div className="flex items-start gap-2.5">
-                      <Skeleton className="mt-0.5 h-4 w-4 rounded-full bg-muted/70" />
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <Skeleton className="h-3 w-full rounded-full bg-muted/65" />
-                        <Skeleton className="h-3 w-4/5 rounded-full bg-muted/55" />
-                      </div>
-                    </div>
-                  </div>
+                  <FintechLoadingListItem
+                    key={idx}
+                    className="rounded-xl"
+                    compact
+                    iconSizeClassName="mt-0.5 h-4 w-4 rounded-full"
+                    titleWidth="w-full"
+                    subtitleWidth="w-4/5"
+                    showTrailing={false}
+                  />
                 ))}
               </div>
             ) : alertasStatus.isError ? (
@@ -105,15 +106,16 @@ export function DashboardInsights({
             {insightsStatus.isLoading ? (
               <div className="space-y-2">
                 {[1, 2].map((idx) => (
-                  <div key={idx} className="rounded-xl border border-border/60 bg-muted/[0.16] p-3 shadow-sm">
-                    <div className="flex items-start gap-2.5">
-                      <Skeleton className="mt-0.5 h-4 w-4 rounded-full bg-muted/70" />
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <Skeleton className="h-3 w-full rounded-full bg-muted/65" />
-                        <Skeleton className="h-3 w-3/4 rounded-full bg-muted/55" />
-                        <Skeleton className="h-6 w-24 rounded-lg bg-muted/60" />
-                      </div>
-                    </div>
+                  <div key={idx} className="space-y-2">
+                    <FintechLoadingListItem
+                      className="rounded-xl"
+                      compact
+                      iconSizeClassName="mt-0.5 h-4 w-4 rounded-full"
+                      titleWidth="w-full"
+                      subtitleWidth="w-3/4"
+                      showTrailing={false}
+                    />
+                    <Skeleton className="ml-9 h-6 w-24 rounded-lg bg-muted/60" />
                   </div>
                 ))}
               </div>

@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
+import { FintechLoadingSurface } from "@/components/layout/fintech-loading-shell";
 import {
   Dialog,
   DialogContent,
@@ -344,27 +345,27 @@ export default function RendaPage() {
       <div className="fintech-grid-fluid-260">
         {isLoading ? (
           Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i} className="flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card/95 shadow-sm">
-              <CardHeader className="space-y-3 pb-3">
+            <FintechLoadingSurface key={i} className="overflow-hidden rounded-2xl">
+              <div className="space-y-3 px-6 pb-3 pt-6">
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-2">
-                    <Skeleton className="h-5 w-32 rounded-lg" />
+                    <Skeleton className="h-5 w-32 rounded-lg bg-muted/65" />
                     <div className="flex gap-2">
-                      <Skeleton className="h-5 w-14 rounded-full" />
-                      <Skeleton className="h-5 w-16 rounded-full" />
+                      <Skeleton className="h-5 w-14 rounded-full bg-muted/60" />
+                      <Skeleton className="h-5 w-16 rounded-full bg-muted/60" />
                     </div>
                   </div>
                   <div className="flex gap-1.5">
-                    <Skeleton className="h-8 w-8 rounded-lg" />
-                    <Skeleton className="h-8 w-8 rounded-lg" />
-                    <Skeleton className="h-8 w-8 rounded-lg" />
+                    <Skeleton className="h-8 w-8 rounded-lg bg-muted/65" />
+                    <Skeleton className="h-8 w-8 rounded-lg bg-muted/65" />
+                    <Skeleton className="h-8 w-8 rounded-lg bg-muted/65" />
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <Skeleton className="h-9 w-32 rounded-lg" />
-              </CardContent>
-            </Card>
+              </div>
+              <div className="px-6 pb-6 pt-0">
+                <Skeleton className="h-9 w-32 rounded-lg bg-muted/70" />
+              </div>
+            </FintechLoadingSurface>
           ))
         ) : rendas.length === 0 ? (
           <FintechEmptyState

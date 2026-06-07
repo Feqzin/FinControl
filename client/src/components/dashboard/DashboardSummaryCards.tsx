@@ -1,5 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/pages/dashboard/components/stat-card";
+import { FintechLoadingMetricCard } from "@/components/layout/fintech-loading-shell";
 
 type DashboardSectionStatus = {
   isLoading: boolean;
@@ -43,21 +44,15 @@ export function DashboardSummaryCards({ status, cards, hiddenCardIds, compact }:
     return (
       <div className={gridClass}>
         {[1, 2, 3, 4, 5].map((idx) => (
-          <div
+          <FintechLoadingMetricCard
             key={idx}
-            className={`rounded-2xl border border-border/60 bg-card/95 shadow-sm ${compact ? "min-h-[96px]" : "min-h-[112px]"}`}
-          >
-            <div className="flex h-full flex-col justify-between gap-3 p-[14px] md:p-[18px]">
-              <div className="flex items-start justify-between gap-3">
-                <Skeleton className="h-3 w-20 rounded-full bg-muted/70" />
-                <Skeleton className={`${compact ? "h-9 w-9" : "h-10 w-10"} rounded-xl bg-muted/70`} />
-              </div>
-              <div className="space-y-2">
-                <Skeleton className="h-8 w-28 rounded-lg bg-muted/75" />
-                <Skeleton className="h-3 w-24 rounded-full bg-muted/60" />
-              </div>
-            </div>
-          </div>
+            className={compact ? "min-h-[96px]" : "min-h-[112px]"}
+            compact
+            titleWidth="w-20"
+            valueWidth="w-28"
+            detailWidth="w-24"
+            iconSizeClassName={compact ? "h-9 w-9" : "h-10 w-10"}
+          />
         ))}
       </div>
     );

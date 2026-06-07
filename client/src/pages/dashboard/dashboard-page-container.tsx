@@ -39,6 +39,11 @@ import { DashboardSummaryCards } from "@/components/dashboard/DashboardSummaryCa
 import { DashboardInsights } from "@/components/dashboard/DashboardInsights";
 import { DashboardFinancialOverview } from "@/components/dashboard/DashboardFinancialOverview";
 import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
+import {
+  FintechLoadingListItem,
+  FintechLoadingMetricCard,
+  FintechLoadingSurface,
+} from "@/components/layout/fintech-loading-shell";
 
 const insightIconMap: Record<string, any> = {
   trophy: Trophy,
@@ -377,18 +382,23 @@ export default function Dashboard() {
         </div>
 
         {sectionStatus.saldo.isLoading ? (
-          <div className="rounded-2xl border border-border/60 bg-card/95 p-4 shadow-sm sm:p-5">
+          <FintechLoadingSurface className="rounded-2xl" contentClassName="p-4 sm:p-5">
             <Skeleton className="h-3 w-28 rounded-full bg-muted/60" />
             <Skeleton className="mt-3 h-10 w-40 rounded-xl bg-muted/70" />
             <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {[1, 2].map((idx) => (
-                <div key={idx} className="rounded-xl bg-muted/[0.22] px-3 py-3">
+                <FintechLoadingSurface
+                  key={idx}
+                  tone="inset"
+                  className="rounded-xl shadow-none"
+                  contentClassName="px-3 py-3"
+                >
                   <Skeleton className="h-3 w-16 rounded-full bg-muted/55" />
                   <Skeleton className="mt-2 h-4 w-24 rounded-full bg-muted/70" />
-                </div>
+                </FintechLoadingSurface>
               ))}
             </div>
-          </div>
+          </FintechLoadingSurface>
         ) : sectionStatus.saldo.isError ? (
           <SectionErrorState message={sectionStatus.saldo.message} />
         ) : (
@@ -413,19 +423,23 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <Card className="flex flex-col shadow-sm" data-testid="essencial-proxima-conta">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Próxima conta</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-1 flex-col gap-2">
-              {sectionStatus.proximosVencimentos.isLoading ? (
-                <div className="space-y-3">
-                  <Skeleton className="h-3 w-28 rounded-full bg-muted/60" />
-                  <Skeleton className="h-4 w-2/3 rounded-full bg-muted/65" />
-                  <Skeleton className="h-8 w-28 rounded-xl bg-muted/75" />
-                  <Skeleton className="h-11 w-full rounded-xl bg-muted/60" />
-                </div>
-              ) : sectionStatus.proximosVencimentos.isError ? (
-                <SectionErrorState compact message={sectionStatus.proximosVencimentos.message} />
-              ) : !proximoVencimento ? (
+            <CardTitle className="text-base">Próxima conta</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-1 flex-col gap-2">
+            {sectionStatus.proximosVencimentos.isLoading ? (
+              <FintechLoadingSurface
+                tone="inset"
+                className="rounded-2xl shadow-none"
+                contentClassName="space-y-3 p-4"
+              >
+                <Skeleton className="h-3 w-28 rounded-full bg-muted/60" />
+                <Skeleton className="h-4 w-2/3 rounded-full bg-muted/65" />
+                <Skeleton className="h-8 w-28 rounded-xl bg-muted/75" />
+                <Skeleton className="h-11 w-full rounded-xl bg-muted/60" />
+              </FintechLoadingSurface>
+            ) : sectionStatus.proximosVencimentos.isError ? (
+              <SectionErrorState compact message={sectionStatus.proximosVencimentos.message} />
+            ) : !proximoVencimento ? (
                 <FintechEmptyState
                   icon={<CalendarClock className="h-5 w-5 text-muted-foreground/70" />}
                   title="Nenhuma conta pendente no período."
@@ -607,7 +621,7 @@ export default function Dashboard() {
 
         <div className="px-4 pt-4 space-y-3">
           {sectionStatus.saldo.isLoading ? (
-            <div className="rounded-2xl border border-border/60 bg-card/95 p-[14px] shadow-sm">
+            <FintechLoadingSurface className="rounded-2xl" contentClassName="p-[14px]">
               <Skeleton className="h-3 w-24 rounded-full bg-muted/60" />
               <Skeleton className="mt-3 h-10 w-40 rounded-xl bg-muted/70" />
               <div className="mt-4 flex gap-4">
@@ -618,7 +632,7 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
-            </div>
+            </FintechLoadingSurface>
           ) : sectionStatus.saldo.isError ? (
             <SectionErrorState message={sectionStatus.saldo.message} />
           ) : (
@@ -648,13 +662,13 @@ export default function Dashboard() {
             sectionStatus.cardsResumo.isLoading ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {[1, 2, 3, 4].map((idx) => (
-                  <div key={idx} className="rounded-2xl border border-border/60 bg-card/95 p-[14px] shadow-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <Skeleton className="h-3 w-20 rounded-full bg-muted/60" />
-                      <Skeleton className="h-7 w-7 rounded-lg bg-muted/70" />
-                    </div>
-                    <Skeleton className="mt-6 h-8 w-28 rounded-xl bg-muted/75" />
-                  </div>
+                  <FintechLoadingMetricCard
+                    key={idx}
+                    compact
+                    titleWidth="w-20"
+                    valueWidth="w-28"
+                    iconSizeClassName="h-7 w-7"
+                  />
                 ))}
               </div>
             ) : sectionStatus.cardsResumo.isError ? (
@@ -696,15 +710,15 @@ export default function Dashboard() {
             {sectionStatus.alertas.isLoading ? (
               <div className="space-y-2 px-4 pb-4">
                 {[1, 2, 3].map((idx) => (
-                  <div key={idx} className="rounded-xl border border-border/60 bg-muted/[0.16] p-3 shadow-sm">
-                    <div className="flex items-start gap-2.5">
-                      <Skeleton className="mt-0.5 h-4 w-4 rounded-full bg-muted/70" />
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <Skeleton className="h-3 w-full rounded-full bg-muted/65" />
-                        <Skeleton className="h-3 w-4/5 rounded-full bg-muted/55" />
-                      </div>
-                    </div>
-                  </div>
+                  <FintechLoadingListItem
+                    key={idx}
+                    compact
+                    titleWidth="w-full"
+                    subtitleWidth="w-4/5"
+                    showTrailing={false}
+                    iconSizeClassName="h-4 w-4"
+                    className="rounded-xl shadow-sm"
+                  />
                 ))}
               </div>
             ) : sectionStatus.alertas.isError ? (
@@ -738,7 +752,12 @@ export default function Dashboard() {
               {sectionStatus.insights.isLoading ? (
                 <div className="space-y-2 px-4 pb-4">
                   {[1, 2].map((idx) => (
-                    <div key={idx} className="rounded-xl border border-border/60 bg-muted/[0.16] p-3 shadow-sm">
+                    <FintechLoadingSurface
+                      key={idx}
+                      tone="muted"
+                      className="rounded-xl shadow-sm"
+                      contentClassName="p-3"
+                    >
                       <div className="flex items-start gap-2.5">
                         <Skeleton className="mt-0.5 h-4 w-4 rounded-full bg-muted/70" />
                         <div className="min-w-0 flex-1 space-y-2">
@@ -747,7 +766,7 @@ export default function Dashboard() {
                           <Skeleton className="h-7 w-24 rounded-lg bg-muted/60" />
                         </div>
                       </div>
-                    </div>
+                    </FintechLoadingSurface>
                   ))}
                 </div>
               ) : sectionStatus.insights.isError ? (
@@ -816,14 +835,15 @@ export default function Dashboard() {
             {sectionStatus.proximosVencimentos.isLoading ? (
               <div className="space-y-2 px-4 pb-4">
                 {[1, 2, 3].map((idx) => (
-                  <div key={idx} className="flex items-center gap-3 rounded-2xl border border-border/60 bg-muted/[0.16] p-3 shadow-sm">
-                    <Skeleton className="h-8 w-8 flex-shrink-0 rounded-lg bg-muted/70" />
-                    <div className="min-w-0 flex-1 space-y-2">
-                      <Skeleton className="h-3 w-1/2 rounded-full bg-muted/65" />
-                      <Skeleton className="h-3 w-1/3 rounded-full bg-muted/55" />
-                    </div>
-                    <Skeleton className="h-4 w-14 rounded-full bg-muted/65" />
-                  </div>
+                  <FintechLoadingListItem
+                    key={idx}
+                    compact
+                    titleWidth="w-1/2"
+                    subtitleWidth="w-1/3"
+                    trailingWidth="w-14"
+                    iconSizeClassName="h-8 w-8"
+                    className="rounded-2xl shadow-sm"
+                  />
                 ))}
               </div>
             ) : sectionStatus.proximosVencimentos.isError ? (
@@ -875,13 +895,17 @@ export default function Dashboard() {
             {!sectionStatus.proximosVencimentos.isLoading && !sectionStatus.proximosVencimentos.isError ? (
               <div className="border-t border-border/60 px-4 py-3">
                 {sectionStatus.pagarSemana.isLoading ? (
-                  <div className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/[0.16] px-3 py-2.5 shadow-sm">
+                  <FintechLoadingSurface
+                    tone="inset"
+                    className="rounded-xl shadow-sm"
+                    contentClassName="flex items-center justify-between gap-3 px-3 py-2.5"
+                  >
                     <div className="space-y-2">
                       <Skeleton className="h-3 w-24 rounded-full bg-muted/60" />
                       <Skeleton className="h-4 w-20 rounded-full bg-muted/70" />
                     </div>
                     <Skeleton className="h-5 w-20 rounded-full bg-muted/60" />
-                  </div>
+                  </FintechLoadingSurface>
                 ) : sectionStatus.pagarSemana.isError ? (
                   <p className="text-xs text-muted-foreground">Resumo da semana indisponível no momento.</p>
                 ) : pagarSemana.length > 0 ? (
@@ -911,7 +935,11 @@ export default function Dashboard() {
               </div>
               {sectionStatus.scoreDetalhado.isLoading ? (
                 <div className="space-y-2 px-4 pb-4">
-                  <div className="rounded-xl border border-border/60 bg-muted/[0.16] p-3 shadow-sm">
+                  <FintechLoadingSurface
+                    tone="inset"
+                    className="rounded-xl shadow-sm"
+                    contentClassName="p-3"
+                  >
                     <div className="space-y-2">
                       <div className="flex items-center justify-between gap-3">
                         <Skeleton className="h-3 w-28 rounded-full bg-muted/60" />
@@ -922,12 +950,17 @@ export default function Dashboard() {
                         <Skeleton className="h-4 w-10 rounded-full bg-muted/70" />
                       </div>
                     </div>
-                  </div>
+                  </FintechLoadingSurface>
                   {[1, 2].map((idx) => (
-                    <div key={idx} className="flex items-center justify-between rounded-xl border border-border/60 bg-muted/[0.14] px-3 py-2.5 shadow-sm">
+                    <FintechLoadingSurface
+                      key={idx}
+                      tone="muted"
+                      className="rounded-xl shadow-sm"
+                      contentClassName="flex items-center justify-between gap-3 px-3 py-2.5"
+                    >
                       <Skeleton className="h-3 w-28 rounded-full bg-muted/60" />
                       <Skeleton className="h-4 w-8 rounded-full bg-muted/70" />
-                    </div>
+                    </FintechLoadingSurface>
                   ))}
                 </div>
               ) : sectionStatus.scoreDetalhado.isError ? (
@@ -996,18 +1029,23 @@ export default function Dashboard() {
 
       {!prefs.hiddenDashCards.includes("saldo") && (
         sectionStatus.saldo.isLoading ? (
-          <div className="rounded-2xl border border-border/60 bg-card/95 p-[14px] shadow-sm md:p-[18px]">
+          <FintechLoadingSurface className="rounded-2xl" contentClassName="p-[14px] md:p-[18px]">
             <Skeleton className="h-3 w-24 rounded-full bg-muted/60" />
             <Skeleton className="mt-3 h-10 w-44 rounded-xl bg-muted/70" />
             <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {[1, 2].map((idx) => (
-                <div key={idx} className="rounded-xl bg-muted/[0.22] px-3 py-2.5">
+                <FintechLoadingSurface
+                  key={idx}
+                  tone="inset"
+                  className="rounded-xl shadow-none"
+                  contentClassName="px-3 py-2.5"
+                >
                   <Skeleton className="h-3 w-16 rounded-full bg-muted/55" />
                   <Skeleton className="mt-2 h-4 w-24 rounded-full bg-muted/70" />
-                </div>
+                </FintechLoadingSurface>
               ))}
             </div>
-          </div>
+          </FintechLoadingSurface>
         ) : sectionStatus.saldo.isError ? (
           <SectionErrorState message={sectionStatus.saldo.message} />
         ) : (

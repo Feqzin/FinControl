@@ -59,6 +59,7 @@ import {
 import { formatCurrencyBRL } from "@/utils/formatters";
 import type { Servico } from "@shared/schema";
 import { resolveServicoBillingFields, type ServicoPeriodicidade } from "@shared/servico-periodicidade";
+import { FintechLoadingPageHeader, FintechLoadingSurface } from "@/components/layout/fintech-loading-shell";
 
 const IconPicker = lazy(() =>
   import("@/components/icon-picker").then((mod) => ({ default: mod.IconPicker })),
@@ -432,10 +433,38 @@ export default function ServicosPage() {
   if (isLoading) {
     return (
       <div className="app-page-shell app-section-stack">
-        <Skeleton className="h-8 w-32" />
+        <FintechLoadingPageHeader
+          showEyebrow={false}
+          titleWidth="w-56"
+          subtitleWidth="w-72 max-w-full"
+          actions={
+            <Skeleton className="h-11 w-full rounded-2xl bg-muted/65 sm:w-44" />
+          }
+        />
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-20" />
+            <FintechLoadingSurface key={i}>
+              <div className="space-y-4 p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <Skeleton className="h-12 w-12 rounded-2xl bg-muted/70" />
+                    <div className="space-y-2">
+                      <Skeleton className="h-5 w-36 rounded-full bg-muted/65" />
+                      <Skeleton className="h-4 w-24 rounded-full bg-muted/60" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-8 w-20 rounded-full bg-muted/65" />
+                </div>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                  {[1, 2, 3].map((metric) => (
+                    <div key={metric} className="rounded-2xl border border-border/50 bg-background/80 p-3 shadow-sm">
+                      <Skeleton className="h-3 w-20 rounded-full bg-muted/55" />
+                      <Skeleton className="mt-2 h-4 w-24 rounded-full bg-muted/65" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </FintechLoadingSurface>
           ))}
         </div>
       </div>

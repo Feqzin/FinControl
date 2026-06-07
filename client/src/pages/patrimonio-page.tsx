@@ -11,6 +11,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
 import {
+  FintechLoadingMetricCard,
+  FintechLoadingPageHeader,
+  FintechLoadingSurface,
+} from "@/components/layout/fintech-loading-shell";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -159,68 +164,64 @@ export default function PatrimonioPage() {
   if (isLoading) {
     return (
       <div className="app-page-shell app-section-stack">
-        <div className="rounded-[28px] border border-border/60 bg-card/95 p-6 shadow-sm backdrop-blur">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-3">
-              <Skeleton className="h-4 w-24 rounded-full" />
-              <Skeleton className="h-10 w-56 rounded-full" />
-              <Skeleton className="h-4 w-72 max-w-full rounded-full" />
-            </div>
-            <Skeleton className="h-11 w-full rounded-2xl sm:w-44" />
-          </div>
-        </div>
+        <FintechLoadingPageHeader
+          titleWidth="w-56"
+          subtitleWidth="w-72 max-w-full"
+          actions={<Skeleton className="h-11 w-full rounded-2xl bg-muted/65 sm:w-44" />}
+        />
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-          <Card className="border border-border/60 bg-card/95 shadow-sm">
-            <CardContent className="space-y-6 p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-3">
-                  <Skeleton className="h-4 w-24 rounded-full" />
-                  <Skeleton className="h-9 w-40 rounded-full" />
-                </div>
-                <Skeleton className="h-12 w-12 rounded-2xl" />
-              </div>
+          <FintechLoadingSurface>
+            <div className="space-y-6 p-6">
+              <FintechLoadingMetricCard
+                className="border-0 shadow-none"
+                titleWidth="w-24"
+                valueWidth="w-40"
+                iconSizeClassName="h-12 w-12"
+              />
               <div className="space-y-4">
                 {Array.from({ length: 4 }).map((_, index) => (
-                  <div key={index} className="space-y-2 rounded-2xl border border-border/50 bg-background/80 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <Skeleton className="h-7 w-7 rounded-xl" />
-                        <Skeleton className="h-4 w-28 rounded-full" />
+                  <FintechLoadingSurface key={index} tone="inset" className="rounded-2xl">
+                    <div className="space-y-2 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <Skeleton className="h-7 w-7 rounded-xl bg-muted/70" />
+                          <Skeleton className="h-4 w-28 rounded-full bg-muted/65" />
+                        </div>
+                        <Skeleton className="h-4 w-20 rounded-full bg-muted/65" />
                       </div>
-                      <Skeleton className="h-4 w-20 rounded-full" />
+                      <Skeleton className="h-2 w-full rounded-full bg-muted/60" />
+                      <Skeleton className="ml-auto h-3 w-10 rounded-full bg-muted/55" />
                     </div>
-                    <Skeleton className="h-2 w-full rounded-full" />
-                    <Skeleton className="ml-auto h-3 w-10 rounded-full" />
-                  </div>
+                  </FintechLoadingSurface>
                 ))}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </FintechLoadingSurface>
 
           <div className="xl:col-span-2 fintech-grid-fluid-280 content-start">
             {Array.from({ length: 3 }).map((_, index) => (
-              <Card key={index} className="overflow-hidden rounded-[26px] border border-border/60 bg-card/95 shadow-sm">
-                <CardContent className="space-y-4 p-5">
+              <FintechLoadingSurface key={index}>
+                <div className="space-y-4 p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-start gap-3">
-                      <Skeleton className="h-12 w-12 rounded-2xl" />
+                      <Skeleton className="h-12 w-12 rounded-2xl bg-muted/70" />
                       <div className="space-y-3">
-                        <Skeleton className="h-5 w-32 rounded-full" />
-                        <Skeleton className="h-4 w-24 rounded-full" />
+                        <Skeleton className="h-5 w-32 rounded-full bg-muted/65" />
+                        <Skeleton className="h-4 w-24 rounded-full bg-muted/60" />
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Skeleton className="h-9 w-9 rounded-xl" />
-                      <Skeleton className="h-9 w-9 rounded-xl" />
+                      <Skeleton className="h-9 w-9 rounded-xl bg-muted/65" />
+                      <Skeleton className="h-9 w-9 rounded-xl bg-muted/65" />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Skeleton className="h-8 w-36 rounded-full" />
-                    <Skeleton className="h-4 w-28 rounded-full" />
+                    <Skeleton className="h-8 w-36 rounded-full bg-muted/75" />
+                    <Skeleton className="h-4 w-28 rounded-full bg-muted/60" />
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </FintechLoadingSurface>
             ))}
           </div>
         </div>
