@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
+import { FintechSurfaceCard, FintechSurfaceIconChip } from "@/components/layout/fintech-surface-card";
 import {
   FintechLoadingMetricCard,
   FintechLoadingPageHeader,
@@ -286,7 +287,7 @@ export default function MetasPage() {
       />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Card className="border border-border/60 bg-card/95 shadow-sm">
+        <FintechSurfaceCard>
           <CardContent className="space-y-4 p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
@@ -295,17 +296,17 @@ export default function MetasPage() {
                 </p>
                 <p className="text-3xl font-semibold tracking-tight text-foreground">{ativas.length}</p>
               </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm">
+              <FintechSurfaceIconChip size="md" className="border-primary/15 bg-primary/10">
                 <Target className="h-5 w-5 text-primary" />
-              </div>
+              </FintechSurfaceIconChip>
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
               Objetivos que ainda pedem acompanhamento e aporte mensal.
             </p>
           </CardContent>
-        </Card>
+        </FintechSurfaceCard>
 
-        <Card className="border border-border/60 bg-card/95 shadow-sm">
+        <FintechSurfaceCard>
           <CardContent className="space-y-4 p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
@@ -314,17 +315,17 @@ export default function MetasPage() {
                 </p>
                 <p className="text-3xl font-semibold tracking-tight text-foreground">{formatCurrency(totalGuardado)}</p>
               </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm">
+              <FintechSurfaceIconChip size="md" className="border-primary/15 bg-primary/10">
                 <TrendingUp className="h-5 w-5 text-primary" />
-              </div>
+              </FintechSurfaceIconChip>
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
               Soma do valor já acumulado em todas as metas cadastradas.
             </p>
           </CardContent>
-        </Card>
+        </FintechSurfaceCard>
 
-        <Card className="border border-border/60 bg-card/95 shadow-sm">
+        <FintechSurfaceCard>
           <CardContent className="space-y-4 p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
@@ -333,15 +334,15 @@ export default function MetasPage() {
                 </p>
                 <p className="text-3xl font-semibold tracking-tight text-foreground">{formatCurrency(totalAlvo)}</p>
               </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 shadow-sm">
+              <FintechSurfaceIconChip size="md" className="border-emerald-500/20 bg-emerald-500/10">
                 <CheckCircle className="h-5 w-5 text-emerald-600" />
-              </div>
+              </FintechSurfaceIconChip>
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
               Valor total que suas metas buscam alcançar no conjunto.
             </p>
           </CardContent>
-        </Card>
+        </FintechSurfaceCard>
       </div>
 
       {metasList.length === 0 ? (

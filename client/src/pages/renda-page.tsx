@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
+import { FintechSurfaceCard, FintechSurfaceIconChip } from "@/components/layout/fintech-surface-card";
 import { FintechLoadingSurface } from "@/components/layout/fintech-loading-shell";
 import {
   Dialog,
@@ -305,20 +306,20 @@ export default function RendaPage() {
       />
 
       <div className="fintech-grid-fluid-260">
-        <Card className="hover-elevate overflow-hidden border border-border/60 bg-card/95 shadow-sm">
+        <FintechSurfaceCard interactive className="overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground/90">Total Ativo</CardTitle>
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/10 bg-primary/10 shadow-sm">
+            <FintechSurfaceIconChip size="sm" className="border-primary/10 bg-primary/10">
               <DollarSign className="h-4 w-4 text-primary" />
-            </div>
+            </FintechSurfaceIconChip>
           </CardHeader>
           <CardContent className="pt-1">
             <div className="fin-value-kpi tracking-tight text-primary" data-testid="text-total-ativo">
               {formatCurrency(totalAtivo)}
             </div>
           </CardContent>
-        </Card>
-        <Card className="hover-elevate overflow-hidden border border-border/60 bg-card/95 shadow-sm">
+        </FintechSurfaceCard>
+        <FintechSurfaceCard interactive className="overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground/90">Fixo</CardTitle>
             <Badge variant="outline" className="rounded-full border-border/60 bg-background/90 px-2.5 py-0.5 shadow-sm">Fixo</Badge>
@@ -328,8 +329,8 @@ export default function RendaPage() {
               {formatCurrency(totalFixo)}
             </div>
           </CardContent>
-        </Card>
-        <Card className="hover-elevate overflow-hidden border border-border/60 bg-card/95 shadow-sm">
+        </FintechSurfaceCard>
+        <FintechSurfaceCard interactive className="overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground/90">Variável</CardTitle>
             <Badge variant="secondary" className="rounded-full px-2.5 py-0.5 shadow-sm">Variável</Badge>
@@ -339,7 +340,7 @@ export default function RendaPage() {
               {formatCurrency(totalVariavel)}
             </div>
           </CardContent>
-        </Card>
+        </FintechSurfaceCard>
       </div>
 
       <div className="fintech-grid-fluid-260">

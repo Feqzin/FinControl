@@ -6,6 +6,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
 import {
+  FintechSurfaceCard,
+  FintechSurfaceIconChip,
+  FintechSurfaceInset,
+} from "@/components/layout/fintech-surface-card";
+import {
   FintechLoadingListItem,
   FintechLoadingMetricCard,
   FintechLoadingPageHeader,
@@ -187,16 +192,16 @@ export default function PrevisaoPage() {
       />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Card className="hover-elevate h-full rounded-[26px] border border-border/60 bg-card/95 shadow-sm">
+        <FintechSurfaceCard interactive className="h-full">
           <CardContent className="p-4 sm:p-5 h-full flex flex-col justify-between gap-3">
             <div className="flex items-center gap-3 mb-2">
-              <div className="flex items-center justify-center w-11 h-11 rounded-2xl border border-emerald-500/15 bg-emerald-500/10 shadow-sm shrink-0">
+              <FintechSurfaceIconChip size="md" className="border-emerald-500/15 bg-emerald-500/10">
                 <ArrowUpRight className="w-4 h-4 text-emerald-600" />
-              </div>
+              </FintechSurfaceIconChip>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Total entradas</p>
             </div>
             <p className="text-2xl font-semibold tracking-tight text-emerald-600">{mask(formatCurrency(totalEntradas))}</p>
-            <div className="space-y-1 rounded-2xl border border-border/50 bg-background/80 p-3 shadow-sm">
+            <FintechSurfaceInset className="space-y-1 p-3">
               {rendaMensal > 0 && (
                 <p className="text-xs text-muted-foreground flex justify-between gap-3">
                   <span>Renda</span><span className="font-medium">{mask(formatCurrency(rendaMensal))}</span>
@@ -207,20 +212,20 @@ export default function PrevisaoPage() {
                   <span>A receber</span><span className="font-medium">{mask(formatCurrency(receberDividas))}</span>
                 </p>
               )}
-            </div>
+            </FintechSurfaceInset>
           </CardContent>
-        </Card>
+        </FintechSurfaceCard>
 
-        <Card className="hover-elevate h-full rounded-[26px] border border-border/60 bg-card/95 shadow-sm">
+        <FintechSurfaceCard interactive className="h-full">
           <CardContent className="p-4 sm:p-5 h-full flex flex-col justify-between gap-3">
             <div className="flex items-center gap-3 mb-2">
-              <div className="flex items-center justify-center w-11 h-11 rounded-2xl border border-red-500/15 bg-red-500/10 shadow-sm shrink-0">
+              <FintechSurfaceIconChip size="md" className="border-red-500/15 bg-red-500/10">
                 <ArrowDownRight className="w-4 h-4 text-red-600" />
-              </div>
+              </FintechSurfaceIconChip>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Total de saídas</p>
             </div>
             <p className="text-2xl font-semibold tracking-tight text-red-600">{mask(formatCurrency(totalSaida))}</p>
-            <div className="space-y-1 rounded-2xl border border-border/50 bg-background/80 p-3 shadow-sm">
+            <FintechSurfaceInset className="space-y-1 p-3">
               {pagarDividas > 0 && (
                 <p className="text-xs text-muted-foreground flex justify-between gap-3">
                   <span>Dívidas</span><span className="font-medium">{mask(formatCurrency(pagarDividas))}</span>
@@ -231,18 +236,21 @@ export default function PrevisaoPage() {
                   <span>Serviços</span><span className="font-medium">{mask(formatCurrency(servicosMes))}</span>
                 </p>
               )}
-            </div>
+            </FintechSurfaceInset>
           </CardContent>
-        </Card>
+        </FintechSurfaceCard>
 
-        <Card className="hover-elevate h-full rounded-[26px] border border-border/60 bg-card/95 shadow-sm">
+        <FintechSurfaceCard interactive className="h-full">
           <CardContent className="p-4 sm:p-5 h-full flex flex-col justify-between gap-3">
             <div className="flex items-center gap-3 mb-2">
-              <div className={`flex items-center justify-center w-11 h-11 rounded-2xl border shrink-0 shadow-sm ${saldoPrevisto >= 0 ? "border-emerald-500/15 bg-emerald-500/10" : "border-red-500/15 bg-red-500/10"}`}>
+              <FintechSurfaceIconChip
+                size="md"
+                className={saldoPrevisto >= 0 ? "border-emerald-500/15 bg-emerald-500/10" : "border-red-500/15 bg-red-500/10"}
+              >
                 {saldoPrevisto >= 0
                   ? <TrendingUp className="w-4 h-4 text-emerald-600" />
                   : <TrendingDown className="w-4 h-4 text-red-600" />}
-              </div>
+              </FintechSurfaceIconChip>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Saldo previsto</p>
             </div>
             <p className={`text-2xl font-semibold tracking-tight ${saldoPrevisto >= 0 ? "text-emerald-600" : "text-red-600"}`}>
@@ -252,14 +260,14 @@ export default function PrevisaoPage() {
               {saldoPrevisto >= 0 ? "Finanças equilibradas" : "Despesas excedem receitas"}
             </p>
           </CardContent>
-        </Card>
+        </FintechSurfaceCard>
 
-        <Card className="hover-elevate h-full rounded-[26px] border border-border/60 bg-card/95 shadow-sm">
+        <FintechSurfaceCard interactive className="h-full">
           <CardContent className="p-4 sm:p-5 h-full flex flex-col justify-between gap-3">
             <div className="flex items-center gap-3 mb-2">
-              <div className="flex items-center justify-center w-11 h-11 rounded-2xl border border-primary/15 bg-primary/10 shadow-sm shrink-0">
+              <FintechSurfaceIconChip size="md" className="border-primary/15 bg-primary/10">
                 <Wallet className="w-4 h-4 text-primary" />
-              </div>
+              </FintechSurfaceIconChip>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Renda comprometida</p>
             </div>
             <p className="text-2xl font-semibold tracking-tight text-primary">
@@ -272,10 +280,10 @@ export default function PrevisaoPage() {
                   ? "Nível saudável"
                   : pctComprometido < 80
                     ? "Atenção"
-                    : "Risco elevado"}
+                  : "Risco elevado"}
             </p>
           </CardContent>
-        </Card>
+        </FintechSurfaceCard>
       </div>
 
       <Card className="rounded-[26px] border border-border/60 bg-card/95 shadow-sm">

@@ -11,6 +11,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
 import {
+  FintechSurfaceCard,
+  FintechSurfaceIconChip,
+  FintechSurfaceInset,
+} from "@/components/layout/fintech-surface-card";
+import {
   FintechLoadingMetricCard,
   FintechLoadingPageHeader,
   FintechLoadingSurface,
@@ -336,7 +341,7 @@ export default function PatrimonioPage() {
       />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <Card className="border border-border/60 bg-card/95 shadow-sm">
+        <FintechSurfaceCard>
           <CardHeader className="space-y-4 pb-4">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-1">
@@ -347,27 +352,27 @@ export default function PatrimonioPage() {
                   Distribuição atual do seu patrimônio cadastrado.
                 </p>
               </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm">
+              <FintechSurfaceIconChip size="lg" className="border-primary/15 bg-primary/10">
                 <PiggyBank className="h-5 w-5 text-primary" />
-              </div>
+              </FintechSurfaceIconChip>
             </div>
-            <div className="rounded-3xl border border-border/60 bg-background/80 px-4 py-4 shadow-inner">
+            <FintechSurfaceInset className="rounded-3xl px-4 py-4 shadow-inner">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 Patrimônio Total
               </p>
               <h2 className="mt-2 text-3xl font-semibold tracking-tight text-foreground" data-testid="text-total-patrimonio">
                 {formatCurrency(totalPatrimonio)}
               </h2>
-            </div>
+            </FintechSurfaceInset>
           </CardHeader>
           <CardContent className="space-y-3 pt-0">
             {breakdown.map((item) => (
-              <div key={item.value} className="space-y-3 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm">
+              <FintechSurfaceInset key={item.value} className="space-y-3 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <span className="flex items-center gap-3 text-sm font-medium text-foreground">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-card shadow-sm">
+                    <FintechSurfaceIconChip size="sm" className="border-border/60 bg-card">
                       <item.icon className="h-4 w-4 text-primary" />
-                    </span>
+                    </FintechSurfaceIconChip>
                     {item.label}
                   </span>
                   <span className="text-sm font-semibold text-foreground">
@@ -378,10 +383,10 @@ export default function PatrimonioPage() {
                 <p className="text-[11px] font-medium text-right text-muted-foreground">
                   {item.percent.toFixed(1)}%
                 </p>
-              </div>
+              </FintechSurfaceInset>
             ))}
           </CardContent>
-        </Card>
+        </FintechSurfaceCard>
 
         <div className="xl:col-span-2 fintech-grid-fluid-280 content-start">
           {patrimonios.length === 0 ? (
