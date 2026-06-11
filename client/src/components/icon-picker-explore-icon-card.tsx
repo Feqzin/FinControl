@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import type { KeyboardEvent, MouseEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -47,11 +47,21 @@ export function IconPickerExploreIconCard({
     onOpenPack();
   };
 
+  const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    onOpenActions();
+  };
+
   return (
-    <button
-      type="button"
-      className="rounded-lg border p-2 text-left transition-colors hover:bg-accent"
+    <div
+      role="button"
+      tabIndex={0}
+      className="rounded-lg border p-2 text-left transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       onClick={onOpenActions}
+      onKeyDown={handleCardKeyDown}
     >
       <div className="flex items-center gap-2">
         <img
@@ -107,6 +117,6 @@ export function IconPickerExploreIconCard({
           </Button>
         </div>
       ) : null}
-    </button>
+    </div>
   );
 }

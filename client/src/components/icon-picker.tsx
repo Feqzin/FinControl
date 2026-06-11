@@ -27,7 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1460,6 +1460,9 @@ export function IconPicker({
           <div className="shrink-0 border-b border-border/60 bg-background/95 px-4 py-4 backdrop-blur-sm sm:px-6 sm:py-5">
             <DialogHeader className="pr-8">
               <DialogTitle>{isManageMode ? "Biblioteca de ícones" : "Alterar Ícone"}</DialogTitle>
+              <DialogDescription className="sr-only">
+                Gerencie a biblioteca de ícones, explore conteúdos publicados e faça uploads personalizados.
+              </DialogDescription>
             </DialogHeader>
 
             {shouldShowSuggestion && !isManageMode ? (
@@ -1544,7 +1547,7 @@ export function IconPicker({
             </TabsContent>
 
             <TabsContent value="personal" className="mt-0 min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6">
-              <div className="sticky top-0 z-10 bg-background/95 pb-3 backdrop-blur-sm">
+              <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3 sm:p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <IconPickerSectionHeader>
                     Meus ícones
@@ -1561,7 +1564,7 @@ export function IconPicker({
                       <SelectTrigger aria-label="Filtrar categoria dos meus ícones" className="w-full xl:min-w-[170px]">
                         <SelectValue placeholder="Categoria" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="z-[90]">
                         <SelectItem value="all">Todas categorias</SelectItem>
                         {USER_ICON_CATEGORIES.map((category) => (
                           <SelectItem key={category.value} value={category.value}>
@@ -1577,7 +1580,7 @@ export function IconPicker({
                       <SelectTrigger aria-label="Ordenar meus ícones" className="w-full xl:min-w-[170px]">
                         <SelectValue placeholder="Ordenar" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="z-[90]">
                         <SelectItem value="recent">Mais recentes</SelectItem>
                         <SelectItem value="name-asc">Nome A-Z</SelectItem>
                         <SelectItem value="category">Categoria</SelectItem>
@@ -1684,7 +1687,7 @@ export function IconPicker({
             </TabsContent>
 
             <TabsContent value="explore" className="mt-0 min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6">
-              <div className="sticky top-0 z-10 bg-background pb-1">
+              <div className="rounded-xl border border-border/60 bg-muted/20 p-3 sm:p-4">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <Input
                     value={exploreSearch}
@@ -1697,7 +1700,7 @@ export function IconPicker({
                     <SelectTrigger aria-label="Filtrar tipo de conteúdo">
                       <SelectValue placeholder="Tipo" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[90]">
                       <SelectItem value="packs">Packs</SelectItem>
                       <SelectItem value="icons">Ícones individuais</SelectItem>
                       <SelectItem value="all">Todos</SelectItem>
@@ -1707,7 +1710,7 @@ export function IconPicker({
                     <SelectTrigger aria-label="Filtrar origem dos ícones">
                       <SelectValue placeholder="Origem" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[90]">
                       <SelectItem value="all">Todos</SelectItem>
                       <SelectItem value="official">Oficiais</SelectItem>
                       <SelectItem value="community">Comunidade</SelectItem>
@@ -1717,7 +1720,7 @@ export function IconPicker({
                     <SelectTrigger aria-label="Filtrar categoria de ícones">
                       <SelectValue placeholder="Categoria" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[90]">
                       <SelectItem value="all">Todas categorias</SelectItem>
                       {USER_ICON_CATEGORIES.map((category) => (
                         <SelectItem key={category.value} value={category.value}>
@@ -1915,7 +1918,7 @@ export function IconPicker({
                     <SelectTrigger aria-label="Tipo de upload de ícone">
                       <SelectValue placeholder="Selecione o tipo de upload" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="z-[90]">
                       <SelectItem value="individual">Individual</SelectItem>
                       <SelectItem value="batch">Em lote</SelectItem>
                     </SelectContent>
@@ -1928,7 +1931,7 @@ export function IconPicker({
                       <SelectTrigger aria-label="Categoria padrão do lote">
                         <SelectValue placeholder="Selecione uma categoria" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="z-[90]">
                         {USER_ICON_CATEGORIES.map((category) => (
                           <SelectItem key={category.value} value={category.value}>
                             {category.label}
@@ -2009,7 +2012,7 @@ export function IconPicker({
                         <SelectTrigger aria-label="Categoria do ícone">
                           <SelectValue placeholder="Selecione uma categoria" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="z-[90]">
                           {USER_ICON_CATEGORIES.map((category) => (
                             <SelectItem key={category.value} value={category.value}>
                               {category.label}
@@ -2118,7 +2121,7 @@ export function IconPicker({
                               <SelectTrigger aria-label={`Categoria do ícone ${item.originalFileName}`}>
                                 <SelectValue placeholder="Categoria" />
                               </SelectTrigger>
-                              <SelectContent>
+                              <SelectContent className="z-[90]">
                                 {USER_ICON_CATEGORIES.map((category) => (
                                   <SelectItem key={category.value} value={category.value}>
                                     {category.label}
@@ -2185,9 +2188,15 @@ export function IconPicker({
           }
         }}
       >
-        <DialogContent className="max-h-[85vh] w-[min(95vw,780px)] overflow-y-auto">
+        <DialogContent
+          overlayClassName="z-[80]"
+          className="z-[80] max-h-[85vh] w-[min(95vw,780px)] overflow-y-auto"
+        >
           <DialogHeader>
             <DialogTitle>Criar pack</DialogTitle>
+            <DialogDescription className="sr-only">
+              Monte um pack com ícones da sua biblioteca e publique opcionalmente em Explorar.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
@@ -2207,7 +2216,7 @@ export function IconPicker({
                   <SelectTrigger aria-label="Categoria do pack">
                     <SelectValue placeholder="Categoria" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[90]">
                     {USER_ICON_CATEGORIES.map((category) => (
                       <SelectItem key={category.value} value={category.value}>
                         {category.label}
@@ -2293,9 +2302,15 @@ export function IconPicker({
           }
         }}
       >
-        <DialogContent className="max-h-[85vh] w-[min(95vw,860px)] overflow-y-auto">
+        <DialogContent
+          overlayClassName="z-[80]"
+          className="z-[80] max-h-[85vh] w-[min(95vw,860px)] overflow-y-auto"
+        >
           <DialogHeader>
             <DialogTitle>{packDetailsTarget?.name || "Pack"}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Revise os ícones deste pack e adicione itens à sua biblioteca.
+            </DialogDescription>
           </DialogHeader>
 
           {packDetailsTarget ? (
@@ -2372,9 +2387,15 @@ export function IconPicker({
           }
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent
+          overlayClassName="z-[80]"
+          className="z-[80] max-w-md"
+        >
           <DialogHeader>
             <DialogTitle>Editar ícone personalizado</DialogTitle>
+            <DialogDescription className="sr-only">
+              Atualize nome, categoria e palavras-chave do ícone personalizado.
+            </DialogDescription>
           </DialogHeader>
 
           <IconPickerEditDialogContent
@@ -2412,7 +2433,7 @@ export function IconPicker({
           }
         }}
       >
-        <AlertDialogContent>
+        <AlertDialogContent overlayClassName="z-[80]" className="z-[80]">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {deletingIcon?.sourceType === "official" ? "Remover este ícone da sua biblioteca?" : "Excluir este ícone?"}
@@ -2451,7 +2472,10 @@ export function IconPicker({
           }
         }}
       >
-        <DialogContent className="max-w-sm">
+        <DialogContent
+          overlayClassName="z-[80]"
+          className="z-[80] max-w-sm"
+        >
           <DialogHeader>
             <DialogTitle>
               {manageActionTarget?.type === "builtin"
@@ -2464,6 +2488,9 @@ export function IconPicker({
                       ? manageActionTarget.pack.name
                     : "Ações do ícone"}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Escolha a ação desejada para o ícone ou pack selecionado.
+            </DialogDescription>
           </DialogHeader>
 
           {manageActionTarget?.type === "builtin" ? (

@@ -74,7 +74,7 @@ export function IconPickerEditDialogContent({
             <SelectTrigger aria-label={categoryAriaLabel}>
               <SelectValue placeholder={categoryPlaceholder} />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[90]">
               {categoryOptions.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {option.label}

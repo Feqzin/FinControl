@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import type { KeyboardEvent, MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 
 type IconPickerPackCardProps = {
@@ -40,11 +40,21 @@ export function IconPickerPackCard({
     onOpenActions();
   };
 
+  const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    onOpenDetails();
+  };
+
   return (
-    <button
-      type="button"
-      className="rounded-lg border p-3 text-left transition-colors hover:bg-accent"
+    <div
+      role="button"
+      tabIndex={0}
+      className="rounded-lg border p-3 text-left transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       onClick={onOpenDetails}
+      onKeyDown={handleCardKeyDown}
     >
       <p className="text-sm font-medium">{name}</p>
       {matchHint ? (
@@ -78,6 +88,6 @@ export function IconPickerPackCard({
           Ações
         </Button>
       </div>
-    </button>
+    </div>
   );
 }
