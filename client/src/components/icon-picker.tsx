@@ -147,7 +147,7 @@ export function IconPicker({
   const safeOnChange = onChange ?? NOOP_ICON_CHANGE;
   const safeOnSelectMeta = onSelectMeta ?? NOOP_ICON_META;
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"biblioteca" | "explorar" | "upload">("biblioteca");
+  const [activeTab, setActiveTab] = useState<"official" | "personal" | "explore" | "upload">("official");
   const [uploadMode, setUploadMode] = useState<IconUploadMode>("individual");
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [uploadFileName, setUploadFileName] = useState<string>("");
@@ -1453,54 +1453,62 @@ export function IconPicker({
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="flex h-[95dvh] max-h-[90vh] w-[min(95vw,980px)] max-w-5xl flex-col overflow-hidden p-4 sm:h-auto">
-          <DialogHeader>
-            <DialogTitle>{isManageMode ? "Biblioteca de ícones" : "Alterar Ícone"}</DialogTitle>
-          </DialogHeader>
+        <DialogContent
+          overlayClassName="z-[70]"
+          className="z-[70] flex h-[94dvh] max-h-[94dvh] w-[95vw] max-w-[1040px] flex-col overflow-hidden p-0 sm:h-[85vh] sm:max-h-[85vh]"
+        >
+          <div className="shrink-0 border-b border-border/60 bg-background/95 px-4 py-4 backdrop-blur-sm sm:px-6 sm:py-5">
+            <DialogHeader className="pr-8">
+              <DialogTitle>{isManageMode ? "Biblioteca de ícones" : "Alterar Ícone"}</DialogTitle>
+            </DialogHeader>
 
-          {shouldShowSuggestion && !isManageMode ? (
-            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-              <p className="text-xs font-semibold text-primary">
-                Ícone sugerido para este nome
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Encontramos um ícone compatível para <span className="font-medium text-foreground">{name}</span>.
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={handleUseSuggestion}
-                >
-                  Usar este ícone
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={handleIgnoreSuggestion}
-                >
-                  Ignorar sugestão
-                </Button>
-                <span className="text-[11px] text-muted-foreground">
-                  Confiança: {Math.round(iconSuggestion.confidenceScore * 100)}%
-                </span>
+            {shouldShowSuggestion && !isManageMode ? (
+              <div className="mt-4 rounded-xl border border-primary/30 bg-primary/5 p-3">
+                <p className="text-xs font-semibold text-primary">
+                  Ícone sugerido para este nome
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Encontramos um ícone compatível para <span className="font-medium text-foreground">{name}</span>.
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleUseSuggestion}
+                  >
+                    Usar este ícone
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleIgnoreSuggestion}
+                  >
+                    Ignorar sugestão
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground">
+                    Confiança: {Math.round(iconSuggestion.confidenceScore * 100)}%
+                  </span>
+                </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
 
           <Tabs
             value={activeTab}
-            onValueChange={(nextValue) => setActiveTab(nextValue as "biblioteca" | "explorar" | "upload")}
-            className="mt-2 flex min-h-0 flex-1 flex-col"
+            onValueChange={(nextValue) => setActiveTab(nextValue as "official" | "personal" | "explore" | "upload")}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
           >
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="biblioteca">Biblioteca</TabsTrigger>
-              <TabsTrigger value="explorar">Explorar ícones</TabsTrigger>
-              <TabsTrigger value="upload">Upload</TabsTrigger>
-            </TabsList>
+            <div className="shrink-0 border-b border-border/60 bg-background/95 px-4 py-3 sm:px-6">
+              <TabsList className="h-auto w-full justify-start gap-1.5 overflow-x-auto rounded-2xl border-border/60 bg-muted/35 p-1 sm:grid sm:grid-cols-4 sm:overflow-hidden">
+                <TabsTrigger value="official" className="min-h-10 px-3 text-xs sm:w-full sm:text-sm">Ícones oficiais</TabsTrigger>
+                <TabsTrigger value="personal" className="min-h-10 px-3 text-xs sm:w-full sm:text-sm">Meus ícones</TabsTrigger>
+                <TabsTrigger value="explore" className="min-h-10 px-3 text-xs sm:w-full sm:text-sm">Explorar</TabsTrigger>
+                <TabsTrigger value="upload" className="min-h-10 px-3 text-xs sm:w-full sm:text-sm">Upload</TabsTrigger>
+              </TabsList>
+            </div>
 
-            <TabsContent value="biblioteca" className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+            <TabsContent value="official" className="mt-0 min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6">
               {CATEGORIES.map((cat) => {
                 const items = LIBRARY_ICONS.filter((i) => i.category === cat);
                 return (
@@ -1508,7 +1516,7 @@ export function IconPicker({
                     <IconPickerSectionHeader className="mb-2">
                       {CATEGORY_LABELS[cat]}
                     </IconPickerSectionHeader>
-                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                       {items.map((item) => {
                         const isSelected = value === item.key;
                         const normalizedBuiltinKey = item.key.trim().toLowerCase();
@@ -1533,21 +1541,24 @@ export function IconPicker({
                 );
               })}
 
-              <div className="space-y-3">
-                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            </TabsContent>
+
+            <TabsContent value="personal" className="mt-0 min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6">
+              <div className="sticky top-0 z-10 bg-background/95 pb-3 backdrop-blur-sm">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <IconPickerSectionHeader>
                     Meus ícones
                   </IconPickerSectionHeader>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:items-center">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:flex xl:items-center">
                     <Input
                       value={myIconsSearch}
                       onChange={(event) => setMyIconsSearch(event.target.value)}
                       placeholder="Buscar meus ícones..."
                       aria-label="Buscar meus ícones"
-                      className="w-full lg:min-w-[220px]"
+                      className="w-full xl:min-w-[220px]"
                     />
                     <Select value={myIconsCategory} onValueChange={setMyIconsCategory}>
-                      <SelectTrigger aria-label="Filtrar categoria dos meus ícones" className="w-full lg:min-w-[170px]">
+                      <SelectTrigger aria-label="Filtrar categoria dos meus ícones" className="w-full xl:min-w-[170px]">
                         <SelectValue placeholder="Categoria" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1563,7 +1574,7 @@ export function IconPicker({
                       value={myIconsOrder}
                       onValueChange={(next) => setMyIconsOrder(next as PersonalIconSortOrder)}
                     >
-                      <SelectTrigger aria-label="Ordenar meus ícones" className="w-full lg:min-w-[170px]">
+                      <SelectTrigger aria-label="Ordenar meus ícones" className="w-full xl:min-w-[170px]">
                         <SelectValue placeholder="Ordenar" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1579,89 +1590,90 @@ export function IconPicker({
                         variant="outline"
                         onClick={() => setCreatePackOpen(true)}
                         data-testid="button-criar-pack"
-                        className="w-full lg:w-auto"
+                        className="h-10 w-full xl:w-auto"
                       >
                         Criar pack
                       </Button>
                     ) : null}
                   </div>
                 </div>
-                {isLoadingPersonalIcons ? (
-                  <p className="text-xs text-muted-foreground">Carregando ícones personalizados...</p>
-                ) : personalIcons.length === 0 ? (
-                  <IconPickerEmptyState
-                    title="Você ainda não enviou ícones personalizados."
-                    description="Faça upload individual ou em lote para começar."
-                    actionLabel="Fazer upload"
-                    onAction={() => setActiveTab("upload")}
-                  />
-                ) : filteredPersonalIcons.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Nenhum ícone encontrado para esse filtro.</p>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                      {paginatedPersonalIcons.items.map((item) => {
-                        const isSelected = value === item.imageUrl;
-                        const isAutomationEnabled = (iconMatchRulesByIconId.get(item.imageUrl)?.length ?? 0) > 0;
-                        const publication = communityPublicationBySourceUserIconId.get(item.id) ?? null;
-                        const isAutomationDisabled = !isAutomationEnabled;
-                        const automationLabel = isAutomationDisabled ? "Automação desativada" : "Automação ativa";
-                        return (
-                          <IconPickerPersonalIconCard
-                            key={item.id}
-                            name={item.name}
-                            imageUrl={item.imageUrl}
-                            isSelected={isSelected}
-                            isAutomationDisabled={isAutomationDisabled}
-                            onClick={() => openManagePersonalActions(item, publication)}
-                            testId={`icon-personal-option-${item.id}`}
-                            title={`${item.name} · ${automationLabel}`}
-                            ariaLabel={`${item.name}. ${automationLabel}. Abrir ações do ícone.`}
-                          />
-                        );
-                      })}
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 p-2 text-xs text-muted-foreground">
-                      <p>
-                        Mostrando {paginatedPersonalIcons.startIndex + 1}–{paginatedPersonalIcons.endIndex} de{" "}
-                        {paginatedPersonalIcons.totalItems} ícones
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={paginatedPersonalIcons.page <= 1}
-                          onClick={() => setMyIconsPage((current) => Math.max(1, current - 1))}
-                        >
-                          Anterior
-                        </Button>
-                        <span>
-                          Página {paginatedPersonalIcons.page} de {paginatedPersonalIcons.totalPages}
-                        </span>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={paginatedPersonalIcons.page >= paginatedPersonalIcons.totalPages}
-                          onClick={() =>
-                            setMyIconsPage((current) => Math.min(paginatedPersonalIcons.totalPages, current + 1))
-                          }
-                        >
-                          Próxima
-                        </Button>
-                      </div>
-                    </div>
-                  </>
-                )}
               </div>
+
+              {isLoadingPersonalIcons ? (
+                <p className="text-xs text-muted-foreground">Carregando ícones personalizados...</p>
+              ) : personalIcons.length === 0 ? (
+                <IconPickerEmptyState
+                  title="Você ainda não enviou ícones personalizados."
+                  description="Faça upload individual ou em lote para começar."
+                  actionLabel="Fazer upload"
+                  onAction={() => setActiveTab("upload")}
+                />
+              ) : filteredPersonalIcons.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Nenhum ícone encontrado para esse filtro.</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                    {paginatedPersonalIcons.items.map((item) => {
+                      const isSelected = value === item.imageUrl;
+                      const isAutomationEnabled = (iconMatchRulesByIconId.get(item.imageUrl)?.length ?? 0) > 0;
+                      const publication = communityPublicationBySourceUserIconId.get(item.id) ?? null;
+                      const isAutomationDisabled = !isAutomationEnabled;
+                      const automationLabel = isAutomationDisabled ? "Automação desativada" : "Automação ativa";
+                      return (
+                        <IconPickerPersonalIconCard
+                          key={item.id}
+                          name={item.name}
+                          imageUrl={item.imageUrl}
+                          isSelected={isSelected}
+                          isAutomationDisabled={isAutomationDisabled}
+                          onClick={() => openManagePersonalActions(item, publication)}
+                          testId={`icon-personal-option-${item.id}`}
+                          title={`${item.name} · ${automationLabel}`}
+                          ariaLabel={`${item.name}. ${automationLabel}. Abrir ações do ícone.`}
+                        />
+                      );
+                    })}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 p-2 text-xs text-muted-foreground">
+                    <p>
+                      Mostrando {paginatedPersonalIcons.startIndex + 1}–{paginatedPersonalIcons.endIndex} de{" "}
+                      {paginatedPersonalIcons.totalItems} ícones
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={paginatedPersonalIcons.page <= 1}
+                        onClick={() => setMyIconsPage((current) => Math.max(1, current - 1))}
+                      >
+                        Anterior
+                      </Button>
+                      <span>
+                        Página {paginatedPersonalIcons.page} de {paginatedPersonalIcons.totalPages}
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={paginatedPersonalIcons.page >= paginatedPersonalIcons.totalPages}
+                        onClick={() =>
+                          setMyIconsPage((current) => Math.min(paginatedPersonalIcons.totalPages, current + 1))
+                        }
+                      >
+                        Próxima
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {value && !isManageMode ? (
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="mt-2 w-full"
+                  className="w-full"
                   onClick={handleReset}
                   data-testid="button-reset-icone"
                 >
@@ -1671,7 +1683,7 @@ export function IconPicker({
               ) : null}
             </TabsContent>
 
-            <TabsContent value="explorar" className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+            <TabsContent value="explore" className="mt-0 min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6">
               <div className="sticky top-0 z-10 bg-background pb-1">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   <Input
@@ -1895,7 +1907,7 @@ export function IconPicker({
               ) : null}
             </TabsContent>
 
-            <TabsContent value="upload" className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+            <TabsContent value="upload" className="mt-0 min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-foreground">Tipo de upload</label>
