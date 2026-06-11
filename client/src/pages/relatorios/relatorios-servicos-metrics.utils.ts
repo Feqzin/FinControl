@@ -2,6 +2,7 @@ import type { Servico } from "@shared/schema";
 import type { ReportsOverviewSummary } from "@shared/reports";
 import {
   calculateServicoEquivalentMonthlyAmount,
+  calculateServicoMonthlyFinancialImpactAmount,
   calculateServicoRealChargeForCompetency,
   getServicoBillingDisplayInfo,
   isServicoLinkedToCardCharge,
@@ -73,10 +74,13 @@ export function buildRelatoriosServicosMetrics({
   const hasDetailedSummaryMetrics = [
     overviewSummary?.servicosEquivalenteMensalTotal,
     overviewSummary?.servicosCobrancaRealCompetenciaTotal,
+    overviewSummary?.servicosCobrancaRealPeriodoTotal,
     overviewSummary?.servicosVinculadosCartaoEquivalenteMensalTotal,
     overviewSummary?.servicosVinculadosCartaoCobrancaRealTotal,
+    overviewSummary?.servicosVinculadosCartaoCobrancaRealPeriodoTotal,
     overviewSummary?.servicosNaoVinculadosCartaoEquivalenteMensalTotal,
     overviewSummary?.servicosNaoVinculadosCartaoCobrancaRealTotal,
+    overviewSummary?.servicosNaoVinculadosCartaoCobrancaRealPeriodoTotal,
   ].some((value) => typeof value === "number" && Number.isFinite(value));
 
   const detailedServices = activeServicos.map((servico) => {
@@ -152,8 +156,8 @@ export function buildRelatoriosServicosMetrics({
   );
 
   const legacyMonthlyTotal = toMoney(
-    overviewSummary?.servicosAtivosTotal,
-    activeServicos.reduce((sum, servico) => sum + calculateServicoEquivalentMonthlyAmount(servico), 0),
+    overviewSummary?.servicosNaoVinculadosCartaoEquivalenteMensalTotal ?? overviewSummary?.servicosAtivosTotal,
+    activeServicos.reduce((sum, servico) => sum + calculateServicoMonthlyFinancialImpactAmount(servico), 0),
   );
 
   return {
@@ -168,4 +172,3 @@ export function buildRelatoriosServicosMetrics({
     detailedServices,
   };
 }
-

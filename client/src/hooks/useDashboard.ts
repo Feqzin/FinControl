@@ -7,6 +7,7 @@ import { ptBR } from "date-fns/locale";
 import { AlertTriangle, Bell, CheckCircle, CreditCard, TrendingDown } from "lucide-react";
 import { maskValue } from "@/context/values-visibility";
 import { toMoneyNumber } from "@/lib/money";
+import { calculateServicoMonthlyFinancialImpactAmount } from "@shared/servico-periodicidade";
 import { calculateCardUsedLimit, groupParcelasCompraByCompraId } from "@/lib/card-limit-usage";
 import { fetchDashboardOverview, fetchFinancialSummary } from "@/services/api/dashboard";
 import { formatCurrencyBRL } from "@/utils/formatters";
@@ -388,6 +389,8 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       });
 
     servicos.filter((s) => s.status === "ativo").forEach((s) => {
+      const valor = calculateServicoMonthlyFinancialImpactAmount(s);
+      if (valor <= 0) return;
       const dataVenc = getNextDueDate(s.dataCobranca);
       if (!dataVenc) return;
       const daysUntil = differenceInDays(parseISO(dataVenc), new Date());
@@ -396,7 +399,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
         tipo: "servico",
         nome: s.nome,
         subtitulo: daysUntil === 0 ? "Cobrado hoje" : daysUntil < 0 ? `Cobrado há ${Math.abs(daysUntil)}d` : `Cobra em ${daysUntil} dia${daysUntil === 1 ? "" : "s"}`,
-        valor: toMoneyNumber(s.valorMensal),
+        valor,
         dataVenc,
       });
     });
@@ -443,6 +446,8 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     });
 
     servicos.filter((s) => s.status === "ativo").forEach((s) => {
+      const amount = calculateServicoMonthlyFinancialImpactAmount(s);
+      if (amount <= 0) return;
       if (!isValidBillingDay(s.dataCobranca)) return;
       const billingDay = s.dataCobranca;
       const now = new Date();
@@ -450,7 +455,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       if (format(d, "yyyy-MM-dd") < today) d = new Date(now.getFullYear(), now.getMonth() + 1, billingDay);
       const ds = format(d, "yyyy-MM-dd");
       if (ds >= today && ds <= in7Days) {
-        items.push({ id: `svc-${s.id}`, title: s.nome, dateStr: ds, amount: toMoneyNumber(s.valorMensal), type: "servico" });
+        items.push({ id: `svc-${s.id}`, title: s.nome, dateStr: ds, amount, type: "servico" });
       }
     });
 

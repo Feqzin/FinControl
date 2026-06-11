@@ -108,6 +108,7 @@ import {
 } from "@shared/parcelas-compra-competency";
 import {
   calculateServicoEquivalentMonthlyAmount,
+  calculateServicoMonthlyFinancialImpactAmount,
   calculateServicoValorMensalEquivalente,
   calculateServicoRealChargeForCompetency,
   getServicoBillingDisplayInfo,
@@ -4468,7 +4469,7 @@ test("relatorios PDF: metadados usam fallback em modo compatibilidade", () => {
 
 test("dashboard serviços: usa métricas detalhadas quando disponíveis", () => {
   const metrics = resolveDashboardServicosMetrics({
-    totalServicos: 139.15,
+    totalServicos: 120,
     servicosEquivalenteMensalTotal: 139.15,
     servicosCobrancaRealCompetenciaTotal: 319.82,
     servicosVinculadosCartaoEquivalenteMensalTotal: 19.15,
@@ -4478,7 +4479,7 @@ test("dashboard serviços: usa métricas detalhadas quando disponíveis", () => 
   });
 
   assert.equal(metrics.hasDetailedMetrics, true);
-  assert.equal(metrics.totalLegacy, 139.15);
+  assert.equal(metrics.totalLegacy, 120);
   assert.equal(metrics.equivalenteMensalTotal, 139.15);
   assert.equal(metrics.cobrancaRealCompetenciaTotal, 319.82);
   assert.equal(metrics.vinculadosCartaoEquivalenteMensalTotal, 19.15);
@@ -4535,6 +4536,7 @@ test("relatórios serviços: separa média mensal e cobrança real no período p
     endDateIso: "2026-05-31",
   });
 
+  assert.equal(metrics.legacyMonthlyTotal, 30);
   assert.equal(metrics.monthlyAverageTotal, 49.15);
   assert.equal(metrics.realChargeInPeriodTotal, 229.82);
   assert.equal(metrics.linkedCardRealChargeInPeriodTotal, 229.82);
@@ -4608,4 +4610,29 @@ test("relatórios serviços: prioriza campos novos quando overview os fornece", 
   assert.equal(metrics.realChargeInPeriodTotal, 229.82);
   assert.equal(metrics.linkedCardMonthlyAverageTotal, 19.15);
   assert.equal(metrics.linkedCardRealChargeInPeriodTotal, 229.82);
+});
+
+test("serviços: impacto financeiro mensal exclui valores já representados por compra de cartão vinculada", () => {
+  const servicoAnualVinculado = buildServicoFixture({
+    periodicidadeCobranca: "anual",
+    valorCobranca: "229.82",
+    valorMensal: "19.15",
+    compraCartaoId: "compra-1",
+  });
+  const servicoAnualSemVinculo = buildServicoFixture({
+    periodicidadeCobranca: "anual",
+    valorCobranca: "229.82",
+    valorMensal: "19.15",
+    compraCartaoId: null,
+  });
+  const servicoMensal = buildServicoFixture({
+    periodicidadeCobranca: "mensal",
+    valorCobranca: "50.00",
+    valorMensal: "50.00",
+    compraCartaoId: null,
+  });
+
+  assert.equal(calculateServicoMonthlyFinancialImpactAmount(servicoAnualVinculado), 0);
+  assert.equal(calculateServicoMonthlyFinancialImpactAmount(servicoAnualSemVinculo), 19.15);
+  assert.equal(calculateServicoMonthlyFinancialImpactAmount(servicoMensal), 50);
 });

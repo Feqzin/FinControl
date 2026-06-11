@@ -235,9 +235,11 @@ test("resumo financeiro: métricas de serviços separam equivalente mensal, cobr
   const summaryAbril = await service.getSummary("user-financial-unit", "2026-04");
   const summaryMaio = await service.getSummary("user-financial-unit", "2026-05");
 
-  // Compatibilidade: campo legado segue preenchido com soma mensal antiga.
-  assert.equal(summaryAbril.totalServicos, 139.15);
-  assert.equal(summaryMaio.totalServicos, 139.15);
+  // Saída mensal real não duplica serviços já representados pela fatura do cartão.
+  assert.equal(summaryAbril.totalServicos, 120);
+  assert.equal(summaryMaio.totalServicos, 120);
+  assert.equal(summaryAbril.totalSaidas, 320);
+  assert.equal(summaryMaio.totalSaidas, 370);
 
   // Planejamento mensal (equivalente) inclui todos os ativos.
   assert.equal(summaryAbril.servicosEquivalenteMensalTotal, 139.15);
@@ -263,6 +265,98 @@ test("resumo financeiro: métricas de serviços separam equivalente mensal, cobr
 
   // Cartões/faturas não mudam nesta fase.
   assert.equal(summaryAbril.totalCartoesMes, 200);
+  assert.equal(summaryMaio.totalCartoesMes, 200);
+});
+
+test("resumo financeiro: serviço anual vinculado ao cartão não duplica saída mensal e compra continua na fatura", async () => {
+  const userId = "user-financial-linked-card-service";
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [
+      {
+        id: "pc-linked-1",
+        userId,
+        compraCartaoId: "cc-linked-annual",
+        numero: 1,
+        valor: "229.82",
+        dataVencimento: "2026-05-20",
+        statusCartao: "pendente",
+        dataPagamentoCartao: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+    ],
+    servicos: [
+      {
+        ...buildServicoFixture({
+          id: "svc-linked-annual",
+          nome: "Distrokid",
+          periodicidadeCobranca: "anual",
+          valorCobranca: "229.82",
+          valorMensal: "19.15",
+          compraCartaoId: "cc-linked-annual",
+        }),
+        competenciaBase: "2026-05",
+      } as Servico,
+      {
+        ...buildServicoFixture({
+          id: "svc-unlinked-annual",
+          nome: "Hospedagem",
+          periodicidadeCobranca: "anual",
+          valorCobranca: "120.00",
+          valorMensal: "10.00",
+          compraCartaoId: null,
+        }),
+        competenciaBase: "2026-05",
+      } as Servico,
+      buildServicoFixture({
+        id: "svc-monthly",
+        nome: "Internet",
+        periodicidadeCobranca: "mensal",
+        valorCobranca: "50.00",
+        valorMensal: "50.00",
+        compraCartaoId: null,
+      }),
+    ],
+    cartoes: [
+      {
+        id: "card-1",
+        userId,
+        nome: "Cartão Principal",
+        limite: "1500.00",
+        melhorDiaCompra: 5,
+        diaVencimento: 20,
+        iconeId: null,
+      },
+    ],
+    compras: [
+      {
+        id: "cc-linked-annual",
+        userId,
+        cartaoId: "card-1",
+        descricao: "Distrokid Anual",
+        valorTotal: "229.82",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "229.82",
+        dataCompra: "2026-05-01",
+        pessoaId: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+    ],
+    rendas: [],
+  };
+
+  const summary = await createService(fixture).getSummary(userId, "2026-05");
+
+  assert.equal(summary.totalServicos, 60);
+  assert.equal(summary.servicosEquivalenteMensalTotal, 79.15);
+  assert.equal(summary.servicosVinculadosCartaoEquivalenteMensalTotal, 19.15);
+  assert.equal(summary.servicosNaoVinculadosCartaoEquivalenteMensalTotal, 60);
+  assert.equal(summary.totalCartoesMes, 229.82);
+  assert.equal(summary.totalSaidas, 289.82);
 });
 
 test("aplica simulacao de renda extra sem quebrar a consistencia", async () => {

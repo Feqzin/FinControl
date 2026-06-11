@@ -18,6 +18,7 @@ import {
 } from "@/components/layout/fintech-loading-shell";
 import { ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown, Wallet } from "lucide-react";
 import type { Divida, Servico, Renda } from "@shared/schema";
+import { calculateServicoMonthlyFinancialImpactAmount } from "@shared/servico-periodicidade";
 import { format, getDaysInMonth } from "date-fns";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 
@@ -62,7 +63,9 @@ export default function PrevisaoPage() {
     .filter((d) => d.tipo === "pagar" && d.status === "pendente" && (d.dataVencimento || "").startsWith(currentMonth))
     .reduce((s, d) => s + Number(d.valor), 0);
 
-  const servicosMes = servicosAtivos.reduce((s, sv) => s + Number(sv.valorMensal), 0);
+  const servicosMes = servicosAtivos.reduce((sum, servico) => (
+    sum + calculateServicoMonthlyFinancialImpactAmount(servico)
+  ), 0);
 
   const totalSaida = pagarDividas + servicosMes;
   const saldoPrevisto = totalEntradas - totalSaida;
@@ -97,7 +100,7 @@ export default function PrevisaoPage() {
 
     for (const s of servicos) {
       if (s.status === "ativo" && Number(s.dataCobranca) === day) {
-        saidas += Number(s.valorMensal);
+        saidas += calculateServicoMonthlyFinancialImpactAmount(s);
       }
     }
 

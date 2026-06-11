@@ -3,6 +3,7 @@ import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Patrimonio, 
 import type { DashboardOverviewResponse, FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
 import {
   calculateServicoEquivalentMonthlyAmount,
+  calculateServicoMonthlyFinancialImpactAmount,
   calculateServicoRealChargeForCompetency,
   isServicoLinkedToCardCharge,
 } from "@shared/servico-periodicidade";
@@ -224,7 +225,9 @@ function calculateScoreFromContext({
   }
 
   const totalRenda = sumMoneyBy(rendas.filter((r) => r.ativo), (r) => r.valor);
-  const totalServicos = sumMoneyBy(servicos.filter((s) => s.status === "ativo"), (sv) => sv.valorMensal);
+  const totalServicos = servicos
+    .filter((servico) => servico.status === "ativo")
+    .reduce((sum, servico) => sum + calculateServicoMonthlyFinancialImpactAmount(servico), 0);
 
   const entradas = totalRenda + totalReceberMes;
   const saidas = totalPagarMes + totalServicos + totalCartoesMes;
@@ -342,7 +345,10 @@ function generateInsightsFromContext({
 
   const totalRenda = sumMoneyBy(rendas.filter((r) => r.ativo), (r) => r.valor);
   const servicosAtivos = servicos.filter((s) => s.status === "ativo");
-  const totalServicos = sumMoneyBy(servicosAtivos, (sv) => sv.valorMensal);
+  const totalServicos = servicosAtivos.reduce(
+    (sum, servico) => sum + calculateServicoMonthlyFinancialImpactAmount(servico),
+    0,
+  );
   const { totalReceberMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, currentMonth);
   const { totalCartoesMes } = getMonthlyCardTotals(cardInput, currentMonth);
 
@@ -677,7 +683,9 @@ export class FinancialService {
     const servicoSummaryTotals = calculateServicoSummaryTotals(simulated.servicos, mesReferencia);
 
     const totalRenda = sumMoneyBy(simulated.rendas.filter((r) => r.ativo), (r) => r.valor);
-    const totalServicos = sumMoneyBy(simulated.servicos.filter((s) => s.status === "ativo"), (sv) => sv.valorMensal);
+    const totalServicos = simulated.servicos
+      .filter((servico) => servico.status === "ativo")
+      .reduce((sum, servico) => sum + calculateServicoMonthlyFinancialImpactAmount(servico), 0);
 
     const totalEntradas = totalRenda + totalReceberMes;
     const totalSaidas = totalPagarMes + totalServicos + totalCartoesMes;

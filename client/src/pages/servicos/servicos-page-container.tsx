@@ -58,7 +58,11 @@ import {
 } from "@/lib/entity-icon-suggestion";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import type { Servico } from "@shared/schema";
-import { resolveServicoBillingFields, type ServicoPeriodicidade } from "@shared/servico-periodicidade";
+import {
+  calculateServicoMonthlyFinancialImpactAmount,
+  resolveServicoBillingFields,
+  type ServicoPeriodicidade,
+} from "@shared/servico-periodicidade";
 import { FintechLoadingPageHeader, FintechLoadingSurface } from "@/components/layout/fintech-loading-shell";
 
 const IconPicker = lazy(() =>
@@ -258,7 +262,7 @@ export default function ServicosPage() {
 
   const totalMensal = servicos
     .filter((s) => s.status === "ativo")
-    .reduce((sum, sv) => sum + Number(sv.valorMensal), 0);
+    .reduce((sum, servico) => sum + calculateServicoMonthlyFinancialImpactAmount(servico), 0);
 
   const mesAtual = mesReferencia;
 
@@ -414,7 +418,7 @@ export default function ServicosPage() {
       if (existing) {
         existing.servicos.push(servico);
         if (servico.status === "ativo") {
-          existing.total += Number(servico.valorMensal);
+          existing.total += calculateServicoMonthlyFinancialImpactAmount(servico);
         }
         return groups;
       }
@@ -423,7 +427,7 @@ export default function ServicosPage() {
         value: servico.categoria,
         label: categoriaLabelByValue.get(servico.categoria) ?? formatCategoriaFallback(servico.categoria),
         servicos: [servico],
-        total: servico.status === "ativo" ? Number(servico.valorMensal) : 0,
+        total: servico.status === "ativo" ? calculateServicoMonthlyFinancialImpactAmount(servico) : 0,
       });
       return groups;
     },

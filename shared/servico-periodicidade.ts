@@ -261,6 +261,25 @@ export function calculateServicoEquivalentMonthlyAmount(
   return calculateServicoEquivalentMonthlyAmountCents(servico) / 100;
 }
 
+export function calculateServicoMonthlyFinancialImpactAmountCents(
+  servico: ServicoPeriodicidadeComputationLike,
+): number {
+  if (isServicoLinkedToCardCharge(servico)) return 0;
+
+  const storedMonthlyCents = parseMoneyToCents(servico.valorMensal);
+  if (storedMonthlyCents != null) {
+    return Math.max(0, storedMonthlyCents);
+  }
+
+  return calculateServicoEquivalentMonthlyAmountCents(servico);
+}
+
+export function calculateServicoMonthlyFinancialImpactAmount(
+  servico: ServicoPeriodicidadeComputationLike,
+): number {
+  return calculateServicoMonthlyFinancialImpactAmountCents(servico) / 100;
+}
+
 export function calculateServicoRealChargeForCompetency(
   servico: ServicoPeriodicidadeComputationLike,
   competencia: string,

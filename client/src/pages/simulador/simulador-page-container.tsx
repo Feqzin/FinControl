@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
+import {
   Calculator, 
   RefreshCw, 
   TrendingUp, 
@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import type { Divida, Servico } from "@shared/schema";
 import type { FinancialScore } from "@shared/financial";
+import { calculateServicoMonthlyFinancialImpactAmount } from "@shared/servico-periodicidade";
 import { useSimuladorQueries } from "@/pages/simulador/hooks/use-simulador-queries";
 
 const InvestimentoProjectionChart = lazy(
@@ -89,7 +90,9 @@ export default function SimuladorPageContainer() {
   // Tab 1 Calculations
   const baseReceber = dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
   const basePagar = dividas.filter((d) => d.tipo === "pagar" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
-  const baseServicos = servicos.filter((s) => s.status === "ativo").reduce((s, sv) => s + Number(sv.valorMensal), 0);
+  const baseServicos = servicos
+    .filter((s) => s.status === "ativo")
+    .reduce((sum, servico) => sum + calculateServicoMonthlyFinancialImpactAmount(servico), 0);
   const maxReducaoDespesas = Math.max(0, baseServicos);
   const maxQuitarDivida = Math.max(0, basePagar);
   const canReduceFixedExpenses = maxReducaoDespesas > 0;
