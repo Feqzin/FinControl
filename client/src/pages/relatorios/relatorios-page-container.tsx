@@ -469,7 +469,7 @@ export default function RelatoriosPageContainer() {
               </div>
             </div>
             <div className="space-y-1 pt-6">
-              <p className="fin-value-kpi truncate text-emerald-600">{fc(filteredData.totalRenda)}</p>
+              <p className="fin-value-kpi text-emerald-600 [overflow-wrap:anywhere]">{fc(filteredData.totalRenda)}</p>
             </div>
           </CardContent>
         </Card>
@@ -484,7 +484,7 @@ export default function RelatoriosPageContainer() {
               </div>
             </div>
             <div className="space-y-1 pt-6">
-              <p className="fin-value-kpi truncate text-red-600">{fc(filteredData.totalCartoes)}</p>
+              <p className="fin-value-kpi text-red-600 [overflow-wrap:anywhere]">{fc(filteredData.totalCartoes)}</p>
             </div>
           </CardContent>
         </Card>
@@ -499,7 +499,7 @@ export default function RelatoriosPageContainer() {
               </div>
             </div>
             <div className="space-y-1 pt-6">
-              <p className="fin-value-kpi truncate text-red-600">{fc(filteredData.totalDividasPagar)}</p>
+              <p className="fin-value-kpi text-red-600 [overflow-wrap:anywhere]">{fc(filteredData.totalDividasPagar)}</p>
             </div>
           </CardContent>
         </Card>
@@ -514,7 +514,7 @@ export default function RelatoriosPageContainer() {
               </div>
             </div>
             <div className="space-y-1 pt-6">
-              <p className="fin-value-kpi truncate text-blue-600">{fc(filteredData.totalReceber)}</p>
+              <p className="fin-value-kpi text-blue-600 [overflow-wrap:anywhere]">{fc(filteredData.totalReceber)}</p>
             </div>
           </CardContent>
         </Card>
@@ -529,7 +529,7 @@ export default function RelatoriosPageContainer() {
               </div>
             </div>
             <div className="space-y-1 pt-6">
-              <p className="fin-value-kpi truncate text-indigo-600">{fc(filteredData.totalPatrimonio)}</p>
+              <p className="fin-value-kpi text-indigo-600 [overflow-wrap:anywhere]">{fc(filteredData.totalPatrimonio)}</p>
             </div>
           </CardContent>
         </Card>
@@ -546,7 +546,7 @@ export default function RelatoriosPageContainer() {
               </div>
             </div>
             <div className="space-y-1 pt-6">
-              <p className={`fin-value-kpi truncate ${filteredData.saldoLiquido >= 0 ? "text-primary" : "text-red-600"}`}>
+              <p className={`fin-value-kpi [overflow-wrap:anywhere] ${filteredData.saldoLiquido >= 0 ? "text-primary" : "text-red-600"}`}>
                 {fc(filteredData.saldoLiquido)}
               </p>
             </div>
@@ -624,7 +624,7 @@ export default function RelatoriosPageContainer() {
                         {items.map((item) => (
                           <TableRow key={item.id} className="border-border/40 hover:bg-muted/20">
                             <TableCell className="pl-6 text-xs text-muted-foreground">{cardName}</TableCell>
-                            <TableCell className="max-w-[150px] truncate font-medium" title={item.descricao}>{item.descricao}</TableCell>
+                            <TableCell className="max-w-[220px] whitespace-normal break-words font-medium align-top" title={item.descricao}>{item.descricao}</TableCell>
                             <TableCell>{item.parcelaAtual}/{item.parcelas}</TableCell>
                             <TableCell className="fin-value-table text-right">{fc(Number(item.valorParcela))}</TableCell>
                           </TableRow>
@@ -682,7 +682,7 @@ export default function RelatoriosPageContainer() {
                       const total = pDividas.reduce((acc, d) => acc + (d.tipo === "receber" ? Number(d.valor) : -Number(d.valor)), 0);
                       return (
                         <TableRow key={p.id} className="border-border/40 hover:bg-muted/20">
-                          <TableCell className="max-w-[180px] truncate font-medium" title={p.nome}>{p.nome}</TableCell>
+                          <TableCell className="max-w-[220px] whitespace-normal break-words font-medium align-top" title={p.nome}>{p.nome}</TableCell>
                           <TableCell>
                             <Badge variant={total >= 0 ? "default" : "destructive"} className="rounded-full px-2.5">
                               {total >= 0 ? "Me deve" : "Eu devo"}
@@ -762,7 +762,7 @@ export default function RelatoriosPageContainer() {
                   ) : (
                     filteredData.servicosDetalhados.map((s) => (
                       <TableRow key={s.id} className="border-border/40 hover:bg-muted/20">
-                        <TableCell className="max-w-[180px] truncate font-medium" title={s.nome}>{s.nome}</TableCell>
+                        <TableCell className="max-w-[220px] whitespace-normal break-words font-medium align-top" title={s.nome}>{s.nome}</TableCell>
                         <TableCell>{s.categoria}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{s.periodicidadeLabel}</TableCell>
                         <TableCell className="fin-value-table text-right">
@@ -843,7 +843,7 @@ export default function RelatoriosPageContainer() {
                       };
                       return (
                         <TableRow key={p.id} className="border-border/40 hover:bg-muted/20">
-                          <TableCell className="max-w-[180px] truncate font-medium" title={p.nome}>{p.nome}</TableCell>
+                          <TableCell className="max-w-[220px] whitespace-normal break-words font-medium align-top" title={p.nome}>{p.nome}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">{labels[p.tipo] || p.tipo}</TableCell>
                           <TableCell className="fin-value-table text-right text-indigo-600">
                             {fc(Number(p.valorAtual))}

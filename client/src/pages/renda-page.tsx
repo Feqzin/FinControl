@@ -383,9 +383,9 @@ export default function RendaPage() {
               data-testid={`card-renda-${renda.id}`}
             >
               <CardHeader className="gap-4 space-y-0 border-b border-border/50 pb-4">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 space-y-2">
-                    <CardTitle className="max-w-[220px] truncate text-base font-semibold tracking-tight sm:max-w-[280px]" title={renda.descricao}>
+                    <CardTitle className="text-base font-semibold tracking-tight break-words" title={renda.descricao}>
                       {renda.descricao}
                     </CardTitle>
                     <div className="flex flex-wrap items-center gap-2">
@@ -411,7 +411,7 @@ export default function RendaPage() {
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 rounded-xl border border-border/60 bg-muted/[0.16] px-2 py-1.5 shadow-sm">
+                  <div className="flex self-end items-center gap-1.5 rounded-xl border border-border/60 bg-muted/[0.16] px-2 py-1.5 shadow-sm sm:self-auto">
                     <Button
                       variant="ghost"
                       size="icon"

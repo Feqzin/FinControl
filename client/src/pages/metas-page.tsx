@@ -373,15 +373,15 @@ export default function MetasPage() {
                   return (
                     <Card key={meta.id} className="hover-elevate rounded-[26px] border border-border/60 bg-card/95 shadow-sm" data-testid={`card-meta-${meta.id}`}>
                       <CardContent className="p-5 space-y-4">
-                        <div className="flex items-start justify-between gap-2">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm">
                               <Target className="h-5 w-5 text-primary" />
                             </div>
                             <div className="min-w-0 space-y-1">
-                              <p className="truncate text-base font-semibold tracking-tight text-foreground">{meta.nome}</p>
+                              <p className="text-base font-semibold tracking-tight text-foreground break-words">{meta.nome}</p>
                               {meta.descricao && (
-                                <p className="truncate text-xs leading-5 text-muted-foreground">{meta.descricao}</p>
+                                <p className="text-xs leading-5 text-muted-foreground break-words">{meta.descricao}</p>
                               )}
                             </div>
                           </div>
@@ -405,11 +405,11 @@ export default function MetasPage() {
                         <div className="grid grid-cols-2 gap-3">
                           <div className="rounded-2xl border border-border/50 bg-background/80 p-3 shadow-sm">
                             <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Faltam</p>
-                            <p className="mt-2 text-base font-semibold tracking-tight text-foreground">{formatCurrency(Math.max(0, Number(meta.valorAlvo) - Number(meta.valorAtual)))}</p>
+                          <p className="mt-2 text-base font-semibold tracking-tight text-foreground [overflow-wrap:anywhere]">{formatCurrency(Math.max(0, Number(meta.valorAlvo) - Number(meta.valorAtual)))}</p>
                           </div>
                           <div className="rounded-2xl border border-primary/15 bg-primary/5 p-3 shadow-sm">
                             <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">Por mês</p>
-                            <p className="mt-2 text-base font-semibold tracking-tight text-primary">{formatCurrency(mensal)}</p>
+                          <p className="mt-2 text-base font-semibold tracking-tight text-primary [overflow-wrap:anywhere]">{formatCurrency(mensal)}</p>
                           </div>
                         </div>
 
@@ -493,15 +493,15 @@ export default function MetasPage() {
                 {concluidas.map((meta) => (
                   <Card key={meta.id} className="rounded-[24px] border border-emerald-500/15 bg-emerald-500/[0.05] shadow-sm" data-testid={`card-meta-done-${meta.id}`}>
                     <CardContent className="p-4">
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex min-w-0 items-center gap-3">
                           <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-500/20 bg-background/80 shadow-sm">
                             <CheckCircle className="w-5 h-5 text-emerald-600" />
                           </div>
-                          <span className="truncate font-semibold text-foreground">{meta.nome}</span>
+                          <span className="font-semibold text-foreground break-words">{meta.nome}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-emerald-600">{formatCurrency(Number(meta.valorAlvo))}</span>
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
+                          <span className="text-sm font-bold text-emerald-600 [overflow-wrap:anywhere]">{formatCurrency(Number(meta.valorAlvo))}</span>
                           <Button
                             variant="ghost"
                             size="icon"

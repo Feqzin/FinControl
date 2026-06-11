@@ -132,9 +132,11 @@ export function DashboardFinancialOverview({
                       <TipoIcon className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="truncate pr-1 text-sm font-semibold text-foreground/95">{item.nome}</p>
-                        <span className="flex-shrink-0 text-sm font-semibold tracking-tight text-foreground/95">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <p className="min-w-0 break-words pr-1 text-sm font-semibold text-foreground/95">
+                          {item.nome}
+                        </p>
+                        <span className="w-full text-left text-sm font-semibold tracking-tight text-foreground/95 sm:w-auto sm:flex-shrink-0 sm:text-right [overflow-wrap:anywhere]">
                           {formatMoney(item.valor)}
                         </span>
                       </div>
@@ -171,7 +173,9 @@ export function DashboardFinancialOverview({
                     <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
                       A pagar em 7 dias
                     </p>
-                    <p className="mt-1 truncate text-sm font-semibold tracking-tight text-red-600">{formatMoney(pagarSemanaTotal)}</p>
+                    <p className="mt-1 text-sm font-semibold tracking-tight text-red-600 [overflow-wrap:anywhere]">
+                      {formatMoney(pagarSemanaTotal)}
+                    </p>
                   </div>
                   <span className="rounded-full border border-border/50 bg-background/80 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
                     {pagarSemana.length} item(ns)
@@ -229,7 +233,7 @@ export function DashboardFinancialOverview({
 
                 {score.fatores.map((f, i) => (
                   <div key={i} className="flex items-center justify-between rounded-md bg-muted/30 p-2.5 text-sm">
-                    <span className="mr-2 truncate text-muted-foreground">{f.label}</span>
+                    <span className="mr-2 min-w-0 break-words text-muted-foreground">{f.label}</span>
                     <span
                       className={`flex-shrink-0 font-semibold ${
                         f.tipo === "positivo"

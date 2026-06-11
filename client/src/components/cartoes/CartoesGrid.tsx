@@ -52,11 +52,11 @@ export function CartoesGrid({
 
           return (
             <CartaoCard key={cartao.id} className="rounded-[24px]" contentClassName="space-y-3 p-3.5 sm:p-4">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 flex items-center gap-3">
                   <BrandIconDisplay name={cartao.nome} iconeId={resolveCardIconId(cartao)} size="sm" />
                   <div className="min-w-0">
-                    <p className="truncate text-[15px] font-semibold leading-tight sm:text-base">{cartao.nome}</p>
+                    <p className="text-[15px] font-semibold leading-tight break-words sm:text-base">{cartao.nome}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <span className="inline-flex rounded-full border border-border/60 bg-muted/25 px-2 py-0.5 text-[11px] text-muted-foreground">
                         {totalCompras} compra(s) parcelada(s)
@@ -67,7 +67,7 @@ export function CartoesGrid({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 shrink-0 rounded-xl border-border/60 bg-background/80 px-3 text-xs shadow-sm touch-feedback sm:px-3.5"
+                  className="h-8 self-start rounded-xl border-border/60 bg-background/80 px-3 text-xs shadow-sm touch-feedback sm:self-auto sm:px-3.5"
                   onClick={() => onOpenCompras(cartao.id)}
                   data-testid={`button-open-cartao-compras-${cartao.id}`}
                 >
@@ -76,16 +76,16 @@ export function CartoesGrid({
               </div>
 
               <div className="rounded-[22px] border border-border/50 bg-muted/20 p-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="min-w-0 space-y-1">
                     <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Fatura atual</p>
-                    <p className="truncate text-lg font-semibold leading-tight sm:text-xl">
+                    <p className="text-lg font-semibold leading-tight [overflow-wrap:anywhere] sm:text-xl">
                       {formatCartaoCurrency(faturaAtual)}
                     </p>
                   </div>
-                  <div className="min-w-0 border-l border-border/60 pl-3 space-y-1">
+                  <div className="min-w-0 space-y-1 border-t border-border/60 pt-3 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0">
                     <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Disponível</p>
-                    <p className="truncate text-lg font-semibold leading-tight text-emerald-600 sm:text-xl">
+                    <p className="text-lg font-semibold leading-tight text-emerald-600 [overflow-wrap:anywhere] sm:text-xl">
                       {formatCartaoCurrency(limiteDisponivel)}
                     </p>
                   </div>
@@ -101,14 +101,14 @@ export function CartoesGrid({
                     </span>
                   </div>
                   <Progress value={percentual} className={`h-1.5 ${barColorClass}`} />
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2">
                     <div className="min-w-0">
                       <p className="text-muted-foreground">Limite</p>
-                      <p className="truncate font-semibold">{formatCartaoCurrency(limite)}</p>
+                      <p className="font-semibold [overflow-wrap:anywhere]">{formatCartaoCurrency(limite)}</p>
                     </div>
                     <div className="min-w-0">
                       <p className="text-muted-foreground">Usado</p>
-                      <p className="truncate font-semibold">{formatCartaoCurrency(comprometido)}</p>
+                      <p className="font-semibold [overflow-wrap:anywhere]">{formatCartaoCurrency(comprometido)}</p>
                     </div>
                   </div>
                 </div>

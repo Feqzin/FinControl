@@ -869,22 +869,22 @@ export default function Dashboard() {
                   const TipoIcon = item.tipo === "cartao" ? CreditCard : item.tipo === "servico" ? Receipt : ArrowDownRight;
                   const tipoBg = item.tipo === "cartao" ? "bg-blue-500/10 text-blue-600" : item.tipo === "servico" ? "bg-amber-500/10 text-amber-600" : "bg-red-500/10 text-red-600";
                   return (
-                    <div key={item.id} className="flex items-center gap-3 px-4 py-3" data-testid={`mobile-vencimento-${item.id}`}>
+                    <div key={item.id} className="flex items-start gap-3 px-4 py-3" data-testid={`mobile-vencimento-${item.id}`}>
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${tipoBg}`}>
                         <TipoIcon className="w-3.5 h-3.5" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.nome}</p>
+                        <p className="text-sm font-medium break-words">{item.nome}</p>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
-                          <p className={`text-xs ${isPast || isToday ? "text-red-600 font-medium" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
+                          <p className={`text-xs break-words ${isPast || isToday ? "text-red-600 font-medium" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
                             {item.subtitulo}
                           </p>
                         </div>
+                        <span className="mt-2 block text-sm font-semibold [overflow-wrap:anywhere]">
+                          {maskValue(formatCurrencyBRL(item.valor), visible)}
+                        </span>
                       </div>
-                      <span className="text-sm font-semibold flex-shrink-0">
-                        {maskValue(formatCurrencyBRL(item.valor), visible)}
-                      </span>
                     </div>
                   );
                 })}
@@ -908,14 +908,14 @@ export default function Dashboard() {
                 ) : sectionStatus.pagarSemana.isError ? (
                   <p className="text-xs text-muted-foreground">Resumo da semana indisponível no momento.</p>
                 ) : pagarSemana.length > 0 ? (
-                  <div className="flex items-center justify-between rounded-lg bg-amber-500/5 px-3 py-2">
-                    <div>
+                  <div className="flex flex-col gap-2 rounded-lg bg-amber-500/5 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
                       <p className="text-[11px] font-medium text-muted-foreground">A pagar em 7 dias</p>
-                      <p className="text-sm font-semibold text-red-600">
+                      <p className="text-sm font-semibold text-red-600 [overflow-wrap:anywhere]">
                         {maskValue(formatCurrencyBRL(pagarSemanaTotal), visible)}
                       </p>
                     </div>
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                    <span className="w-fit rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
                       {pagarSemana.length} item(ns)
                     </span>
                   </div>
@@ -985,7 +985,7 @@ export default function Dashboard() {
                   <div className="space-y-1.5">
                     {score.fatores.slice(0, 3).map((f, i) => (
                       <div key={i} className="flex items-center justify-between rounded-md bg-muted/30 px-2.5 py-2 text-xs">
-                        <span className="min-w-0 truncate text-muted-foreground">{f.label}</span>
+                        <span className="min-w-0 break-words text-muted-foreground">{f.label}</span>
                         <span className={`ml-2 flex-shrink-0 font-semibold ${f.tipo === "positivo" ? "text-emerald-600" : f.tipo === "negativo" ? "text-red-600" : "text-muted-foreground"}`}>
                           {f.impacto > 0 ? "+" : ""}{f.impacto}
                         </span>

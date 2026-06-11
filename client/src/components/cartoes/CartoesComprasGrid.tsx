@@ -256,7 +256,7 @@ export function CartoesComprasGrid({
                           />
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <p className="truncate font-medium">{compra.descricao}</p>
+                              <p className="font-medium break-words">{compra.descricao}</p>
                               {compra.pessoaId ? (
                                 <span className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-xs text-blue-600 dark:text-blue-400">
                                   <User className="h-2.5 w-2.5" />

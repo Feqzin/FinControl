@@ -684,7 +684,7 @@ export default function DividasPage() {
                   <div className="flex items-stretch gap-0">
                     <div className={`w-1 flex-shrink-0 ${badgeMeta.stripeClassName}`} />
                     <div className="flex-1 p-3.5">
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-semibold text-sm leading-tight">{pessoaNome}</p>
@@ -694,7 +694,7 @@ export default function DividasPage() {
                               {badgeMeta.label}
                             </span>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-1 truncate">
+                          <p className="mt-1 text-xs text-muted-foreground break-words">
                             {item.descricao}
                           </p>
                           <p className="text-xs text-muted-foreground mt-1">
@@ -704,9 +704,9 @@ export default function DividasPage() {
                             {item.parcelasPagas}/{item.parcelasTotal} reembolsadas
                           </p>
                         </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="fin-value-debt">{formatDividaCurrency(item.mensalPessoa ?? item.valorPendente)}/mês</p>
-                          <p className="text-xs text-muted-foreground">
+                        <div className="text-left sm:flex-shrink-0 sm:text-right">
+                          <p className="fin-value-debt [overflow-wrap:anywhere]">{formatDividaCurrency(item.mensalPessoa ?? item.valorPendente)}/mês</p>
+                          <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
                             Total a reembolsar: {formatDividaCurrency(item.valorTotal)}
                           </p>
                         </div>
@@ -767,7 +767,7 @@ export default function DividasPage() {
                 <div className="flex items-stretch gap-0">
                   <div className={`w-1 flex-shrink-0 ${barColor}`} />
                   <div className="flex-1 p-3.5">
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-start gap-3">
                       <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-white ${
                         d.tipo === "pagar" ? "bg-red-400" : "bg-emerald-500"
                       }`}>
@@ -795,7 +795,7 @@ export default function DividasPage() {
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                        <p className="mt-0.5 text-xs text-muted-foreground break-words">
                           {hasParce
                             ? proximaParcela
                               ? `Próx: ${formatDividaDate(proximaParcela.dataVencimento)} · ${formatDividaCurrency(Number(proximaParcela.valor))}`
@@ -808,13 +808,13 @@ export default function DividasPage() {
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <div className="text-right">
-                          <p className="fin-value-debt">
+                      <div className="flex w-full items-center justify-between gap-1 pl-12 sm:w-auto sm:flex-shrink-0 sm:justify-start sm:pl-0">
+                        <div className="min-w-0 text-left sm:text-right">
+                          <p className="fin-value-debt [overflow-wrap:anywhere]">
                             {formatDividaCurrency(hasParce ? valorTotal : Number(d.valor))}
                           </p>
                           {hasParce && valorPendente > 0 && status !== "pago" && (
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
                               rest. {formatDividaCurrency(valorPendente)}
                             </p>
                           )}
@@ -1025,7 +1025,7 @@ export default function DividasPage() {
                             </Badge>
                           )}
                         </div>
-                        <p className="text-sm text-muted-foreground mt-0.5">
+                        <p className="mt-0.5 text-sm text-muted-foreground break-words">
                           {hasParce
                             ? proximaParcela
                               ? `Proxima: ${formatDividaDate(proximaParcela.dataVencimento)} · ${formatDividaCurrency(Number(proximaParcela.valor))}`
@@ -1039,10 +1039,10 @@ export default function DividasPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 flex-wrap justify-start lg:justify-end">
-                      <div className="text-left lg:text-right min-w-[124px] mr-1">
-                        <div className="fin-value-debt">{formatDividaCurrency(hasParce ? valorTotal : Number(d.valor))}</div>
+                      <div className="mr-1 min-w-[124px] text-left lg:text-right">
+                        <div className="fin-value-debt [overflow-wrap:anywhere]">{formatDividaCurrency(hasParce ? valorTotal : Number(d.valor))}</div>
                         {hasParce && valorPendente > 0 && (
-                          <div className="text-xs text-muted-foreground">Pendente: {formatDividaCurrency(valorPendente)}</div>
+                          <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">Pendente: {formatDividaCurrency(valorPendente)}</div>
                         )}
                       </div>
                       {!isRemovedFilter && hasParce && status !== "pago" && (

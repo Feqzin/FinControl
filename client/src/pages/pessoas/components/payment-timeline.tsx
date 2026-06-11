@@ -244,10 +244,10 @@ export function PaymentTimeline({
                 <Label htmlFor="timeline-comprovante">Comprovante</Label>
                 {selected.comprovante ? (
                   <div className="rounded-md border p-3 text-sm">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
-                        <p className="font-medium truncate">{selected.comprovante.nome}</p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="font-medium break-words">{selected.comprovante.nome}</p>
+                        <p className="text-xs text-muted-foreground break-words">
                           {selected.comprovante.mimeType} - {formatBytes(selected.comprovante.tamanho)}
                         </p>
                       </div>

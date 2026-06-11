@@ -403,7 +403,7 @@ export default function PatrimonioPage() {
               return (
                 <Card key={p.id} className="hover-elevate overflow-visible rounded-[26px] border border-border/60 bg-card/95 shadow-sm transition-all" data-testid={`card-patrimonio-${p.id}`}>
                   <CardContent className="space-y-4 p-5">
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex min-w-0 items-start gap-3">
                         {p.iconeId ? (
                           <div className="shrink-0 rounded-2xl border border-border/60 bg-background/80 p-2 shadow-sm">
@@ -420,12 +420,12 @@ export default function PatrimonioPage() {
                               {tipoInfo.label}
                             </Badge>
                           </div>
-                          <h3 className="truncate text-base font-semibold tracking-tight text-foreground" title={p.nome}>
+                          <h3 className="text-base font-semibold tracking-tight text-foreground break-words" title={p.nome}>
                             {p.nome}
                           </h3>
                         </div>
                       </div>
-                      <div className="flex shrink-0 gap-2">
+                      <div className="flex shrink-0 self-end gap-2 sm:self-auto">
                         <Button
                           variant="ghost"
                           size="icon"

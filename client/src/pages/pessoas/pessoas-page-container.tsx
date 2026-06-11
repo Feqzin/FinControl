@@ -1347,17 +1347,17 @@ export default function PessoasPage() {
                         className="p-3 rounded-md border bg-card"
                         data-testid={`history-divida-${d.id}`}
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="flex min-w-0 items-start gap-2">
                             {d.tipo === "receber"
                               ? <ArrowUpRight className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                               : <ArrowDownRight className="w-4 h-4 text-red-600 flex-shrink-0" />
                             }
                             <div className="min-w-0">
-                              <p className="text-sm font-medium truncate">
+                              <p className="text-sm font-medium break-words">
                                 {d.descricao || (d.tipo === "receber" ? "A receber" : "A pagar")}
                               </p>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-xs text-muted-foreground break-words">
                                 {d.status === "pago"
                                   ? `Pago em ${d.dataPagamento}`
                                   : `Venc: ${d.dataVencimento}${isOverdue ? " · Vencido" : ""}`
@@ -1370,8 +1370,8 @@ export default function PessoasPage() {
                               )}
                             </div>
                           </div>
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <span className={`text-sm font-bold ${d.tipo === "receber" ? "text-emerald-600" : "text-red-600"}`}>
+                          <div className="flex w-full items-center justify-between gap-1 sm:w-auto sm:flex-shrink-0 sm:justify-end">
+                            <span className={`text-sm font-bold [overflow-wrap:anywhere] ${d.tipo === "receber" ? "text-emerald-600" : "text-red-600"}`}>
                               {formatCurrencyBRL(Number(d.valor))}
                             </span>
                             {d.status === "pago" ? (
@@ -1529,21 +1529,21 @@ export default function PessoasPage() {
                           className="p-3 rounded-md border bg-card"
                           data-testid={`history-compra-${c.id}`}
                         >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="flex min-w-0 items-start gap-2">
                               <CreditCard className="w-4 h-4 text-blue-600 flex-shrink-0" />
                               <div className="min-w-0">
-                                <p className="text-sm font-medium truncate">{c.descricao}</p>
-                                <p className="text-xs text-muted-foreground">
+                                <p className="text-sm font-medium break-words">{c.descricao}</p>
+                                <p className="text-xs text-muted-foreground break-words">
                                   {cartao?.nome ?? "Cartao"} · {c.parcelaAtual}/{c.parcelas}x · {c.dataCompra}
                                 </p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              <div className="text-right">
-                                <p className="text-sm font-bold text-blue-600">{formatCurrencyBRL(valorMensalPessoa)}/mês</p>
-                                <p className="text-xs text-muted-foreground">Total a reembolsar: {formatCurrencyBRL(reembolso.reembolsoPessoa)}</p>
-                                <p className="text-xs text-muted-foreground">Compra no cartão: {formatCurrencyBRL(reembolso.valorCompra)}</p>
+                            <div className="flex w-full items-center justify-between gap-1 sm:w-auto sm:flex-shrink-0 sm:justify-end">
+                              <div className="min-w-0 text-left sm:text-right">
+                                <p className="text-sm font-bold text-blue-600 [overflow-wrap:anywhere]">{formatCurrencyBRL(valorMensalPessoa)}/mês</p>
+                                <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">Total a reembolsar: {formatCurrencyBRL(reembolso.reembolsoPessoa)}</p>
+                                <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">Compra no cartão: {formatCurrencyBRL(reembolso.valorCompra)}</p>
                               </div>
                               <Button
                                 variant="ghost"
@@ -1628,22 +1628,22 @@ export default function PessoasPage() {
                           className="p-3 rounded-md border bg-card"
                           data-testid={`history-servico-pessoa-${sp.id}`}
                         >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="flex min-w-0 items-start gap-2">
                               <Repeat className="w-4 h-4 text-amber-600 flex-shrink-0" />
                               <div className="min-w-0">
-                                <p className="text-sm font-medium truncate">{servico?.nome ?? "Serviço"}</p>
-                                <p className="text-xs text-muted-foreground">
+                                <p className="text-sm font-medium break-words">{servico?.nome ?? "Serviço"}</p>
+                                <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
                                   {formatCurrencyBRL(Number(sp.valorDevido))}/mês
                                 </p>
                                 {isParcialMesAtual && (
-                                  <p className="text-[11px] text-blue-600 mt-0.5">
+                                  <p className="mt-0.5 text-[11px] text-blue-600 break-words">
                                     Parcial no mês {meAtual}: abatido {formatCurrencyBRL(saldoAbatidoMesAtual)} · pendente {formatCurrencyBRL(pendenteMesAtual)}
                                   </p>
                                 )}
                               </div>
                             </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:flex-shrink-0 sm:justify-end">
                               {isPagoMesAtual ? (
                                 <button
                                   className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors"

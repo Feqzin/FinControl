@@ -151,14 +151,14 @@ export function CartoesMobileTabs({
                         const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
                         const iconSuggestion = resolveCompraIconSuggestion(compra);
                         return (
-                          <div key={compra.id} className="touch-feedback flex items-center gap-3 px-4 py-3">
+                          <div key={compra.id} className="touch-feedback flex items-start gap-3 px-4 py-3">
                             <BrandIconDisplay
                               name={compra.descricao}
                               iconeId={iconSuggestion.shouldAutoApply ? iconSuggestion.iconId : undefined}
                               size="sm"
                             />
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium">{compra.descricao}</p>
+                              <p className="text-sm font-medium break-words">{compra.descricao}</p>
                               <p className="text-xs text-muted-foreground">
                                 {compra.parcelaAtual}/{compra.parcelas}x
                               </p>

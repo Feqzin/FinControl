@@ -328,24 +328,24 @@ export default function PrevisaoPage() {
           <CardContent>
             <div className="space-y-2">
               {rendasAtivas.map((r) => (
-                <div key={r.id} className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.06] p-4 shadow-sm">
+                <div key={r.id} className="flex flex-col gap-2 rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.06] p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">{r.descricao}</p>
-                    <div className="flex items-center gap-1">
+                    <p className="text-sm font-semibold text-foreground break-words">{r.descricao}</p>
+                    <div className="flex flex-wrap items-center gap-1">
                       <Badge variant="secondary" className="rounded-full border border-emerald-500/15 bg-background/80 text-[10px] shadow-sm">Renda fixa</Badge>
                       <span className="text-xs text-muted-foreground">Dia {r.diaRecebimento}</span>
                     </div>
                   </div>
-                  <span className="shrink-0 text-sm font-semibold text-emerald-600">{mask(formatCurrency(Number(r.valor)))}</span>
+                  <span className="text-sm font-semibold text-emerald-600 [overflow-wrap:anywhere] sm:shrink-0">{mask(formatCurrency(Number(r.valor)))}</span>
                 </div>
               ))}
               {entradasDividas.map((d) => (
-                <div key={d.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm">
+                <div key={d.id} className="flex flex-col gap-2 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">{d.descricao || "A receber"}</p>
+                    <p className="text-sm font-semibold text-foreground break-words">{d.descricao || "A receber"}</p>
                     <p className="text-xs text-muted-foreground">Vencimento: {d.dataVencimento}</p>
                   </div>
-                  <span className="shrink-0 text-sm font-semibold text-emerald-600">{mask(formatCurrency(Number(d.valor)))}</span>
+                  <span className="text-sm font-semibold text-emerald-600 [overflow-wrap:anywhere] sm:shrink-0">{mask(formatCurrency(Number(d.valor)))}</span>
                 </div>
               ))}
               {rendasAtivas.length === 0 && entradasDividas.length === 0 && (
@@ -375,24 +375,24 @@ export default function PrevisaoPage() {
           <CardContent>
             <div className="space-y-2">
               {servicosAtivos.map((s) => (
-                <div key={s.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm">
+                <div key={s.id} className="flex flex-col gap-2 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">{s.nome}</p>
-                    <div className="flex items-center gap-1">
+                    <p className="text-sm font-semibold text-foreground break-words">{s.nome}</p>
+                    <div className="flex flex-wrap items-center gap-1">
                       <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 shadow-sm">{s.categoria}</Badge>
                       <span className="text-xs text-muted-foreground">Dia {s.dataCobranca}</span>
                     </div>
                   </div>
-                  <span className="shrink-0 text-sm font-semibold text-red-600">{mask(formatCurrency(Number(s.valorMensal)))}</span>
+                  <span className="text-sm font-semibold text-red-600 [overflow-wrap:anywhere] sm:shrink-0">{mask(formatCurrency(Number(s.valorMensal)))}</span>
                 </div>
               ))}
               {saidasDividas.map((d) => (
-                <div key={d.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm">
+                <div key={d.id} className="flex flex-col gap-2 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">{d.descricao || "Dívida"}</p>
+                    <p className="text-sm font-semibold text-foreground break-words">{d.descricao || "Dívida"}</p>
                     <p className="text-xs text-muted-foreground">Vencimento: {d.dataVencimento}</p>
                   </div>
-                  <span className="shrink-0 text-sm font-semibold text-red-600">{mask(formatCurrency(Number(d.valor)))}</span>
+                  <span className="text-sm font-semibold text-red-600 [overflow-wrap:anywhere] sm:shrink-0">{mask(formatCurrency(Number(d.valor)))}</span>
                 </div>
               ))}
               {saidasDividas.length === 0 && servicosAtivos.length === 0 && (

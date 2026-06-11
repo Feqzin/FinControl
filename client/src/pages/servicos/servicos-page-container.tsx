@@ -939,13 +939,13 @@ export default function ServicosPage() {
                               </div>
                             )}
                           </div>
-                          <div className="flex min-w-[136px] flex-col items-start gap-2 md:items-end">
-                            <span className="fin-value-person whitespace-nowrap leading-none tracking-tight md:text-right">
+                          <div className="flex w-full min-w-0 flex-col items-start gap-2 md:w-auto md:min-w-[136px] md:items-end">
+                            <span className="fin-value-person leading-none tracking-tight [overflow-wrap:anywhere] md:text-right">
                               {formatServicoBillingValue(s)}
                             </span>
                             <Badge
                               variant="outline"
-                              className={`h-7 rounded-full px-3 text-xs font-semibold whitespace-nowrap shadow-sm ${
+                              className={`h-7 rounded-full px-3 text-center text-xs font-semibold shadow-sm ${
                                 isServicoAtivo
                                   ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-400"
                                   : "border-border/60 bg-muted/65 text-muted-foreground hover:bg-muted/65"

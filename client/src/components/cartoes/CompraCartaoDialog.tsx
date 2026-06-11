@@ -473,8 +473,8 @@ export function EditarCompraCartaoDialog({
                   size="md"
                 />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{iconPreviewLabel || "Ícone automático"}</p>
-                  <p className="truncate text-xs text-muted-foreground">{iconPreviewHint || "Sem ícone manual salvo"}</p>
+                  <p className="text-sm font-medium break-words">{iconPreviewLabel || "Ícone automático"}</p>
+                  <p className="text-xs text-muted-foreground break-words">{iconPreviewHint || "Sem ícone manual salvo"}</p>
                 </div>
               </div>
               <div className="min-w-0 w-full sm:w-auto">
