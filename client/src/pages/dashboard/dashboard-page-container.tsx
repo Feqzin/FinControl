@@ -131,8 +131,6 @@ export default function Dashboard() {
     totalRenda,
     totalPatrimonio,
     totalServicos,
-    servicosEquivalenteMensalTotal,
-    servicosCobrancaRealCompetenciaTotal,
     totalReceber,
     totalPagar,
     totalCartoesMes,
@@ -190,6 +188,7 @@ export default function Dashboard() {
     ? (pessoas.find((p) => p.id === principalReceberEntry[0])?.nome ?? null)
     : null;
   const pagarSemanaTotal = pagarSemana.reduce((sum, item) => sum + item.amount, 0);
+  const servicosAtivosCount = servicos.filter((servico) => servico.status === "ativo").length;
   const summaryCards = [
     {
       id: "receber",
@@ -216,7 +215,7 @@ export default function Dashboard() {
       title: "Gastos fixos",
       value: maskValue(formatCurrencyBRL(totalServicos), visible),
       icon: Receipt,
-      trend: `Média: ${maskValue(formatCurrencyBRL(servicosEquivalenteMensalTotal), visible)} · Real mês: ${maskValue(formatCurrencyBRL(servicosCobrancaRealCompetenciaTotal), visible)}`,
+      trend: `${servicosAtivosCount} serviço${servicosAtivosCount === 1 ? "" : "s"} ativo${servicosAtivosCount === 1 ? "" : "s"}`,
       color: "bg-amber-500/10 text-amber-600",
       tooltipLines: gastosFixosTooltip,
     },

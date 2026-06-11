@@ -7,7 +7,7 @@ import { ptBR } from "date-fns/locale";
 import { AlertTriangle, Bell, CheckCircle, CreditCard, TrendingDown } from "lucide-react";
 import { maskValue } from "@/context/values-visibility";
 import { toMoneyNumber } from "@/lib/money";
-import { calculateServicoMonthlyFinancialImpactAmount } from "@shared/servico-periodicidade";
+import { calculateServicoMonthlyFinancialImpactAmount, isServicoLinkedToCardCharge } from "@shared/servico-periodicidade";
 import { calculateCardUsedLimit, groupParcelasCompraByCompraId } from "@/lib/card-limit-usage";
 import { fetchDashboardOverview, fetchFinancialSummary } from "@/services/api/dashboard";
 import { formatCurrencyBRL } from "@/utils/formatters";
@@ -500,36 +500,16 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const gastosFixosTooltip = useMemo(() => {
     const items = servicos.filter((s) => s.status === "ativo");
     if (items.length === 0) return ["Nenhum serviço ativo."];
-    const detalhamentoDisponivel = servicosMetrics.hasDetailedMetrics;
+    const hasLinkedCardServices = items.some((servico) => isServicoLinkedToCardCharge(servico));
     return [
       "Serviços ativos:",
       ...items.map((s) => `• ${s.nome} — ${mask(formatCurrencyBRL(toMoneyNumber(s.valorMensal)))}/mês`),
-      "---",
-      `Média mensal (planejamento): ${mask(formatCurrencyBRL(servicosEquivalenteMensalTotal))}`,
-      `Cobrança real neste mês: ${mask(formatCurrencyBRL(servicosCobrancaRealCompetenciaTotal))}`,
-      `Não vinculados a cartão (média): ${mask(formatCurrencyBRL(servicosNaoVinculadosCartaoEquivalenteMensalTotal))}`,
-      `Não vinculados a cartão (real): ${mask(formatCurrencyBRL(servicosNaoVinculadosCartaoCobrancaRealTotal))}`,
-      `Parte vinculada a cartão (média): ${mask(formatCurrencyBRL(servicosVinculadosCartaoEquivalenteMensalTotal))}`,
-      `Parte vinculada a cartão (real): ${mask(formatCurrencyBRL(servicosVinculadosCartaoCobrancaRealTotal))}`,
-      ...(servicosVinculadosCartaoCobrancaRealTotal > 0
-        ? ["Cobranças vinculadas ao cartão já aparecem na fatura. Aqui elas ajudam no planejamento."]
+      ...(hasLinkedCardServices
+        ? ["Serviços vinculados ao cartão já entram na fatura."]
         : []),
-      ...(detalhamentoDisponivel
-        ? []
-        : ["Detalhamento avançado indisponível: exibindo valores em modo compatibilidade."]),
-      "---",
-      `Total legado (compatibilidade): ${mask(formatCurrencyBRL(totalServicos))}`,
     ];
   }, [
     servicos,
-    servicosMetrics.hasDetailedMetrics,
-    servicosEquivalenteMensalTotal,
-    servicosCobrancaRealCompetenciaTotal,
-    servicosNaoVinculadosCartaoEquivalenteMensalTotal,
-    servicosNaoVinculadosCartaoCobrancaRealTotal,
-    servicosVinculadosCartaoEquivalenteMensalTotal,
-    servicosVinculadosCartaoCobrancaRealTotal,
-    totalServicos,
     visible,
   ]);
 
