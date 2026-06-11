@@ -35,12 +35,12 @@ export function PessoasFilterBar({
           />
         </div>
         <Tabs value={filterTipo} onValueChange={onFilterChange} className="w-full min-w-0 xl:flex-1">
-          <TabsList className="mobile-tabs-scroll h-10 w-full justify-start rounded-xl border border-border/60 bg-muted/25 p-1 xl:w-auto">
-            <TabsTrigger value="todos" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-todos">Todos</TabsTrigger>
-            <TabsTrigger value="me_deve" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-me-devem">Me devem</TabsTrigger>
-            <TabsTrigger value="eu_devo" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-eu-devo">Eu devo</TabsTrigger>
-            <TabsTrigger value="atrasados" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-atrasados">Atrasados</TabsTrigger>
-            <TabsTrigger value="removidas" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-removidas">Removidas</TabsTrigger>
+          <TabsList className="mobile-tabs-scroll h-10 w-max min-w-full justify-start rounded-xl border border-border/60 bg-muted/25 p-1 xl:w-auto">
+            <TabsTrigger value="todos" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-todos">Todos</TabsTrigger>
+            <TabsTrigger value="me_deve" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-me-devem">Me devem</TabsTrigger>
+            <TabsTrigger value="eu_devo" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-eu-devo">Eu devo</TabsTrigger>
+            <TabsTrigger value="atrasados" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-atrasados">Atrasados</TabsTrigger>
+            <TabsTrigger value="removidas" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-removidas">Removidas</TabsTrigger>
           </TabsList>
         </Tabs>
         <Select value={sortBy} onValueChange={(value) => onSortChange(value as PessoaSortBy)}>

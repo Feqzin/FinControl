@@ -104,81 +104,60 @@ export function PessoaCard({
         className="overflow-hidden rounded-2xl border border-border/60 bg-card/95 shadow-sm transition-all duration-200 active:scale-[0.998]"
         data-testid={`card-pessoa-${pessoa.id}`}
       >
-        <div className="space-y-3.5 px-4 py-4">
-          <div className="flex items-start justify-between gap-2.5">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-black/5 bg-muted/45 text-primary shadow-sm">
-                <span className="text-sm font-semibold">
-                  {pessoa.nome.charAt(0).toUpperCase()}
-                </span>
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-[17px] font-semibold leading-tight tracking-tight">{pessoa.nome}</p>
-                {pessoa.telefone && (
-                  <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{pessoa.telefone}</p>
-                )}
-              </div>
-            </div>
-            <div className="flex min-w-[120px] flex-col items-end gap-1.5 text-right">
-              <Badge variant={isMeDeve ? "default" : "destructive"} className="h-5 rounded-full px-2 py-0 text-[10px] font-medium shadow-sm">
-                {isMeDeve ? "Me deve" : "Eu devo"}
-              </Badge>
-              <p className="text-[clamp(18px,5vw,22px)] font-semibold leading-none tracking-tight">
-                {formatCurrencyBRL(resumo.consolidadoPendente)}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-xl border border-border/50 bg-muted/[0.16] px-2.5 py-2">
-              <p className="text-[10px] font-medium uppercase tracking-[0.04em] text-muted-foreground/85">Dívidas</p>
-              <p className="mt-1 truncate text-[11px] font-semibold text-foreground/90">{formatCurrencyBRL(dividasPendentesValor)}</p>
-            </div>
-            <div className="rounded-xl border border-border/50 bg-muted/[0.16] px-2.5 py-2">
-              <p className="text-[10px] font-medium uppercase tracking-[0.04em] text-muted-foreground/85">Compras</p>
-              <p className="mt-1 truncate text-[11px] font-semibold text-foreground/90">{formatCurrencyBRL(comprasPendentesValor)}</p>
-            </div>
-            <div className="rounded-xl border border-border/50 bg-muted/[0.16] px-2.5 py-2">
-              <p className="text-[10px] font-medium uppercase tracking-[0.04em] text-muted-foreground/85">Serviços</p>
-              <p className="mt-1 truncate text-[11px] font-semibold text-foreground/90">{formatCurrencyBRL(servicosPendentesValor)}</p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-[11px]">
-            <span className="rounded-full border border-emerald-500/10 bg-emerald-500/10 px-2.5 py-1 text-emerald-700 shadow-sm dark:text-emerald-400">
-              Saldo + {formatCurrencyBRL(resumo.saldoPessoa.saldoAtual)}
-            </span>
-            <span className="rounded-full bg-muted/65 px-2.5 py-1 text-muted-foreground shadow-sm">
-              {totalDividas} dívida(s)
-            </span>
-            {comprasVinculadas > 0 && (
-              <span className="rounded-full bg-muted/65 px-2.5 py-1 text-muted-foreground shadow-sm">
-                Compras vinculadas {comprasVinculadas}
+        <div className="space-y-3 px-3.5 py-3.5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-black/5 bg-muted/45 text-primary shadow-sm">
+              <span className="text-sm font-semibold">
+                {pessoa.nome.charAt(0).toUpperCase()}
               </span>
-            )}
-          </div>
+            </div>
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="line-clamp-2 break-words text-[16px] font-semibold leading-tight tracking-tight">{pessoa.nome}</p>
+                  {pessoa.telefone && (
+                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{pessoa.telefone}</p>
+                  )}
+                </div>
+                <Badge
+                  variant={isMeDeve ? "default" : "destructive"}
+                  className="h-5 shrink-0 rounded-full px-2 py-0 text-[10px] font-medium shadow-sm"
+                >
+                  {isMeDeve ? "Me deve" : "Eu devo"}
+                </Badge>
+              </div>
 
-          {hasAtraso && (
-            <div className="rounded-xl border border-red-200/70 bg-red-50/70 px-3 py-2 text-[11px] text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
-              <div className="flex items-center gap-2">
-                <span className="h-4 w-1 rounded-full bg-red-500" />
-                <span className="truncate">Pendência encontrada</span>
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                  <span className="rounded-full bg-muted/65 px-2.5 py-1 shadow-sm">
+                    {totalDividas} dívida(s)
+                  </span>
+                  {hasAtraso && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-red-200/70 bg-red-50/70 px-2.5 py-1 text-red-700 shadow-sm dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
+                      <AlertTriangle className="h-3 w-3" />
+                      Pendência
+                    </span>
+                  )}
+                </div>
+                <p className="text-[clamp(18px,5vw,21px)] font-semibold leading-none tracking-tight">
+                  {formatCurrencyBRL(resumo.consolidadoPendente)}
+                </p>
               </div>
             </div>
-          )}
+          </div>
 
           <div className="h-px bg-border/60" />
 
           <div className="flex flex-wrap items-center gap-2">
             <button
-              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/60 bg-background/95 px-3.5 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-muted/50"
+              className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-border/60 bg-background/95 px-3 text-[11px] font-medium text-primary shadow-sm transition-colors hover:bg-muted/50"
               onClick={() => onOpenHistory(pessoa)}
               data-testid={`button-history-pessoa-${pessoa.id}`}
             >
               <Eye className="h-3.5 w-3.5" /> Ver detalhes
             </button>
             <button
-              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border/60 bg-background/95 px-3.5 text-xs font-medium text-primary shadow-sm transition-colors hover:bg-muted/50"
+              className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-border/60 bg-background/95 px-3 text-[11px] font-medium text-primary shadow-sm transition-colors hover:bg-muted/50"
               onClick={() => onAddDivida(pessoa)}
               data-testid={`button-add-divida-pessoa-${pessoa.id}`}
             >
@@ -186,7 +165,7 @@ export function PessoaCard({
             </button>
             <div className="ml-auto flex items-center gap-1">
               <button
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-transparent bg-background/95 text-muted-foreground shadow-sm transition-colors hover:bg-muted/50"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-transparent bg-background/95 text-muted-foreground shadow-sm transition-colors hover:bg-muted/50"
                 onClick={() => onEdit(pessoa)}
                 data-testid={`button-edit-pessoa-${pessoa.id}`}
                 title="Editar"
@@ -194,7 +173,7 @@ export function PessoaCard({
                 <Pencil className="h-3.5 w-3.5" />
               </button>
               <button
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-transparent bg-background/95 text-red-500 shadow-sm transition-colors hover:bg-red-50 dark:hover:bg-red-950/30"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-transparent bg-background/95 text-red-500 shadow-sm transition-colors hover:bg-red-50 dark:hover:bg-red-950/30"
                 onClick={() => onDelete(pessoa)}
                 data-testid={`button-delete-pessoa-${pessoa.id}`}
                 title="Excluir"
@@ -217,10 +196,10 @@ export function PessoaCard({
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-black/5 bg-muted/45 text-primary shadow-sm">
-              <span className="text-sm font-semibold">
-                {pessoa.nome.charAt(0).toUpperCase()}
-              </span>
-            </div>
+                <span className="text-sm font-semibold">
+                  {pessoa.nome.charAt(0).toUpperCase()}
+                </span>
+              </div>
             <div className="min-w-0">
               <p className="truncate text-xl font-semibold leading-tight tracking-tight">{pessoa.nome}</p>
               {pessoa.telefone && (

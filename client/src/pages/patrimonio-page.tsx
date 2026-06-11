@@ -340,15 +340,15 @@ export default function PatrimonioPage() {
         )}
       />
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-3">
         <FintechSurfaceCard>
-          <CardHeader className="space-y-4 pb-4">
+          <CardHeader className="space-y-3 pb-3 sm:space-y-4 sm:pb-4">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-1">
-                <CardTitle className="text-base font-semibold text-foreground">
+                <CardTitle className="text-sm font-semibold text-foreground sm:text-base">
                   Resumo Geral
                 </CardTitle>
-                <p className="text-sm text-muted-foreground">
+                <p className="hidden text-sm text-muted-foreground sm:block">
                   Distribuição atual do seu patrimônio cadastrado.
                 </p>
               </div>
@@ -356,30 +356,30 @@ export default function PatrimonioPage() {
                 <PiggyBank className="h-5 w-5 text-primary" />
               </FintechSurfaceIconChip>
             </div>
-            <FintechSurfaceInset className="rounded-3xl px-4 py-4 shadow-inner">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <FintechSurfaceInset className="rounded-2xl px-3.5 py-3 shadow-inner sm:rounded-3xl sm:px-4 sm:py-4">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground sm:text-xs sm:tracking-[0.18em]">
                 Patrimônio Total
               </p>
-              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-foreground" data-testid="text-total-patrimonio">
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl" data-testid="text-total-patrimonio">
                 {formatCurrency(totalPatrimonio)}
               </h2>
             </FintechSurfaceInset>
           </CardHeader>
-          <CardContent className="space-y-3 pt-0">
+          <CardContent className="space-y-2.5 pt-0 sm:space-y-3">
             {breakdown.map((item) => (
-              <FintechSurfaceInset key={item.value} className="space-y-3 p-4">
+              <FintechSurfaceInset key={item.value} className="space-y-2.5 p-3 sm:space-y-3 sm:p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <span className="flex items-center gap-3 text-sm font-medium text-foreground">
+                  <span className="flex min-w-0 items-center gap-2.5 text-sm font-medium text-foreground">
                     <FintechSurfaceIconChip size="sm" className="border-border/60 bg-card">
                       <item.icon className="h-4 w-4 text-primary" />
                     </FintechSurfaceIconChip>
-                    {item.label}
+                    <span className="min-w-0 break-words">{item.label}</span>
                   </span>
-                  <span className="text-sm font-semibold text-foreground">
+                  <span className="shrink-0 text-sm font-semibold text-foreground">
                     {formatCurrency(item.valor)}
                   </span>
                 </div>
-                <Progress value={item.percent} className="h-2.5" data-testid={`progress-${item.value}`} />
+                <Progress value={item.percent} className="h-2 sm:h-2.5" data-testid={`progress-${item.value}`} />
                 <p className="text-[11px] font-medium text-right text-muted-foreground">
                   {item.percent.toFixed(1)}%
                 </p>
@@ -401,20 +401,20 @@ export default function PatrimonioPage() {
             patrimonios.map((p) => {
               const tipoInfo = TIPOS_PATRIMONIO.find((t) => t.value === p.tipo) || TIPOS_PATRIMONIO[4];
               return (
-                <Card key={p.id} className="hover-elevate overflow-visible rounded-[26px] border border-border/60 bg-card/95 shadow-sm transition-all" data-testid={`card-patrimonio-${p.id}`}>
-                  <CardContent className="space-y-4 p-5">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <Card key={p.id} className="hover-elevate overflow-visible rounded-[22px] border border-border/60 bg-card/95 shadow-sm transition-all sm:rounded-[26px]" data-testid={`card-patrimonio-${p.id}`}>
+                  <CardContent className="space-y-3.5 p-4 sm:space-y-4 sm:p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                       <div className="flex min-w-0 items-start gap-3">
                         {p.iconeId ? (
                           <div className="shrink-0 rounded-2xl border border-border/60 bg-background/80 p-2 shadow-sm">
                             <BrandIconDisplay name={p.nome} iconeId={p.iconeId} size="sm" />
                           </div>
                         ) : (
-                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm">
-                            <tipoInfo.icon className="h-5 w-5 text-primary" />
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm sm:h-12 sm:w-12">
+                            <tipoInfo.icon className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
                           </div>
                         )}
-                        <div className="min-w-0 space-y-2">
+                        <div className="min-w-0 space-y-1.5 sm:space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="outline" className="rounded-full border-border/60 bg-background/80 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground shadow-sm">
                               {tipoInfo.label}
@@ -429,7 +429,7 @@ export default function PatrimonioPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-9 w-9 rounded-xl border border-border/60 bg-background/80 shadow-sm hover:bg-accent"
+                          className="h-8 w-8 rounded-xl border border-border/60 bg-background/80 shadow-sm hover:bg-accent sm:h-9 sm:w-9"
                           data-testid={`button-edit-${p.id}`}
                           aria-label="Editar patrimônio"
                           title="Editar patrimônio"
@@ -449,7 +449,7 @@ export default function PatrimonioPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-9 w-9 rounded-xl border border-destructive/20 bg-background/80 text-destructive shadow-sm hover:bg-destructive/10"
+                          className="h-8 w-8 rounded-xl border border-destructive/20 bg-background/80 text-destructive shadow-sm hover:bg-destructive/10 sm:h-9 sm:w-9"
                           data-testid={`button-delete-${p.id}`}
                           aria-label="Excluir patrimônio"
                           title="Excluir patrimônio"
@@ -464,11 +464,11 @@ export default function PatrimonioPage() {
                       </div>
                     </div>
 
-                    <div className="rounded-3xl border border-border/60 bg-background/80 px-4 py-4 shadow-inner">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    <div className="rounded-2xl border border-border/60 bg-background/80 px-3.5 py-3 shadow-inner sm:rounded-3xl sm:px-4 sm:py-4">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground sm:text-xs sm:tracking-[0.18em]">
                         Valor atual
                       </p>
-                      <p className="mt-2 text-2xl font-semibold tracking-tight text-primary" data-testid={`text-valor-${p.id}`}>
+                      <p className="mt-2 text-xl font-semibold tracking-tight text-primary sm:text-2xl" data-testid={`text-valor-${p.id}`}>
                         {formatCurrency(p.valorAtual)}
                       </p>
                     </div>

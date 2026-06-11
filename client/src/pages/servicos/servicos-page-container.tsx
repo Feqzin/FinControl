@@ -772,13 +772,13 @@ export default function ServicosPage() {
       <div className="rounded-2xl border border-border/60 bg-card/95 p-3 shadow-sm sm:p-3.5">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <Tabs value={servicosTab} onValueChange={(value) => setServicosTab(value as typeof servicosTab)} className="w-full min-w-0 xl:flex-1">
-            <TabsList className="mobile-tabs-scroll h-10 w-full justify-start rounded-xl border border-border/60 bg-muted/25 p-1 xl:w-auto">
-              <TabsTrigger value="ativos" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-ativos">Ativos</TabsTrigger>
-              <TabsTrigger value="pendentes" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-pendentes">Pendentes</TabsTrigger>
-              <TabsTrigger value="pagos" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-pagos">Pagos</TabsTrigger>
-              <TabsTrigger value="divisao" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-divisao">Divisão</TabsTrigger>
-              <TabsTrigger value="vinculos" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-vinculos">Vínculos cartão</TabsTrigger>
-              <TabsTrigger value="pausados" className="h-8 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-pausados">Pausados</TabsTrigger>
+            <TabsList className="mobile-tabs-scroll h-10 w-max min-w-full justify-start rounded-xl border border-border/60 bg-muted/25 p-1 xl:w-auto">
+              <TabsTrigger value="ativos" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-ativos">Ativos</TabsTrigger>
+              <TabsTrigger value="pendentes" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-pendentes">Pendentes</TabsTrigger>
+              <TabsTrigger value="pagos" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-pagos">Pagos</TabsTrigger>
+              <TabsTrigger value="divisao" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-divisao">Divisão</TabsTrigger>
+              <TabsTrigger value="vinculos" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-vinculos">Vínculos cartão</TabsTrigger>
+              <TabsTrigger value="pausados" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-pausados">Pausados</TabsTrigger>
             </TabsList>
           </Tabs>
           <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end xl:w-auto">
@@ -893,20 +893,25 @@ export default function ServicosPage() {
                   const compraVinculada = s.compraCartaoId ? compraById.get(s.compraCartaoId) : null;
                   const cartaoVinculado = compraVinculada ? cartaoById.get(compraVinculada.cartaoId) : null;
                   const origemMesAtual = getOrigemPagamentoMesAtual(s);
+                  const billingView = resolveServicoBillingView(s);
+                  const categoriaLabel = categoriaLabelByValue.get(s.categoria) ?? formatCategoriaFallback(s.categoria);
+                  const periodicidadeLabel = SERVICO_PERIODICIDADE_OPTIONS.find(
+                    (option) => option.value === billingView.periodicidade,
+                  )?.label ?? billingView.periodicidade;
                   return (
                     <Card
                       key={s.id}
                       className="hover-elevate overflow-hidden rounded-2xl border border-border/60 bg-card/95 shadow-sm transition-all duration-200"
                       data-testid={`card-servico-${s.id}`}
                     >
-                      <CardContent className="space-y-4 p-4 sm:p-5">
-                        <div className="grid gap-4 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-start">
-                          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-muted/25 shadow-sm">
+                      <CardContent className="space-y-3 p-3.5 sm:space-y-4 sm:p-5">
+                        <div className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-start md:gap-4">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/60 bg-muted/25 shadow-sm sm:h-12 sm:w-12">
                             <BrandIconDisplay name={s.nome} iconeId={resolveServiceIconId(s)} size="sm" />
                           </div>
                           <div className="min-w-0 space-y-2">
                             <div className="flex flex-wrap items-center gap-2">
-                              <p className={`text-base font-semibold leading-tight tracking-tight sm:text-lg ${isServicoPausado ? "line-through text-muted-foreground" : ""}`}>
+                              <p className={`min-w-0 break-words text-[15px] font-semibold leading-tight tracking-tight sm:text-lg ${isServicoPausado ? "line-through text-muted-foreground" : ""}`}>
                                 {s.nome}
                               </p>
                               {vinculados.length > 0 && (
@@ -924,28 +929,34 @@ export default function ServicosPage() {
                             </div>
                             <div className="flex flex-wrap gap-2 text-[11px]">
                               <span className="rounded-full bg-muted/65 px-2.5 py-1 font-medium text-muted-foreground shadow-sm">
-                                {formatServicoBillingDayLabel(s.dataCobranca)}
+                                {categoriaLabel}
                               </span>
                               <span className="rounded-full bg-muted/65 px-2.5 py-1 font-medium text-muted-foreground shadow-sm">
+                                {periodicidadeLabel}
+                              </span>
+                              <span className="hidden rounded-full bg-muted/65 px-2.5 py-1 font-medium text-muted-foreground shadow-sm sm:inline-flex">
+                                {formatServicoBillingDayLabel(s.dataCobranca)}
+                              </span>
+                              <span className="hidden rounded-full bg-muted/65 px-2.5 py-1 font-medium text-muted-foreground shadow-sm sm:inline-flex">
                                 {s.formaPagamento}
                               </span>
                             </div>
-                            <span className={`inline-flex w-fit rounded-full border border-transparent bg-muted/45 px-2.5 py-1 text-[11px] font-medium ${origemMesAtual.className}`}>
+                            <span className={`inline-flex w-fit rounded-full border border-transparent bg-muted/45 px-2.5 py-1 text-[10px] font-medium sm:text-[11px] ${origemMesAtual.className}`}>
                               {origemMesAtual.label}
                             </span>
                             {compraVinculada && (
-                              <div className="rounded-xl border border-blue-500/10 bg-blue-500/5 px-3 py-2 text-xs text-blue-700/90 dark:text-blue-400">
+                              <div className="hidden rounded-xl border border-blue-500/10 bg-blue-500/5 px-3 py-2 text-xs text-blue-700/90 sm:block dark:text-blue-400">
                                 Vínculo de cartão: {cartaoVinculado?.nome ?? "Cartão"} · {compraVinculada.descricao}
                               </div>
                             )}
                           </div>
-                          <div className="flex w-full min-w-0 flex-col items-start gap-2 md:w-auto md:min-w-[136px] md:items-end">
-                            <span className="fin-value-person leading-none tracking-tight [overflow-wrap:anywhere] md:text-right">
+                          <div className="flex w-full min-w-0 flex-col items-start gap-1.5 md:w-auto md:min-w-[136px] md:items-end md:gap-2">
+                            <span className="fin-value-person text-[clamp(18px,5vw,22px)] leading-none tracking-tight [overflow-wrap:anywhere] md:text-right">
                               {formatServicoBillingValue(s)}
                             </span>
                             <Badge
                               variant="outline"
-                              className={`h-7 rounded-full px-3 text-center text-xs font-semibold shadow-sm ${
+                              className={`h-6 rounded-full px-3 text-center text-[11px] font-semibold shadow-sm sm:h-7 sm:text-xs ${
                                 isServicoAtivo
                                   ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-400"
                                   : "border-border/60 bg-muted/65 text-muted-foreground hover:bg-muted/65"
@@ -955,7 +966,7 @@ export default function ServicosPage() {
                             </Badge>
                           </div>
                         </div>
-                        <div className="flex flex-col gap-3 border-t border-border/50 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex flex-col gap-2.5 border-t border-border/50 pt-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:pt-3">
                           <div className="flex flex-wrap items-center gap-2">
                             {s.compraCartaoId && (
                               <span className="inline-flex items-center gap-1 rounded-full border border-blue-500/10 bg-blue-500/10 px-2.5 py-1 text-[11px] font-medium text-blue-700 shadow-sm dark:text-blue-400">
@@ -965,7 +976,7 @@ export default function ServicosPage() {
                             )}
                           </div>
                           <div className="flex items-center justify-end">
-                            <div className="flex flex-wrap items-center justify-end gap-1.5 rounded-xl border border-border/60 bg-muted/[0.16] px-2 py-1.5 shadow-sm">
+                            <div className="flex flex-wrap items-center justify-end gap-1.5 rounded-2xl border border-border/60 bg-muted/[0.16] px-1.5 py-1.5 shadow-sm sm:rounded-xl sm:px-2">
                               <Button
                                 variant="ghost"
                                 size="icon"

@@ -207,6 +207,46 @@ export default function RelatoriosPageContainer() {
     });
   }, [dividas]);
 
+  const comprasPorCartao = useMemo(
+    () =>
+      Object.entries(
+        filteredData.compras.reduce((acc, compra) => {
+          const cardName = cartoes.find((cartao) => cartao.id === compra.cartaoId)?.nome || "Outros";
+          if (!acc[cardName]) acc[cardName] = [];
+          acc[cardName].push(compra);
+          return acc;
+        }, {} as Record<string, CompraCartao[]>),
+      ),
+    [cartoes, filteredData.compras],
+  );
+
+  const pessoasResumo = useMemo(
+    () =>
+      pessoas.map((pessoa) => {
+        const pessoaDividas = filteredData.dividas.filter(
+          (divida) => divida.pessoaId === pessoa.id && divida.status === "pendente",
+        );
+        const total = pessoaDividas.reduce(
+          (acc, divida) => acc + (divida.tipo === "receber" ? Number(divida.valor) : -Number(divida.valor)),
+          0,
+        );
+        return {
+          id: pessoa.id,
+          nome: pessoa.nome,
+          total,
+        };
+      }),
+    [filteredData.dividas, pessoas],
+  );
+
+  const patrimonioTypeLabels: Record<string, string> = {
+    conta_bancaria: "Conta Bancária",
+    dinheiro: "Dinheiro",
+    poupanca: "Poupança",
+    investimento: "Investimento",
+    outros: "Outros",
+  };
+
   const exportPDF = async () => {
     const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
       import("jspdf"),
@@ -564,8 +604,8 @@ export default function RelatoriosPageContainer() {
             Histórico (últimos 6 meses)
           </CardTitle>
         </CardHeader>
-        <CardContent className="pt-6">
-          <Suspense fallback={<Skeleton className="h-72 w-full rounded-2xl" />}>
+        <CardContent className="pt-4 sm:pt-6">
+          <Suspense fallback={<Skeleton className="h-56 w-full rounded-2xl sm:h-72" />}>
             <RelatoriosHistoricoChart
               data={chartData}
               formatCurrency={formatCurrency}
@@ -585,8 +625,43 @@ export default function RelatoriosPageContainer() {
               Detalhamento em Cartões
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-6">
-            <div className="overflow-x-auto rounded-2xl border border-border/50 bg-background/80 shadow-sm">
+          <CardContent className="pt-4 sm:pt-6">
+            <div className="space-y-3 md:hidden">
+              {filteredData.compras.length === 0 ? (
+                <FintechEmptyState
+                  icon={<CreditCard className="h-5 w-5 text-muted-foreground/70" />}
+                  title="Nenhuma compra no período"
+                  size="compact"
+                  className="bg-background/80 px-4 py-5"
+                />
+              ) : (
+                comprasPorCartao.map(([cardName, items]) => (
+                  <div key={cardName} className="rounded-2xl border border-border/50 bg-background/80 shadow-sm">
+                    <div className="flex items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
+                      <p className="min-w-0 text-sm font-semibold tracking-tight text-foreground">{cardName}</p>
+                      <p className="fin-value-table shrink-0 text-sm">{fc(items.reduce((sum, item) => sum + Number(item.valorParcela), 0))}</p>
+                    </div>
+                    <div className="space-y-2 p-3">
+                      {items.map((item) => (
+                        <div key={item.id} className="rounded-xl border border-border/50 bg-card/90 px-3 py-2.5 shadow-sm">
+                          <p className="text-sm font-medium leading-snug text-foreground break-words" title={item.descricao}>
+                            {item.descricao}
+                          </p>
+                          <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                            <span className="min-w-0">Parcela {item.parcelaAtual}/{item.parcelas}</span>
+                            <span className="fin-value-table shrink-0 text-sm text-foreground">
+                              {fc(Number(item.valorParcela))}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="hidden overflow-x-auto rounded-2xl border border-border/50 bg-background/80 shadow-sm md:block">
               <Table>
                 <TableHeader>
                   <TableRow className="border-border/60">
@@ -609,14 +684,7 @@ export default function RelatoriosPageContainer() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    Object.entries(
-                      filteredData.compras.reduce((acc, c) => {
-                        const cardName = cartoes.find(ca => ca.id === c.cartaoId)?.nome || "Outros";
-                        if (!acc[cardName]) acc[cardName] = [];
-                        acc[cardName].push(c);
-                        return acc;
-                      }, {} as Record<string, CompraCartao[]>)
-                    ).map(([cardName, items]) => (
+                    comprasPorCartao.map(([cardName, items]) => (
                       <Fragment key={cardName}>
                         <TableRow key={cardName} className="border-border/50 bg-muted/35 font-semibold">
                           <TableCell colSpan={4}>{cardName}</TableCell>
@@ -654,8 +722,40 @@ export default function RelatoriosPageContainer() {
               Pessoas
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-6">
-            <div className="overflow-x-auto rounded-2xl border border-border/50 bg-background/80 shadow-sm">
+          <CardContent className="pt-4 sm:pt-6">
+            <div className="space-y-2.5 md:hidden">
+              {pessoas.length === 0 ? (
+                <FintechEmptyState
+                  icon={<Users className="h-5 w-5 text-muted-foreground/70" />}
+                  title="Nenhuma pessoa cadastrada"
+                  size="compact"
+                  className="bg-background/80 px-4 py-5"
+                />
+              ) : (
+                pessoasResumo.map((pessoa) => (
+                  <div key={pessoa.id} className="rounded-2xl border border-border/50 bg-background/80 px-4 py-3 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold leading-snug tracking-tight text-foreground break-words" title={pessoa.nome}>
+                          {pessoa.nome}
+                        </p>
+                        <Badge
+                          variant={pessoa.total >= 0 ? "default" : "destructive"}
+                          className="mt-2 h-5 rounded-full px-2.5 text-[10px]"
+                        >
+                          {pessoa.total >= 0 ? "Me deve" : "Eu devo"}
+                        </Badge>
+                      </div>
+                      <p className={`fin-value-table shrink-0 text-sm ${pessoa.total >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                        {fc(Math.abs(pessoa.total))}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="hidden overflow-x-auto rounded-2xl border border-border/50 bg-background/80 shadow-sm md:block">
               <Table>
                 <TableHeader>
                   <TableRow className="border-border/60">
@@ -677,19 +777,17 @@ export default function RelatoriosPageContainer() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    pessoas.map((p) => {
-                      const pDividas = filteredData.dividas.filter(d => d.pessoaId === p.id && d.status === "pendente");
-                      const total = pDividas.reduce((acc, d) => acc + (d.tipo === "receber" ? Number(d.valor) : -Number(d.valor)), 0);
+                    pessoasResumo.map((pessoa) => {
                       return (
-                        <TableRow key={p.id} className="border-border/40 hover:bg-muted/20">
-                          <TableCell className="max-w-[220px] whitespace-normal break-words font-medium align-top" title={p.nome}>{p.nome}</TableCell>
+                        <TableRow key={pessoa.id} className="border-border/40 hover:bg-muted/20">
+                          <TableCell className="max-w-[220px] whitespace-normal break-words font-medium align-top" title={pessoa.nome}>{pessoa.nome}</TableCell>
                           <TableCell>
-                            <Badge variant={total >= 0 ? "default" : "destructive"} className="rounded-full px-2.5">
-                              {total >= 0 ? "Me deve" : "Eu devo"}
+                            <Badge variant={pessoa.total >= 0 ? "default" : "destructive"} className="rounded-full px-2.5">
+                              {pessoa.total >= 0 ? "Me deve" : "Eu devo"}
                             </Badge>
                           </TableCell>
-                          <TableCell className={`fin-value-table text-right ${total >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                            {fc(Math.abs(total))}
+                          <TableCell className={`fin-value-table text-right ${pessoa.total >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                            {fc(Math.abs(pessoa.total))}
                           </TableCell>
                         </TableRow>
                       );
@@ -711,8 +809,24 @@ export default function RelatoriosPageContainer() {
               Serviços Ativos
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 pt-6">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <CardContent className="space-y-3.5 pt-4 sm:space-y-4 sm:pt-6">
+            <div className="grid grid-cols-2 gap-2.5 md:hidden">
+              <div className="rounded-2xl border border-border/50 bg-background/80 px-3 py-3 shadow-sm">
+                <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Média mensal</p>
+                <p className="pt-2 text-sm font-semibold">{fc(filteredData.totalServicosMediaMensal)}</p>
+              </div>
+              <div className="rounded-2xl border border-border/50 bg-background/80 px-3 py-3 shadow-sm">
+                <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Real no período</p>
+                <p className="pt-2 text-sm font-semibold">{fc(filteredData.totalServicosCobrancaRealPeriodo)}</p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-border/50 bg-background/80 px-3 py-2.5 text-[11px] text-muted-foreground shadow-sm md:hidden">
+              <p>Cartão (real): <span className="font-semibold text-foreground">{fc(filteredData.totalServicosVinculadosCartaoCobrancaRealPeriodo)}</span></p>
+              <p className="mt-1">Fora do cartão (real): <span className="font-semibold text-foreground">{fc(filteredData.totalServicosNaoVinculadosCartaoCobrancaRealPeriodo)}</span></p>
+            </div>
+
+            <div className="hidden grid-cols-1 gap-3 sm:grid-cols-2 md:grid">
               <div className="rounded-2xl border border-border/50 bg-background/80 px-4 py-3 shadow-sm">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Média mensal de serviços</p>
                 <p className="pt-2 text-sm font-semibold">{fc(filteredData.totalServicosMediaMensal)}</p>
@@ -731,11 +845,63 @@ export default function RelatoriosPageContainer() {
               </div>
             </div>
 
-            <p className="rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs text-amber-700">
+            <p className="rounded-2xl border border-amber-500/20 bg-amber-500/5 px-3 py-2.5 text-[11px] text-amber-700 sm:px-4 sm:py-3 sm:text-xs">
               Cobranças vinculadas ao cartão já aparecem na fatura.
             </p>
 
-            <div className="overflow-x-auto rounded-2xl border border-border/50 bg-background/80 shadow-sm">
+            <div className="space-y-2.5 md:hidden">
+              {filteredData.activeServicos.length === 0 ? (
+                <FintechEmptyState
+                  icon={<Receipt className="h-5 w-5 text-muted-foreground/70" />}
+                  title="Nenhum serviço ativo"
+                  size="compact"
+                  className="bg-background/80 px-4 py-5"
+                />
+              ) : (
+                <>
+                  {filteredData.servicosDetalhados.map((servico) => (
+                    <div key={servico.id} className="rounded-2xl border border-border/50 bg-background/80 px-4 py-3 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold leading-snug tracking-tight text-foreground break-words" title={servico.nome}>
+                            {servico.nome}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
+                            <span className="rounded-full bg-muted/65 px-2 py-1">{servico.categoria}</span>
+                            <span className="rounded-full bg-muted/65 px-2 py-1">{servico.periodicidadeLabel}</span>
+                            {servico.vinculadoCartao ? (
+                              <span className="rounded-full border border-blue-500/10 bg-blue-500/10 px-2 py-1 text-blue-700 dark:text-blue-400">
+                                Cartão
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="min-w-[110px] shrink-0 text-right">
+                          <p className="fin-value-table text-sm text-foreground">{fc(servico.valorCobranca)}</p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Equiv. mensal {fc(servico.equivalenteMensal)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="rounded-2xl border border-border/60 bg-muted/20 px-4 py-3 shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Totais</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Cobrança real e equivalente mensal</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="fin-value-table text-sm">{fc(filteredData.totalServicosCobrancaRealPeriodo)}</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">{fc(filteredData.totalServicosMediaMensal)}/mês</p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="hidden overflow-x-auto rounded-2xl border border-border/50 bg-background/80 shadow-sm md:block">
               <Table>
                 <TableHeader>
                   <TableRow className="border-border/60">
@@ -793,7 +959,7 @@ export default function RelatoriosPageContainer() {
               </Table>
             </div>
             {!filteredData.hasDetailedServicosMetrics ? (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground sm:text-xs">
                 Modo compatibilidade: detalhamento avançado de serviços calculado localmente.
               </p>
             ) : null}
@@ -810,8 +976,45 @@ export default function RelatoriosPageContainer() {
               Patrimônio
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-6">
-            <div className="overflow-x-auto rounded-2xl border border-border/50 bg-background/80 shadow-sm">
+          <CardContent className="space-y-3 pt-4 sm:pt-6">
+            <div className="space-y-2.5 md:hidden">
+              {patrimonios.length === 0 ? (
+                <FintechEmptyState
+                  icon={<PiggyBank className="h-5 w-5 text-muted-foreground/70" />}
+                  title="Nenhum patrimônio cadastrado"
+                  size="compact"
+                  className="bg-background/80 px-4 py-5"
+                />
+              ) : (
+                <>
+                  <div className="rounded-2xl border border-indigo-500/15 bg-indigo-500/5 px-4 py-3 shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground">Patrimônio total</p>
+                      <p className="fin-value-table text-sm text-indigo-600">{fc(filteredData.totalPatrimonio)}</p>
+                    </div>
+                  </div>
+                  {patrimonios.map((patrimonio) => (
+                    <div key={patrimonio.id} className="rounded-2xl border border-border/50 bg-background/80 px-4 py-3 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold leading-snug tracking-tight text-foreground break-words" title={patrimonio.nome}>
+                            {patrimonio.nome}
+                          </p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {patrimonioTypeLabels[patrimonio.tipo] || patrimonio.tipo}
+                          </p>
+                        </div>
+                        <p className="fin-value-table shrink-0 text-sm text-indigo-600">
+                          {fc(Number(patrimonio.valorAtual))}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+
+            <div className="hidden overflow-x-auto rounded-2xl border border-border/50 bg-background/80 shadow-sm md:block">
               <Table>
                 <TableHeader>
                   <TableRow className="border-border/60">
@@ -834,17 +1037,10 @@ export default function RelatoriosPageContainer() {
                     </TableRow>
                   ) : (
                     patrimonios.map((p) => {
-                      const labels: Record<string, string> = {
-                        conta_bancaria: "Conta Bancária",
-                        dinheiro: "Dinheiro",
-                        poupanca: "Poupança",
-                        investimento: "Investimento",
-                        outros: "Outros"
-                      };
                       return (
                         <TableRow key={p.id} className="border-border/40 hover:bg-muted/20">
                           <TableCell className="max-w-[220px] whitespace-normal break-words font-medium align-top" title={p.nome}>{p.nome}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{labels[p.tipo] || p.tipo}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{patrimonioTypeLabels[p.tipo] || p.tipo}</TableCell>
                           <TableCell className="fin-value-table text-right text-indigo-600">
                             {fc(Number(p.valorAtual))}
                           </TableCell>
