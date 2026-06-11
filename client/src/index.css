@@ -227,7 +227,7 @@
   }
 
   .app-section-stack {
-    @apply space-y-4 sm:space-y-5;
+    @apply space-y-3 sm:space-y-5;
   }
 
   .fintech-surface {
@@ -259,19 +259,19 @@
   }
 
   .fintech-page-header {
-    @apply rounded-[28px] border border-border/60 bg-card/95 p-5 sm:p-6;
+    @apply rounded-[26px] border border-border/60 bg-card/95 p-4 sm:p-6;
   }
 
   .fintech-page-header-row {
-    @apply flex min-w-0 flex-col gap-5 xl:flex-row xl:items-start xl:justify-between;
+    @apply flex min-w-0 flex-col gap-4 xl:flex-row xl:items-start xl:justify-between;
   }
 
   .fintech-page-title {
-    @apply text-3xl font-semibold tracking-tight text-foreground sm:text-4xl;
+    @apply text-[1.85rem] font-semibold tracking-tight text-foreground sm:text-4xl;
   }
 
   .fintech-page-subtitle {
-    @apply text-sm leading-6 text-muted-foreground sm:text-base;
+    @apply text-[13px] leading-5 text-muted-foreground sm:text-base;
   }
 
   .fintech-page-actions {
@@ -295,7 +295,7 @@
 
   .fin-value-kpi {
     @apply fin-value-base;
-    font-size: clamp(20px, 5vw, 24px);
+    font-size: clamp(18px, 4.6vw, 24px);
   }
 
   .fin-value-person {

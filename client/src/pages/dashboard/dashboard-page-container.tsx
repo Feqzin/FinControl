@@ -299,14 +299,14 @@ export default function Dashboard() {
     return (
       <div className="app-page-shell app-section-stack" data-testid="dashboard-essencial">
         <div className="fintech-page-header border border-border/60 bg-card/95 shadow-sm">
-          <div className="fintech-page-header-row gap-3">
+          <div className="fintech-page-header-row gap-2.5 sm:gap-3">
             <div className="min-w-0">
-              <h1 className="text-3xl font-semibold tracking-tight">Painel Essencial</h1>
-              <p className="text-sm text-muted-foreground/90">Visão simplificada para decisões rápidas.</p>
+              <h1 className="text-[1.8rem] font-semibold tracking-tight sm:text-3xl">Painel Essencial</h1>
+              <p className="text-[13px] leading-5 text-muted-foreground/90 sm:text-sm">Visão simplificada para decisões rápidas.</p>
             </div>
             <div className="fintech-actions-wrap w-full lg:w-auto">
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger className="h-10 w-full min-w-0 rounded-xl text-sm lg:w-[220px]" data-testid="select-month-essencial">
+                <SelectTrigger className="h-9 w-full min-w-0 rounded-xl text-sm sm:h-10 lg:w-[220px]" data-testid="select-month-essencial">
                   <SelectValue placeholder="Selecionar mês" />
                 </SelectTrigger>
                 <SelectContent>
@@ -317,7 +317,7 @@ export default function Dashboard() {
               </Select>
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="h-10 w-full justify-center gap-2 rounded-xl lg:w-auto">
+                  <Button variant="outline" className="h-9 w-full justify-center gap-2 rounded-xl sm:h-10 lg:w-auto">
                     <Settings2 className="h-4 w-4" />
                     Ajustes
                   </Button>

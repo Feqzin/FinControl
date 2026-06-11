@@ -412,25 +412,25 @@ export default function RelatoriosPageContainer() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-6 overflow-x-hidden p-4 sm:p-6" data-testid="relatorios-page">
+    <div className="mx-auto w-full max-w-[1600px] space-y-4 overflow-x-hidden p-3 sm:space-y-6 sm:p-6" data-testid="relatorios-page">
       <FintechPageHeader
-        className="rounded-3xl"
-        rowClassName="xl:items-end"
+        className="rounded-[26px] sm:rounded-3xl"
+        rowClassName="gap-3 xl:items-end"
         title="Relatórios"
-        titleClassName="sm:text-[2rem]"
+        titleClassName="text-[1.75rem] sm:text-[2rem]"
         subtitle="Análise detalhada da sua saúde financeira"
         badges={isCompatibilityMode ? (
           <p className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-700">
             Exibindo dados em modo compatibilidade.
           </p>
         ) : undefined}
-        actionsClassName="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center xl:justify-end"
+        actionsClassName="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:w-auto sm:grid-cols-[minmax(0,1fr)_auto] xl:justify-end"
         actions={(
           <>
-            <div className="rounded-2xl border border-border/60 bg-background/80 p-2 shadow-sm">
+            <div className="rounded-xl border border-border/60 bg-background/80 p-1.5 shadow-sm sm:rounded-2xl sm:p-2">
               <Select value={periodo} onValueChange={(v: Periodo) => setPeriodo(v)}>
                 <SelectTrigger
-                  className="h-10 w-full border-0 bg-transparent px-2 shadow-none sm:w-[190px]"
+                  className="h-9 w-full border-0 bg-transparent px-2 text-sm shadow-none sm:h-10 sm:w-[190px]"
                   data-testid="select-periodo"
                 >
                   <SelectValue placeholder="Selecione o período" />
@@ -447,7 +447,7 @@ export default function RelatoriosPageContainer() {
             <Button
               onClick={exportPDF}
               data-testid="button-export-pdf"
-              className="h-11 gap-2 rounded-2xl px-5 shadow-sm"
+              className="h-10 gap-2 whitespace-nowrap rounded-xl px-3.5 text-sm shadow-sm sm:h-11 sm:rounded-2xl sm:px-5"
             >
               <FileDown className="w-4 h-4" />
               Baixar PDF
@@ -457,95 +457,95 @@ export default function RelatoriosPageContainer() {
       />
 
       {/* Section 1 — Resumo Geral */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-        <Card className="hover-elevate rounded-3xl border border-border/60 bg-card/95 shadow-sm">
-          <CardContent className="flex min-h-[132px] flex-col justify-between p-5">
-            <div className="flex items-start justify-between gap-4">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-6">
+        <Card className="hover-elevate rounded-[24px] border border-border/60 bg-card/95 shadow-sm sm:rounded-3xl">
+          <CardContent className="flex min-h-[110px] flex-col justify-between p-4 sm:min-h-[132px] sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80 sm:text-xs sm:tracking-[0.18em]">
                 Renda Total
               </p>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/15 bg-emerald-500/10 shadow-sm">
-                <Wallet className="w-5 h-5 text-emerald-600" />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-500/15 bg-emerald-500/10 shadow-sm sm:h-11 sm:w-11 sm:rounded-2xl">
+                <Wallet className="h-4 w-4 text-emerald-600 sm:h-5 sm:w-5" />
               </div>
             </div>
-            <div className="space-y-1 pt-6">
+            <div className="space-y-1 pt-4 sm:pt-6">
               <p className="fin-value-kpi text-emerald-600 [overflow-wrap:anywhere]">{fc(filteredData.totalRenda)}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="hover-elevate rounded-3xl border border-border/60 bg-card/95 shadow-sm">
-          <CardContent className="flex min-h-[132px] flex-col justify-between p-5">
-            <div className="flex items-start justify-between gap-4">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+        <Card className="hover-elevate rounded-[24px] border border-border/60 bg-card/95 shadow-sm sm:rounded-3xl">
+          <CardContent className="flex min-h-[110px] flex-col justify-between p-4 sm:min-h-[132px] sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80 sm:text-xs sm:tracking-[0.18em]">
                 Total Cartões
               </p>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-red-500/15 bg-red-500/10 shadow-sm">
-                <CreditCard className="w-5 h-5 text-red-600" />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-500/15 bg-red-500/10 shadow-sm sm:h-11 sm:w-11 sm:rounded-2xl">
+                <CreditCard className="h-4 w-4 text-red-600 sm:h-5 sm:w-5" />
               </div>
             </div>
-            <div className="space-y-1 pt-6">
+            <div className="space-y-1 pt-4 sm:pt-6">
               <p className="fin-value-kpi text-red-600 [overflow-wrap:anywhere]">{fc(filteredData.totalCartoes)}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="hover-elevate rounded-3xl border border-border/60 bg-card/95 shadow-sm">
-          <CardContent className="flex min-h-[132px] flex-col justify-between p-5">
-            <div className="flex items-start justify-between gap-4">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+        <Card className="hover-elevate rounded-[24px] border border-border/60 bg-card/95 shadow-sm sm:rounded-3xl">
+          <CardContent className="flex min-h-[110px] flex-col justify-between p-4 sm:min-h-[132px] sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80 sm:text-xs sm:tracking-[0.18em]">
                 Total Dívidas
               </p>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-red-500/15 bg-red-500/10 shadow-sm">
-                <Receipt className="w-5 h-5 text-red-600" />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-500/15 bg-red-500/10 shadow-sm sm:h-11 sm:w-11 sm:rounded-2xl">
+                <Receipt className="h-4 w-4 text-red-600 sm:h-5 sm:w-5" />
               </div>
             </div>
-            <div className="space-y-1 pt-6">
+            <div className="space-y-1 pt-4 sm:pt-6">
               <p className="fin-value-kpi text-red-600 [overflow-wrap:anywhere]">{fc(filteredData.totalDividasPagar)}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="hover-elevate rounded-3xl border border-border/60 bg-card/95 shadow-sm">
-          <CardContent className="flex min-h-[132px] flex-col justify-between p-5">
-            <div className="flex items-start justify-between gap-4">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+        <Card className="hover-elevate rounded-[24px] border border-border/60 bg-card/95 shadow-sm sm:rounded-3xl">
+          <CardContent className="flex min-h-[110px] flex-col justify-between p-4 sm:min-h-[132px] sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80 sm:text-xs sm:tracking-[0.18em]">
                 A Receber
               </p>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-blue-500/15 bg-blue-500/10 shadow-sm">
-                <TrendingUp className="w-5 h-5 text-blue-600" />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-blue-500/15 bg-blue-500/10 shadow-sm sm:h-11 sm:w-11 sm:rounded-2xl">
+                <TrendingUp className="h-4 w-4 text-blue-600 sm:h-5 sm:w-5" />
               </div>
             </div>
-            <div className="space-y-1 pt-6">
+            <div className="space-y-1 pt-4 sm:pt-6">
               <p className="fin-value-kpi text-blue-600 [overflow-wrap:anywhere]">{fc(filteredData.totalReceber)}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="hover-elevate rounded-3xl border border-border/60 bg-card/95 shadow-sm">
-          <CardContent className="flex min-h-[132px] flex-col justify-between p-5">
-            <div className="flex items-start justify-between gap-4">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+        <Card className="hover-elevate rounded-[24px] border border-border/60 bg-card/95 shadow-sm sm:rounded-3xl">
+          <CardContent className="flex min-h-[110px] flex-col justify-between p-4 sm:min-h-[132px] sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80 sm:text-xs sm:tracking-[0.18em]">
                 Patrimônio
               </p>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-indigo-500/15 bg-indigo-500/10 shadow-sm">
-                <PiggyBank className="w-5 h-5 text-indigo-600" />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-indigo-500/15 bg-indigo-500/10 shadow-sm sm:h-11 sm:w-11 sm:rounded-2xl">
+                <PiggyBank className="h-4 w-4 text-indigo-600 sm:h-5 sm:w-5" />
               </div>
             </div>
-            <div className="space-y-1 pt-6">
+            <div className="space-y-1 pt-4 sm:pt-6">
               <p className="fin-value-kpi text-indigo-600 [overflow-wrap:anywhere]">{fc(filteredData.totalPatrimonio)}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="hover-elevate rounded-3xl border border-border/60 bg-card/95 shadow-sm">
-          <CardContent className="flex min-h-[132px] flex-col justify-between p-5">
-            <div className="flex items-start justify-between gap-4">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/80">
+        <Card className="hover-elevate rounded-[24px] border border-border/60 bg-card/95 shadow-sm sm:rounded-3xl">
+          <CardContent className="flex min-h-[110px] flex-col justify-between p-4 sm:min-h-[132px] sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80 sm:text-xs sm:tracking-[0.18em]">
                 Saldo Líquido
               </p>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm">
-                <div className="flex h-5 w-5 items-center justify-center text-sm font-bold text-primary">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 shadow-sm sm:h-11 sm:w-11 sm:rounded-2xl">
+                <div className="flex h-4 w-4 items-center justify-center text-xs font-bold text-primary sm:h-5 sm:w-5 sm:text-sm">
                   B$
                 </div>
               </div>
             </div>
-            <div className="space-y-1 pt-6">
+            <div className="space-y-1 pt-4 sm:pt-6">
               <p className={`fin-value-kpi [overflow-wrap:anywhere] ${filteredData.saldoLiquido >= 0 ? "text-primary" : "text-red-600"}`}>
                 {fc(filteredData.saldoLiquido)}
               </p>

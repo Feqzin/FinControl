@@ -29,7 +29,7 @@ type DashboardPageHeaderProps = {
 
 function HeaderScoreError({ message }: { message: string | null }) {
   return (
-    <div className="w-full rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs text-red-700 dark:text-red-300 lg:w-[280px]">
+    <div className="w-full rounded-xl border border-red-500/20 bg-red-500/5 p-2.5 text-xs text-red-700 dark:text-red-300 lg:w-[280px]">
       <p className="font-medium">Não foi possível carregar score.</p>
       {message ? <p className="mt-1 opacity-90">{message}</p> : null}
     </div>
@@ -53,16 +53,16 @@ export function DashboardPageHeader({
     <FintechPageHeader
       title={title}
       subtitle={subtitle}
-      rowClassName="items-start gap-4 xl:items-start"
+      rowClassName="items-start gap-3 xl:items-start"
       contentClassName="space-y-1.5"
       titleClassName="sm:text-[2rem]"
       actionsClassName="w-full xl:w-auto"
       actions={(
         <div className="w-full xl:w-auto">
-          <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(210px,220px)_auto] xl:items-start">
+          <div className="grid w-full min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(210px,220px)_auto] xl:items-start">
             <Select value={selectedMonth} onValueChange={onMonthChange}>
               <SelectTrigger
-                className="h-10 w-full min-w-0 rounded-xl border-border/70 bg-background/95 text-sm shadow-sm"
+                className="h-9 w-full min-w-0 rounded-xl border-border/70 bg-background/95 text-sm shadow-sm sm:h-10"
                 data-testid="select-month"
               >
                 <SelectValue placeholder="Selecionar mês" />
@@ -80,7 +80,7 @@ export function DashboardPageHeader({
               <DialogTrigger asChild>
                 <Button
                   variant="outline"
-                  className="h-10 w-full rounded-xl border-border/70 bg-background/95 px-3 shadow-sm sm:w-10 sm:px-0"
+                  className="h-9 w-full rounded-xl border-border/70 bg-background/95 px-3 shadow-sm sm:h-10 sm:w-10 sm:px-0"
                   aria-label="Personalizar painel"
                   title="Personalizar Painel"
                 >
@@ -102,27 +102,27 @@ export function DashboardPageHeader({
 
           {showAdvancedResources &&
             (scoreStatus.isLoading ? (
-              <FintechLoadingSurface tone="inset" className="mt-2 w-full rounded-2xl xl:max-w-[280px]">
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <Skeleton className="h-3 w-24 rounded-full bg-muted/65" />
-                  <Skeleton className="h-3 w-14 rounded-full bg-muted/55" />
-                </div>
+                <FintechLoadingSurface tone="inset" className="mt-1.5 w-full rounded-2xl xl:max-w-[280px]">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <Skeleton className="h-3 w-24 rounded-full bg-muted/65" />
+                    <Skeleton className="h-3 w-14 rounded-full bg-muted/55" />
+                  </div>
                 <div className="flex items-center gap-2">
                   <Skeleton className="h-2 flex-1 rounded-full bg-muted/60" />
                   <Skeleton className="h-5 w-10 rounded-md bg-muted/65" />
                 </div>
               </FintechLoadingSurface>
             ) : scoreStatus.isError ? (
-              <div className="mt-2 xl:max-w-[280px]">
+              <div className="mt-1.5 xl:max-w-[280px]">
                 <HeaderScoreError message={scoreStatus.message} />
               </div>
             ) : (
               <div
-                className="mt-2 flex w-full min-w-0 items-center gap-3 rounded-2xl border border-border/50 bg-background/95 px-3.5 py-3 shadow-sm sm:px-4 xl:max-w-[280px]"
+                className="mt-1.5 flex w-full min-w-0 items-center gap-3 rounded-2xl border border-border/50 bg-background/95 px-3 py-2.5 shadow-sm sm:px-4 sm:py-3 xl:max-w-[280px]"
                 data-testid="score-financeiro"
               >
                 <div className="flex-1">
-                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <div className="mb-1 flex items-center justify-between gap-2">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
                       Score financeiro
                     </span>
