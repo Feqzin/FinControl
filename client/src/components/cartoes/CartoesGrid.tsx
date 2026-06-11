@@ -33,7 +33,7 @@ export function CartoesGrid({
 
   if (cartoesTab === "resumo") {
     return (
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
         {cartoes.map((cartao) => {
           const limite = Number(cartao.limite) || 0;
           const faturaAtual = getCardTotal(cartao.id);
@@ -51,19 +51,23 @@ export function CartoesGrid({
               : "[&>div]:bg-emerald-500";
 
           return (
-            <CartaoCard key={cartao.id} contentClassName="space-y-3.5 p-4 sm:p-5">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <CartaoCard key={cartao.id} className="rounded-[24px]" contentClassName="space-y-3 p-3.5 sm:p-4">
+              <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex items-center gap-3">
                   <BrandIconDisplay name={cartao.nome} iconeId={resolveCardIconId(cartao)} size="sm" />
                   <div className="min-w-0">
-                    <p className="truncate text-base font-semibold leading-tight">{cartao.nome}</p>
-                    <p className="text-xs text-muted-foreground">{totalCompras} compra(s) parcelada(s)</p>
+                    <p className="truncate text-[15px] font-semibold leading-tight sm:text-base">{cartao.nome}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex rounded-full border border-border/60 bg-muted/25 px-2 py-0.5 text-[11px] text-muted-foreground">
+                        {totalCompras} compra(s) parcelada(s)
+                      </span>
+                    </div>
                   </div>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 w-full touch-feedback px-4 sm:w-auto sm:justify-self-end"
+                  className="h-8 shrink-0 rounded-xl border-border/60 bg-background/80 px-3 text-xs shadow-sm touch-feedback sm:px-3.5"
                   onClick={() => onOpenCompras(cartao.id)}
                   data-testid={`button-open-cartao-compras-${cartao.id}`}
                 >
@@ -71,35 +75,41 @@ export function CartoesGrid({
                 </Button>
               </div>
 
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                <div className="fintech-stat-card flex min-h-[90px] flex-col justify-center p-3.5">
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Fatura atual</p>
-                  <p className="text-xl font-bold">{formatCartaoCurrency(faturaAtual)}</p>
-                </div>
-                <div className="fintech-stat-card flex min-h-[90px] flex-col justify-center bg-emerald-500/5 p-3.5">
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Disponível atual</p>
-                  <p className="text-xl font-bold text-emerald-600">{formatCartaoCurrency(limiteDisponivel)}</p>
-                </div>
-              </div>
-
-              <div className="space-y-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2.5">
-                <div className="flex items-center justify-between gap-2 text-xs">
-                  <span className="text-muted-foreground">Uso do limite</span>
-                  <span
-                    className={isCritical ? "font-semibold text-red-600" : isWarning ? "font-semibold text-amber-600" : "font-semibold text-foreground"}
-                  >
-                    {percentualRaw.toFixed(0)}%
-                  </span>
-                </div>
-                <Progress value={percentual} className={`h-1.5 ${barColorClass}`} />
-                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                  <div className="min-w-0">
-                    <p className="text-muted-foreground">Limite</p>
-                    <p className="truncate font-semibold">{formatCartaoCurrency(limite)}</p>
+              <div className="rounded-[22px] border border-border/50 bg-muted/20 p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Fatura atual</p>
+                    <p className="truncate text-lg font-semibold leading-tight sm:text-xl">
+                      {formatCartaoCurrency(faturaAtual)}
+                    </p>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-muted-foreground">Usado</p>
-                    <p className="truncate font-semibold">{formatCartaoCurrency(comprometido)}</p>
+                  <div className="min-w-0 border-l border-border/60 pl-3 space-y-1">
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Disponível</p>
+                    <p className="truncate text-lg font-semibold leading-tight text-emerald-600 sm:text-xl">
+                      {formatCartaoCurrency(limiteDisponivel)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 space-y-2 rounded-2xl border border-border/50 bg-background/80 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-muted-foreground">Uso do limite</span>
+                    <span
+                      className={isCritical ? "font-semibold text-red-600" : isWarning ? "font-semibold text-amber-600" : "font-semibold text-foreground"}
+                    >
+                      {percentualRaw.toFixed(0)}%
+                    </span>
+                  </div>
+                  <Progress value={percentual} className={`h-1.5 ${barColorClass}`} />
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="min-w-0">
+                      <p className="text-muted-foreground">Limite</p>
+                      <p className="truncate font-semibold">{formatCartaoCurrency(limite)}</p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-muted-foreground">Usado</p>
+                      <p className="truncate font-semibold">{formatCartaoCurrency(comprometido)}</p>
+                    </div>
                   </div>
                 </div>
               </div>

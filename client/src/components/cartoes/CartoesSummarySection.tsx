@@ -23,7 +23,7 @@ export function CartoesSummarySection({
   if (!hasCartoes) return null;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       <CartoesSummaryCards
         totalFaturas={totalFaturas}
         totalAguardandoReembolso={totalAguardandoReembolso}

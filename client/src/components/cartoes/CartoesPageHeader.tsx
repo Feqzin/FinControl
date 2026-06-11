@@ -10,12 +10,14 @@ type CartoesPageHeaderProps = {
 export function CartoesPageHeader({ title, subtitle, actions }: CartoesPageHeaderProps) {
   return (
     <FintechPageHeader
+      className="rounded-[24px] px-4 py-4 sm:px-5 sm:py-5"
       title={title}
       subtitle={subtitle}
-      rowClassName="items-start gap-4 xl:flex-col 2xl:flex-row 2xl:items-start"
-      contentClassName="space-y-2"
-      titleClassName="sm:text-[2rem]"
-      actionsClassName="w-full 2xl:w-auto"
+      rowClassName="gap-3 xl:items-center"
+      contentClassName="space-y-1.5"
+      titleClassName="text-[1.7rem] sm:text-[1.95rem]"
+      subtitleClassName="max-w-xl text-sm leading-5 sm:text-[15px]"
+      actionsClassName="w-full md:w-auto"
       actions={actions}
     />
   );
