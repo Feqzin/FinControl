@@ -2,7 +2,7 @@ import { useLocation, Link } from "wouter";
 import { lazy, Suspense, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/theme-provider";
-import { useUIPreferences } from "@/context/ui-preferences";
+import { useUIPreferences, type UsageMode } from "@/context/ui-preferences";
 import {
   LayoutDashboard, Users, Receipt, CreditCard, Calendar,
   BarChart3, Repeat, LogOut, Target, History, Calculator,
@@ -24,6 +24,7 @@ import {
   DialogTrigger,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 
 const IconPicker = lazy(() =>
@@ -52,11 +53,18 @@ const ferramentasItems = [
   { title: "Perfil", url: "/perfil", icon: UserCircle },
 ];
 
+const usageModeItems: ReadonlyArray<{ value: UsageMode; title: string; description: string }> = [
+  { value: "essencial", title: "Essencial", description: "Simples, fonte maior e foco no básico." },
+  { value: "guiado", title: "Guiado", description: "Equilíbrio com dicas contextuais." },
+  { value: "completo", title: "Completo", description: "Todos os filtros e análises visíveis." },
+  { value: "pro", title: "Pro", description: "Experiência avançada, foco total em produtividade." },
+];
+
 export function AppSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const { theme, toggle } = useTheme();
-  const { prefs, togglePage } = useUIPreferences();
+  const { prefs, togglePage, setUsageMode } = useUIPreferences();
   const [personalizarOpen, setPersonalizarOpen] = useState(false);
   const [showManagePages, setShowManagePages] = useState(false);
 
@@ -77,6 +85,14 @@ export function AppSidebar() {
     { title: "Simulador", url: "/simulador" },
     { title: "Relatórios", url: "/relatorios" },
   ];
+
+  const usageModeSummary = prefs.usageMode === "essencial"
+    ? "Modo Essencial ativo: foco em pagar, receber e saldo, com leitura facilitada."
+    : prefs.usageMode === "guiado"
+      ? "Modo Guiado ativo: interface equilibrada com dicas e contexto."
+      : prefs.usageMode === "pro"
+        ? "Modo Pro ativo: máxima visibilidade para análise avançada."
+        : "Modo Completo ativo: todos os recursos e análises visíveis.";
 
   const renderGroup = (label: string, items: typeof mainItems) => {
     if (items.length === 0) return null;
@@ -139,10 +155,39 @@ export function AppSidebar() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Personalizar</DialogTitle>
-              <DialogDescription>Ajuste rapidamente sua biblioteca e o menu lateral.</DialogDescription>
+              <DialogDescription>Ajuste rapidamente seu modo de uso, a biblioteca de ícones e o menu lateral.</DialogDescription>
             </DialogHeader>
 
             <div className="space-y-2">
+              <div className="fintech-surface-subtle space-y-3 rounded-xl border p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Modo de uso</p>
+                  <p className="text-xs text-muted-foreground">
+                    Escolha como prefere navegar no FinControl. Essa preferência fica salva para sua conta neste dispositivo.
+                  </p>
+                </div>
+
+                <Select
+                  value={prefs.usageMode}
+                  onValueChange={(value) => setUsageMode(value as UsageMode)}
+                >
+                  <SelectTrigger data-testid="select-usage-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {usageModeItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <div className="rounded-lg border border-border/60 bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+                  {usageModeSummary}
+                </div>
+              </div>
+
               <Suspense fallback={<Skeleton className="h-14 w-full" />}>
                 <IconPicker
                   mode="manage"

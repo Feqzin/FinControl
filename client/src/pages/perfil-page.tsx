@@ -34,7 +34,6 @@ import {
 import {
   Download, Shield, Upload
 } from "lucide-react";
-import { useUIPreferences, type UsageMode } from "@/context/ui-preferences";
 import {
   PerfilAccountStatusCard,
   PerfilBackupCloudCard,
@@ -50,7 +49,6 @@ import {
   PerfilPlanStatusCard,
   PerfilPlanUsageCard,
   PerfilTabsNav,
-  PerfilUsageModeCard,
 } from "@/pages/perfil/components";
 import type {
   Cartao,
@@ -294,13 +292,6 @@ function formatRestoreModeLabel(mode: BackupRestoreMode): string {
 export default function PerfilPage() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
-  const {
-    prefs,
-    setUsageMode,
-    isEssentialMode,
-    isGuidedMode,
-    isProMode,
-  } = useUIPreferences();
   const [nomeCompleto, setNomeCompleto] = useState(user?.nomeCompleto || "");
   const [publicUsername, setPublicUsername] = useState(user?.username || "");
   const [fullNameVisibility, setFullNameVisibility] = useState<"private" | "public">(
@@ -341,20 +332,6 @@ export default function PerfilPage() {
   const canStartTrial = billingStatus?.canStartTrial ?? false;
   const canSubscribe = billingStatus ? billingStatus.canSubscribe : planoEfetivo === "free";
   const canCancelSubscription = billingStatus?.canCancel ?? false;
-
-  const modoUsoTexto = isEssentialMode
-    ? "Modo Essencial ativo: foco em pagar, receber e saldo, com leitura facilitada."
-    : isGuidedMode
-      ? "Modo Guiado ativo: interface equilibrada com dicas e contexto."
-      : isProMode
-        ? "Modo Pro ativo: máxima visibilidade para análise avançada."
-        : "Modo Completo ativo: todos os recursos e análises visíveis.";
-  const usageModeItems: ReadonlyArray<{ value: UsageMode; title: string; description: string }> = [
-    { value: "essencial", title: "Essencial", description: "Simples, fonte maior e foco no básico." },
-    { value: "guiado", title: "Guiado", description: "Equilíbrio com dicas contextuais." },
-    { value: "completo", title: "Completo", description: "Todos os filtros e análises visíveis." },
-    { value: "pro", title: "Pro", description: "Experiência avançada, foco total em produtividade." },
-  ];
 
   useEffect(() => {
     if (!user || !billingStatus) return;
@@ -1029,16 +1006,6 @@ export default function PerfilPage() {
         premiumAtivoNaUi={premiumAtivoNaUi}
       />
 
-      <PerfilUsageModeCard
-        isVisible={perfilTab === "backup"}
-        title="Modo de uso"
-        introText="Escolha como prefere navegar no FinControl. Essa preferência fica salva para sua conta neste dispositivo."
-        usageMode={prefs.usageMode}
-        onUsageModeChange={setUsageMode}
-        currentModeDescription={modoUsoTexto}
-        items={usageModeItems}
-      />
-
       <Card className={perfilTab === "planos" ? "fintech-surface desktop-hover-lift touch-feedback" : "hidden"}>
         <CardHeader className="pb-4">
           <CardTitle className="text-base flex items-center gap-2">
@@ -1080,7 +1047,7 @@ export default function PerfilPage() {
       </Card>
 
       <PerfilDataSummaryCard
-        isVisible={perfilTab === "conta"}
+        isVisible={perfilTab === "backup"}
         pessoasCount={pessoas.length}
         dividasCount={dividas.length}
         cartoesCount={cartoes.length}
