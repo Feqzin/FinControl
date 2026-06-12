@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
+import { useAuth } from "@/hooks/use-auth";
 
 type MobileModePreference = "auto" | "manual";
 export type UsageMode = "essencial" | "guiado" | "completo" | "pro";
@@ -44,60 +45,115 @@ const defaultPrefs: UIPreferences = {
 
 const UIPreferencesContext = createContext<UIPreferencesContextType | undefined>(undefined);
 
+function buildDefaultPrefs(detectMobileViewport: () => boolean): UIPreferences {
+  return {
+    ...defaultPrefs,
+    mobileMode: detectMobileViewport(),
+  };
+}
+
+function normalizeStoredPrefs(
+  parsed: Partial<UIPreferences>,
+  detectMobileViewport: () => boolean,
+): UIPreferences {
+  const merged = { ...defaultPrefs, ...parsed };
+  const hasExplicitPreference = parsed.mobileModePreference === "manual" || parsed.mobileModePreference === "auto";
+  const hasLegacyMobileMode = Object.prototype.hasOwnProperty.call(parsed, "mobileMode");
+  const mobileModePreference: MobileModePreference = hasExplicitPreference
+    ? (parsed.mobileModePreference as MobileModePreference)
+    : (hasLegacyMobileMode ? "manual" : "auto");
+  const mobileMode = mobileModePreference === "manual"
+    ? Boolean(merged.mobileMode)
+    : detectMobileViewport();
+
+  return {
+    ...merged,
+    mobileModePreference,
+    mobileMode,
+    usageMode:
+      merged.usageMode === "essencial"
+      || merged.usageMode === "guiado"
+      || merged.usageMode === "completo"
+      || merged.usageMode === "pro"
+        ? merged.usageMode
+        : "guiado",
+  };
+}
+
+function readStoredPrefs(
+  storageKey: string,
+  detectMobileViewport: () => boolean,
+): UIPreferences | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (!stored) return null;
+    return normalizeStoredPrefs(JSON.parse(stored) as Partial<UIPreferences>, detectMobileViewport);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredPrefs(storageKey: string, prefs: UIPreferences): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(prefs));
+  } catch (error) {
+    console.error("Failed to save UI preferences", error);
+  }
+}
+
+function resolveStorageKey(userId: string | null | undefined): string {
+  return userId ? `${STORAGE_KEY}:${userId}` : STORAGE_KEY;
+}
+
 export function UIPreferencesProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const detectMobileViewport = () => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
     return window.matchMedia(MOBILE_MEDIA_QUERY).matches;
   };
 
+  const [activeStorageKey, setActiveStorageKey] = useState(() => resolveStorageKey(null));
   const [prefs, setPrefs] = useState<UIPreferences>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as Partial<UIPreferences>;
-        const merged = { ...defaultPrefs, ...parsed };
-        const hasExplicitPreference = parsed.mobileModePreference === "manual" || parsed.mobileModePreference === "auto";
-        const hasLegacyMobileMode = Object.prototype.hasOwnProperty.call(parsed, "mobileMode");
-        const mobileModePreference: MobileModePreference = hasExplicitPreference
-          ? (parsed.mobileModePreference as MobileModePreference)
-          : (hasLegacyMobileMode ? "manual" : "auto");
-        const mobileMode = mobileModePreference === "manual"
-          ? Boolean(merged.mobileMode)
-          : detectMobileViewport();
-
-        return {
-          ...merged,
-          mobileModePreference,
-          mobileMode,
-          usageMode:
-            merged.usageMode === "essencial"
-            || merged.usageMode === "guiado"
-            || merged.usageMode === "completo"
-            || merged.usageMode === "pro"
-              ? merged.usageMode
-              : "guiado",
-        };
-      }
-      return {
-        ...defaultPrefs,
-        mobileMode: detectMobileViewport(),
-      };
-    } catch {
-      return {
-        ...defaultPrefs,
-        mobileMode: detectMobileViewport(),
-      };
-    }
+    return readStoredPrefs(STORAGE_KEY, detectMobileViewport) ?? buildDefaultPrefs(detectMobileViewport);
   });
 
   const updatePrefs = (newPrefs: UIPreferences) => {
     setPrefs(newPrefs);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newPrefs));
-    } catch (e) {
-      console.error("Failed to save UI preferences", e);
-    }
+    writeStoredPrefs(activeStorageKey, newPrefs);
   };
+
+  useEffect(() => {
+    const nextStorageKey = resolveStorageKey(user?.id);
+    if (nextStorageKey === activeStorageKey) return;
+
+    const nextPrefs = readStoredPrefs(nextStorageKey, detectMobileViewport);
+    if (nextPrefs) {
+      setPrefs(nextPrefs);
+      setActiveStorageKey(nextStorageKey);
+      return;
+    }
+
+    if (user?.id) {
+      const legacyPrefs = readStoredPrefs(STORAGE_KEY, detectMobileViewport);
+      if (legacyPrefs) {
+        setPrefs(legacyPrefs);
+        setActiveStorageKey(nextStorageKey);
+        writeStoredPrefs(nextStorageKey, legacyPrefs);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.removeItem(STORAGE_KEY);
+          } catch {}
+        }
+        return;
+      }
+    }
+
+    setPrefs(buildDefaultPrefs(detectMobileViewport));
+    setActiveStorageKey(nextStorageKey);
+  }, [activeStorageKey, user?.id]);
 
   const togglePage = (url: string) => {
     const hiddenPages = prefs.hiddenPages.includes(url)
@@ -155,11 +211,7 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
         if (current.mobileModePreference !== "auto") return current;
         if (current.mobileMode === nextMobile) return current;
         const updated = { ...current, mobileMode: nextMobile };
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-        } catch (error) {
-          console.error("Failed to save UI preferences", error);
-        }
+        writeStoredPrefs(activeStorageKey, updated);
         return updated;
       });
     };
@@ -172,7 +224,7 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
 
     mediaQuery.addListener(syncWithViewport);
     return () => mediaQuery.removeListener(syncWithViewport);
-  }, [prefs.mobileModePreference]);
+  }, [activeStorageKey, prefs.mobileModePreference]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;

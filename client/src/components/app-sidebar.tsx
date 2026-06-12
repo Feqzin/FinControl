@@ -2,11 +2,12 @@ import { useLocation, Link } from "wouter";
 import { lazy, Suspense, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/theme-provider";
-import { useUIPreferences } from "@/context/ui-preferences";
+import { useUIPreferences, type UsageMode } from "@/context/ui-preferences";
 import {
   LayoutDashboard, Users, Receipt, CreditCard, Calendar,
   BarChart3, Repeat, LogOut, Target, History, Calculator,
-  Sun, Moon, UserCircle, Wallet, PiggyBank, Settings2, AlertCircle
+  Sun, Moon, UserCircle, Wallet, PiggyBank, Settings2, AlertCircle,
+  ChevronDown, Check, Sparkles,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -25,6 +26,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const IconPicker = lazy(() =>
   import("@/components/icon-picker").then((mod) => ({ default: mod.IconPicker })),
@@ -56,8 +58,24 @@ export function AppSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const { theme, toggle } = useTheme();
-  const { prefs, togglePage } = useUIPreferences();
+  const { prefs, togglePage, setUsageMode } = useUIPreferences();
+  const [personalizarOpen, setPersonalizarOpen] = useState(false);
   const [showManagePages, setShowManagePages] = useState(false);
+  const [showUsageMode, setShowUsageMode] = useState(false);
+
+  const usageModeItems: ReadonlyArray<{ value: UsageMode; title: string; description: string }> = [
+    { value: "essencial", title: "Essencial", description: "Simples, fonte maior e foco no básico." },
+    { value: "guiado", title: "Guiado", description: "Equilíbrio com dicas contextuais." },
+    { value: "completo", title: "Completo", description: "Todos os filtros e análises visíveis." },
+    { value: "pro", title: "Pro", description: "Experiência avançada, foco total em produtividade." },
+  ];
+
+  const usageModeSummary = {
+    essencial: "Modo Essencial ativo: foco em pagar, receber e saldo, com leitura facilitada.",
+    guiado: "Modo Guiado ativo: interface equilibrada com dicas e contexto.",
+    completo: "Modo Completo ativo: todos os recursos e análises visíveis.",
+    pro: "Modo Pro ativo: máxima visibilidade para análise avançada.",
+  } satisfies Record<UsageMode, string>;
 
   const filteredMainItems = mainItems.filter(item => item.url === "/" || !prefs.hiddenPages.includes(item.url));
   const filteredPlanejamentoItems = planejamentoItems.filter(item => !prefs.hiddenPages.includes(item.url));
@@ -104,6 +122,14 @@ export function AppSidebar() {
     );
   };
 
+  const handlePersonalizarOpenChange = (open: boolean) => {
+    setPersonalizarOpen(open);
+    if (!open) {
+      setShowManagePages(false);
+      setShowUsageMode(false);
+    }
+  };
+
   return (
     <Sidebar>
       <SidebarHeader className="p-4">
@@ -121,7 +147,7 @@ export function AppSidebar() {
         {renderGroup("Ferramentas", filteredFerramentasItems)}
       </SidebarContent>
       <SidebarFooter className="p-4 space-y-2">
-        <Dialog>
+        <Dialog open={personalizarOpen} onOpenChange={handlePersonalizarOpenChange}>
           <DialogTrigger asChild>
             <Button variant="outline" className="w-full justify-start gap-2" size="sm" data-testid="button-personalizar">
               <Settings2 className="w-4 h-4" />
@@ -131,7 +157,7 @@ export function AppSidebar() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Personalizar</DialogTitle>
-              <DialogDescription>Ajuste rapidamente sua biblioteca e o menu lateral.</DialogDescription>
+              <DialogDescription>Ajuste rapidamente sua biblioteca, seu modo de uso e o menu lateral.</DialogDescription>
             </DialogHeader>
 
             <div className="space-y-2">
@@ -143,6 +169,66 @@ export function AppSidebar() {
                   triggerTestId="button-open-global-icon-library"
                 />
               </Suspense>
+
+              <Collapsible open={showUsageMode} onOpenChange={setShowUsageMode}>
+                <div className="rounded-xl border border-border/60 bg-background/85 shadow-sm">
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="flex h-auto w-full items-start justify-between gap-3 rounded-xl px-4 py-3 text-left hover:bg-accent/60"
+                      data-testid="button-toggle-usage-mode"
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <Sparkles className="h-4 w-4 text-primary" />
+                          <span>Modo de uso</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {usageModeSummary[prefs.usageMode]}
+                        </p>
+                      </div>
+                      <ChevronDown
+                        className={`mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform ${showUsageMode ? "rotate-180" : ""}`}
+                      />
+                    </Button>
+                  </CollapsibleTrigger>
+
+                  <CollapsibleContent className="border-t border-border/60 px-4 py-4">
+                    <div className="space-y-3">
+                      <p className="text-xs text-muted-foreground">
+                        Escolha como prefere navegar no FinControl. Esta preferência continua salva para este usuário neste dispositivo.
+                      </p>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {usageModeItems.map((item) => {
+                          const isSelected = prefs.usageMode === item.value;
+                          return (
+                            <Button
+                              key={item.value}
+                              type="button"
+                              variant="ghost"
+                              aria-pressed={isSelected}
+                              className={`h-auto min-h-[92px] flex-col items-start justify-start gap-2 rounded-xl border px-4 py-3 text-left whitespace-normal ${
+                                isSelected
+                                  ? "border-primary/40 bg-primary/8 text-foreground hover:bg-primary/10"
+                                  : "border-border/60 bg-muted/10 text-foreground hover:bg-accent/60"
+                              }`}
+                              onClick={() => setUsageMode(item.value)}
+                              data-testid={`button-usage-mode-${item.value}`}
+                            >
+                              <div className="flex w-full items-center justify-between gap-3">
+                                <span className="text-sm font-semibold">{item.title}</span>
+                                {isSelected ? <Check className="h-4 w-4 text-primary" /> : null}
+                              </div>
+                              <span className="text-xs text-muted-foreground">{item.description}</span>
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
 
               <Button
                 type="button"

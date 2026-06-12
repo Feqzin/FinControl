@@ -32,7 +32,6 @@ import {
 import { useDashboard } from "@/hooks/useDashboard";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { useLocation } from "wouter";
-import type { UsageMode } from "@/context/ui-preferences";
 import { DashboardQuickActions } from "@/components/dashboard/DashboardQuickActions";
 import { DashboardPageHeader } from "@/components/dashboard/DashboardPageHeader";
 import { DashboardSummaryCards } from "@/components/dashboard/DashboardSummaryCards";
@@ -115,7 +114,6 @@ export default function Dashboard() {
     isMobileModeAuto,
     toggleDashCard,
     toggleCompact,
-    setUsageMode,
     setMobileModeAuto,
     setMobileModeManual,
   } = useUIPreferences();
@@ -326,24 +324,10 @@ export default function Dashboard() {
                   <DialogHeader>
                     <DialogTitle>Ajustes do painel</DialogTitle>
                     <DialogDescription className="sr-only">
-                      Ajuste o modo de interface e as preferências rápidas exibidas no painel essencial.
+                      Ajuste o modo celular e as preferências rápidas exibidas no painel essencial.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 pt-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="usage-mode-essencial">Modo de interface</Label>
-                      <Select value={prefs.usageMode} onValueChange={(value) => setUsageMode(value as UsageMode)}>
-                        <SelectTrigger id="usage-mode-essencial">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="essencial">Essencial</SelectItem>
-                          <SelectItem value="guiado">Guiado</SelectItem>
-                          <SelectItem value="completo">Completo</SelectItem>
-                          <SelectItem value="pro">Pro</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
                     <div className="flex items-center justify-between rounded-xl border bg-muted/30 p-3">
                       <div className="flex items-center gap-2">
                         <Smartphone className="h-4 w-4 text-primary" />
