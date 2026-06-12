@@ -3750,6 +3750,111 @@ test("entity icon suggestion: ícone oficial inativo na biblioteca não pode ser
   assert.equal(suggestion.shouldSuggest, false);
 });
 
+test("entity icon suggestion: ícone pessoal ativo com keyword exata entra no auto match", () => {
+  const suggestion = resolveEntityIconSuggestion({
+    name: "Mercado Pago",
+    userRules: [
+      {
+        id: "rule-user-mercado-pago",
+        iconId: "https://cdn.fincontrol.dev/icons/mercado-pago-personal.png",
+        normalizedTerm: "mercado pago",
+        originalTerm: "Mercado Pago",
+      },
+    ],
+    userIcons: [
+      {
+        id: "user-icon-mercado-pago",
+        userId: "user-1",
+        sourceType: "upload",
+        officialIconId: null,
+        isActive: true,
+        name: "Mercado Pago Pessoal",
+        imageUrl: "https://cdn.fincontrol.dev/icons/mercado-pago-personal.png",
+        storagePath: null,
+        category: "banco",
+        tags: ["mercado pago"],
+        createdAt: "2026-05-01T00:00:00.000Z",
+        updatedAt: "2026-05-01T00:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.equal(suggestion.displayIconId, "https://cdn.fincontrol.dev/icons/mercado-pago-personal.png");
+  assert.equal(suggestion.persistableIconId, "user-icon-mercado-pago");
+  assert.equal(suggestion.shouldAutoApply, true);
+  assert.equal(suggestion.match.source, "personal_rule");
+});
+
+test("entity icon suggestion: ícone pessoal inativo com keyword exata não entra no auto match", () => {
+  const suggestion = resolveEntityIconSuggestion({
+    name: "Mercado Pago",
+    userRules: [
+      {
+        id: "rule-user-mercado-pago",
+        iconId: "https://cdn.fincontrol.dev/icons/mercado-pago-personal.png",
+        normalizedTerm: "mercado pago",
+        originalTerm: "Mercado Pago",
+      },
+    ],
+    userIcons: [
+      {
+        id: "user-icon-mercado-pago",
+        userId: "user-1",
+        sourceType: "upload",
+        officialIconId: null,
+        isActive: false,
+        name: "Mercado Pago Pessoal",
+        imageUrl: "https://cdn.fincontrol.dev/icons/mercado-pago-personal.png",
+        storagePath: null,
+        category: "banco",
+        tags: ["mercado pago"],
+        createdAt: "2026-05-01T00:00:00.000Z",
+        updatedAt: "2026-05-01T00:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.equal(suggestion.displayIconId, "mercadopago");
+  assert.equal(suggestion.persistableIconId, "mercadopago");
+  assert.equal(suggestion.shouldAutoApply, true);
+  assert.equal(suggestion.match.source, "builtin_keyword");
+});
+
+test("entity icon suggestion: ícone pessoal ativo tem prioridade sobre builtin", () => {
+  const suggestion = resolveEntityIconSuggestion({
+    name: "Mercado Pago",
+    userRules: [
+      {
+        id: "rule-user-mercado-pago",
+        iconId: "https://cdn.fincontrol.dev/icons/mercado-pago-personal.png",
+        normalizedTerm: "mercado pago",
+        originalTerm: "Mercado Pago",
+      },
+    ],
+    userIcons: [
+      {
+        id: "user-icon-mercado-pago",
+        userId: "user-1",
+        sourceType: "upload",
+        officialIconId: null,
+        isActive: true,
+        name: "Mercado Pago Pessoal",
+        imageUrl: "https://cdn.fincontrol.dev/icons/mercado-pago-personal.png",
+        storagePath: null,
+        category: "banco",
+        tags: ["mercado pago"],
+        createdAt: "2026-05-01T00:00:00.000Z",
+        updatedAt: "2026-05-01T00:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.equal(suggestion.displayIconId, "https://cdn.fincontrol.dev/icons/mercado-pago-personal.png");
+  assert.equal(suggestion.persistableIconId, "user-icon-mercado-pago");
+  assert.notEqual(suggestion.displayIconId, "mercadopago");
+  assert.equal(suggestion.match.source, "personal_rule");
+});
+
 test("entity icon display: patrimônio com ícone padrão desativado usa fallback seguro", () => {
   const displayIconId = resolveEntityDisplayIconId({
     explicitIconId: null,

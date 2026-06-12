@@ -277,10 +277,9 @@ export function matchIconByText(
 
   const disabledBuiltinIconKeys = getDisabledBuiltinIconKeysFromRules(userRules);
   const inactiveBuiltinKeysFromUserIcons = getInactiveBuiltinIconKeysFromUserIcons(options.userIcons ?? []);
-  const blockedBuiltinKeys = new Set<string>([
-    ...disabledBuiltinIconKeys,
-    ...inactiveBuiltinKeysFromUserIcons,
-  ]);
+  const blockedBuiltinKeys = new Set<string>();
+  disabledBuiltinIconKeys.forEach((key) => blockedBuiltinKeys.add(key));
+  inactiveBuiltinKeysFromUserIcons.forEach((key) => blockedBuiltinKeys.add(key));
 
   const builtinCandidates = blockedBuiltinKeys.size === 0
     ? ALL_BUILTIN_CANDIDATES
@@ -293,7 +292,7 @@ export function matchIconByText(
     }),
     ...builtinCandidates,
   ];
-  let best: { candidate: Candidate; score: number } | null = null;
+  let best: { candidate: Candidate; score: number; sourcePriority: number } | null = null;
 
   for (const candidate of candidates) {
     let score = scoreCandidate(normalizedDescription, candidate.term);
@@ -301,8 +300,15 @@ export function matchIconByText(
     if (candidate.source === "personal_rule") {
       score = Math.min(0.99, score + 0.08);
     }
-    if (!best || score > best.score) {
-      best = { candidate, score };
+    const sourcePriority =
+      candidate.source === "personal_rule" && score >= SUGGEST_THRESHOLD ? 1 : 0;
+
+    if (
+      !best
+      || sourcePriority > best.sourcePriority
+      || (sourcePriority === best.sourcePriority && score > best.score)
+    ) {
+      best = { candidate, score, sourcePriority };
     }
   }
 

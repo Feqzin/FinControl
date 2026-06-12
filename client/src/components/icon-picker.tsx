@@ -189,11 +189,13 @@ export function IconPicker({
   const fileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const hasExploreSearch = hasExploreSearchTerm(exploreSearch);
+  const shouldLoadSuggestionContext = open || Boolean(value) || Boolean(name.trim());
 
   const { data: personalIcons = [], isLoading: isLoadingPersonalIcons } = useQuery<UserIconLibraryItemApiModel[]>({
     queryKey: ["/api/user-icon-library"],
     queryFn: fetchUserIconLibrary,
-    enabled: open,
+    // Keep personal icon metadata available for the collapsed trigger preview.
+    enabled: shouldLoadSuggestionContext,
     staleTime: 60_000,
   });
 
@@ -280,7 +282,7 @@ export function IconPicker({
   const { data: iconMatchRules = [] } = useQuery<IconMatchRuleApiModel[]>({
     queryKey: ["/api/icon-match-rules"],
     queryFn: fetchIconMatchRules,
-    enabled: open,
+    enabled: shouldLoadSuggestionContext,
     staleTime: 5 * 60_000,
   });
 
