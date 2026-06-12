@@ -53,6 +53,7 @@ import {
 import { buildRelatorioPdfMetadata } from "../src/pages/relatorios/relatorios-pdf-utils";
 import { formatMoneyFixed } from "../src/lib/money";
 import {
+  calculateCardLimitSummary,
   calculateCardInvoiceForCompetency,
   calculateCardCurrentInvoiceTotal,
   calculateCardUsedLimit,
@@ -1609,6 +1610,192 @@ test("card limit usage: trocar competência muda totais de todos os cartões", (
 
   assert.equal(totalAbril, 100);
   assert.equal(totalMaio, 75);
+});
+
+test("card limit usage: cartão sem compras retorna resumo zerado", () => {
+  const summary = calculateCardLimitSummary("card-empty", [], new Map(), "2026-04", "900.00");
+
+  assert.deepEqual(summary, {
+    faturaAtual: 0,
+    limiteComprometido: 0,
+    limiteDisponivel: 900,
+    saldoRestanteTotal: 0,
+    quantidadeParcelasPendentes: 0,
+  });
+});
+
+test("card limit usage: regra global calcula todos os cartões sem depender de banco ou nome", () => {
+  const compras = [
+    buildCompraCartaoViewFixture({
+      id: "a-avista",
+      cartaoId: "card-a",
+      descricao: "Compra à vista",
+      valorTotal: "200.00",
+      valorParcela: "200.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+    }),
+    buildCompraCartaoViewFixture({
+      id: "a-parcelada",
+      cartaoId: "card-a",
+      descricao: "Compra parcelada",
+      valorTotal: "200.00",
+      valorParcela: "100.00",
+      parcelas: 2,
+      parcelaAtual: 1,
+    }),
+    buildCompraCartaoViewFixture({
+      id: "a-reembolsada",
+      cartaoId: "card-a",
+      descricao: "Compra reembolsada",
+      valorTotal: "50.00",
+      valorParcela: "50.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      pessoaId: "pessoa-1",
+      statusPessoa: "pago",
+      dataPagamentoPessoa: "2026-04-16",
+    }),
+    buildCompraCartaoViewFixture({
+      id: "a-cancelada",
+      cartaoId: "card-a",
+      descricao: "Compra cancelada",
+      valorTotal: "40.00",
+      valorParcela: "40.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+    }),
+    buildCompraCartaoViewFixture({
+      id: "a-quitada",
+      cartaoId: "card-a",
+      descricao: "Compra quitada",
+      valorTotal: "30.00",
+      valorParcela: "30.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+    }),
+    buildCompraCartaoViewFixture({
+      id: "b-parcelada-1",
+      cartaoId: "card-b",
+      descricao: "Compra parcelada 1",
+      valorTotal: "120.00",
+      valorParcela: "60.00",
+      parcelas: 2,
+      parcelaAtual: 1,
+    }),
+    buildCompraCartaoViewFixture({
+      id: "b-parcelada-2",
+      cartaoId: "card-b",
+      descricao: "Compra parcelada 2",
+      valorTotal: "80.00",
+      valorParcela: "80.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+    }),
+  ];
+  const parcelas = [
+    buildParcelaCompraViewFixture({
+      id: "a-avista-abr",
+      compraCartaoId: "a-avista",
+      numero: 1,
+      valor: "200.00",
+      dataVencimento: "2026-04-05",
+      statusCartao: "pendente",
+    }),
+    buildParcelaCompraViewFixture({
+      id: "a-parcelada-abr",
+      compraCartaoId: "a-parcelada",
+      numero: 1,
+      valor: "100.00",
+      dataVencimento: "2026-04-10",
+      statusCartao: "pendente",
+    }),
+    buildParcelaCompraViewFixture({
+      id: "a-parcelada-mai",
+      compraCartaoId: "a-parcelada",
+      numero: 2,
+      valor: "100.00",
+      dataVencimento: "2026-05-10",
+      statusCartao: "pendente",
+    }),
+    buildParcelaCompraViewFixture({
+      id: "a-reembolsada-abr",
+      compraCartaoId: "a-reembolsada",
+      numero: 1,
+      valor: "50.00",
+      dataVencimento: "2026-04-15",
+      statusCartao: "pendente",
+      statusPessoa: "pago",
+      dataPagamentoPessoa: "2026-04-16",
+    }),
+    buildParcelaCompraViewFixture({
+      id: "a-cancelada-abr",
+      compraCartaoId: "a-cancelada",
+      numero: 1,
+      valor: "40.00",
+      dataVencimento: "2026-04-18",
+      statusCartao: "cancelado",
+    }),
+    buildParcelaCompraViewFixture({
+      id: "a-quitada-abr",
+      compraCartaoId: "a-quitada",
+      numero: 1,
+      valor: "30.00",
+      dataVencimento: "2026-04-20",
+      statusCartao: "pago",
+      dataPagamentoCartao: "2026-04-20",
+    }),
+    buildParcelaCompraViewFixture({
+      id: "b-parcelada-1-abr",
+      compraCartaoId: "b-parcelada-1",
+      numero: 1,
+      valor: "60.00",
+      dataVencimento: "2026-04-08",
+      statusCartao: "pendente",
+    }),
+    buildParcelaCompraViewFixture({
+      id: "b-parcelada-1-mai",
+      compraCartaoId: "b-parcelada-1",
+      numero: 2,
+      valor: "60.00",
+      dataVencimento: "2026-05-08",
+      statusCartao: "pendente",
+    }),
+    buildParcelaCompraViewFixture({
+      id: "b-parcelada-2-abr",
+      compraCartaoId: "b-parcelada-2",
+      numero: 1,
+      valor: "80.00",
+      dataVencimento: "2026-04-22",
+      statusCartao: "pendente",
+    }),
+  ];
+  const grouped = groupParcelasCompraByCompraId(parcelas);
+
+  const summaryCardA = calculateCardLimitSummary("card-a", compras, grouped, "2026-04", "1000.00");
+  const summaryCardB = calculateCardLimitSummary("card-b", compras, grouped, "2026-04", "500.00");
+
+  assert.deepEqual(summaryCardA, {
+    faturaAtual: 350,
+    limiteComprometido: 450,
+    limiteDisponivel: 550,
+    saldoRestanteTotal: 450,
+    quantidadeParcelasPendentes: 4,
+  });
+  assert.deepEqual(summaryCardB, {
+    faturaAtual: 140,
+    limiteComprometido: 200,
+    limiteDisponivel: 300,
+    saldoRestanteTotal: 200,
+    quantidadeParcelasPendentes: 3,
+  });
+
+  assert.equal(calculateCardCurrentInvoiceTotal("card-a", compras, grouped, "2026-04"), 350);
+  assert.equal(calculateCardCurrentInvoiceTotal("card-b", compras, grouped, "2026-04"), 140);
+  assert.equal(calculateCardInvoiceForCompetency("card-a", compras, grouped, "2026-05"), 100);
+  assert.equal(calculateCardInvoiceForCompetency("card-b", compras, grouped, "2026-05"), 60);
+  assert.equal(calculateCardUsedLimit("card-a", compras, grouped), 450);
+  assert.equal(calculateCardUsedLimit("card-b", compras, grouped), 200);
 });
 
 test("compra cartao dialog: parse de moeda aceita formatos pt-BR e decimal", () => {

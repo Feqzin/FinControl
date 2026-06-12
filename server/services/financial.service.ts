@@ -7,6 +7,7 @@ import {
   calculateServicoRealChargeForCompetency,
   isServicoLinkedToCardCharge,
 } from "@shared/servico-periodicidade";
+import { buildCardLimitSummary } from "@shared/card-limit-summary";
 import type { FinancialRepository } from "../repositories/financial.repository";
 import { formatMoneyFixed, parseMoney, toCentsBigInt } from "../../utils/money";
 import { toErrorLog, writeTechnicalLog } from "../logger";
@@ -771,22 +772,16 @@ export class FinancialService {
 
     return cartoes.map((cartao) => {
       const cardRows = byCard.get(cartao.id) ?? [];
-      const faturaAtual = cardRows
-        .filter((row) => String(row.dataVencimento || "").startsWith(currentMonthReference))
-        .reduce(
-        (sum, row) => sum + toMoneyNumber(row.valor),
-        0,
-      );
-      const limiteComprometido = cardRows.reduce((sum, row) => sum + toMoneyNumber(row.valor), 0);
-      const limiteDisponivel = toMoneyNumber(cartao.limite) - limiteComprometido;
+      const summary = buildCardLimitSummary({
+        cartaoId: cartao.id,
+        limiteTotal: cartao.limite,
+        monthReference: currentMonthReference,
+        installments: cardRows,
+      });
 
       return {
         cartaoId: cartao.id,
-        faturaAtual: round2(faturaAtual),
-        limiteComprometido: round2(limiteComprometido),
-        limiteDisponivel: round2(limiteDisponivel),
-        saldoRestanteTotal: round2(limiteComprometido),
-        quantidadeParcelasPendentes: cardRows.length,
+        ...summary,
       };
     });
   }

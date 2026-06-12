@@ -4,8 +4,8 @@ import type { Cartao, CompraCartao, ParcelaCompra, Pessoa, PessoaSaldoMovimentac
 import { format } from "date-fns";
 import { toMoneyNumber } from "@/lib/money";
 import {
+  calculateCardLimitSummary,
   calculateCardCurrentInvoiceTotal,
-  calculateCardUsedLimit,
   groupParcelasCompraByCompraId,
 } from "@/lib/card-limit-usage";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
@@ -344,24 +344,37 @@ export function useCartoes(viewingCompraId?: string) {
     [cartoesResumo],
   );
   const fallbackLogsRef = useRef(new Set<string>());
+  const fallbackCardSummariesById = useMemo(() => {
+    const monthReference = format(new Date(), "yyyy-MM");
+    return new Map(
+      cartoes.map((cartao) => ([
+        cartao.id,
+        calculateCardLimitSummary(
+          cartao.id,
+          compras,
+          parcelasCompraByCompraId,
+          monthReference,
+          cartao.limite,
+        ),
+      ])),
+    );
+  }, [cartoes, compras, parcelasCompraByCompraId]);
 
   // FALLBACK TRANSITORIO:
   // Mantem compatibilidade enquanto a tela migra para a fonte de verdade
   // do backend (/api/cartoes/resumo).
   const getCardTotalFallback = (cartaoId: string) =>
-    calculateCardCurrentInvoiceTotal(
+    fallbackCardSummariesById.get(cartaoId)?.faturaAtual
+    ?? calculateCardCurrentInvoiceTotal(
       cartaoId,
       compras,
       parcelasCompraByCompraId,
       format(new Date(), "yyyy-MM"),
     );
   const getCardUsedLimitFallback = (cartaoId: string) =>
-    calculateCardUsedLimit(cartaoId, compras, parcelasCompraByCompraId);
-  const getCardAvailableLimitFallback = (cartaoId: string) => {
-    const cartao = cartoes.find((item) => item.id === cartaoId);
-    const limite = toMoneyNumber(cartao?.limite ?? 0);
-    return limite - getCardUsedLimitFallback(cartaoId);
-  };
+    fallbackCardSummariesById.get(cartaoId)?.limiteComprometido ?? 0;
+  const getCardAvailableLimitFallback = (cartaoId: string) =>
+    fallbackCardSummariesById.get(cartaoId)?.limiteDisponivel ?? 0;
 
   const logFallbackUsage = (metric: string, cartaoId: string, reason: "resumo_error" | "resumo_incompleto") => {
     const key = `${metric}:${cartaoId}:${reason}`;

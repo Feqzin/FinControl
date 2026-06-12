@@ -1,6 +1,13 @@
 import type { CompraCartao, ParcelaCompra } from "@shared/schema";
 import { addMonths, format, parseISO } from "date-fns";
 import { toMoneyNumber } from "@/lib/money";
+import {
+  buildCardLimitSummary,
+  getCardInstallmentMonthReference,
+  isCardInstallmentOutstandingStatus,
+  type CardLimitSummary,
+  type CardSummaryInstallment,
+} from "@shared/card-limit-summary";
 
 export type ParcelasCompraByCompraId = Map<string, ParcelaCompra[]>;
 
@@ -17,25 +24,11 @@ export function groupParcelasCompraByCompraId(parcelasCompra: ParcelaCompra[]): 
 }
 
 export function isParcelaComprometendoLimite(statusCartao: string | null | undefined): boolean {
-  const normalized = String(statusCartao ?? "").trim().toLowerCase();
-  return normalized !== "pago" && normalized !== "cancelado";
+  return isCardInstallmentOutstandingStatus(statusCartao);
 }
 
 export function getInvoiceCompetency(value: string | Date | null | undefined): string | null {
-  if (!value) return null;
-  if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) return null;
-    return format(value, "yyyy-MM");
-  }
-
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-  if (/^\d{4}-\d{2}/.test(raw)) return raw.slice(0, 7);
-  try {
-    return format(parseISO(raw), "yyyy-MM");
-  } catch {
-    return null;
-  }
+  return getCardInstallmentMonthReference(value);
 }
 
 function resolveLegacyInstallmentMonth(compra: CompraCartao, installmentNumber: number): string | null {
@@ -115,19 +108,64 @@ export function calculateComprometidoByCompra(
   compra: CompraCartao,
   parcelasMaterializadas: ParcelaCompra[] | undefined,
 ): number {
+  return buildOutstandingInstallmentsForCompra(compra, parcelasMaterializadas)
+    .reduce((acc, row) => acc + toMoneyNumber(row.valor), 0);
+}
+
+function buildOutstandingInstallmentsForCompra(
+  compra: CompraCartao,
+  parcelasMaterializadas: ParcelaCompra[] | undefined,
+): CardSummaryInstallment[] {
   if (parcelasMaterializadas && parcelasMaterializadas.length > 0) {
     return parcelasMaterializadas
       .filter((row) => isParcelaComprometendoLimite(row.statusCartao))
-      .reduce((acc, row) => acc + toMoneyNumber(row.valor), 0);
+      .map((row) => ({
+        cartaoId: compra.cartaoId,
+        valor: row.valor,
+        statusCartao: row.statusCartao,
+        dataVencimento: row.dataVencimento,
+      }));
   }
 
-  const parcelas = Math.max(1, Number(compra.parcelas) || 1);
-  const parcelaAtual = Math.min(Math.max(1, Number(compra.parcelaAtual) || 1), parcelas);
-  const parcelasRestantes = Math.max(parcelas - parcelaAtual + 1, 0);
-  const valorParcela = toMoneyNumber(compra.valorParcela);
-  const valorTotal = toMoneyNumber(compra.valorTotal);
+  const totalInstallments = normalizeInstallmentsTotal(compra);
+  const currentInstallment = normalizeCurrentInstallment(compra, totalInstallments);
+  const rows: CardSummaryInstallment[] = [];
 
-  return Math.min(valorParcela * parcelasRestantes, valorTotal || valorParcela * parcelas);
+  for (let installmentNumber = currentInstallment; installmentNumber <= totalInstallments; installmentNumber += 1) {
+    rows.push({
+      cartaoId: compra.cartaoId,
+      valor: compra.valorParcela,
+      statusCartao: "pendente",
+      dataVencimento: resolveLegacyInstallmentMonth(compra, installmentNumber),
+    });
+  }
+
+  return rows;
+}
+
+function buildOutstandingInstallmentsForCard(
+  cartaoId: string,
+  compras: CompraCartao[],
+  parcelasByCompraId: ParcelasCompraByCompraId,
+): CardSummaryInstallment[] {
+  return compras
+    .filter((compra) => compra.cartaoId === cartaoId)
+    .flatMap((compra) => buildOutstandingInstallmentsForCompra(compra, parcelasByCompraId.get(compra.id)));
+}
+
+export function calculateCardLimitSummary(
+  cartaoId: string,
+  compras: CompraCartao[],
+  parcelasByCompraId: ParcelasCompraByCompraId,
+  monthReference: string,
+  limiteTotal: string | number | null | undefined = 0,
+): CardLimitSummary {
+  return buildCardLimitSummary({
+    cartaoId,
+    limiteTotal,
+    monthReference,
+    installments: buildOutstandingInstallmentsForCard(cartaoId, compras, parcelasByCompraId),
+  });
 }
 
 export function calculateCardUsedLimit(
@@ -135,12 +173,12 @@ export function calculateCardUsedLimit(
   compras: CompraCartao[],
   parcelasByCompraId: ParcelasCompraByCompraId,
 ): number {
-  return compras
-    .filter((compra) => compra.cartaoId === cartaoId)
-    .reduce((sum, compra) => {
-      const parcelasMaterializadas = parcelasByCompraId.get(compra.id);
-      return sum + calculateComprometidoByCompra(compra, parcelasMaterializadas);
-    }, 0);
+  return calculateCardLimitSummary(
+    cartaoId,
+    compras,
+    parcelasByCompraId,
+    format(new Date(), "yyyy-MM"),
+  ).limiteComprometido;
 }
 
 export function calculateCardCurrentInvoiceTotal(
@@ -149,23 +187,12 @@ export function calculateCardCurrentInvoiceTotal(
   parcelasByCompraId: ParcelasCompraByCompraId,
   monthReference: string,
 ): number {
-  return compras
-    .filter((compra) => compra.cartaoId === cartaoId)
-    .reduce((sum, compra) => {
-      const parcelasMaterializadas = parcelasByCompraId.get(compra.id);
-      if (parcelasMaterializadas && parcelasMaterializadas.length > 0) {
-        const monthlyOpenTotal = filterParcelasByCompetency(parcelasMaterializadas, monthReference)
-          .filter((row) => isParcelaComprometendoLimite(row.statusCartao))
-          .reduce((acc, row) => acc + toMoneyNumber(row.valor), 0);
-        return sum + monthlyOpenTotal;
-      }
-
-      const totalInstallments = normalizeInstallmentsTotal(compra);
-      const currentInstallment = normalizeCurrentInstallment(compra, totalInstallments);
-      const legacyInstallmentMonth = resolveLegacyInstallmentMonth(compra, currentInstallment);
-      if (legacyInstallmentMonth !== monthReference) return sum;
-      return sum + toMoneyNumber(compra.valorParcela);
-    }, 0);
+  return calculateCardLimitSummary(
+    cartaoId,
+    compras,
+    parcelasByCompraId,
+    monthReference,
+  ).faturaAtual;
 }
 
 export function calculateCardInvoiceForCompetency(
