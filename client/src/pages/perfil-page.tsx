@@ -1030,9 +1030,9 @@ export default function PerfilPage() {
       />
 
       <PerfilUsageModeCard
-        isVisible={perfilTab === "conta"}
+        isVisible={perfilTab === "backup"}
         title="Modo de uso"
-        introText="Escolha como prefere navegar no FinControl. Você pode trocar a qualquer momento."
+        introText="Escolha como prefere navegar no FinControl. Essa preferência fica salva para sua conta neste dispositivo."
         usageMode={prefs.usageMode}
         onUsageModeChange={setUsageMode}
         currentModeDescription={modoUsoTexto}
