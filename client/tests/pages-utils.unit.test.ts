@@ -64,6 +64,7 @@ import {
   compraHasInstallmentInCompetency,
   compraHasOpenInstallmentInMonth,
   filterParcelasByCompetency,
+  getNextOutstandingCardInvoiceSnapshot,
   getInvoiceCompetency,
   groupParcelasCompraByCompraId,
 } from "../src/lib/card-limit-usage";
@@ -115,6 +116,7 @@ import {
 import {
   calculateServicoEquivalentMonthlyAmount,
   calculateServicoMonthlyFinancialImpactAmount,
+  calculateServicoRealMonthlyExpenseAmount,
   calculateServicoValorMensalEquivalente,
   calculateServicoRealChargeForCompetency,
   getServicoBillingDisplayInfo,
@@ -1800,6 +1802,90 @@ test("card limit usage: regra global calcula todos os cartões sem depender de b
   assert.equal(calculateCardInvoiceForCompetency("card-b", compras, grouped, "2026-05"), 60);
   assert.equal(calculateCardUsedLimit("card-a", compras, grouped), 450);
   assert.equal(calculateCardUsedLimit("card-b", compras, grouped), 200);
+});
+
+test("card limit usage: próxima fatura futura não infla a fatura atual do mesmo mês", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "mercado-pago-julho",
+    cartaoId: "mercado-pago-visa",
+    descricao: "Mercado Pago Visa",
+    valorTotal: "1087.00",
+    valorParcela: "1087.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+    dataCompra: "2026-06-20",
+  });
+  const grouped = groupParcelasCompraByCompraId([
+    buildParcelaCompraViewFixture({
+      id: "mercado-pago-julho-1",
+      compraCartaoId: compra.id,
+      numero: 1,
+      valor: "1087.00",
+      dataVencimento: "2026-07-15",
+      statusCartao: "pendente",
+    }),
+  ]);
+
+  assert.equal(
+    calculateCardInvoiceForCompetency("mercado-pago-visa", [compra], grouped, "2026-06"),
+    0,
+  );
+  assert.deepEqual(
+    getNextOutstandingCardInvoiceSnapshot("mercado-pago-visa", [compra], grouped, 15),
+    {
+      monthReference: "2026-07",
+      dueDate: "2026-07-15",
+      total: 1087,
+      installmentCount: 1,
+    },
+  );
+});
+
+test("card limit usage: parcelas pagas ou canceladas não geram próxima fatura em aberto", () => {
+  const compraPaga = buildCompraCartaoViewFixture({
+    id: "mercado-pago-paga",
+    cartaoId: "mercado-pago-visa",
+    valorTotal: "500.00",
+    valorParcela: "500.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+  });
+  const compraCancelada = buildCompraCartaoViewFixture({
+    id: "mercado-pago-cancelada",
+    cartaoId: "mercado-pago-visa",
+    valorTotal: "587.00",
+    valorParcela: "587.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+  });
+  const grouped = groupParcelasCompraByCompraId([
+    buildParcelaCompraViewFixture({
+      id: "mercado-pago-paga-1",
+      compraCartaoId: compraPaga.id,
+      numero: 1,
+      valor: "500.00",
+      dataVencimento: "2026-07-15",
+      statusCartao: "pago",
+      dataPagamentoCartao: "2026-07-15",
+    }),
+    buildParcelaCompraViewFixture({
+      id: "mercado-pago-cancelada-1",
+      compraCartaoId: compraCancelada.id,
+      numero: 1,
+      valor: "587.00",
+      dataVencimento: "2026-07-15",
+      statusCartao: "cancelado",
+    }),
+  ]);
+
+  assert.equal(
+    calculateCardInvoiceForCompetency("mercado-pago-visa", [compraPaga, compraCancelada], grouped, "2026-07"),
+    0,
+  );
+  assert.equal(
+    getNextOutstandingCardInvoiceSnapshot("mercado-pago-visa", [compraPaga, compraCancelada], grouped, 15),
+    null,
+  );
 });
 
 test("cartoes reembolso status: parcela paga no cartao com reembolso pendente continua aguardando reembolso", () => {
@@ -4971,6 +5057,7 @@ test("dashboard serviços: usa métricas detalhadas quando disponíveis", () => 
 
   assert.equal(metrics.hasDetailedMetrics, true);
   assert.equal(metrics.totalLegacy, 120);
+  assert.equal(metrics.realMonthlyTotal, 90);
   assert.equal(metrics.equivalenteMensalTotal, 139.15);
   assert.equal(metrics.cobrancaRealCompetenciaTotal, 319.82);
   assert.equal(metrics.vinculadosCartaoEquivalenteMensalTotal, 19.15);
@@ -4986,6 +5073,7 @@ test("dashboard serviços: fallback compatível quando campos novos estão ausen
 
   assert.equal(metrics.hasDetailedMetrics, false);
   assert.equal(metrics.totalLegacy, 80);
+  assert.equal(metrics.realMonthlyTotal, 80);
   assert.equal(metrics.equivalenteMensalTotal, 80);
   assert.equal(metrics.cobrancaRealCompetenciaTotal, 80);
   assert.equal(metrics.vinculadosCartaoEquivalenteMensalTotal, 0);
@@ -5126,4 +5214,36 @@ test("serviços: impacto financeiro mensal exclui valores já representados por 
   assert.equal(calculateServicoMonthlyFinancialImpactAmount(servicoAnualVinculado), 0);
   assert.equal(calculateServicoMonthlyFinancialImpactAmount(servicoAnualSemVinculo), 19.15);
   assert.equal(calculateServicoMonthlyFinancialImpactAmount(servicoMensal), 50);
+});
+
+test("serviços: gasto fixo real mensal usa a competência e evita duplicidade com cartão", () => {
+  const servicoAnualVinculado = {
+    ...buildServicoFixture({
+      periodicidadeCobranca: "anual",
+      valorCobranca: "229.82",
+      valorMensal: "19.15",
+      compraCartaoId: "compra-1",
+    }),
+    competenciaBase: "2026-05",
+  };
+  const servicoAnualSemVinculo = {
+    ...buildServicoFixture({
+      periodicidadeCobranca: "anual",
+      valorCobranca: "229.82",
+      valorMensal: "19.15",
+      compraCartaoId: null,
+    }),
+    competenciaBase: "2026-05",
+  };
+  const servicoMensal = buildServicoFixture({
+    periodicidadeCobranca: "mensal",
+    valorCobranca: "50.00",
+    valorMensal: "50.00",
+    compraCartaoId: null,
+  });
+
+  assert.equal(calculateServicoRealMonthlyExpenseAmount(servicoAnualVinculado, "2026-05"), 0);
+  assert.equal(calculateServicoRealMonthlyExpenseAmount(servicoAnualSemVinculo, "2026-05"), 229.82);
+  assert.equal(calculateServicoRealMonthlyExpenseAmount(servicoAnualSemVinculo, "2026-06"), 0);
+  assert.equal(calculateServicoRealMonthlyExpenseAmount(servicoMensal, "2026-06"), 50);
 });

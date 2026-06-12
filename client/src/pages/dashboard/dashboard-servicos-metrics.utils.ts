@@ -2,6 +2,7 @@ import type { FinancialSummary } from "@shared/financial";
 
 export type DashboardServicosMetrics = {
   totalLegacy: number;
+  realMonthlyTotal: number;
   equivalenteMensalTotal: number;
   cobrancaRealCompetenciaTotal: number;
   vinculadosCartaoEquivalenteMensalTotal: number;
@@ -68,9 +69,13 @@ export function resolveDashboardServicosMetrics(
     summary?.servicosNaoVinculadosCartaoCobrancaRealTotal,
     derivedNaoVinculadosCobranca,
   );
+  const realMonthlyTotal = hasDetailedMetrics
+    ? naoVinculadosCartaoCobrancaRealTotal
+    : totalLegacy;
 
   return {
     totalLegacy,
+    realMonthlyTotal,
     equivalenteMensalTotal,
     cobrancaRealCompetenciaTotal,
     vinculadosCartaoEquivalenteMensalTotal,
@@ -80,4 +85,3 @@ export function resolveDashboardServicosMetrics(
     hasDetailedMetrics,
   };
 }
-

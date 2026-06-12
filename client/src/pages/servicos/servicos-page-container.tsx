@@ -59,7 +59,7 @@ import {
 import { formatCurrencyBRL } from "@/utils/formatters";
 import type { Servico } from "@shared/schema";
 import {
-  calculateServicoMonthlyFinancialImpactAmount,
+  calculateServicoRealMonthlyExpenseAmount,
   resolveServicoBillingFields,
   type ServicoPeriodicidade,
 } from "@shared/servico-periodicidade";
@@ -262,7 +262,7 @@ export default function ServicosPage() {
 
   const totalMensal = servicos
     .filter((s) => s.status === "ativo")
-    .reduce((sum, servico) => sum + calculateServicoMonthlyFinancialImpactAmount(servico), 0);
+    .reduce((sum, servico) => sum + calculateServicoRealMonthlyExpenseAmount(servico, mesReferencia), 0);
 
   const mesAtual = mesReferencia;
 
@@ -418,7 +418,7 @@ export default function ServicosPage() {
       if (existing) {
         existing.servicos.push(servico);
         if (servico.status === "ativo") {
-          existing.total += calculateServicoMonthlyFinancialImpactAmount(servico);
+          existing.total += calculateServicoRealMonthlyExpenseAmount(servico, mesReferencia);
         }
         return groups;
       }
@@ -427,7 +427,7 @@ export default function ServicosPage() {
         value: servico.categoria,
         label: categoriaLabelByValue.get(servico.categoria) ?? formatCategoriaFallback(servico.categoria),
         servicos: [servico],
-        total: servico.status === "ativo" ? calculateServicoMonthlyFinancialImpactAmount(servico) : 0,
+        total: servico.status === "ativo" ? calculateServicoRealMonthlyExpenseAmount(servico, mesReferencia) : 0,
       });
       return groups;
     },
@@ -826,7 +826,7 @@ export default function ServicosPage() {
           <CardContent className="p-5 sm:p-6">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <p className="text-sm text-muted-foreground/90">Total mensal em serviços ativos</p>
+                <p className="text-sm text-muted-foreground/90">Total real do mês em serviços ativos</p>
                 <p className="fin-value-kpi mt-2 tracking-tight">{formatCurrencyBRL(totalMensal)}</p>
               </div>
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-amber-500/10 bg-amber-500/10 shadow-sm">

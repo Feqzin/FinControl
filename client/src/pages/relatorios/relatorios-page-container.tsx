@@ -169,7 +169,7 @@ export default function RelatoriosPageContainer() {
     const totalServicosNaoVinculadosCartaoMediaMensal = servicosMetrics.nonLinkedCardMonthlyAverageTotal;
     const totalServicosNaoVinculadosCartaoCobrancaRealPeriodo = servicosMetrics.nonLinkedCardRealChargeInPeriodTotal;
 
-    const saldoLiquido = totalRenda - totalCartoes - (totalServicosMensal * monthsInPeriod);
+    const saldoLiquido = totalRenda - totalCartoes - totalServicosNaoVinculadosCartaoCobrancaRealPeriodo;
 
     return {
       compras: periodCompras,

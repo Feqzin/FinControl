@@ -314,6 +314,14 @@ export function calculateServicoRealChargeForCompetency(
   return mod === 0 ? (valorCobrancaCents / 100) : 0;
 }
 
+export function calculateServicoRealMonthlyExpenseAmount(
+  servico: ServicoPeriodicidadeComputationLike,
+  competencia: string,
+): number {
+  if (isServicoLinkedToCardCharge(servico)) return 0;
+  return calculateServicoRealChargeForCompetency(servico, competencia);
+}
+
 export function isServicoLinkedToCardCharge(servico: ServicoPeriodicidadeComputationLike): boolean {
   const compraCartaoId = typeof servico.compraCartaoId === "string" ? servico.compraCartaoId.trim() : "";
   if (compraCartaoId.length > 0) return true;

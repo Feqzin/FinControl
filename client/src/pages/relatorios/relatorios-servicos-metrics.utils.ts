@@ -3,6 +3,7 @@ import type { ReportsOverviewSummary } from "@shared/reports";
 import {
   calculateServicoEquivalentMonthlyAmount,
   calculateServicoMonthlyFinancialImpactAmount,
+  calculateServicoRealMonthlyExpenseAmount,
   calculateServicoRealChargeForCompetency,
   getServicoBillingDisplayInfo,
   isServicoLinkedToCardCharge,
@@ -122,7 +123,13 @@ export function buildRelatoriosServicosMetrics({
       }, 0),
   );
   const computedNonLinkedRealChargeInPeriodTotal = round2(
-    Math.max(0, computedRealChargeInPeriodTotal - computedLinkedRealChargeInPeriodTotal),
+    activeServicos.reduce((sum, servico) => {
+      const charge = competencies.reduce(
+        (acc, competency) => acc + calculateServicoRealMonthlyExpenseAmount(servico, competency),
+        0,
+      );
+      return sum + charge;
+    }, 0),
   );
 
   const monthlyAverageTotal = toMoney(

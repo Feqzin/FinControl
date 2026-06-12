@@ -7,8 +7,16 @@ import { ptBR } from "date-fns/locale";
 import { AlertTriangle, Bell, CheckCircle, CreditCard, TrendingDown } from "lucide-react";
 import { maskValue } from "@/context/values-visibility";
 import { toMoneyNumber } from "@/lib/money";
-import { calculateServicoMonthlyFinancialImpactAmount, isServicoLinkedToCardCharge } from "@shared/servico-periodicidade";
-import { calculateCardUsedLimit, groupParcelasCompraByCompraId } from "@/lib/card-limit-usage";
+import {
+  calculateServicoMonthlyFinancialImpactAmount,
+  calculateServicoRealMonthlyExpenseAmount,
+  isServicoLinkedToCardCharge,
+} from "@shared/servico-periodicidade";
+import {
+  calculateCardUsedLimit,
+  getNextOutstandingCardInvoiceSnapshot,
+  groupParcelasCompraByCompraId,
+} from "@/lib/card-limit-usage";
 import { fetchDashboardOverview, fetchFinancialSummary } from "@/services/api/dashboard";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { resolveDashboardServicosMetrics } from "@/pages/dashboard/dashboard-servicos-metrics.utils";
@@ -265,6 +273,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       { isLoading: pessoasQuery.isLoading, isError: pessoasQuery.isError, error: pessoasQuery.error },
       { isLoading: cartoesQuery.isLoading, isError: cartoesQuery.isError, error: cartoesQuery.error },
       { isLoading: comprasQuery.isLoading, isError: comprasQuery.isError, error: comprasQuery.error },
+      { isLoading: parcelasCompraQuery.isLoading, isError: parcelasCompraQuery.isError, error: parcelasCompraQuery.error },
     ]),
     pagarSemana: combineSectionStatus([
       { isLoading: dividasQuery.isLoading, isError: dividasQuery.isError, error: dividasQuery.error },
@@ -272,6 +281,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       { isLoading: cartoesQuery.isLoading, isError: cartoesQuery.isError, error: cartoesQuery.error },
       { isLoading: comprasQuery.isLoading, isError: comprasQuery.isError, error: comprasQuery.error },
       { isLoading: pessoasQuery.isLoading, isError: pessoasQuery.isError, error: pessoasQuery.error },
+      { isLoading: parcelasCompraQuery.isLoading, isError: parcelasCompraQuery.isError, error: parcelasCompraQuery.error },
     ]),
   } as const;
 
@@ -296,7 +306,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
 
   const totalRenda = financialSummary?.totalRenda ?? 0;
   const totalPatrimonio = patrimonios.reduce((s, p) => s + toMoneyNumber(p.valorAtual), 0);
-  const totalServicos = servicosMetrics.totalLegacy;
+  const totalServicos = servicosMetrics.realMonthlyTotal;
   const servicosEquivalenteMensalTotal = servicosMetrics.equivalenteMensalTotal;
   const servicosCobrancaRealCompetenciaTotal = servicosMetrics.cobrancaRealCompetenciaTotal;
   const servicosVinculadosCartaoEquivalenteMensalTotal = servicosMetrics.vinculadosCartaoEquivalenteMensalTotal;
@@ -309,8 +319,8 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const ReceberMes = totalReceber;
   const totalPagarMes = totalPagar;
   const totalEntradas = financialSummary?.totalEntradas ?? 0;
-  const totalSaidas = financialSummary?.totalSaidas ?? 0;
-  const saldoPrevisto = financialSummary?.saldo ?? 0;
+  const totalSaidas = totalPagarMes + totalServicos + totalCartoesMes;
+  const saldoPrevisto = totalEntradas - totalSaidas;
 
   const saldoColor =
     saldoPrevisto > 0 ? "text-emerald-600"
@@ -323,6 +333,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     : "bg-red-500/10 text-red-600";
 
   const today = format(new Date(), "yyyy-MM-dd");
+  const todayMonthReference = format(new Date(), "yyyy-MM");
   const in5Days = format(new Date(Date.now() + 5 * 86400000), "yyyy-MM-dd");
   const in7Days = format(addDays(new Date(), 7), "yyyy-MM-dd");
 
@@ -352,21 +363,42 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     return format(nextMonth, "yyyy-MM-dd");
   };
 
+  const formatInvoiceMonthLabel = (monthReference: string): string => {
+    try {
+      const label = format(parseISO(`${monthReference}-01`), "MMMM 'de' yyyy", { locale: ptBR });
+      return label.charAt(0).toUpperCase() + label.slice(1);
+    } catch {
+      return monthReference;
+    }
+  };
+
+  const parcelasCompraByCompraId = useMemo(
+    () => groupParcelasCompraByCompraId(parcelasCompra),
+    [parcelasCompra],
+  );
+
   const proximosVencimentos: VencimentoItem[] = useMemo(() => {
     const items: VencimentoItem[] = [];
 
     cartoes.forEach((c) => {
-      const usado = compras.filter((cc) => cc.cartaoId === c.id).reduce((s, cc) => s + toMoneyNumber(cc.valorParcela), 0);
-      if (usado <= 0) return;
-      const dataVenc = getNextDueDate(c.diaVencimento);
+      const proximaFatura = getNextOutstandingCardInvoiceSnapshot(
+        c.id,
+        compras,
+        parcelasCompraByCompraId,
+        c.diaVencimento,
+      );
+      if (!proximaFatura || proximaFatura.total <= 0) return;
+      const dataVenc = proximaFatura.dueDate ?? getNextDueDate(c.diaVencimento);
       if (!dataVenc) return;
       const daysUntil = differenceInDays(parseISO(dataVenc), new Date());
+      const invoiceMonthLabel = formatInvoiceMonthLabel(proximaFatura.monthReference);
+      const futureInvoiceLabel = proximaFatura.monthReference !== todayMonthReference ? " · Próxima fatura" : "";
       items.push({
-        id: `cartao-${c.id}`,
+        id: `cartao-${c.id}-${proximaFatura.monthReference}`,
         tipo: "cartao",
-        nome: `Fatura ${c.nome}`,
-        subtitulo: daysUntil === 0 ? "Vence hoje" : daysUntil < 0 ? `Venceu há ${Math.abs(daysUntil)}d` : `Vence em ${daysUntil} dia${daysUntil === 1 ? "" : "s"}`,
-        valor: usado,
+        nome: `Fatura ${c.nome} · ${invoiceMonthLabel}`,
+        subtitulo: `${daysUntil === 0 ? "Vence hoje" : daysUntil < 0 ? `Venceu há ${Math.abs(daysUntil)}d` : `Vence em ${daysUntil} dia${daysUntil === 1 ? "" : "s"}`}${futureInvoiceLabel}`,
+        valor: proximaFatura.total,
         dataVenc,
       });
     });
@@ -403,17 +435,8 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
         dataVenc,
       });
     });
-
     return items.sort((a, b) => a.dataVenc.localeCompare(b.dataVenc));
-  }, [cartoes, compras, dividas, pessoas, servicos, today]);
-
-  const getCardUsage = (cartaoId: string) =>
-    compras.filter((c) => c.cartaoId === cartaoId).reduce((s, c) => s + toMoneyNumber(c.valorParcela), 0);
-
-  const parcelasCompraByCompraId = useMemo(
-    () => groupParcelasCompraByCompraId(parcelasCompra),
-    [parcelasCompra],
-  );
+  }, [cartoes, compras, dividas, formatInvoiceMonthLabel, parcelasCompraByCompraId, pessoas, servicos, today, todayMonthReference]);
 
   const getCardUsedLimit = (cartaoId: string) => calculateCardUsedLimit(cartaoId, compras, parcelasCompraByCompraId);
 
@@ -435,13 +458,21 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       });
 
     cartoes.forEach((c) => {
-      const usado = compras.filter((cc) => cc.cartaoId === c.id).reduce((s, cc) => s + toMoneyNumber(cc.valorParcela), 0);
-      if (usado <= 0) return;
-      const now = new Date();
-      const vencDate = new Date(now.getFullYear(), now.getMonth(), c.diaVencimento);
-      const vencStr = format(vencDate, "yyyy-MM-dd");
-      if (vencStr >= today && vencStr <= in7Days) {
-        items.push({ id: `cat-${c.id}`, title: `Fatura ${c.nome}`, dateStr: vencStr, amount: usado, type: "cartao" });
+      const proximaFatura = getNextOutstandingCardInvoiceSnapshot(
+        c.id,
+        compras,
+        parcelasCompraByCompraId,
+        c.diaVencimento,
+      );
+      if (!proximaFatura?.dueDate || proximaFatura.total <= 0) return;
+      if (proximaFatura.dueDate >= today && proximaFatura.dueDate <= in7Days) {
+        items.push({
+          id: `cat-${c.id}-${proximaFatura.monthReference}`,
+          title: `Fatura ${c.nome} · ${formatInvoiceMonthLabel(proximaFatura.monthReference)}`,
+          dateStr: proximaFatura.dueDate,
+          amount: proximaFatura.total,
+          type: "cartao",
+        });
       }
     });
 
@@ -460,7 +491,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     });
 
     return items.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
-  }, [compras, dividas, in7Days, pessoas, servicos, today, cartoes]);
+  }, [cartoes, compras, dividas, in7Days, parcelasCompraByCompraId, pessoas, servicos, today]);
 
   const alertCartoes = cartoes.filter((c) => {
     const usado = getCardUsedLimit(c.id);
@@ -500,15 +531,30 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const gastosFixosTooltip = useMemo(() => {
     const items = servicos.filter((s) => s.status === "ativo");
     if (items.length === 0) return ["Nenhum serviço ativo."];
+    const impactingItems = items
+      .map((servico) => ({
+        nome: servico.nome,
+        valor: calculateServicoRealMonthlyExpenseAmount(servico, selectedMonth),
+      }))
+      .filter((item) => item.valor > 0);
     const hasLinkedCardServices = items.some((servico) => isServicoLinkedToCardCharge(servico));
+
+    if (impactingItems.length === 0) {
+      return [
+        "Nenhum serviço sem cartão cobra neste mês.",
+        ...(hasLinkedCardServices ? ["Serviços vinculados ao cartão já entram na fatura."] : []),
+      ];
+    }
+
     return [
-      "Serviços ativos:",
-      ...items.map((s) => `• ${s.nome} — ${mask(formatCurrencyBRL(toMoneyNumber(s.valorMensal)))}/mês`),
+      "Cobranças reais de serviços neste mês:",
+      ...impactingItems.map((item) => `• ${item.nome} — ${mask(formatCurrencyBRL(item.valor))}`),
       ...(hasLinkedCardServices
         ? ["Serviços vinculados ao cartão já entram na fatura."]
         : []),
     ];
   }, [
+    selectedMonth,
     servicos,
     visible,
   ]);
@@ -523,7 +569,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       "SAÍDAS",
       `• Cartões: ${mask(formatCurrencyBRL(totalCartoesMes))}`,
       `• A pagar (mês): ${mask(formatCurrencyBRL(totalPagarMes))}`,
-      `• Serviços (média mensal): ${mask(formatCurrencyBRL(totalServicos))}`,
+      `• Serviços (real do mês): ${mask(formatCurrencyBRL(totalServicos))}`,
       `Total saídas: ${mask(formatCurrencyBRL(totalSaidas))}`,
       "---",
       `Saldo = ${mask(formatCurrencyBRL(totalEntradas))} - ${mask(formatCurrencyBRL(totalSaidas))} = ${mask(formatCurrencyBRL(saldoPrevisto))}`,

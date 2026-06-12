@@ -18,7 +18,7 @@ import {
 } from "@/components/layout/fintech-loading-shell";
 import { ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown, Wallet } from "lucide-react";
 import type { Divida, Servico, Renda } from "@shared/schema";
-import { calculateServicoMonthlyFinancialImpactAmount } from "@shared/servico-periodicidade";
+import { calculateServicoRealMonthlyExpenseAmount } from "@shared/servico-periodicidade";
 import { format, getDaysInMonth } from "date-fns";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 
@@ -51,6 +51,12 @@ export default function PrevisaoPage() {
 
   const rendasAtivas = rendas.filter((r) => r.ativo);
   const servicosAtivos = servicos.filter((s) => s.status === "ativo");
+  const servicosSaidaMes = servicosAtivos
+    .map((servico) => ({
+      servico,
+      valor: calculateServicoRealMonthlyExpenseAmount(servico, currentMonth),
+    }))
+    .filter((item) => item.valor > 0);
   const rendaMensal = rendasAtivas.reduce((s, r) => s + Number(r.valor), 0);
 
   const receberDividas = dividas
@@ -63,9 +69,7 @@ export default function PrevisaoPage() {
     .filter((d) => d.tipo === "pagar" && d.status === "pendente" && (d.dataVencimento || "").startsWith(currentMonth))
     .reduce((s, d) => s + Number(d.valor), 0);
 
-  const servicosMes = servicosAtivos.reduce((sum, servico) => (
-    sum + calculateServicoMonthlyFinancialImpactAmount(servico)
-  ), 0);
+  const servicosMes = servicosSaidaMes.reduce((sum, item) => sum + item.valor, 0);
 
   const totalSaida = pagarDividas + servicosMes;
   const saldoPrevisto = totalEntradas - totalSaida;
@@ -98,9 +102,9 @@ export default function PrevisaoPage() {
       }
     }
 
-    for (const s of servicos) {
-      if (s.status === "ativo" && Number(s.dataCobranca) === day) {
-        saidas += calculateServicoMonthlyFinancialImpactAmount(s);
+    for (const { servico, valor } of servicosSaidaMes) {
+      if (Number(servico.dataCobranca) === day) {
+        saidas += valor;
       }
     }
 
@@ -366,7 +370,7 @@ export default function PrevisaoPage() {
           <CardHeader className="space-y-2 pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <ArrowDownRight className="w-4 h-4 text-red-600" />
-              Saídas previstas ({saidasDividas.length + servicosAtivos.length})
+              Saídas previstas ({saidasDividas.length + servicosSaidaMes.length})
             </CardTitle>
             <p className="text-sm text-muted-foreground">
               Compromissos que pressionam o saldo previsto do mês.
@@ -374,16 +378,16 @@ export default function PrevisaoPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {servicosAtivos.map((s) => (
-                <div key={s.id} className="flex flex-col gap-2 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between">
+              {servicosSaidaMes.map(({ servico, valor }) => (
+                <div key={servico.id} className="flex flex-col gap-2 rounded-2xl border border-border/50 bg-background/80 p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground break-words">{s.nome}</p>
+                    <p className="text-sm font-semibold text-foreground break-words">{servico.nome}</p>
                     <div className="flex flex-wrap items-center gap-1">
-                      <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 shadow-sm">{s.categoria}</Badge>
-                      <span className="text-xs text-muted-foreground">Dia {s.dataCobranca}</span>
+                      <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 shadow-sm">{servico.categoria}</Badge>
+                      <span className="text-xs text-muted-foreground">Dia {servico.dataCobranca}</span>
                     </div>
                   </div>
-                  <span className="text-sm font-semibold text-red-600 [overflow-wrap:anywhere] sm:shrink-0">{mask(formatCurrency(Number(s.valorMensal)))}</span>
+                  <span className="text-sm font-semibold text-red-600 [overflow-wrap:anywhere] sm:shrink-0">{mask(formatCurrency(valor))}</span>
                 </div>
               ))}
               {saidasDividas.map((d) => (
@@ -395,7 +399,7 @@ export default function PrevisaoPage() {
                   <span className="text-sm font-semibold text-red-600 [overflow-wrap:anywhere] sm:shrink-0">{mask(formatCurrency(Number(d.valor)))}</span>
                 </div>
               ))}
-              {saidasDividas.length === 0 && servicosAtivos.length === 0 && (
+              {saidasDividas.length === 0 && servicosSaidaMes.length === 0 && (
                 <FintechEmptyState
                   icon={<ArrowDownRight className="h-5 w-5 text-red-600" />}
                   title="Nenhuma saída prevista"

@@ -1,4 +1,5 @@
 import type { CompraCartao, ParcelaCompra } from "@shared/schema";
+import { resolveDueDateFromCompetencia } from "@shared/parcelas-compra-competency";
 import { addMonths, format, parseISO } from "date-fns";
 import { toMoneyNumber } from "@/lib/money";
 import {
@@ -10,6 +11,12 @@ import {
 } from "@shared/card-limit-summary";
 
 export type ParcelasCompraByCompraId = Map<string, ParcelaCompra[]>;
+export type CardInvoiceSnapshot = {
+  monthReference: string;
+  dueDate: string | null;
+  total: number;
+  installmentCount: number;
+};
 
 // Regras locais de limite ficam como fallback transitorio.
 // Fonte oficial de calculo: backend /api/cartoes/resumo.
@@ -151,6 +158,61 @@ function buildOutstandingInstallmentsForCard(
   return compras
     .filter((compra) => compra.cartaoId === cartaoId)
     .flatMap((compra) => buildOutstandingInstallmentsForCompra(compra, parcelasByCompraId.get(compra.id)));
+}
+
+export function listOutstandingCardInvoiceSnapshots(
+  cartaoId: string,
+  compras: CompraCartao[],
+  parcelasByCompraId: ParcelasCompraByCompraId,
+  diaVencimento?: number | null,
+): CardInvoiceSnapshot[] {
+  const grouped = new Map<string, CardInvoiceSnapshot>();
+
+  for (const installment of buildOutstandingInstallmentsForCard(cartaoId, compras, parcelasByCompraId)) {
+    const monthReference = getCardInstallmentMonthReference(installment.dataVencimento);
+    if (!monthReference) continue;
+
+    const fallbackDataVencimento = typeof installment.dataVencimento === "string"
+      ? installment.dataVencimento
+      : null;
+    const dueDate = resolveDueDateFromCompetencia({
+      competencia: monthReference,
+      diaVencimento,
+      fallbackDataVencimento,
+    });
+
+    const current = grouped.get(monthReference);
+    if (current) {
+      current.total = Math.round((current.total + toMoneyNumber(installment.valor)) * 100) / 100;
+      current.installmentCount += 1;
+      if (!current.dueDate || (dueDate && dueDate < current.dueDate)) {
+        current.dueDate = dueDate;
+      }
+      continue;
+    }
+
+    grouped.set(monthReference, {
+      monthReference,
+      dueDate,
+      total: Math.round(toMoneyNumber(installment.valor) * 100) / 100,
+      installmentCount: 1,
+    });
+  }
+
+  return Array.from(grouped.values()).sort((a, b) => {
+    const left = a.dueDate ?? `${a.monthReference}-99`;
+    const right = b.dueDate ?? `${b.monthReference}-99`;
+    return left.localeCompare(right);
+  });
+}
+
+export function getNextOutstandingCardInvoiceSnapshot(
+  cartaoId: string,
+  compras: CompraCartao[],
+  parcelasByCompraId: ParcelasCompraByCompraId,
+  diaVencimento?: number | null,
+): CardInvoiceSnapshot | null {
+  return listOutstandingCardInvoiceSnapshots(cartaoId, compras, parcelasByCompraId, diaVencimento)[0] ?? null;
 }
 
 export function calculateCardLimitSummary(
