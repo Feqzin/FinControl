@@ -86,6 +86,7 @@ import {
   matchPurchaseIconByDescription,
 } from "../src/lib/purchase-icon-matching";
 import {
+  resolveEntityDisplayIconId,
   resolveEntityIconIdForSave,
   resolveEntityIconReference,
   resolveEntityIconSuggestion,
@@ -3672,6 +3673,26 @@ test("icon matching: desativação por usuário impede autoaplicação do ícone
   assert.equal(result.shouldAutoApply, false);
 });
 
+test("icon matching: regra pessoal para ícone padrão desativado também é bloqueada", () => {
+  const result = matchIconByText("Mercado Pago", [
+    {
+      id: "pref-disable-mercado-pago",
+      iconId: BUILTIN_ICON_PREFERENCE_RULE_ICON_ID,
+      originalTerm: buildBuiltinIconDisablePreferenceTerm("mercadopago"),
+      normalizedTerm: "builtin icon disabled mercado pago",
+    },
+    {
+      id: "rule-mercado-pago",
+      iconId: "mercadopago",
+      originalTerm: "mercado pago",
+      normalizedTerm: "mercado pago",
+    },
+  ]);
+
+  assert.equal(result.iconId, null);
+  assert.equal(result.shouldAutoApply, false);
+});
+
 test("icon matching: desativação do padrão não bloqueia regra pessoal forte", () => {
   const personalIconId = "data:image/svg+xml;base64,custom-netflix";
   const result = matchPurchaseIconByDescription("Netflix.comsaopaulobr", [
@@ -3692,6 +3713,59 @@ test("icon matching: desativação do padrão não bloqueia regra pessoal forte"
   assert.equal(result.iconId, personalIconId);
   assert.equal(result.source, "personal_rule");
   assert.equal(result.shouldAutoApply, true);
+});
+
+test("entity icon suggestion: ícone oficial inativo na biblioteca não pode ser sugerido automaticamente", () => {
+  const suggestion = resolveEntityIconSuggestion({
+    name: "Mercado Pago",
+    userRules: [
+      {
+        id: "rule-user-mercado-pago",
+        iconId: "https://cdn.fincontrol.dev/icons/mercado-pago.png",
+        normalizedTerm: "mercado pago",
+        originalTerm: "mercado pago",
+      },
+    ],
+    userIcons: [
+      {
+        id: "user-icon-mercado-pago",
+        userId: "user-1",
+        sourceType: "official",
+        officialIconId: "official-mercado-pago",
+        isActive: false,
+        name: "Mercado Pago",
+        imageUrl: "https://cdn.fincontrol.dev/icons/mercado-pago.png",
+        storagePath: null,
+        category: "banco",
+        tags: ["mercado pago"],
+        createdAt: "2026-05-01T00:00:00.000Z",
+        updatedAt: "2026-05-01T00:00:00.000Z",
+      },
+    ],
+  });
+
+  assert.equal(suggestion.displayIconId, null);
+  assert.equal(suggestion.persistableIconId, null);
+  assert.equal(suggestion.shouldAutoApply, false);
+  assert.equal(suggestion.shouldSuggest, false);
+});
+
+test("entity icon display: patrimônio com ícone padrão desativado usa fallback seguro", () => {
+  const displayIconId = resolveEntityDisplayIconId({
+    explicitIconId: null,
+    name: "Mercado Pago",
+    userRules: [
+      {
+        id: "pref-disable-mercado-pago",
+        iconId: BUILTIN_ICON_PREFERENCE_RULE_ICON_ID,
+        originalTerm: buildBuiltinIconDisablePreferenceTerm("mercadopago"),
+        normalizedTerm: "builtin icon disabled mercado pago",
+      },
+    ],
+    userIcons: [],
+  });
+
+  assert.equal(displayIconId, null);
 });
 
 test("icon matching: ícone pessoal reconhece cartão Itaú Uniclass Visa", () => {

@@ -101,7 +101,9 @@ export function resolveEntityIconSuggestion(params: {
   userRules: UserIconMatchRule[];
   userIcons: UserIconLibraryItemApiModel[];
 }): EntityIconSuggestionResult {
-  const match = matchIconByText(params.name, params.userRules);
+  const match = matchIconByText(params.name, params.userRules, {
+    userIcons: params.userIcons,
+  });
   if (!match.matched || !match.iconId) {
     return {
       match,
@@ -126,6 +128,26 @@ export function resolveEntityIconSuggestion(params: {
   };
 }
 
+export function resolveEntityDisplayIconId(params: {
+  explicitIconId: string | null | undefined;
+  name: string;
+  userRules: UserIconMatchRule[];
+  userIcons: UserIconLibraryItemApiModel[];
+}): string | null {
+  const explicitDisplay = resolveEntityIconReference(params.explicitIconId, params.userIcons).displayIconId;
+  if (explicitDisplay) {
+    return explicitDisplay;
+  }
+
+  const autoSuggestion = resolveEntityIconSuggestion({
+    name: params.name,
+    userRules: params.userRules,
+    userIcons: params.userIcons,
+  });
+
+  return autoSuggestion.shouldAutoApply ? autoSuggestion.displayIconId : null;
+}
+
 export function resolveEntityIconIdForSave(params: {
   isManualSelection: boolean;
   manualPersistableIconId: string | null;
@@ -141,4 +163,3 @@ export function resolveEntityIconIdForSave(params: {
 
   return null;
 }
-

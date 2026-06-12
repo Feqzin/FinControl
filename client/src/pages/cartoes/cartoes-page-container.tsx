@@ -699,7 +699,9 @@ export default function CartoesPage() {
         source: null,
         matchedTerm: null,
       }
-      : matchPurchaseIconByDescription(compra.descricao, normalizedIconMatchRules);
+      : matchPurchaseIconByDescription(compra.descricao, normalizedIconMatchRules, {
+        userIcons: userIconLibrary,
+      });
   const resolveStrongAutoIconId = (text: string, explicitIconId?: string | null) => {
     if (explicitIconId) return explicitIconId;
     const suggestion = resolveStrongAutoIconSuggestion(text);

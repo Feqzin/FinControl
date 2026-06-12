@@ -1,6 +1,12 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { iconMatchRules, userIconLibrary, type UserIconLibraryItem } from "@shared/schema";
+import {
+  iconMatchRules,
+  officialIconLibrary,
+  officialIconPacks,
+  userIconLibrary,
+  type UserIconLibraryItem,
+} from "@shared/schema";
 import type {
   UserIconLibraryBatchCreateBodyInput,
   UserIconLibraryCreateBodyInput,
@@ -321,12 +327,25 @@ async function removeRulesForIcon(userId: string, iconId: string): Promise<void>
 }
 
 export class UserIconLibraryService {
-  async list(userId: string): Promise<UserIconLibraryItem[]> {
-    return db
-      .select()
+  async list(userId: string): Promise<Array<UserIconLibraryItem & { isActive: boolean }>> {
+    const rows = await db
+      .select({
+        item: userIconLibrary,
+        officialSourceIsActive: officialIconLibrary.isActive,
+        officialPackIsActive: officialIconPacks.isActive,
+      })
       .from(userIconLibrary)
+      .leftJoin(officialIconLibrary, eq(userIconLibrary.officialIconId, officialIconLibrary.id))
+      .leftJoin(officialIconPacks, eq(officialIconLibrary.packId, officialIconPacks.id))
       .where(eq(userIconLibrary.userId, userId))
       .orderBy(desc(userIconLibrary.updatedAt), desc(userIconLibrary.createdAt));
+
+    return rows.map(({ item, officialSourceIsActive, officialPackIsActive }) => ({
+      ...item,
+      isActive: item.officialIconId
+        ? Boolean(officialSourceIsActive) && (officialPackIsActive ?? true)
+        : true,
+    }));
   }
 
   async create(userId: string, payload: UserIconLibraryCreateBodyInput): Promise<UserIconLibraryItem> {

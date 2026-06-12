@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 type IconPickerManagePersonalCoreActionsProps = {
   onUseIcon: () => void;
   useIconLabel: string;
+  isUseIconDisabled: boolean;
   showEditInformationButton: boolean;
   onEditInformation: () => void;
   editInformationLabel: string;
@@ -16,6 +17,7 @@ type IconPickerManagePersonalCoreActionsProps = {
 export function IconPickerManagePersonalCoreActions({
   onUseIcon,
   useIconLabel,
+  isUseIconDisabled,
   showEditInformationButton,
   onEditInformation,
   editInformationLabel,
@@ -31,6 +33,7 @@ export function IconPickerManagePersonalCoreActions({
         type="button"
         variant="outline"
         className="w-full justify-start"
+        disabled={isUseIconDisabled}
         onClick={onUseIcon}
       >
         {useIconLabel}

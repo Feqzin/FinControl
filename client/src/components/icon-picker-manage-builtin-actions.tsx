@@ -4,6 +4,7 @@ type IconPickerManageBuiltinActionsProps = {
   onUseIcon: () => void;
   onToggleAutomation: () => void;
   useIconLabel: string;
+  isUseIconDisabled: boolean;
   toggleAutomationLabel: string;
   isToggleAutomationDisabled: boolean;
 };
@@ -12,6 +13,7 @@ export function IconPickerManageBuiltinActions({
   onUseIcon,
   onToggleAutomation,
   useIconLabel,
+  isUseIconDisabled,
   toggleAutomationLabel,
   isToggleAutomationDisabled,
 }: IconPickerManageBuiltinActionsProps) {
@@ -21,6 +23,7 @@ export function IconPickerManageBuiltinActions({
         type="button"
         variant="outline"
         className="w-full justify-start"
+        disabled={isUseIconDisabled}
         onClick={onUseIcon}
       >
         {useIconLabel}

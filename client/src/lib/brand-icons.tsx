@@ -78,9 +78,25 @@ export function getBrandIcon(name: string): BrandIconInfo {
   return { icon: CreditCard, bg: "bg-muted", color: "text-muted-foreground" };
 }
 
-function resolveIconInfo(name: string, iconeId?: string | null): BrandIconInfo {
-  if (!iconeId) return getBrandIcon(name);
-  if (iconeId.startsWith("data:")) return { icon: CreditCard, bg: "bg-muted", color: "text-muted-foreground" };
+const DEFAULT_ICON_INFO: BrandIconInfo = {
+  icon: CreditCard,
+  bg: "bg-muted",
+  color: "text-muted-foreground",
+};
+
+function resolvePreviewIconInfo(
+  name: string,
+  iconeId?: string | null,
+  options?: { fallbackToNameMatch?: boolean },
+): BrandIconInfo {
+  if (!iconeId) {
+    return options?.fallbackToNameMatch === false ? DEFAULT_ICON_INFO : getBrandIcon(name);
+  }
+
+  if (iconeId.startsWith("data:")) {
+    return DEFAULT_ICON_INFO;
+  }
+
   return getIconByKey(iconeId);
 }
 
@@ -88,10 +104,12 @@ export function BrandIconDisplay({
   name,
   iconeId,
   size = "md",
+  fallbackToNameMatch = true,
 }: {
   name: string;
   iconeId?: string | null;
   size?: "sm" | "md" | "lg";
+  fallbackToNameMatch?: boolean;
 }) {
   const sizeClasses = { sm: "w-7 h-7", md: "w-9 h-9", lg: "w-12 h-12" };
   const iconSize = { sm: "w-3.5 h-3.5", md: "w-4 h-4", lg: "w-6 h-6" };
@@ -104,7 +122,7 @@ export function BrandIconDisplay({
     );
   }
 
-  const info = resolveIconInfo(name, iconeId);
+  const info = resolvePreviewIconInfo(name, iconeId, { fallbackToNameMatch });
   const Icon = info.icon;
   return (
     <div className={`flex items-center justify-center rounded-lg flex-shrink-0 ${sizeClasses[size]} ${info.bg} ${info.color}`}>

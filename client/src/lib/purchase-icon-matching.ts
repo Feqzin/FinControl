@@ -1,4 +1,5 @@
 import { LIBRARY_ICONS } from "@/lib/brand-icons";
+import type { UserIconLibraryItemApiModel } from "@/services/api/user-icon-library";
 
 export type UserIconMatchRule = {
   id: string;
@@ -29,6 +30,11 @@ type Candidate = {
   term: string;
   source: IconMatchSource;
 };
+
+type MatchableUserIcon = Pick<
+  UserIconLibraryItemApiModel,
+  "id" | "imageUrl" | "isActive" | "name" | "sourceType" | "officialIconId"
+>;
 
 const MIN_TERM_LENGTH = 3;
 const AUTO_APPLY_THRESHOLD = 0.9;
@@ -76,6 +82,40 @@ function normalizeBuiltinIconKey(value: string): string {
 function isValidBuiltinIconKey(value: string): boolean {
   const normalized = normalizeBuiltinIconKey(value);
   return normalized.length > 0 && BUILTIN_ICON_KEYS.has(normalized);
+}
+
+function isUserIconActive(icon: MatchableUserIcon | null | undefined): boolean {
+  return icon?.isActive !== false;
+}
+
+function matchesBuiltinIconFromInactiveUserIcon(icon: MatchableUserIcon, builtinKey: string): boolean {
+  const normalizedName = normalizeText(icon.name ?? "");
+  if (!normalizedName) return false;
+
+  const builtin = LIBRARY_ICONS.find((entry) => entry.key === builtinKey);
+  if (!builtin) return false;
+
+  if (normalizeText(builtin.label) === normalizedName) return true;
+  if (normalizeText(builtin.key) === normalizedName) return true;
+
+  return (BUILTIN_ALIASES[builtin.key] ?? []).some((alias) => normalizeText(alias) === normalizedName);
+}
+
+function getInactiveBuiltinIconKeysFromUserIcons(userIcons: MatchableUserIcon[]): Set<string> {
+  const disabled = new Set<string>();
+
+  for (const icon of userIcons) {
+    if (isUserIconActive(icon)) continue;
+    if (icon.sourceType !== "official" && !icon.officialIconId) continue;
+
+    for (const builtin of LIBRARY_ICONS) {
+      if (matchesBuiltinIconFromInactiveUserIcon(icon, builtin.key)) {
+        disabled.add(builtin.key);
+      }
+    }
+  }
+
+  return disabled;
 }
 
 export function buildBuiltinIconDisablePreferenceTerm(iconKey: string): string {
@@ -169,10 +209,23 @@ function buildBuiltinCandidates(): Candidate[] {
 
 const ALL_BUILTIN_CANDIDATES = buildBuiltinCandidates();
 
-function buildPersonalCandidates(rules: UserIconMatchRule[]): Candidate[] {
+function buildPersonalCandidates(
+  rules: UserIconMatchRule[],
+  options: {
+    userIcons?: MatchableUserIcon[];
+    disabledBuiltinIconKeys?: Set<string>;
+  } = {},
+): Candidate[] {
+  const disabledBuiltinIconKeys = options.disabledBuiltinIconKeys ?? new Set<string>();
+  const userIcons = options.userIcons ?? [];
   const candidates: Candidate[] = [];
   for (const rule of rules) {
     if (rule.iconId === BUILTIN_ICON_PREFERENCE_RULE_ICON_ID) continue;
+    if (disabledBuiltinIconKeys.has(normalizeBuiltinIconKey(rule.iconId))) continue;
+
+    const matchedUserIcon = userIcons.find((icon) => icon.id === rule.iconId || icon.imageUrl === rule.iconId);
+    if (matchedUserIcon && !isUserIconActive(matchedUserIcon)) continue;
+
     const normalizedTerm = normalizeText(rule.normalizedTerm || rule.originalTerm || "");
     if (normalizedTerm.length < MIN_TERM_LENGTH) continue;
     const label = ICON_LABEL_BY_ID.get(rule.iconId) ?? "Ícone personalizado";
@@ -193,13 +246,19 @@ export function normalizePurchaseIconTerm(value: string): string {
 export function matchPurchaseIconByDescription(
   description: string,
   userRules: UserIconMatchRule[] = [],
+  options: {
+    userIcons?: MatchableUserIcon[];
+  } = {},
 ): PurchaseIconMatchResult {
-  return matchIconByText(description, userRules);
+  return matchIconByText(description, userRules, options);
 }
 
 export function matchIconByText(
   text: string,
   userRules: UserIconMatchRule[] = [],
+  options: {
+    userIcons?: MatchableUserIcon[];
+  } = {},
 ): PurchaseIconMatchResult {
   const normalizedDescription = normalizeText(text);
   if (!normalizedDescription) {
@@ -217,11 +276,23 @@ export function matchIconByText(
   }
 
   const disabledBuiltinIconKeys = getDisabledBuiltinIconKeysFromRules(userRules);
-  const builtinCandidates = disabledBuiltinIconKeys.size === 0
-    ? ALL_BUILTIN_CANDIDATES
-    : ALL_BUILTIN_CANDIDATES.filter((candidate) => !disabledBuiltinIconKeys.has(candidate.iconId));
+  const inactiveBuiltinKeysFromUserIcons = getInactiveBuiltinIconKeysFromUserIcons(options.userIcons ?? []);
+  const blockedBuiltinKeys = new Set<string>([
+    ...disabledBuiltinIconKeys,
+    ...inactiveBuiltinKeysFromUserIcons,
+  ]);
 
-  const candidates = [...buildPersonalCandidates(userRules), ...builtinCandidates];
+  const builtinCandidates = blockedBuiltinKeys.size === 0
+    ? ALL_BUILTIN_CANDIDATES
+    : ALL_BUILTIN_CANDIDATES.filter((candidate) => !blockedBuiltinKeys.has(candidate.iconId));
+
+  const candidates = [
+    ...buildPersonalCandidates(userRules, {
+      userIcons: options.userIcons,
+      disabledBuiltinIconKeys: blockedBuiltinKeys,
+    }),
+    ...builtinCandidates,
+  ];
   let best: { candidate: Candidate; score: number } | null = null;
 
   for (const candidate of candidates) {

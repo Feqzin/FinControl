@@ -75,6 +75,7 @@ import {
   parseBuiltinIconDisablePreferenceTerm,
   type UserIconMatchRule,
 } from "@/lib/purchase-icon-matching";
+import { resolveEntityDisplayIconId } from "@/lib/entity-icon-suggestion";
 import {
   ICON_CATEGORY_OPTIONS as USER_ICON_CATEGORIES,
   getIconCategoryLabel,
@@ -293,9 +294,24 @@ export function IconPicker({
     [iconMatchRules],
   );
 
+  const activePersonalIcons = useMemo(
+    () => personalIcons.filter((icon) => icon.isActive !== false),
+    [personalIcons],
+  );
+
   const iconSuggestion = useMemo(
-    () => matchIconByText(name, normalizedUserRules),
-    [name, normalizedUserRules],
+    () => matchIconByText(name, normalizedUserRules, { userIcons: activePersonalIcons }),
+    [activePersonalIcons, name, normalizedUserRules],
+  );
+
+  const triggerPreviewIconId = useMemo(
+    () => resolveEntityDisplayIconId({
+      explicitIconId: value,
+      name,
+      userRules: normalizedUserRules,
+      userIcons: personalIcons,
+    }),
+    [name, normalizedUserRules, personalIcons, value],
   );
 
   const iconMatchRulesByIconId = useMemo(() => {
@@ -342,13 +358,13 @@ export function IconPicker({
   }, [myCommunityPublications]);
 
   const personalIconByImageUrl = useMemo(
-    () => new Map(personalIcons.map((icon) => [icon.imageUrl, icon])),
-    [personalIcons],
+    () => new Map(activePersonalIcons.map((icon) => [icon.imageUrl, icon])),
+    [activePersonalIcons],
   );
 
   const personalIconById = useMemo(
-    () => new Map(personalIcons.map((icon) => [icon.id, icon])),
-    [personalIcons],
+    () => new Map(activePersonalIcons.map((icon) => [icon.id, icon])),
+    [activePersonalIcons],
   );
 
   const emitSelection = (meta: IconPickerSelectMeta) => {
@@ -917,6 +933,15 @@ export function IconPicker({
   };
 
   const handleSelectLibrary = (key: string) => {
+    if (disabledBuiltinIconKeys.has(key.trim().toLowerCase())) {
+      toast({
+        title: "Ícone indisponível",
+        description: "Este ícone está desativado e não pode ser usado neste fluxo.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     emitSelection({
       displayValue: key,
       persistableIconId: key,
@@ -928,6 +953,15 @@ export function IconPicker({
   };
 
   const handleSelectPersonal = (icon: UserIconLibraryItemApiModel) => {
+    if (icon.isActive === false) {
+      toast({
+        title: "Ícone indisponível",
+        description: "Este ícone está inativo e não pode ser usado neste fluxo.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     emitSelection({
       displayValue: icon.imageUrl,
       persistableIconId: icon.id,
@@ -1342,12 +1376,12 @@ export function IconPicker({
   const packsPerPage = 12;
 
   const filteredPersonalIcons = useMemo(
-    () => filterAndSortPersonalIcons(personalIcons, {
+    () => filterAndSortPersonalIcons(activePersonalIcons, {
       search: myIconsSearch,
       category: myIconsCategory,
       sort: myIconsOrder,
     }),
-    [personalIcons, myIconsSearch, myIconsCategory, myIconsOrder],
+    [activePersonalIcons, myIconsSearch, myIconsCategory, myIconsOrder],
   );
 
   const paginatedPersonalIcons = useMemo(
@@ -1433,7 +1467,12 @@ export function IconPicker({
             <Settings2 className="h-4 w-4" />
           </div>
         ) : (
-          <BrandIconDisplay name={name} iconeId={value} size={size} />
+          <BrandIconDisplay
+            name={name}
+            iconeId={triggerPreviewIconId}
+            size={size}
+            fallbackToNameMatch={false}
+          />
         )}
         <div className="text-left">
           <p className="text-xs font-medium">
@@ -1586,7 +1625,7 @@ export function IconPicker({
                         <SelectItem value="category">Categoria</SelectItem>
                       </SelectContent>
                     </Select>
-                    {personalIcons.length > 0 ? (
+                    {activePersonalIcons.length > 0 ? (
                       <Button
                         type="button"
                         size="sm"
@@ -1611,6 +1650,8 @@ export function IconPicker({
                   actionLabel="Fazer upload"
                   onAction={() => setActiveTab("upload")}
                 />
+              ) : activePersonalIcons.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Nenhum ícone ativo disponível na sua biblioteca.</p>
               ) : filteredPersonalIcons.length === 0 ? (
                 <p className="text-xs text-muted-foreground">Nenhum ícone encontrado para esse filtro.</p>
               ) : (
@@ -2250,11 +2291,11 @@ export function IconPicker({
               <IconPickerSectionHeader>
                 Selecione os ícones do pack
               </IconPickerSectionHeader>
-              {personalIcons.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Você ainda não tem ícones na sua biblioteca.</p>
+              {activePersonalIcons.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Você ainda não tem ícones ativos na sua biblioteca.</p>
               ) : (
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-                  {personalIcons.map((item) => {
+                  {activePersonalIcons.map((item) => {
                     const selected = newPackSelectedIconIds.includes(item.id);
                     return (
                       <IconPickerPackSelectIconCard
@@ -2504,6 +2545,7 @@ export function IconPicker({
                 setManageActionTarget(null);
               }}
               useIconLabel="Usar este ícone"
+              isUseIconDisabled={disabledBuiltinIconKeys.has(manageActionTarget.iconKey.trim().toLowerCase())}
               toggleAutomationLabel={
                 disabledBuiltinIconKeys.has(manageActionTarget.iconKey.trim().toLowerCase())
                   ? "Restaurar padrão"
@@ -2519,6 +2561,7 @@ export function IconPicker({
                   setManageActionTarget(null);
                 }}
                 useIconLabel="Usar este ícone"
+                isUseIconDisabled={manageActionTarget.icon.isActive === false}
                 showEditInformationButton={manageActionTarget.icon.sourceType !== "official"}
                 onEditInformation={() => {
                   openEditPersonalIcon(manageActionTarget.icon);

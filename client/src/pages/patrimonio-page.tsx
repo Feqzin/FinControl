@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from "react";
+import { useState, lazy, Suspense, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +49,12 @@ import {
 } from "lucide-react";
 import type { Patrimonio, InsertPatrimonio } from "@shared/schema";
 import { BrandIconDisplay } from "@/lib/brand-icons";
+import { fetchUserIconLibrary, type UserIconLibraryItemApiModel } from "@/services/api/user-icon-library";
+import { fetchIconMatchRules, type IconMatchRuleApiModel } from "@/services/api/icon-match-rules";
+import {
+  resolveEntityDisplayIconId,
+} from "@/lib/entity-icon-suggestion";
+import type { UserIconMatchRule } from "@/lib/purchase-icon-matching";
 
 const IconPicker = lazy(() =>
   import("@/components/icon-picker").then((mod) => ({ default: mod.IconPicker })),
@@ -83,6 +89,36 @@ export default function PatrimonioPage() {
   const { data: patrimonios = [], isLoading } = useQuery<Patrimonio[]>({
     queryKey: ["/api/patrimonios"],
   });
+
+  const { data: userIconLibrary = [] } = useQuery<UserIconLibraryItemApiModel[]>({
+    queryKey: ["/api/user-icon-library", "patrimonio"],
+    queryFn: fetchUserIconLibrary,
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: iconMatchRules = [] } = useQuery<IconMatchRuleApiModel[]>({
+    queryKey: ["/api/icon-match-rules", "patrimonio"],
+    queryFn: fetchIconMatchRules,
+    staleTime: 5 * 60_000,
+  });
+
+  const normalizedIconMatchRules = useMemo<UserIconMatchRule[]>(
+    () => iconMatchRules.map((rule) => ({
+      id: rule.id,
+      iconId: rule.iconId,
+      normalizedTerm: rule.normalizedTerm,
+      originalTerm: rule.originalTerm,
+    })),
+    [iconMatchRules],
+  );
+
+  const resolvePatrimonioIconId = (patrimonio: Pick<Patrimonio, "nome" | "iconeId">) =>
+    resolveEntityDisplayIconId({
+      explicitIconId: patrimonio.iconeId ?? null,
+      name: patrimonio.nome,
+      userRules: normalizedIconMatchRules,
+      userIcons: userIconLibrary,
+    });
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertPatrimonio) => {
@@ -400,14 +436,20 @@ export default function PatrimonioPage() {
           ) : (
             patrimonios.map((p) => {
               const tipoInfo = TIPOS_PATRIMONIO.find((t) => t.value === p.tipo) || TIPOS_PATRIMONIO[4];
+              const previewIconId = resolvePatrimonioIconId(p);
               return (
                 <Card key={p.id} className="hover-elevate overflow-visible rounded-[22px] border border-border/60 bg-card/95 shadow-sm transition-all sm:rounded-[26px]" data-testid={`card-patrimonio-${p.id}`}>
                   <CardContent className="space-y-3.5 p-4 sm:space-y-4 sm:p-5">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                       <div className="flex min-w-0 items-start gap-3">
-                        {p.iconeId ? (
+                        {previewIconId ? (
                           <div className="shrink-0 rounded-2xl border border-border/60 bg-background/80 p-2 shadow-sm">
-                            <BrandIconDisplay name={p.nome} iconeId={p.iconeId} size="sm" />
+                            <BrandIconDisplay
+                              name={p.nome}
+                              iconeId={previewIconId}
+                              size="sm"
+                              fallbackToNameMatch={false}
+                            />
                           </div>
                         ) : (
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm sm:h-12 sm:w-12">

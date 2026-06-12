@@ -5,6 +5,7 @@ export type UserIconLibraryItemApiModel = {
   userId: string;
   sourceType: "upload" | "official" | string;
   officialIconId: string | null;
+  isActive?: boolean;
   name: string;
   imageUrl: string;
   storagePath: string | null;
