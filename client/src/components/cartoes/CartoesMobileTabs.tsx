@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CartaoCard } from "@/components/cartoes/CartaoCard";
 import { BrandIconDisplay } from "@/lib/brand-icons";
-import type { Cartao, CompraCartao, Servico } from "@shared/schema";
+import { getCompraReembolsoVisualStatus } from "@/lib/cartao-reembolso-status";
+import type { Cartao, CompraCartao, ParcelaCompra, Servico } from "@shared/schema";
 import { Eye, List, Plus, Trash2 } from "lucide-react";
 import { getNextInvoiceDate } from "@/pages/cartoes/cartoes.utils";
 import type { PurchaseIconMatchResult } from "@/lib/purchase-icon-matching";
@@ -17,6 +18,7 @@ type CartoesMobileTabsProps = {
   getCardTotal: (cartaoId: string) => number;
   getCardAvailableLimit: (cartaoId: string) => number;
   getFilteredCardCompras: (cartaoId: string) => CompraCartao[];
+  getCompraParcelas: (compraId: string) => ParcelaCompra[];
   invoiceMonthLabel: string;
   servicos: Servico[];
   onOpenParcelas: (compra: CompraCartao) => void;
@@ -40,6 +42,7 @@ export function CartoesMobileTabs({
   getCardTotal,
   getCardAvailableLimit,
   getFilteredCardCompras,
+  getCompraParcelas,
   invoiceMonthLabel,
   servicos,
   onOpenParcelas,
@@ -150,6 +153,7 @@ export function CartoesMobileTabs({
                       {visibleCompras.map((compra) => {
                         const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
                         const iconSuggestion = resolveCompraIconSuggestion(compra);
+                        const reembolsoStatus = getCompraReembolsoVisualStatus(compra, getCompraParcelas(compra.id));
                         return (
                           <div key={compra.id} className="touch-feedback flex items-start gap-3 px-4 py-3">
                             <BrandIconDisplay
@@ -162,6 +166,15 @@ export function CartoesMobileTabs({
                               <p className="text-xs text-muted-foreground">
                                 {compra.parcelaAtual}/{compra.parcelas}x
                               </p>
+                              {reembolsoStatus === "aguardando_reembolso" ? (
+                                <p className="mt-0.5 text-[11px] text-amber-600">Ag. reembolso</p>
+                              ) : null}
+                              {reembolsoStatus === "reembolso_vencido" ? (
+                                <p className="mt-0.5 text-[11px] text-red-600">Reembolso vencido</p>
+                              ) : null}
+                              {reembolsoStatus === "reembolsado" ? (
+                                <p className="mt-0.5 text-[11px] text-emerald-600">Reembolsado</p>
+                              ) : null}
                               {servicosVinculados.length > 0 ? (
                                 <p className="mt-0.5 text-[11px] text-blue-600">Serviço vinculado ({servicosVinculados.length})</p>
                               ) : null}

@@ -5,7 +5,8 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { BrandIconDisplay, LIBRARY_ICONS } from "@/lib/brand-icons";
-import type { Cartao, CompraCartao, Pessoa, Servico } from "@shared/schema";
+import { getCompraReembolsoVisualStatus, isCompraReembolsoOutstanding } from "@/lib/cartao-reembolso-status";
+import type { Cartao, CompraCartao, ParcelaCompra, Pessoa, Servico } from "@shared/schema";
 import {
   CalendarClock,
   CircleHelp,
@@ -32,6 +33,7 @@ type CartoesComprasGridProps = {
   getCardUsedLimit: (cartaoId: string) => number;
   getCardAvailableLimit: (cartaoId: string) => number;
   getFilteredCardCompras: (cartaoId: string) => CompraCartao[];
+  getCompraParcelas: (compraId: string) => ParcelaCompra[];
   getDaysUntilInvoice: (diaVencimento: number) => number;
   getNextInvoiceDate: (diaVencimento: number) => string;
   onEditCartao: (cartao: Cartao) => void;
@@ -62,6 +64,7 @@ export function CartoesComprasGrid({
   getCardUsedLimit,
   getCardAvailableLimit,
   getFilteredCardCompras,
+  getCompraParcelas,
   getDaysUntilInvoice,
   getNextInvoiceDate,
   onEditCartao,
@@ -264,8 +267,10 @@ export function CartoesComprasGrid({
                 </p>
                 <div className="space-y-2">
                   {visibleCompras.map((compra) => {
-                    const aguardandoReembolso = compra.pessoaId && (!compra.statusPessoa || compra.statusPessoa === "pendente");
-                    const reembolsado = compra.pessoaId && compra.statusPessoa === "pago";
+                    const reembolsoStatus = getCompraReembolsoVisualStatus(compra, getCompraParcelas(compra.id));
+                    const aguardandoReembolso = reembolsoStatus === "aguardando_reembolso";
+                    const reembolsoVencido = reembolsoStatus === "reembolso_vencido";
+                    const reembolsado = reembolsoStatus === "reembolsado";
                     const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
                     const iconSuggestion = resolveCompraIconSuggestion(compra);
                     const hasIgnoredSuggestion = Boolean(ignoredSuggestionsByCompraId[compra.id]);
@@ -296,6 +301,11 @@ export function CartoesComprasGrid({
                               {aguardandoReembolso ? (
                                 <span className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-600">
                                   <RefreshCw className="h-2.5 w-2.5" /> Ag. reembolso
+                                </span>
+                              ) : null}
+                              {reembolsoVencido ? (
+                                <span className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-red-500/10 px-1.5 py-0.5 text-xs text-red-600">
+                                  <RefreshCw className="h-2.5 w-2.5" /> Reembolso vencido
                                 </span>
                               ) : null}
                               {reembolsado ? (
@@ -399,7 +409,7 @@ export function CartoesComprasGrid({
                           </div>
                           <div className="flex w-full flex-shrink-0 items-center justify-between gap-1 sm:w-auto sm:justify-end">
                             <span className="text-xs font-semibold">{formatCurrency(Number(compra.valorParcela))}</span>
-                            {aguardandoReembolso ? (
+                            {isCompraReembolsoOutstanding(reembolsoStatus) ? (
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -409,7 +419,7 @@ export function CartoesComprasGrid({
                                 onClick={() => onMarcarReembolso(compra.id)}
                                 data-testid={`button-reembolso-${compra.id}`}
                               >
-                                <RefreshCw className="h-3 w-3 text-amber-600" />
+                                <RefreshCw className={`h-3 w-3 ${reembolsoVencido ? "text-red-600" : "text-amber-600"}`} />
                               </Button>
                             ) : null}
                             <Button

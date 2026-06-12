@@ -53,6 +53,10 @@ import {
 import { buildRelatorioPdfMetadata } from "../src/pages/relatorios/relatorios-pdf-utils";
 import { formatMoneyFixed } from "../src/lib/money";
 import {
+  getCompraReembolsoVisualStatus,
+  isCompraReembolsoOutstanding,
+} from "../src/lib/cartao-reembolso-status";
+import {
   calculateCardLimitSummary,
   calculateCardInvoiceForCompetency,
   calculateCardCurrentInvoiceTotal,
@@ -1796,6 +1800,127 @@ test("card limit usage: regra global calcula todos os cartões sem depender de b
   assert.equal(calculateCardInvoiceForCompetency("card-b", compras, grouped, "2026-05"), 60);
   assert.equal(calculateCardUsedLimit("card-a", compras, grouped), 450);
   assert.equal(calculateCardUsedLimit("card-b", compras, grouped), 200);
+});
+
+test("cartoes reembolso status: parcela paga no cartao com reembolso pendente continua aguardando reembolso", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-reembolso-pendente",
+    pessoaId: "pessoa-1",
+    statusPessoa: "pago",
+    parcelas: 7,
+    parcelaAtual: 7,
+    valorTotal: "793.31",
+    valorParcela: "113.33",
+  });
+  const parcelas = [
+    buildParcelaCompraViewFixture({
+      id: "pc-1",
+      compraCartaoId: compra.id,
+      numero: 1,
+      statusCartao: "pago",
+      statusPessoa: "pago",
+      dataPagamentoPessoa: "2026-01-12",
+    }),
+    buildParcelaCompraViewFixture({
+      id: "pc-7",
+      compraCartaoId: compra.id,
+      numero: 7,
+      statusCartao: "pago",
+      statusPessoa: "pendente",
+      dataVencimento: "2030-07-10",
+    }),
+  ];
+
+  const status = getCompraReembolsoVisualStatus(compra, parcelas, "2030-07-01");
+
+  assert.equal(status, "aguardando_reembolso");
+  assert.equal(isCompraReembolsoOutstanding(status), true);
+});
+
+test("cartoes reembolso status: compra com parcelas parcialmente reembolsadas nao aparece como reembolsada", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-reembolso-parcial",
+    pessoaId: "pessoa-1",
+    statusPessoa: "pago",
+    parcelas: 7,
+    parcelaAtual: 7,
+    valorTotal: "793.31",
+    valorParcela: "113.33",
+  });
+  const parcelas = Array.from({ length: 7 }, (_, index) => buildParcelaCompraViewFixture({
+    id: `pc-parcial-${index + 1}`,
+    compraCartaoId: compra.id,
+    numero: index + 1,
+    statusCartao: "pago",
+    statusPessoa: index < 6 ? "pago" : "pendente",
+    dataVencimento: "2030-07-10",
+  }));
+
+  assert.equal(getCompraReembolsoVisualStatus(compra, parcelas, "2030-07-01"), "aguardando_reembolso");
+});
+
+test("cartoes reembolso status: compra com todas as parcelas reembolsadas aparece como reembolsada", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-reembolso-total",
+    pessoaId: "pessoa-1",
+    statusPessoa: "pendente",
+    parcelas: 3,
+    parcelaAtual: 3,
+    valorTotal: "300.00",
+    valorParcela: "100.00",
+  });
+  const parcelas = Array.from({ length: 3 }, (_, index) => buildParcelaCompraViewFixture({
+    id: `pc-total-${index + 1}`,
+    compraCartaoId: compra.id,
+    numero: index + 1,
+    statusCartao: "pago",
+    statusPessoa: "pago",
+    dataPagamentoPessoa: `2030-0${index + 1}-12`,
+  }));
+
+  assert.equal(getCompraReembolsoVisualStatus(compra, parcelas, "2030-07-01"), "reembolsado");
+});
+
+test("cartoes reembolso status: parcela pendente vencida aparece como reembolso vencido", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-reembolso-vencido",
+    pessoaId: "pessoa-1",
+    statusPessoa: "pendente",
+    parcelas: 2,
+    parcelaAtual: 2,
+    valorTotal: "200.00",
+    valorParcela: "100.00",
+  });
+  const parcelas = [
+    buildParcelaCompraViewFixture({
+      id: "pc-v-1",
+      compraCartaoId: compra.id,
+      numero: 1,
+      statusCartao: "pago",
+      statusPessoa: "pago",
+      dataPagamentoPessoa: "2030-01-11",
+    }),
+    buildParcelaCompraViewFixture({
+      id: "pc-v-2",
+      compraCartaoId: compra.id,
+      numero: 2,
+      statusCartao: "pago",
+      statusPessoa: "pendente",
+      dataVencimento: "2030-02-10",
+    }),
+  ];
+
+  assert.equal(getCompraReembolsoVisualStatus(compra, parcelas, "2030-02-20"), "reembolso_vencido");
+});
+
+test("cartoes reembolso status: compra sem pessoa vinculada nao exibe status de reembolso", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-sem-pessoa",
+    pessoaId: "",
+  });
+
+  assert.equal(getCompraReembolsoVisualStatus(compra, [], "2030-07-01"), "sem_reembolso_vinculado");
+  assert.equal(isCompraReembolsoOutstanding("sem_reembolso_vinculado"), false);
 });
 
 test("compra cartao dialog: parse de moeda aceita formatos pt-BR e decimal", () => {

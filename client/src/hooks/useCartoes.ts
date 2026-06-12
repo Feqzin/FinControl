@@ -8,6 +8,7 @@ import {
   calculateCardCurrentInvoiceTotal,
   groupParcelasCompraByCompraId,
 } from "@/lib/card-limit-usage";
+import { getCompraReembolsoVisualStatus } from "@/lib/cartao-reembolso-status";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
 import { queryClient } from "@/lib/queryClient";
 import { abaterSaldoParcelaPessoa } from "@/services/api/pessoas";
@@ -432,7 +433,13 @@ export function useCartoes(viewingCompraId?: string) {
 
   const totalFaturas = cartoes.reduce((sum, cartao) => sum + getCardTotal(cartao.id), 0);
   const totalAguardandoReembolso = compras
-    .filter((compra) => compra.pessoaId && (!compra.statusPessoa || compra.statusPessoa === "pendente"))
+    .filter((compra) => {
+      const reembolsoStatus = getCompraReembolsoVisualStatus(
+        compra,
+        parcelasCompraByCompraId.get(compra.id) ?? [],
+      );
+      return reembolsoStatus === "aguardando_reembolso" || reembolsoStatus === "reembolso_vencido";
+    })
     .reduce((sum, compra) => sum + toMoneyNumber(compra.valorParcela), 0);
 
   return {

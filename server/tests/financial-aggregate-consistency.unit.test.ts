@@ -175,3 +175,64 @@ test("recomputeCardPurchaseAggregate recalcula parcelaAtual e totais", async () 
   assert.equal(compra.parcelaAtual, 2);
   assert.equal(compra.statusPessoa, "pendente");
 });
+
+test("recomputeCardPurchaseAggregate nao marca compra como reembolsada quando ainda existe parcela sem statusPessoa", async () => {
+  const compra: CompraCartao = {
+    id: "compra-2",
+    userId: "user-aggregate-unit",
+    cartaoId: "cartao-1",
+    descricao: "Compra com ultima parcela sem reembolso",
+    valorTotal: "226.66",
+    parcelas: 2,
+    parcelaAtual: 2,
+    valorParcela: "113.33",
+    dataCompra: "2026-04-01",
+    pessoaId: "pessoa-1",
+    statusPessoa: "pago",
+    dataPagamentoPessoa: "2026-05-01",
+    iconeId: null,
+  };
+
+  const parcelasCompra: ParcelaCompra[] = [
+    {
+      id: "pc-21",
+      userId: compra.userId,
+      compraCartaoId: compra.id,
+      numero: 1,
+      valor: "113.33",
+      dataVencimento: "2030-04-10",
+      statusCartao: "pago",
+      dataPagamentoCartao: "2030-04-10",
+      statusPessoa: "pago",
+      dataPagamentoPessoa: "2030-04-11",
+    },
+    {
+      id: "pc-22",
+      userId: compra.userId,
+      compraCartaoId: compra.id,
+      numero: 2,
+      valor: "113.33",
+      dataVencimento: "2030-05-10",
+      statusCartao: "pago",
+      dataPagamentoCartao: "2030-05-10",
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    },
+  ];
+
+  const repository = {
+    getCompraCartao: async () => compra,
+    getParcelasCompra: async () => parcelasCompra,
+    updateCompraCartao: async (_id: string, _userId: string, patch: Partial<CompraCartao>) => {
+      Object.assign(compra, patch);
+      return compra;
+    },
+  };
+
+  const result = await recomputeCardPurchaseAggregate(repository as any, compra.id, compra.userId);
+
+  assert.equal(result.derivedCardStatus, DOMAIN_STATUS.pago);
+  assert.equal(result.derivedPessoaStatus, DOMAIN_STATUS.parcial);
+  assert.equal(compra.statusPessoa, "pendente");
+  assert.equal(compra.dataPagamentoPessoa, null);
+});

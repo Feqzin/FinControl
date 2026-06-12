@@ -121,6 +121,7 @@ export function ParcelasTab({
   onDeleteParcelaComprovante,
   comprovanteDeleteLoadingId,
 }: ParcelasTabProps) {
+  const todayIso = new Date().toISOString().slice(0, 10);
   const [comprovanteFiles, setComprovanteFiles] = useState<Record<string, File | null>>({});
   const [movingParcelaId, setMovingParcelaId] = useState<string | null>(null);
   const [movingParcelaCompetencia, setMovingParcelaCompetencia] = useState("");
@@ -206,7 +207,16 @@ export function ParcelasTab({
                 const saldoPessoaDisponivel = pessoaVinculadaId ? getPessoaSaldoDisponivel(pessoaVinculadaId) : 0;
                 const podeAbaterSaldo = Boolean(pessoaVinculadaId) && !pago && parcela.statusCartao !== "cancelado"
                   && saldoPendente > 0 && saldoPessoaDisponivel > 0;
-                const aguardaReembolso = pago && viewingCompra.pessoaId && (!parcela.statusPessoa || parcela.statusPessoa === "pendente");
+                const reembolsoPendente = Boolean(viewingCompra.pessoaId)
+                  && parcela.statusPessoa !== "pago"
+                  && parcela.statusPessoa !== "cancelado";
+                const reembolsoVencido = pago
+                  && reembolsoPendente
+                  && (
+                    parcela.statusPessoa === "vencido"
+                    || Boolean(parcela.dataVencimento && parcela.dataVencimento < todayIso)
+                  );
+                const aguardaReembolso = pago && reembolsoPendente && !reembolsoVencido;
                 const isSubmittingThisRow = isParcelaActionPending && parcelaActionLoadingId === parcela.id;
                 const comprovante = getParcelaComprovante(parcela);
                 const uploadFile = getComprovanteFile(parcela.id);
@@ -294,6 +304,9 @@ export function ParcelasTab({
                               {aguardaReembolso ? (
                                 <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-600">Ag. reembolso</span>
                               ) : null}
+                              {reembolsoVencido ? (
+                                <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-xs text-red-600">Reembolso vencido</span>
+                              ) : null}
                               {parcela.statusPessoa === "pago" ? (
                                 <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-xs text-blue-600">Reembolsado</span>
                               ) : null}
@@ -380,7 +393,7 @@ export function ParcelasTab({
                             <X className="h-3 w-3 text-muted-foreground" />
                           </Button>
                         ) : null}
-                        {aguardaReembolso ? (
+                        {aguardaReembolso || reembolsoVencido ? (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -390,7 +403,7 @@ export function ParcelasTab({
                             onClick={() => onPayParcelaPessoa(parcela.id, true)}
                             data-testid={`button-reembolso-parcela-${parcela.id}`}
                           >
-                            <RefreshCw className="h-3 w-3 text-amber-600" />
+                            <RefreshCw className={`h-3 w-3 ${reembolsoVencido ? "text-red-600" : "text-amber-600"}`} />
                           </Button>
                         ) : null}
                         {!isEditing && !isPaying ? (

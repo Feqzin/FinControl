@@ -1,4 +1,4 @@
-import type { Cartao, CompraCartao, Pessoa, Servico } from "@shared/schema";
+import type { Cartao, CompraCartao, ParcelaCompra, Pessoa, Servico } from "@shared/schema";
 import { CartoesEmptyState } from "@/components/cartoes/CartoesEmptyState";
 import { CartoesMobileTabs } from "@/components/cartoes/CartoesMobileTabs";
 import { CartoesComprasGrid } from "@/components/cartoes/CartoesComprasGrid";
@@ -18,6 +18,7 @@ type CartaoFaturaSectionProps = {
   getCardUsedLimit: (cartaoId: string) => number;
   getCardAvailableLimit: (cartaoId: string) => number;
   getFilteredCardFaturaCompras: (cartaoId: string) => CompraCartao[];
+  getCompraParcelas: (compraId: string) => ParcelaCompra[];
   selectedInvoiceMonthLabel: string;
   servicos: Servico[];
   pessoas: Pessoa[];
@@ -49,6 +50,7 @@ export function CartaoFaturaSection({
   getCardUsedLimit,
   getCardAvailableLimit,
   getFilteredCardFaturaCompras,
+  getCompraParcelas,
   selectedInvoiceMonthLabel,
   servicos,
   pessoas,
@@ -81,6 +83,7 @@ export function CartaoFaturaSection({
           getCardTotal={getCardTotalForSelectedMonth}
           getCardAvailableLimit={getCardAvailableLimit}
           getFilteredCardCompras={getFilteredCardFaturaCompras}
+          getCompraParcelas={getCompraParcelas}
           invoiceMonthLabel={selectedInvoiceMonthLabel}
           servicos={servicos}
           onOpenParcelas={onOpenParcelas}
@@ -99,6 +102,7 @@ export function CartaoFaturaSection({
           getCardUsedLimit={getCardUsedLimit}
           getCardAvailableLimit={getCardAvailableLimit}
           getFilteredCardCompras={getFilteredCardFaturaCompras}
+          getCompraParcelas={getCompraParcelas}
           getDaysUntilInvoice={getDaysUntilInvoice}
           getNextInvoiceDate={getNextInvoiceDate}
           focusedCartaoId={comprasCartaoFocadoId}

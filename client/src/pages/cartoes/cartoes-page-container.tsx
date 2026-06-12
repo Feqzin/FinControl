@@ -2756,6 +2756,7 @@ export default function CartoesPage() {
         getCardUsedLimit={getCardUsedLimit}
         getCardAvailableLimit={getCardAvailableLimit}
         getFilteredCardFaturaCompras={getFilteredCardFaturaCompras}
+        getCompraParcelas={(compraId) => parcelasCompraByCompraId.get(compraId) ?? []}
         selectedInvoiceMonthLabel={selectedInvoiceMonthLabel}
         servicos={servicos}
         pessoas={pessoas}

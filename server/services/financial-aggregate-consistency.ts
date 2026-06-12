@@ -109,18 +109,40 @@ function debtStatusToPersisted(value: DomainStatus): "pendente" | "pago" {
   return value === DOMAIN_STATUS.pago ? "pago" : "pendente";
 }
 
-function derivePessoaStatus(rows: ParcelaCompra[]): DomainStatus | null {
-  const statuses = rows
-    .map((row) => row.statusPessoa)
-    .filter((status): status is string => status != null && status !== "")
-    .map(normalizeStatus);
+function derivePessoaStatus(rows: ParcelaCompra[], referenceDate: string): DomainStatus | null {
+  if (rows.length === 0) return null;
 
-  if (statuses.length === 0) return null;
-  if (statuses.every((status) => status === DOMAIN_STATUS.pago)) return DOMAIN_STATUS.pago;
-  if (statuses.every((status) => status === DOMAIN_STATUS.cancelado)) return DOMAIN_STATUS.cancelado;
-  if (statuses.some((status) => status === DOMAIN_STATUS.pago)) return DOMAIN_STATUS.parcial;
-  if (statuses.some((status) => status === DOMAIN_STATUS.vencido)) return DOMAIN_STATUS.vencido;
-  return DOMAIN_STATUS.pendente;
+  let hasPending = false;
+  let hasPaid = false;
+  let hasOverduePending = false;
+
+  for (const row of rows) {
+    const normalized = row.statusPessoa == null || row.statusPessoa === ""
+      ? DOMAIN_STATUS.pendente
+      : normalizeStatus(row.statusPessoa);
+
+    if (normalized === DOMAIN_STATUS.cancelado) {
+      continue;
+    }
+
+    if (normalized === DOMAIN_STATUS.pago) {
+      hasPaid = true;
+      continue;
+    }
+
+    hasPending = true;
+    if (
+      normalized === DOMAIN_STATUS.vencido
+      || (row.dataVencimento != null && row.dataVencimento < referenceDate)
+    ) {
+      hasOverduePending = true;
+    }
+  }
+
+  if (!hasPending && hasPaid) return DOMAIN_STATUS.pago;
+  if (!hasPending && !hasPaid) return DOMAIN_STATUS.cancelado;
+  if (hasOverduePending) return DOMAIN_STATUS.vencido;
+  return hasPaid ? DOMAIN_STATUS.parcial : DOMAIN_STATUS.pendente;
 }
 
 function pessoaStatusToPersisted(value: DomainStatus | null): string | null {
@@ -219,6 +241,7 @@ export async function recomputeCardPurchaseAggregate(
   compraCartaoId: string,
   userId: string,
 ): Promise<CardPurchaseAggregateRecomputeResult> {
+  const today = format(new Date(), "yyyy-MM-dd");
   const compra = await repository.getCompraCartao(compraCartaoId, userId);
   if (!compra) {
     return {
@@ -246,7 +269,7 @@ export async function recomputeCardPurchaseAggregate(
   const sorted = [...rows].sort((a, b) => a.numero - b.numero);
   const activePending = sorted.filter((row) => !isPaid(row.statusCartao) && !isCanceled(row.statusCartao));
   const derivedCardStatus = activePending.length === 0 ? DOMAIN_STATUS.pago : DOMAIN_STATUS.pendente;
-  const derivedPessoaStatus = compra.pessoaId ? derivePessoaStatus(sorted) : null;
+  const derivedPessoaStatus = compra.pessoaId ? derivePessoaStatus(sorted, today) : null;
   const persistedPessoaStatus = compra.pessoaId ? pessoaStatusToPersisted(derivedPessoaStatus) : null;
 
   const parcelaAtual = activePending[0]?.numero ?? sorted.length;
