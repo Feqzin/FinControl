@@ -126,7 +126,7 @@ export function CartoesMobileTabs({
 
               <div className="grid grid-cols-2 divide-x divide-border/70 bg-muted/25 px-4 py-3">
                 <div className="pr-4">
-                  <p className="mb-0.5 text-xs text-muted-foreground">Limite disponível atual</p>
+                  <p className="mb-0.5 text-xs text-muted-foreground">Disponível estimado</p>
                   <p className="text-sm font-semibold text-emerald-600">{formatCurrency(limiteDisponivel)}</p>
                 </div>
                 <div className="pl-4">

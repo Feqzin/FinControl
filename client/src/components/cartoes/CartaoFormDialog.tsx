@@ -76,7 +76,7 @@ export function CartaoFormDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>Limite total</Label>
+            <Label>Limite total do cartão</Label>
             <Input
               data-testid={testIds.limite}
               type="number"
@@ -85,6 +85,9 @@ export function CartaoFormDialog({
               onChange={(event) => setForm({ ...form, limite: event.target.value })}
               required
             />
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Informe o limite total do cartão, não o limite disponível mostrado no app do banco.
+            </p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2">

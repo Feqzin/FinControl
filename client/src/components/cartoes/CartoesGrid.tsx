@@ -1,8 +1,10 @@
 import type { Cartao, CompraCartao } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { BrandIconDisplay } from "@/lib/brand-icons";
 import { CartaoCard } from "@/components/cartoes/CartaoCard";
+import { CircleHelp } from "lucide-react";
 
 type CartoesTab = "resumo" | "compras";
 
@@ -29,6 +31,9 @@ export function CartoesGrid({
   onOpenCompras,
   resolveCardIconId,
 }: CartoesGridProps) {
+  const comprometidoTooltip =
+    "Comprometido considera parcelas abertas atuais, vencidas e futuras.";
+
   if (cartoes.length === 0 || cartoesTab === "compras") return null;
 
   if (cartoesTab === "resumo") {
@@ -84,7 +89,7 @@ export function CartoesGrid({
                     </p>
                   </div>
                   <div className="min-w-0 space-y-1 border-t border-border/60 pt-3 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Disponível</p>
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Disponível estimado</p>
                     <p className="text-lg font-semibold leading-tight text-emerald-600 [overflow-wrap:anywhere] sm:text-xl">
                       {formatCartaoCurrency(limiteDisponivel)}
                     </p>
@@ -103,11 +108,27 @@ export function CartoesGrid({
                   <Progress value={percentual} className={`h-1.5 ${barColorClass}`} />
                   <div className="grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2">
                     <div className="min-w-0">
-                      <p className="text-muted-foreground">Limite</p>
+                      <p className="text-muted-foreground leading-snug">Limite total cadastrado</p>
                       <p className="font-semibold [overflow-wrap:anywhere]">{formatCartaoCurrency(limite)}</p>
                     </div>
                     <div className="min-w-0">
-                      <p className="text-muted-foreground">Usado</p>
+                      <div className="flex flex-wrap items-center gap-1 text-muted-foreground">
+                        <p>Comprometido</p>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:text-foreground"
+                              aria-label="Explicação do valor comprometido"
+                            >
+                              <CircleHelp className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-56 text-xs">
+                            {comprometidoTooltip}
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                       <p className="font-semibold [overflow-wrap:anywhere]">{formatCartaoCurrency(comprometido)}</p>
                     </div>
                   </div>

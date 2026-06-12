@@ -3,10 +3,12 @@ import { Button } from "@/components/ui/button";
 import { CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { BrandIconDisplay, LIBRARY_ICONS } from "@/lib/brand-icons";
 import type { Cartao, CompraCartao, Pessoa, Servico } from "@shared/schema";
 import {
   CalendarClock,
+  CircleHelp,
   CreditCard,
   List,
   Pencil,
@@ -73,6 +75,8 @@ export function CartoesComprasGrid({
   onSaveCompraIconRule,
   resolveCardIconId,
 }: CartoesComprasGridProps) {
+  const comprometidoTooltip =
+    "Comprometido considera parcelas abertas atuais, vencidas e futuras.";
   const [pageByCard, setPageByCard] = useState<PageByCard>({});
   const [ignoredSuggestionsByCompraId, setIgnoredSuggestionsByCompraId] = useState<Record<string, boolean>>({});
   const [customIconByCompraId, setCustomIconByCompraId] = useState<Record<string, string>>({});
@@ -182,15 +186,41 @@ export function CartoesComprasGrid({
                 <p className="text-base font-bold">{formatCurrency(faturaAtual)}</p>
               </div>
               <div className="fintech-stat-card bg-emerald-500/5 p-3">
-                <p className="mb-0.5 text-[11px] text-muted-foreground">Disponível atual</p>
+                <p className="mb-0.5 text-[11px] text-muted-foreground">Disponível estimado</p>
                 <p className="text-base font-bold text-emerald-600">{formatCurrency(limiteDisponivel)}</p>
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <div className="flex justify-between text-[11px] text-muted-foreground">
-                <span>{formatCurrency(limiteComprometido)} usados</span>
-                <span>Limite: {formatCurrency(limite)}</span>
+              <div className="grid grid-cols-1 gap-2 text-[11px] text-muted-foreground sm:grid-cols-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span>Comprometido</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:text-foreground"
+                          aria-label="Explicação do valor comprometido"
+                        >
+                          <CircleHelp className="h-3.5 w-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-56 text-xs">
+                        {comprometidoTooltip}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <p className="text-sm font-semibold text-foreground [overflow-wrap:anywhere]">
+                    {formatCurrency(limiteComprometido)}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <span className="leading-snug">Limite total cadastrado</span>
+                  <p className="text-sm font-semibold text-foreground [overflow-wrap:anywhere]">
+                    {formatCurrency(limite)}
+                  </p>
+                </div>
               </div>
               <Progress
                 value={Math.max(0, Math.min(percentUsed, 100))}
