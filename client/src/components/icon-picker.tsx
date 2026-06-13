@@ -115,6 +115,7 @@ import {
   getExploreIconPackOriginLabel,
   getItemTerms,
   getPackAddActionLabel,
+  getPackLibraryStatusBadge,
   getPackLibrarySummaryLabel,
   resolvePackProgress,
   resolveUserIconCategory,
@@ -189,6 +190,7 @@ export function IconPicker({
   const fileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const hasExploreSearch = hasExploreSearchTerm(exploreSearch);
+  const shouldIncludeExplorePackItems = exploreType !== "packs" || hasExploreSearch;
   const shouldLoadSuggestionContext = open || Boolean(value) || Boolean(name.trim());
 
   const { data: personalIcons = [], isLoading: isLoadingPersonalIcons } = useQuery<UserIconLibraryItemApiModel[]>({
@@ -211,11 +213,11 @@ export function IconPicker({
   });
 
   const { data: officialIcons = [], isLoading: isLoadingOfficialIcons } = useQuery<OfficialIconApiModel[]>({
-    queryKey: ["/api/icons/explore", exploreSearch, exploreCategory, exploreOrigin],
+    queryKey: ["/api/icons/explore", exploreSearch, exploreCategory, exploreOrigin, shouldIncludeExplorePackItems],
     queryFn: async () => {
       const query = {
         search: exploreSearch || undefined,
-        includePackItems: hasExploreSearch || undefined,
+        includePackItems: shouldIncludeExplorePackItems || undefined,
       };
       const filterForView = (icons: OfficialIconApiModel[]): OfficialIconApiModel[] =>
         resolveExploreIconsForView(icons, {
@@ -246,7 +248,7 @@ export function IconPicker({
 
       return filterForView([...officialList, ...communityList]);
     },
-    enabled: open && (exploreType !== "packs" || hasExploreSearch),
+    enabled: open && shouldIncludeExplorePackItems,
     staleTime: 60_000,
   });
 
@@ -1409,6 +1411,36 @@ export function IconPicker({
     [explorePacks],
   );
 
+  const resolveExplorePackForIcon = (icon: OfficialIconApiModel): OfficialIconPackApiModel | null => {
+    const packId = String(icon.packId ?? "").trim();
+    if (packId) {
+      const fromList = explorePacksById.get(packId);
+      if (fromList) return fromList;
+      if (activePackDetails?.pack?.id === packId) {
+        return activePackDetails.pack;
+      }
+    }
+
+    if (activePackDetails?.pack) {
+      const sameName = String(activePackDetails.pack.name ?? "").trim();
+      const iconPackName = String(icon.packName ?? "").trim();
+      if (sameName && iconPackName && sameName === iconPackName) {
+        return activePackDetails.pack;
+      }
+    }
+
+    return null;
+  };
+
+  const getExploreIconAvailabilityMeta = (alreadyAdded: boolean): {
+    label: string;
+    variant: "secondary" | "outline";
+  } => (
+    alreadyAdded
+      ? { label: "Instalado", variant: "secondary" }
+      : { label: "Não instalado", variant: "outline" }
+  );
+
   const shouldShowExploreGlobalEmpty =
     hasExploreSearch
     && exploreType === "all"
@@ -1796,6 +1828,7 @@ export function IconPicker({
                         {paginatedExplorePacks.items.map((pack) => {
                           const progress = resolvePackProgress(pack);
                           const isFull = progress.status === "full";
+                          const packStatusBadge = getPackLibraryStatusBadge(pack);
                           const matchHint = hasExploreSearch
                             ? (formatPackMatchHint(packMatchSummaryByPackId.get(pack.id)) ?? "Match pelo nome/descrição do pack")
                             : null;
@@ -1811,6 +1844,8 @@ export function IconPicker({
                               categorySummary={categorySummary}
                               authorLabel={authorLabel}
                               publicCode={pack.publicCode}
+                              statusLabel={packStatusBadge.label}
+                              statusVariant={packStatusBadge.variant}
                               addActionLabel={getPackAddActionLabel(pack)}
                               addButtonVariant={isFull ? "outline" : "default"}
                               addDisabled={isFull || addPackToLibraryMutation.isPending}
@@ -1877,11 +1912,17 @@ export function IconPicker({
                       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                         {paginatedExploreIcons.items.map((icon) => {
                           const alreadyAdded = icon.alreadyInLibrary || personalOfficialIconIds.has(icon.id);
+                          const iconAvailability = getExploreIconAvailabilityMeta(alreadyAdded);
                           const isCommunity = icon.sourceType === "community";
                           const categoryLabel = icon.category ? getIconCategoryLabel(icon.category) : "Sem categoria";
                           const authorLabel = isCommunity
                             ? `Publicado por: ${formatCommunityAuthorLabel(icon.ownerLabel)}`
                             : "Catálogo oficial";
+                          const originPack = resolveExplorePackForIcon(icon);
+                          const packStatusBadge = originPack ? getPackLibraryStatusBadge(originPack) : null;
+                          const packSummaryLabel = originPack
+                            ? `${originPack.iconsCount} ícone(s) neste pack`
+                            : null;
                           return (
                             <IconPickerExploreIconCard
                               key={icon.id}
@@ -1889,13 +1930,16 @@ export function IconPicker({
                               imageUrl={icon.imageUrl}
                               categoryLabel={categoryLabel}
                               originLabel={getExploreIconPackOriginLabel(icon)}
+                              packSummaryLabel={packSummaryLabel}
                               packItemPublicCode={icon.packItemPublicCode}
                               authorLabel={authorLabel}
-                              availabilityLabel={alreadyAdded ? "Na sua biblioteca" : "Disponível"}
-                              availabilityVariant={alreadyAdded ? "secondary" : "outline"}
+                              availabilityLabel={iconAvailability.label}
+                              availabilityVariant={iconAvailability.variant}
+                              packAvailabilityLabel={packStatusBadge?.label ?? null}
+                              packAvailabilityVariant={packStatusBadge?.variant ?? "outline"}
                               showAddButton={!alreadyAdded}
                               addButtonDisabled={isAddExploreIconPending(icon)}
-                              showOpenPackButton={Boolean(icon.packId && hasExploreSearch)}
+                              showOpenPackButton={Boolean(originPack)}
                               onOpenActions={() => openExploreActions(icon, alreadyAdded)}
                               onAddIcon={async () => {
                                 try {
@@ -1905,9 +1949,8 @@ export function IconPicker({
                                 }
                               }}
                               onOpenPack={() => {
-                                const pack = explorePacksById.get(icon.packId ?? "");
-                                if (pack) {
-                                  openPackDetails(pack);
+                                if (originPack) {
+                                  openPackDetails(originPack);
                                 }
                               }}
                             />
@@ -2358,19 +2401,61 @@ export function IconPicker({
 
           {packDetailsTarget ? (
             <div className="space-y-3">
-              <p className="text-xs text-muted-foreground">
-                {packDetailsTarget.sourceType === "community"
-                  ? `Publicado por: ${formatCommunityAuthorLabel(packDetailsTarget.ownerLabel)}`
-                  : "Catálogo oficial"}
-              </p>
-              {packDetailsTarget.publicCode ? (
-                <p className="text-xs text-muted-foreground">
-                  ID do pack: {packDetailsTarget.publicCode}
-                </p>
-              ) : null}
-              <p className="text-xs text-muted-foreground">
-                {packDetailsTarget.description || "Sem descrição"}
-              </p>
+              {(() => {
+                const packStatusBadge = getPackLibraryStatusBadge(packDetailsTarget);
+                return (
+                  <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                      <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-3xl border border-border/60 bg-background/80 shadow-sm">
+                        {packDetailsTarget.coverImageUrl ? (
+                          <img
+                            src={packDetailsTarget.coverImageUrl}
+                            alt={packDetailsTarget.name}
+                            loading="lazy"
+                            decoding="async"
+                            className="h-14 w-14 rounded-2xl object-cover"
+                          />
+                        ) : (
+                          <BrandIconDisplay
+                            name={packDetailsTarget.name}
+                            iconeId={null}
+                            size="lg"
+                            fallbackToNameMatch={false}
+                          />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={packStatusBadge.variant} className="rounded-full px-2.5 py-0.5 text-[10px]">
+                            {packStatusBadge.label}
+                          </Badge>
+                          <Badge variant="outline" className="rounded-full px-2.5 py-0.5 text-[10px]">
+                            {packDetailsTarget.iconsCount} ícone(s)
+                          </Badge>
+                          {packDetailsTarget.category ? (
+                            <Badge variant="outline" className="rounded-full px-2.5 py-0.5 text-[10px]">
+                              {getIconCategoryLabel(packDetailsTarget.category)}
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {packDetailsTarget.sourceType === "community"
+                            ? `Publicado por: ${formatCommunityAuthorLabel(packDetailsTarget.ownerLabel)}`
+                            : "Catálogo oficial"}
+                        </p>
+                        {packDetailsTarget.publicCode ? (
+                          <p className="text-xs text-muted-foreground">
+                            ID do pack: {packDetailsTarget.publicCode}
+                          </p>
+                        ) : null}
+                        <p className="text-sm text-muted-foreground">
+                          {packDetailsTarget.description || "Sem descrição"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {isLoadingPackDetails ? (
                 <p className="text-xs text-muted-foreground">Carregando ícones do pack...</p>
@@ -2517,7 +2602,7 @@ export function IconPicker({
       >
         <DialogContent
           overlayClassName="z-[80]"
-          className="z-[80] max-w-sm"
+          className={manageActionTarget?.type === "explore" ? "z-[80] max-w-lg" : "z-[80] max-w-sm"}
         >
           <DialogHeader>
             <DialogTitle>
@@ -2610,10 +2695,28 @@ export function IconPicker({
               />
             </div>
           ) : manageActionTarget?.type === "explore" ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
+              {(() => {
+                const explorePack = resolveExplorePackForIcon(manageActionTarget.icon);
+                const packStatusBadge = explorePack ? getPackLibraryStatusBadge(explorePack) : null;
+                const iconAvailability = getExploreIconAvailabilityMeta(manageActionTarget.alreadyAdded);
+                const packIconsCountLabel = explorePack
+                  ? `${explorePack.name} · ${explorePack.iconsCount} ícone(s)`
+                  : null;
+                const addPackLabel = explorePack ? getPackAddActionLabel(explorePack) : "Adicionar pack completo";
+                const isAddPackDisabled = explorePack
+                  ? resolvePackProgress(explorePack).status === "full" || addPackToLibraryMutation.isPending
+                  : true;
+
+                return (
+                  <>
               <IconPickerManageExploreInfo
-                showInLibraryBadge={manageActionTarget.alreadyAdded}
-                inLibraryLabel="Na sua biblioteca"
+                previewImageUrl={manageActionTarget.icon.imageUrl}
+                previewAlt={manageActionTarget.icon.name}
+                availabilityLabel={iconAvailability.label}
+                availabilityVariant={iconAvailability.variant}
+                packAvailabilityLabel={packStatusBadge?.label ?? null}
+                packAvailabilityVariant={packStatusBadge?.variant ?? "outline"}
                 sourceLabel={
                   manageActionTarget.icon.sourceType === "community"
                     ? `Publicado por: ${formatCommunityAuthorLabel(manageActionTarget.icon.ownerLabel)}`
@@ -2625,6 +2728,7 @@ export function IconPicker({
                     ? `Categoria: ${getIconCategoryLabel(manageActionTarget.icon.category)}`
                     : "Categoria: Sem categoria"
                 }
+                packIconsCountLabel={packIconsCountLabel}
                 publicCodeLabel={
                   manageActionTarget.icon.packItemPublicCode
                     ? `ID do ícone: ${manageActionTarget.icon.packItemPublicCode}`
@@ -2632,39 +2736,6 @@ export function IconPicker({
                 }
               />
               <IconPickerManageExploreActions
-                showAddIconButton={!manageActionTarget.alreadyAdded}
-                onAddIcon={async () => {
-                  try {
-                    await addExploreIconToLibrary(manageActionTarget.icon);
-                    setManageActionTarget(null);
-                  } catch {
-                    // handled by mutation onError
-                  }
-                }}
-                addIconLabel="Adicionar este ícone"
-                isAddIconDisabled={isAddExploreIconPending(manageActionTarget.icon)}
-                showOpenPackButton={Boolean(manageActionTarget.icon.packId)}
-                onOpenPack={() => {
-                  const pack = explorePacksById.get(manageActionTarget.icon.packId ?? "");
-                  if (pack) {
-                    openPackDetails(pack);
-                  }
-                  setManageActionTarget(null);
-                }}
-                openPackLabel="Abrir pack"
-                showManageInLibraryButton={manageActionTarget.alreadyAdded}
-                onManageInLibrary={() => {
-                  const personalIcon = findPersonalIconFromExploreCard(manageActionTarget.icon);
-                  if (!personalIcon) {
-                    setManageActionTarget(null);
-                    return;
-                  }
-                  openManagePersonalActions(
-                    personalIcon,
-                    communityPublicationBySourceUserIconId.get(personalIcon.id) ?? null,
-                  );
-                }}
-                manageInLibraryLabel="Gerenciar na minha biblioteca"
                 showUseIconButton={!isManageMode}
                 onUseIcon={async () => {
                   try {
@@ -2693,7 +2764,50 @@ export function IconPicker({
                   }
                 }}
                 useIconLabel="Usar este ícone"
+                showAddIconButton={!manageActionTarget.alreadyAdded}
+                onAddIcon={async () => {
+                  try {
+                    await addExploreIconToLibrary(manageActionTarget.icon);
+                    setManageActionTarget(null);
+                  } catch {
+                    // handled by mutation onError
+                  }
+                }}
+                addIconLabel="Adicionar este ícone"
+                isAddIconDisabled={isAddExploreIconPending(manageActionTarget.icon)}
+                showOpenPackButton={Boolean(explorePack)}
+                onOpenPack={() => {
+                  if (explorePack) {
+                    openPackDetails(explorePack);
+                  }
+                  setManageActionTarget(null);
+                }}
+                openPackLabel="Abrir pack"
+                showAddPackButton={Boolean(explorePack)}
+                onAddPack={async () => {
+                  if (!explorePack) return;
+                  addPackToLibraryMutation.mutate(explorePack);
+                  setManageActionTarget(null);
+                }}
+                addPackLabel={addPackLabel}
+                isAddPackDisabled={isAddPackDisabled}
+                showManageInLibraryButton={manageActionTarget.alreadyAdded}
+                onManageInLibrary={() => {
+                  const personalIcon = findPersonalIconFromExploreCard(manageActionTarget.icon);
+                  if (!personalIcon) {
+                    setManageActionTarget(null);
+                    return;
+                  }
+                  openManagePersonalActions(
+                    personalIcon,
+                    communityPublicationBySourceUserIconId.get(personalIcon.id) ?? null,
+                  );
+                }}
+                manageInLibraryLabel="Gerenciar na minha biblioteca"
               />
+                  </>
+                );
+              })()}
             </div>
           ) : manageActionTarget?.type === "pack" ? (
             <IconPickerManagePackActions

@@ -35,16 +35,29 @@ export function resolvePackProgress(pack: OfficialIconPackApiModel): {
 
 export function getPackLibrarySummaryLabel(pack: OfficialIconPackApiModel): string {
   const progress = resolvePackProgress(pack);
-  if (progress.status === "full") return "Na sua biblioteca";
-  if (progress.status === "partial") return `${progress.added}/${progress.total} na biblioteca`;
-  return "Disponível";
+  if (progress.status === "full") return "Pack instalado";
+  if (progress.status === "partial") return `${progress.added}/${progress.total} ícones instalados`;
+  return "Pack não instalado";
+}
+
+export function getPackLibraryStatusBadge(pack: OfficialIconPackApiModel): {
+  label: string;
+  variant: "secondary" | "outline";
+} {
+  const progress = resolvePackProgress(pack);
+  if (progress.status === "full") {
+    return { label: "Pack instalado", variant: "secondary" };
+  }
+  if (progress.status === "partial") {
+    return { label: "Pack parcial", variant: "outline" };
+  }
+  return { label: "Pack não instalado", variant: "outline" };
 }
 
 export function getPackAddActionLabel(pack: OfficialIconPackApiModel): string {
   const progress = resolvePackProgress(pack);
-  if (progress.status === "full") return "Na sua biblioteca";
-  if (progress.status === "partial") return "Adicionar faltantes";
-  return "Adicionar pack à minha biblioteca";
+  if (progress.status === "full") return "Pack já instalado";
+  return "Adicionar pack completo";
 }
 
 export function getExploreIconPackOriginLabel(icon: OfficialIconApiModel): string {

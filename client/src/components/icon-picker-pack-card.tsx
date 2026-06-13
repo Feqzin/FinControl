@@ -1,4 +1,5 @@
 import type { KeyboardEvent, MouseEvent } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 type IconPickerPackCardProps = {
@@ -7,6 +8,8 @@ type IconPickerPackCardProps = {
   categorySummary: string;
   authorLabel: string;
   publicCode?: string | null;
+  statusLabel: string;
+  statusVariant: "secondary" | "outline";
   addActionLabel: string;
   addButtonVariant: "default" | "outline";
   addDisabled: boolean;
@@ -21,6 +24,8 @@ export function IconPickerPackCard({
   categorySummary,
   authorLabel,
   publicCode,
+  statusLabel,
+  statusVariant,
   addActionLabel,
   addButtonVariant,
   addDisabled,
@@ -57,8 +62,13 @@ export function IconPickerPackCard({
       onKeyDown={handleCardKeyDown}
     >
       <p className="text-sm font-medium">{name}</p>
+      <div className="mt-2">
+        <Badge variant={statusVariant} className="rounded-full px-2.5 text-[10px]">
+          {statusLabel}
+        </Badge>
+      </div>
       {matchHint ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="mt-2 text-xs text-muted-foreground">
           {matchHint}
         </p>
       ) : null}

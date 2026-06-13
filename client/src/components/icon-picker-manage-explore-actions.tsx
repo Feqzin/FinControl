@@ -1,6 +1,9 @@
 import { Button } from "@/components/ui/button";
 
 type IconPickerManageExploreActionsProps = {
+  showUseIconButton: boolean;
+  onUseIcon: () => Promise<void> | void;
+  useIconLabel: string;
   showAddIconButton: boolean;
   onAddIcon: () => Promise<void> | void;
   addIconLabel: string;
@@ -8,15 +11,19 @@ type IconPickerManageExploreActionsProps = {
   showOpenPackButton: boolean;
   onOpenPack: () => void;
   openPackLabel: string;
+  showAddPackButton: boolean;
+  onAddPack: () => Promise<void> | void;
+  addPackLabel: string;
+  isAddPackDisabled: boolean;
   showManageInLibraryButton: boolean;
   onManageInLibrary: () => void;
   manageInLibraryLabel: string;
-  showUseIconButton: boolean;
-  onUseIcon: () => Promise<void> | void;
-  useIconLabel: string;
 };
 
 export function IconPickerManageExploreActions({
+  showUseIconButton,
+  onUseIcon,
+  useIconLabel,
   showAddIconButton,
   onAddIcon,
   addIconLabel,
@@ -24,15 +31,26 @@ export function IconPickerManageExploreActions({
   showOpenPackButton,
   onOpenPack,
   openPackLabel,
+  showAddPackButton,
+  onAddPack,
+  addPackLabel,
+  isAddPackDisabled,
   showManageInLibraryButton,
   onManageInLibrary,
   manageInLibraryLabel,
-  showUseIconButton,
-  onUseIcon,
-  useIconLabel,
 }: IconPickerManageExploreActionsProps) {
   return (
     <>
+      {showUseIconButton ? (
+        <Button
+          type="button"
+          className="w-full justify-start"
+          onClick={onUseIcon}
+        >
+          {useIconLabel}
+        </Button>
+      ) : null}
+
       {showAddIconButton ? (
         <Button
           type="button"
@@ -56,6 +74,18 @@ export function IconPickerManageExploreActions({
         </Button>
       ) : null}
 
+      {showAddPackButton ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-start"
+          disabled={isAddPackDisabled}
+          onClick={onAddPack}
+        >
+          {addPackLabel}
+        </Button>
+      ) : null}
+
       {showManageInLibraryButton ? (
         <Button
           type="button"
@@ -64,16 +94,6 @@ export function IconPickerManageExploreActions({
           onClick={onManageInLibrary}
         >
           {manageInLibraryLabel}
-        </Button>
-      ) : null}
-
-      {showUseIconButton ? (
-        <Button
-          type="button"
-          className="w-full justify-start"
-          onClick={onUseIcon}
-        >
-          {useIconLabel}
         </Button>
       ) : null}
     </>

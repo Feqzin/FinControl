@@ -4455,7 +4455,7 @@ test("icon picker pagination utils: pagina coleção e limita em janela estável
   assert.equal(page2.page, 2);
 });
 
-test("icon picker explore search: sem busca não mostra ícones de pack na seção individual", () => {
+test("icon picker explore search: sem busca mantém ícones individuais de packs visíveis na seção individual", () => {
   const icons = [
     {
       id: "icon-individual",
@@ -4508,7 +4508,7 @@ test("icon picker explore search: sem busca não mostra ícones de pack na seç�
     category: "all",
   });
 
-  assert.deepEqual(visibleIcons.map((icon) => icon.id), ["icon-individual"]);
+  assert.deepEqual(visibleIcons.map((icon) => icon.id), ["icon-individual", "icon-pack-itau"]);
 });
 
 test("icon picker explore search: com busca mostra ícones de pack e encontra pack por ícone interno", () => {
@@ -4666,7 +4666,7 @@ test("icon picker explore search: com busca mantém item de pack visível por me
     search: "",
     category: "all",
   });
-  assert.deepEqual(matchedWithoutSearch.map((icon) => icon.id), []);
+  assert.deepEqual(matchedWithoutSearch.map((icon) => icon.id), ["icon-pack-next"]);
 });
 
 test("icon picker explore search: com busca evita duplicata individual representada em pack", () => {

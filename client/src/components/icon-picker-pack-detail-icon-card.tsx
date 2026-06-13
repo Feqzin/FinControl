@@ -53,6 +53,8 @@ export function IconPickerPackDetailIconCard({
         <img
           src={imageUrl}
           alt={name}
+          loading="lazy"
+          decoding="async"
           className="h-8 w-8 rounded-lg object-cover"
         />
         <div className="min-w-0">

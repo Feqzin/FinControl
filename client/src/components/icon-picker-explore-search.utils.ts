@@ -206,7 +206,7 @@ export function resolveExploreIconsForView(
   const withCategory = icons.filter((icon) => matchesIconCategory(icon.category, options.category));
 
   if (!normalizedSearch) {
-    return withCategory.filter((icon) => !hasPackOrigin(icon) && !icon.hiddenBecausePacked && !icon.representedInPack);
+    return dedupeExploreSearchIcons(withCategory);
   }
 
   const matched = withCategory.filter((icon) => {

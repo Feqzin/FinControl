@@ -7,10 +7,13 @@ type IconPickerExploreIconCardProps = {
   imageUrl: string;
   categoryLabel: string;
   originLabel: string;
+  packSummaryLabel?: string | null;
   packItemPublicCode?: string | null;
   authorLabel: string;
   availabilityLabel: string;
   availabilityVariant: "secondary" | "outline";
+  packAvailabilityLabel?: string | null;
+  packAvailabilityVariant?: "secondary" | "outline";
   showAddButton: boolean;
   addButtonDisabled: boolean;
   showOpenPackButton: boolean;
@@ -24,10 +27,13 @@ export function IconPickerExploreIconCard({
   imageUrl,
   categoryLabel,
   originLabel,
+  packSummaryLabel,
   packItemPublicCode,
   authorLabel,
   availabilityLabel,
   availabilityVariant,
+  packAvailabilityLabel,
+  packAvailabilityVariant = "outline",
   showAddButton,
   addButtonDisabled,
   showOpenPackButton,
@@ -59,24 +65,31 @@ export function IconPickerExploreIconCard({
     <div
       role="button"
       tabIndex={0}
-      className="rounded-lg border p-2 text-left transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="rounded-2xl border border-border/60 bg-background/80 p-3 text-left shadow-sm transition-colors hover:bg-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       onClick={onOpenActions}
       onKeyDown={handleCardKeyDown}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-start gap-3">
         <img
           src={imageUrl}
           alt={name}
-          className="h-9 w-9 rounded-lg object-cover"
+          loading="lazy"
+          decoding="async"
+          className="h-11 w-11 rounded-xl border border-border/50 object-cover shadow-sm"
         />
-        <div className="min-w-0">
-          <p className="truncate text-xs font-medium">{name}</p>
-          <p className="truncate text-[10px] text-muted-foreground">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold">{name}</p>
+          <p className="mt-1 truncate text-[11px] text-muted-foreground">
             {categoryLabel}
           </p>
-          <p className="truncate text-[10px] text-muted-foreground">
+          <p className="truncate text-[11px] font-medium text-foreground/80">
             {originLabel}
           </p>
+          {packSummaryLabel ? (
+            <p className="truncate text-[10px] text-muted-foreground">
+              {packSummaryLabel}
+            </p>
+          ) : null}
           {packItemPublicCode ? (
             <p className="truncate text-[10px] text-muted-foreground">
               ID: {packItemPublicCode}
@@ -84,23 +97,33 @@ export function IconPickerExploreIconCard({
           ) : null}
         </div>
       </div>
-      <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
-        <span className="text-muted-foreground">{authorLabel}</span>
-        <Badge variant={availabilityVariant} className="h-5 px-1.5 text-[10px]">
+
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <Badge variant={availabilityVariant} className="h-5 rounded-full px-2 text-[10px]">
           {availabilityLabel}
         </Badge>
+        {packAvailabilityLabel ? (
+          <Badge variant={packAvailabilityVariant} className="h-5 rounded-full px-2 text-[10px]">
+            {packAvailabilityLabel}
+          </Badge>
+        ) : null}
       </div>
+
+      <div className="mt-2 text-[11px] text-muted-foreground">
+        <span>{authorLabel}</span>
+      </div>
+
       {showAddButton ? (
         <div className="mt-2">
           <Button
             type="button"
             size="sm"
             variant="outline"
-            className="w-full"
+            className="w-full rounded-xl"
             disabled={addButtonDisabled}
             onClick={handleAddClick}
           >
-            Adicionar este ícone
+            Adicionar apenas este ícone
           </Button>
         </div>
       ) : null}
@@ -110,7 +133,7 @@ export function IconPickerExploreIconCard({
             type="button"
             size="sm"
             variant="outline"
-            className="w-full"
+            className="w-full rounded-xl"
             onClick={handleOpenPackClick}
           >
             Abrir pack
