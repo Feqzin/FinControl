@@ -79,6 +79,17 @@ const categorias = [
 ];
 
 const COMPRA_NONE_VALUE = "__none__";
+const CURRENT_BILLING_MONTH_VALUE = String(new Date().getMonth() + 1);
+const SERVICO_BILLING_MONTH_LABEL_FORMATTER = new Intl.DateTimeFormat("pt-BR", { month: "long" });
+
+const SERVICO_BILLING_MONTH_OPTIONS = Array.from({ length: 12 }, (_, index) => {
+  const month = index + 1;
+  const label = SERVICO_BILLING_MONTH_LABEL_FORMATTER.format(new Date(2026, index, 1));
+  return {
+    value: String(month),
+    label: label.charAt(0).toUpperCase() + label.slice(1),
+  };
+});
 
 const SERVICO_SORT_OPTIONS: Array<{ value: ServicoSortBy; label: string }> = [
   { value: "dia_cobranca_mais_proximo", label: "Dia de cobrança mais próximo" },
@@ -113,6 +124,30 @@ function formatServicoBillingDayLabel(value: unknown): string {
   return `Dia ${Math.trunc(Number(value))}`;
 }
 
+function formatServicoBillingMonthLabel(value: unknown): string | null {
+  const numeric = Number(value);
+  if (!Number.isInteger(numeric) || numeric < 1 || numeric > 12) return null;
+  const label = SERVICO_BILLING_MONTH_LABEL_FORMATTER.format(new Date(2026, numeric - 1, 1));
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function formatServicoBillingScheduleLabel(servico: Pick<Servico, "periodicidadeCobranca" | "mesCobranca" | "dataCobranca">): string {
+  if (servico.periodicidadeCobranca !== "anual") {
+    return formatServicoBillingDayLabel(servico.dataCobranca);
+  }
+
+  const monthLabel = formatServicoBillingMonthLabel(servico.mesCobranca);
+  if (!monthLabel) {
+    return formatServicoBillingDayLabel(servico.dataCobranca);
+  }
+
+  if (!hasFixedBillingDay(servico.dataCobranca)) {
+    return monthLabel;
+  }
+
+  return `${monthLabel} · dia ${Math.trunc(Number(servico.dataCobranca))}`;
+}
+
 export default function ServicosPage() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -126,6 +161,7 @@ export default function ServicosPage() {
     valorCobranca: "",
     periodicidadeCobranca: "mensal" as ServicoPeriodicidade,
     dataCobranca: "",
+    mesCobranca: CURRENT_BILLING_MONTH_VALUE,
     formaPagamento: "cartao",
     compraCartaoId: COMPRA_NONE_VALUE,
   });
@@ -143,6 +179,7 @@ export default function ServicosPage() {
     valorCobranca: "",
     periodicidadeCobranca: "mensal" as ServicoPeriodicidade,
     dataCobranca: "",
+    mesCobranca: CURRENT_BILLING_MONTH_VALUE,
     formaPagamento: "cartao",
     compraCartaoId: COMPRA_NONE_VALUE,
   });
@@ -228,8 +265,9 @@ export default function ServicosPage() {
       resolveServicoBillingFields({
         periodicidadeCobranca: form.periodicidadeCobranca,
         valorCobranca: form.valorCobranca,
+        mesCobranca: form.mesCobranca,
       }),
-    [form.periodicidadeCobranca, form.valorCobranca],
+    [form.mesCobranca, form.periodicidadeCobranca, form.valorCobranca],
   );
 
   const createBillingResumo = useMemo(
@@ -242,14 +280,18 @@ export default function ServicosPage() {
       resolveServicoBillingFields({
         periodicidadeCobranca: editForm.periodicidadeCobranca,
         valorCobranca: editForm.valorCobranca,
+        mesCobranca: editForm.mesCobranca,
       }),
-    [editForm.periodicidadeCobranca, editForm.valorCobranca],
+    [editForm.mesCobranca, editForm.periodicidadeCobranca, editForm.valorCobranca],
   );
 
   const editBillingResumo = useMemo(
     () => buildServicoPeriodicidadeResumo(editForm.periodicidadeCobranca, editForm.valorCobranca),
     [editForm.periodicidadeCobranca, editForm.valorCobranca],
   );
+
+  const isCreateAnnualBilling = form.periodicidadeCobranca === "anual";
+  const isEditAnnualBilling = editForm.periodicidadeCobranca === "anual";
 
   const toggleDivisao = (id: string) => {
     setExpandedDivisao((prev) => {
@@ -527,6 +569,14 @@ export default function ServicosPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
+                if (isCreateAnnualBilling && String(form.mesCobranca).trim().length === 0) {
+                  toast({
+                    title: "Mês de cobrança obrigatório",
+                    description: "Selecione o mês em que a cobrança anual acontece.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
                 if (!createSemDataFixa && String(form.dataCobranca).trim().length === 0) {
                   toast({
                     title: "Dia de cobrança obrigatório",
@@ -541,6 +591,7 @@ export default function ServicosPage() {
                     valorMensal: createBilling.valorMensal,
                     valorCobranca: createBilling.valorCobranca,
                     periodicidadeCobranca: createBilling.periodicidadeCobranca,
+                    mesCobranca: isCreateAnnualBilling ? createBilling.mesCobranca : null,
                     dataCobranca: createSemDataFixa ? null : form.dataCobranca,
                     compraCartaoId: form.compraCartaoId === COMPRA_NONE_VALUE ? null : form.compraCartaoId,
                     iconeId: resolveEntityIconIdForSave({
@@ -559,6 +610,7 @@ export default function ServicosPage() {
                         valorCobranca: "",
                         periodicidadeCobranca: "mensal",
                         dataCobranca: "",
+                        mesCobranca: CURRENT_BILLING_MONTH_VALUE,
                         formaPagamento: "cartao",
                         compraCartaoId: COMPRA_NONE_VALUE,
                       });
@@ -699,7 +751,27 @@ export default function ServicosPage() {
                   {createBillingResumo.secondary ? <p>{createBillingResumo.secondary}</p> : null}
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {isCreateAnnualBilling ? (
+                  <div className="space-y-2">
+                    <Label>Mês de cobrança</Label>
+                    <Select
+                      value={form.mesCobranca}
+                      onValueChange={(value) => setForm({ ...form, mesCobranca: value })}
+                    >
+                      <SelectTrigger data-testid="select-servico-mes-cobranca">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SERVICO_BILLING_MONTH_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
                 <div className="space-y-2">
                   <Label>Dia de cobrança</Label>
                   <Input
@@ -935,7 +1007,7 @@ export default function ServicosPage() {
                                 {periodicidadeLabel}
                               </span>
                               <span className="hidden rounded-full bg-muted/65 px-2.5 py-1 font-medium text-muted-foreground shadow-sm sm:inline-flex">
-                                {formatServicoBillingDayLabel(s.dataCobranca)}
+                                {formatServicoBillingScheduleLabel(s)}
                               </span>
                               <span className="hidden rounded-full bg-muted/65 px-2.5 py-1 font-medium text-muted-foreground shadow-sm sm:inline-flex">
                                 {s.formaPagamento}
@@ -1024,6 +1096,7 @@ export default function ServicosPage() {
                                     valorCobranca: billingView.valorCobranca.toFixed(2),
                                     periodicidadeCobranca: billingView.periodicidade,
                                     dataCobranca: servicoHasFixedBillingDay ? String(s.dataCobranca) : "",
+                                    mesCobranca: s.mesCobranca != null ? String(s.mesCobranca) : CURRENT_BILLING_MONTH_VALUE,
                                     formaPagamento: s.formaPagamento,
                                     compraCartaoId: s.compraCartaoId ?? COMPRA_NONE_VALUE,
                                   });
@@ -1127,6 +1200,14 @@ export default function ServicosPage() {
             onSubmit={(e) => {
               e.preventDefault();
               if (!editingServico) return;
+              if (isEditAnnualBilling && String(editForm.mesCobranca).trim().length === 0) {
+                toast({
+                  title: "Mês de cobrança obrigatório",
+                  description: "Selecione o mês em que a cobrança anual acontece.",
+                  variant: "destructive",
+                });
+                return;
+              }
               if (!editSemDataFixa && String(editForm.dataCobranca).trim().length === 0) {
                 toast({
                   title: "Dia de cobrança obrigatório",
@@ -1142,6 +1223,7 @@ export default function ServicosPage() {
                   valorMensal: editBilling.valorMensal,
                   valorCobranca: editBilling.valorCobranca,
                   periodicidadeCobranca: editBilling.periodicidadeCobranca,
+                  mesCobranca: isEditAnnualBilling ? editBilling.mesCobranca : null,
                   dataCobranca: editSemDataFixa ? null : editForm.dataCobranca,
                   compraCartaoId: editForm.compraCartaoId === COMPRA_NONE_VALUE ? null : editForm.compraCartaoId,
                   iconeId: resolveEntityIconIdForSave({
@@ -1278,7 +1360,27 @@ export default function ServicosPage() {
                 {editBillingResumo.secondary ? <p>{editBillingResumo.secondary}</p> : null}
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {isEditAnnualBilling && (
+                <div className="space-y-2">
+                  <Label>Mês de cobrança</Label>
+                  <Select
+                    value={editForm.mesCobranca}
+                    onValueChange={(value) => setEditForm({ ...editForm, mesCobranca: value })}
+                  >
+                    <SelectTrigger data-testid="select-edit-servico-mes-cobranca">
+                      <SelectValue placeholder="Selecione o mês" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SERVICO_BILLING_MONTH_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Dia de cobrança</Label>
                 <Input

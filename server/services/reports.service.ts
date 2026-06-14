@@ -172,7 +172,7 @@ export class ReportsService {
       .reduce((sum, item) => (
         sum + competencies.reduce((acc, competency) => acc + calculateServicoRealChargeForCompetency(item, competency), 0)
       ), 0);
-    const gastosFixos = servicosAtivosTotal * monthsInPeriod;
+    const gastosFixos = servicosNaoVinculadosCartaoCobrancaRealPeriodoTotal;
     const patrimonioTotal = patrimonios.reduce((sum, item) => sum + toMoneyNumber(item.valorAtual), 0);
 
     const cartoesFaturaAtualTotal = cardSummaries.reduce((sum, item) => sum + item.faturaAtual, 0);

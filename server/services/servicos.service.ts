@@ -28,7 +28,8 @@ export class ServicosService {
   private shouldNormalizeServicoBilling(data: Partial<ServicoBodyInput> | Partial<ServicoUpdateBodyInput>): boolean {
     return Object.prototype.hasOwnProperty.call(data, "valorMensal")
       || Object.prototype.hasOwnProperty.call(data, "valorCobranca")
-      || Object.prototype.hasOwnProperty.call(data, "periodicidadeCobranca");
+      || Object.prototype.hasOwnProperty.call(data, "periodicidadeCobranca")
+      || Object.prototype.hasOwnProperty.call(data, "mesCobranca");
   }
 
   async listServicos(userId: string) {
@@ -43,6 +44,7 @@ export class ServicosService {
       valorMensal: billing.valorMensal,
       valorCobranca: billing.valorCobranca,
       periodicidadeCobranca: billing.periodicidadeCobranca,
+      mesCobranca: billing.mesCobranca,
     });
   }
 
@@ -60,6 +62,7 @@ export class ServicosService {
       valorMensal: billing.valorMensal,
       valorCobranca: billing.valorCobranca,
       periodicidadeCobranca: billing.periodicidadeCobranca,
+      mesCobranca: billing.mesCobranca,
     });
   }
 

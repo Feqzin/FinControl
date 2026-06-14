@@ -111,6 +111,7 @@ function buildBaseFixture(): FinancialFixture {
         periodicidadeCobranca: null,
         valorCobranca: null,
         dataCobranca: 10,
+        mesCobranca: null,
         formaPagamento: "debito",
         status: "ativo",
         iconeId: null,
@@ -206,9 +207,9 @@ test("resumo financeiro: métricas de serviços separam equivalente mensal, cobr
         periodicidadeCobranca: "anual",
         valorCobranca: "229.82",
         valorMensal: "19.15",
+        mesCobranca: 5,
         compraCartaoId: "compra-link-1",
       }),
-      competenciaBase: "2026-05",
     } as Servico,
     {
       ...buildServicoFixture({
@@ -236,10 +237,10 @@ test("resumo financeiro: métricas de serviços separam equivalente mensal, cobr
   const summaryMaio = await service.getSummary("user-financial-unit", "2026-05");
 
   // Saída mensal real não duplica serviços já representados pela fatura do cartão.
-  assert.equal(summaryAbril.totalServicos, 120);
-  assert.equal(summaryMaio.totalServicos, 120);
-  assert.equal(summaryAbril.totalSaidas, 320);
-  assert.equal(summaryMaio.totalSaidas, 370);
+  assert.equal(summaryAbril.totalServicos, 180);
+  assert.equal(summaryMaio.totalServicos, 90);
+  assert.equal(summaryAbril.totalSaidas, 380);
+  assert.equal(summaryMaio.totalSaidas, 340);
 
   // Planejamento mensal (equivalente) inclui todos os ativos.
   assert.equal(summaryAbril.servicosEquivalenteMensalTotal, 139.15);
@@ -295,9 +296,9 @@ test("resumo financeiro: serviço anual vinculado ao cartão não duplica saída
           periodicidadeCobranca: "anual",
           valorCobranca: "229.82",
           valorMensal: "19.15",
+          mesCobranca: 5,
           compraCartaoId: "cc-linked-annual",
         }),
-        competenciaBase: "2026-05",
       } as Servico,
       {
         ...buildServicoFixture({
@@ -306,9 +307,9 @@ test("resumo financeiro: serviço anual vinculado ao cartão não duplica saída
           periodicidadeCobranca: "anual",
           valorCobranca: "120.00",
           valorMensal: "10.00",
+          mesCobranca: 5,
           compraCartaoId: null,
         }),
-        competenciaBase: "2026-05",
       } as Servico,
       buildServicoFixture({
         id: "svc-monthly",
@@ -351,12 +352,13 @@ test("resumo financeiro: serviço anual vinculado ao cartão não duplica saída
 
   const summary = await createService(fixture).getSummary(userId, "2026-05");
 
-  assert.equal(summary.totalServicos, 60);
+  assert.equal(summary.totalServicos, 170);
   assert.equal(summary.servicosEquivalenteMensalTotal, 79.15);
   assert.equal(summary.servicosVinculadosCartaoEquivalenteMensalTotal, 19.15);
   assert.equal(summary.servicosNaoVinculadosCartaoEquivalenteMensalTotal, 60);
+  assert.equal(summary.servicosNaoVinculadosCartaoCobrancaRealTotal, 170);
   assert.equal(summary.totalCartoesMes, 229.82);
-  assert.equal(summary.totalSaidas, 289.82);
+  assert.equal(summary.totalSaidas, 399.82);
 });
 
 test("aplica simulacao de renda extra sem quebrar a consistencia", async () => {

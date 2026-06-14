@@ -639,6 +639,7 @@ function buildServicoFixture(overrides: Partial<Servico> = {}): Servico {
     periodicidadeCobranca: overrides.periodicidadeCobranca ?? null,
     valorCobranca: overrides.valorCobranca ?? null,
     dataCobranca: hasDataCobrancaOverride ? (overrides.dataCobranca ?? null) : 10,
+    mesCobranca: overrides.mesCobranca ?? null,
     formaPagamento: overrides.formaPagamento ?? "cartao",
     compraCartaoId: overrides.compraCartaoId ?? null,
     status: overrides.status ?? "ativo",
@@ -970,8 +971,8 @@ test("servicos periodicidade canônica: cobrança real anual e trimestral respei
       periodicidadeCobranca: "anual",
       valorCobranca: "229.82",
       valorMensal: "19.15",
+      mesCobranca: 5,
     }),
-    competenciaBase: "2026-05",
   };
   assert.equal(calculateServicoRealChargeForCompetency(anualServico, "2026-05"), 229.82);
   assert.equal(calculateServicoRealChargeForCompetency(anualServico, "2026-06"), 0);
@@ -1000,13 +1001,16 @@ test("servicos periodicidade canônica: cobrança real semanal usa aproximação
   assert.equal(calculateServicoRealChargeForCompetency(semanalServico, "2026-06"), 303.33);
 });
 
-test("servicos periodicidade canônica: fallback sem base para não mensal mantém compatibilidade", () => {
+test("servicos periodicidade canÃ´nica: anual sem mÃªs usa fallback seguro do mÃªs atual", () => {
   const semBase = buildServicoFixture({
     periodicidadeCobranca: "anual",
     valorCobranca: "120.00",
     valorMensal: "10.00",
   });
-  assert.equal(calculateServicoRealChargeForCompetency(semBase, "2026-05"), 10);
+  const mesAtual = format(new Date(), "yyyy-MM");
+  const mesSeguinte = format(addMonths(new Date(), 1), "yyyy-MM");
+  assert.equal(calculateServicoRealChargeForCompetency(semBase, mesAtual), 120);
+  assert.equal(calculateServicoRealChargeForCompetency(semBase, mesSeguinte), 0);
 });
 
 test("servicos periodicidade canônica: vínculo com cartão identifica risco de duplicidade", () => {
@@ -1065,6 +1069,19 @@ test("servicos periodicidade: payload novo mantém periodicidade e valor de cobr
   assert.equal(resolved.periodicidadeCobranca, "bimestral");
   assert.equal(resolved.valorCobranca, "40.00");
   assert.equal(resolved.valorMensal, "20.00");
+});
+
+test("servicos periodicidade: payload anual preserva mÃªs de cobranÃ§a", () => {
+  const resolved = resolveServicoBillingFields({
+    periodicidadeCobranca: "anual",
+    valorCobranca: "99.90",
+    mesCobranca: "6",
+  });
+
+  assert.equal(resolved.periodicidadeCobranca, "anual");
+  assert.equal(resolved.valorCobranca, "99.90");
+  assert.equal(resolved.valorMensal, "8.33");
+  assert.equal(resolved.mesCobranca, 6);
 });
 
 test("servicos vínculo com compra: usa valor total da compra quando disponível", () => {

@@ -11,6 +11,11 @@ const servicoDataCobrancaField = z.preprocess((value) => {
   if (typeof value === "string" && value.trim() === "") return null;
   return value;
 }, z.coerce.number().int().min(1).max(31).nullable());
+const servicoMesCobrancaField = z.preprocess((value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+  return value;
+}, z.coerce.number().int().min(1).max(12).nullable());
 const servicoCategoriaField = z.string().trim().min(1).transform((value, ctx) => {
   const normalized = resolveServicoCategoryValue(value);
   if (!normalized) {
@@ -76,11 +81,20 @@ export const servicoBody = z.object({
   valorCobranca: moneyField.optional(),
   periodicidadeCobranca: servicoPeriodicidadeField.optional().default("mensal"),
   dataCobranca: servicoDataCobrancaField,
+  mesCobranca: servicoMesCobrancaField.optional(),
   formaPagamento: z.string().min(1),
   compraCartaoId: z.string().min(1).optional().nullable(),
   status: z.string().optional().default("ativo"),
 }).refine((data) => data.valorMensal !== undefined || data.valorCobranca !== undefined, {
   message: "Informe o valor da cobranca",
+}).superRefine((data, ctx) => {
+  if (data.periodicidadeCobranca === "anual" && data.mesCobranca == null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Informe o mês da cobrança anual.",
+      path: ["mesCobranca"],
+    });
+  }
 });
 
 export const servicoUpdateBody = z.object({
@@ -90,6 +104,7 @@ export const servicoUpdateBody = z.object({
   valorCobranca: moneyField.optional(),
   periodicidadeCobranca: servicoPeriodicidadeField.optional(),
   dataCobranca: servicoDataCobrancaField.optional(),
+  mesCobranca: servicoMesCobrancaField.optional(),
   formaPagamento: z.string().min(1).optional(),
   compraCartaoId: z.string().min(1).optional().nullable(),
   status: z.string().min(1).optional(),

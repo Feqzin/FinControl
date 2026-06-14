@@ -13,6 +13,7 @@ export type ServicoBillingLike = {
   periodicidadeCobranca?: string | null;
   valorMensal?: string | number | null;
   valorCobranca?: string | number | null;
+  mesCobranca?: number | string | null;
 };
 
 export type ServicoPeriodicidadeComputationLike = ServicoBillingLike & {
@@ -65,6 +66,24 @@ type CompetenciaMonth = {
   year: number;
   month: number;
 };
+
+function normalizeServicoBillingMonth(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+
+  if (typeof value === "number") {
+    if (Number.isInteger(value) && value >= 1 && value <= 12) return value;
+    return null;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!/^\d{1,2}$/.test(normalized)) return null;
+    const numeric = Number(normalized);
+    if (Number.isInteger(numeric) && numeric >= 1 && numeric <= 12) return numeric;
+  }
+
+  return null;
+}
 
 function normalizeMoneyRaw(input: string | number | null | undefined): string {
   if (input == null) return "";
@@ -216,9 +235,40 @@ function resolveAnchorCompetenciaMonth(
   );
 }
 
+function resolveFallbackCurrentMonth(referenceDate?: Date): number {
+  const date = referenceDate instanceof Date && !Number.isNaN(referenceDate.getTime())
+    ? referenceDate
+    : new Date();
+  return date.getMonth() + 1;
+}
+
+function resolveAnnualBillingMonth(
+  servico: ServicoPeriodicidadeComputationLike,
+  referenceDate?: Date,
+): number {
+  const explicitMonth = normalizeServicoBillingMonth(servico.mesCobranca);
+  if (explicitMonth != null) return explicitMonth;
+
+  const anchorCompetencia = resolveAnchorCompetenciaMonth(servico);
+  if (anchorCompetencia) return anchorCompetencia.month;
+
+  return resolveFallbackCurrentMonth(referenceDate);
+}
+
+function buildLocalIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function isServicoPeriodicidade(value: unknown): value is ServicoPeriodicidade {
   if (typeof value !== "string") return false;
   return (SERVICO_PERIODICIDADE_VALUES as readonly string[]).includes(value);
+}
+
+export function isServicoBillingMonth(value: unknown): value is number {
+  return normalizeServicoBillingMonth(value) != null;
 }
 
 export function normalizeServicoPeriodicidade(value: unknown): ServicoPeriodicidade {
@@ -296,6 +346,11 @@ export function calculateServicoRealChargeForCompetency(
     return valorCobrancaCents / 100;
   }
 
+  if (periodicidade === "anual") {
+    const billingMonth = resolveAnnualBillingMonth(servico);
+    return targetCompetencia.month === billingMonth ? (valorCobrancaCents / 100) : 0;
+  }
+
   if (periodicidade === "semanal") {
     // Sem uma data-base semanal (weekday + início), usamos aproximação mensal equivalente
     // para manter compatibilidade e evitar queda brusca de valores nas telas antigas.
@@ -312,6 +367,37 @@ export function calculateServicoRealChargeForCompetency(
   const deltaMonths = toCompetenciaIndex(targetCompetencia) - toCompetenciaIndex(anchorCompetencia);
   const mod = ((deltaMonths % interval) + interval) % interval;
   return mod === 0 ? (valorCobrancaCents / 100) : 0;
+}
+
+export function resolveServicoNextChargeDate(
+  servico: ServicoPeriodicidadeComputationLike,
+  referenceDate?: Date,
+): string | null {
+  const billingDay = Number(servico.dataCobranca);
+  if (!Number.isInteger(billingDay) || billingDay < 1 || billingDay > 31) {
+    return null;
+  }
+
+  const periodicidade = normalizeServicoPeriodicidade(servico.periodicidadeCobranca);
+  const now = referenceDate instanceof Date && !Number.isNaN(referenceDate.getTime())
+    ? new Date(referenceDate)
+    : new Date();
+  const today = buildLocalIsoDate(now);
+
+  if (periodicidade === "anual") {
+    const billingMonth = resolveAnnualBillingMonth(servico, now);
+    let candidate = new Date(now.getFullYear(), billingMonth - 1, billingDay);
+    if (buildLocalIsoDate(candidate) < today) {
+      candidate = new Date(now.getFullYear() + 1, billingMonth - 1, billingDay);
+    }
+    return buildLocalIsoDate(candidate);
+  }
+
+  let candidate = new Date(now.getFullYear(), now.getMonth(), billingDay);
+  if (buildLocalIsoDate(candidate) < today) {
+    candidate = new Date(now.getFullYear(), now.getMonth() + 1, billingDay);
+  }
+  return buildLocalIsoDate(candidate);
 }
 
 export function calculateServicoRealMonthlyExpenseAmount(
@@ -363,6 +449,7 @@ export function resolveServicoBillingFields(
   periodicidadeCobranca: ServicoPeriodicidade;
   valorCobranca: string;
   valorMensal: string;
+  mesCobranca: number | null;
   valorCobrancaNumber: number;
   valorMensalNumber: number;
 } {
@@ -389,11 +476,19 @@ export function resolveServicoBillingFields(
   }
 
   const valorMensalCents = calculateServicoValorMensalEquivalenteCents(valorCobrancaCents, periodicidade);
+  const mesCobranca = periodicidade === "anual"
+    ? (
+      normalizeServicoBillingMonth(incoming.mesCobranca)
+      ?? normalizeServicoBillingMonth(fallback?.mesCobranca)
+      ?? resolveFallbackCurrentMonth()
+    )
+    : null;
 
   return {
     periodicidadeCobranca: periodicidade,
     valorCobranca: centsToFixed(valorCobrancaCents),
     valorMensal: centsToFixed(valorMensalCents),
+    mesCobranca,
     valorCobrancaNumber: valorCobrancaCents / 100,
     valorMensalNumber: valorMensalCents / 100,
   };

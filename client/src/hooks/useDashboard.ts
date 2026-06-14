@@ -8,9 +8,9 @@ import { AlertTriangle, Bell, CheckCircle, CreditCard, TrendingDown } from "luci
 import { maskValue } from "@/context/values-visibility";
 import { toMoneyNumber } from "@/lib/money";
 import {
-  calculateServicoMonthlyFinancialImpactAmount,
   calculateServicoRealMonthlyExpenseAmount,
   isServicoLinkedToCardCharge,
+  resolveServicoNextChargeDate,
 } from "@shared/servico-periodicidade";
 import {
   calculateCardUsedLimit,
@@ -332,10 +332,12 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     : saldoPrevisto === 0 ? "bg-blue-500/10 text-blue-600"
     : "bg-red-500/10 text-red-600";
 
-  const today = format(new Date(), "yyyy-MM-dd");
-  const todayMonthReference = format(new Date(), "yyyy-MM");
-  const in5Days = format(new Date(Date.now() + 5 * 86400000), "yyyy-MM-dd");
-  const in7Days = format(addDays(new Date(), 7), "yyyy-MM-dd");
+  const todayDate = new Date();
+  const today = format(todayDate, "yyyy-MM-dd");
+  const todayReferenceDate = parseISO(today);
+  const todayMonthReference = format(todayDate, "yyyy-MM");
+  const in5Days = format(new Date(todayDate.getTime() + 5 * 86400000), "yyyy-MM-dd");
+  const in7Days = format(addDays(todayDate, 7), "yyyy-MM-dd");
 
   const vencendo5Dias = dividas.filter(
     (d) => d.tipo === "pagar" && d.status === "pendente" && d.dataVencimento && d.dataVencimento >= today && d.dataVencimento <= in5Days,
@@ -421,10 +423,10 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       });
 
     servicos.filter((s) => s.status === "ativo").forEach((s) => {
-      const valor = calculateServicoMonthlyFinancialImpactAmount(s);
-      if (valor <= 0) return;
-      const dataVenc = getNextDueDate(s.dataCobranca);
+      const dataVenc = resolveServicoNextChargeDate(s, todayReferenceDate);
       if (!dataVenc) return;
+      const valor = calculateServicoRealMonthlyExpenseAmount(s, dataVenc.slice(0, 7));
+      if (valor <= 0) return;
       const daysUntil = differenceInDays(parseISO(dataVenc), new Date());
       items.push({
         id: `servico-${s.id}`,
@@ -477,16 +479,12 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     });
 
     servicos.filter((s) => s.status === "ativo").forEach((s) => {
-      const amount = calculateServicoMonthlyFinancialImpactAmount(s);
+      const dueDate = resolveServicoNextChargeDate(s, todayReferenceDate);
+      if (!dueDate) return;
+      const amount = calculateServicoRealMonthlyExpenseAmount(s, dueDate.slice(0, 7));
       if (amount <= 0) return;
-      if (!isValidBillingDay(s.dataCobranca)) return;
-      const billingDay = s.dataCobranca;
-      const now = new Date();
-      let d = new Date(now.getFullYear(), now.getMonth(), billingDay);
-      if (format(d, "yyyy-MM-dd") < today) d = new Date(now.getFullYear(), now.getMonth() + 1, billingDay);
-      const ds = format(d, "yyyy-MM-dd");
-      if (ds >= today && ds <= in7Days) {
-        items.push({ id: `svc-${s.id}`, title: s.nome, dateStr: ds, amount, type: "servico" });
+      if (dueDate >= today && dueDate <= in7Days) {
+        items.push({ id: `svc-${s.id}`, title: s.nome, dateStr: dueDate, amount, type: "servico" });
       }
     });
 

@@ -684,9 +684,7 @@ export class FinancialService {
     const servicoSummaryTotals = calculateServicoSummaryTotals(simulated.servicos, mesReferencia);
 
     const totalRenda = sumMoneyBy(simulated.rendas.filter((r) => r.ativo), (r) => r.valor);
-    const totalServicos = simulated.servicos
-      .filter((servico) => servico.status === "ativo")
-      .reduce((sum, servico) => sum + calculateServicoMonthlyFinancialImpactAmount(servico), 0);
+    const totalServicos = servicoSummaryTotals.servicosNaoVinculadosCartaoCobrancaRealTotal;
 
     const totalEntradas = totalRenda + totalReceberMes;
     const totalSaidas = totalPagarMes + totalServicos + totalCartoesMes;

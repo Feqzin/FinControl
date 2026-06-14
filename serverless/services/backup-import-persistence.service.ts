@@ -110,6 +110,15 @@ function readOptionalInteger(row: JsonRow, field: string, label: string): number
   throw new Error(`Campo invalido: ${label}.${field}`);
 }
 
+function readOptionalMonth(row: JsonRow, field: string, label: string): number | null {
+  const value = readOptionalInteger(row, field, label);
+  if (value == null) return null;
+  if (value < 1 || value > 12) {
+    throw new Error(`Campo invalido: ${label}.${field}`);
+  }
+  return value;
+}
+
 function readRequiredDecimal(row: JsonRow, field: string, label: string): string {
   const value = row[field];
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
@@ -268,6 +277,8 @@ function toServicoInsert(row: JsonRow, label: string): InsertServicoWithId {
     valorCobranca: billing.valorCobranca,
     periodicidadeCobranca: billing.periodicidadeCobranca,
     dataCobranca: readOptionalInteger(row, "dataCobranca", label),
+    mesCobranca: readOptionalMonth(row, "mesCobranca", label)
+      ?? (billing.periodicidadeCobranca === "anual" ? (new Date().getMonth() + 1) : null),
     formaPagamento: readRequiredString(row, "formaPagamento", label),
     compraCartaoId: readOptionalString(row, "compraCartaoId", label),
     status: readOptionalString(row, "status", label) ?? "ativo",

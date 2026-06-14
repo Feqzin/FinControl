@@ -8,6 +8,7 @@ export type ServicoPayload = {
   valorCobranca?: string;
   periodicidadeCobranca?: "mensal" | "anual" | "semestral" | "trimestral" | "bimestral" | "semanal";
   dataCobranca: string | number | null;
+  mesCobranca?: string | number | null;
   formaPagamento: string;
   compraCartaoId?: string | null;
   status?: string;
@@ -32,12 +33,26 @@ function serializeServicoDataCobranca(value: ServicoPayload["dataCobranca"] | un
   return Math.trunc(numeric);
 }
 
+function serializeServicoMesCobranca(value: ServicoPayload["mesCobranca"] | undefined): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+
+  const numeric = Number(normalized);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.trunc(numeric);
+}
+
 export async function createServico(payload: ServicoPayload): Promise<void> {
   const dataCobranca = serializeServicoDataCobranca(payload.dataCobranca);
+  const mesCobranca = serializeServicoMesCobranca(payload.mesCobranca);
   await apiRequest("POST", "/api/servicos", {
     ...payload,
     periodicidadeCobranca: payload.periodicidadeCobranca ?? "mensal",
     dataCobranca: dataCobranca ?? null,
+    mesCobranca: payload.periodicidadeCobranca === "anual" ? (mesCobranca ?? null) : null,
     compraCartaoId: payload.compraCartaoId ?? null,
     status: payload.status || "ativo",
     iconeId: payload.iconeId ?? null,
@@ -47,10 +62,13 @@ export async function createServico(payload: ServicoPayload): Promise<void> {
 export async function updateServico(id: string, payload: Partial<ServicoPayload>): Promise<void> {
   const hasDataCobranca = Object.prototype.hasOwnProperty.call(payload, "dataCobranca");
   const dataCobranca = hasDataCobranca ? serializeServicoDataCobranca(payload.dataCobranca) : undefined;
+  const hasMesCobranca = Object.prototype.hasOwnProperty.call(payload, "mesCobranca");
+  const mesCobranca = hasMesCobranca ? serializeServicoMesCobranca(payload.mesCobranca) : undefined;
   await apiRequest("PATCH", `/api/servicos/${id}`, {
     ...payload,
     ...(payload.periodicidadeCobranca !== undefined ? { periodicidadeCobranca: payload.periodicidadeCobranca } : {}),
     ...(hasDataCobranca ? { dataCobranca: dataCobranca ?? null } : {}),
+    ...(hasMesCobranca ? { mesCobranca: mesCobranca ?? null } : {}),
   });
 }
 
