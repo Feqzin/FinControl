@@ -21,6 +21,9 @@ type CartoesMobileTabsProps = {
   getCompraParcelas: (compraId: string) => ParcelaCompra[];
   invoiceMonthLabel: string;
   servicos: Servico[];
+  canOpenInvoicePaymentDialog: (cartaoId: string) => boolean;
+  getInvoicePaymentActionLabel: (cartaoId: string) => string;
+  onOpenInvoicePaymentDialog: (cartaoId: string) => void;
   onOpenParcelas: (compra: CompraCartao) => void;
   onDeleteCompra: (compra: CompraCartao) => void;
   resolveCompraIconSuggestion: (compra: CompraCartao) => PurchaseIconMatchResult;
@@ -45,6 +48,9 @@ export function CartoesMobileTabs({
   getCompraParcelas,
   invoiceMonthLabel,
   servicos,
+  canOpenInvoicePaymentDialog,
+  getInvoicePaymentActionLabel,
+  onOpenInvoicePaymentDialog,
   onOpenParcelas,
   onDeleteCompra,
   resolveCompraIconSuggestion,
@@ -248,7 +254,17 @@ export function CartoesMobileTabs({
                       ) : null}
                     </>
                   )}
-                  <div className="px-4 py-2.5">
+                  <div className="grid grid-cols-1 gap-2 px-4 py-2.5 sm:grid-cols-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-xs"
+                      onClick={() => onOpenInvoicePaymentDialog(cartao.id)}
+                      disabled={!canOpenInvoicePaymentDialog(cartao.id)}
+                      data-testid={`button-pay-invoice-mobile-${cartao.id}`}
+                    >
+                      {getInvoicePaymentActionLabel(cartao.id)}
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"

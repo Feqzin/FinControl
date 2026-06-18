@@ -338,6 +338,43 @@ export type CartaoResumo = {
   quantidadeParcelasPendentes: number;
 };
 
+export type CartaoFaturaPagamentoApiModel = {
+  id: string;
+  userId: string;
+  cartaoId: string;
+  competenciaMes: number;
+  competenciaAno: number;
+  valorPago: string;
+  dataPagamento: string;
+  observacao: string | null;
+  tipoPagamento: string;
+  considerarNoSaldoCompetencia: boolean;
+  conciliadoEm: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RegisterCartaoFaturaPagamentoPayload = {
+  valorPago: string | number;
+  dataPagamento: string;
+  observacao?: string | null;
+};
+
+export type RegisterCartaoFaturaPagamentoResponse = {
+  pagamento: CartaoFaturaPagamentoApiModel;
+  valorSolicitado: number;
+  valorAplicado: number;
+  saldoAnterior: number;
+  saldoRestante: number;
+  statusFatura:
+    | "aberta"
+    | "parcialmente_paga"
+    | "paga"
+    | "vencida"
+    | "vencida_parcialmente_paga";
+  valorOriginalFatura: number;
+};
+
 export type DeleteFaturaImpact = {
   mes: string;
   comprasRemovidas: number;
@@ -376,6 +413,28 @@ export type DeleteCompraResponse = {
 
 export async function fetchCartoesResumo(): Promise<CartaoResumo[]> {
   const response = await apiRequest("GET", "/api/cartoes/resumo");
+  return response.json();
+}
+
+export async function fetchCartaoFaturaPagamentos(): Promise<CartaoFaturaPagamentoApiModel[]> {
+  const response = await apiRequest("GET", "/api/cartoes/fatura-pagamentos");
+  return response.json();
+}
+
+export async function registerCartaoFaturaPagamento(
+  cartaoId: string,
+  monthReference: string,
+  payload: RegisterCartaoFaturaPagamentoPayload,
+): Promise<RegisterCartaoFaturaPagamentoResponse> {
+  const valorPago = formatMoneyFixed(payload.valorPago);
+  if (!valorPago) {
+    throw new Error("Valor de pagamento invalido");
+  }
+  const response = await apiRequest("POST", `/api/cartoes/${cartaoId}/faturas/${monthReference}/pagamentos`, {
+    valorPago,
+    dataPagamento: payload.dataPagamento,
+    observacao: payload.observacao ?? null,
+  });
   return response.json();
 }
 

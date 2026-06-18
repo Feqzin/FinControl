@@ -14,9 +14,11 @@ import {
   calculateServicoRealChargeForCompetency,
   isServicoLinkedToCardCharge,
 } from "../../shared/servico-periodicidade";
+import { buildCardInvoiceSnapshots } from "../../shared/card-invoice-payments";
 import { parseMoney } from "../../utils/money";
 import type { FinancialRepository } from "../repositories/financial.repository";
 import { FinancialService } from "./financial.service";
+import { getCardObligations } from "./financial-card-analytics";
 import { MAX_REPORT_MONTHS, type ReportsOverviewQueryInput } from "../validators/reports.validators";
 
 type IsoPeriod = {
@@ -102,12 +104,14 @@ export class ReportsService {
     const period = resolveReportPeriod(query);
     assertPeriodRules(period);
 
-    const [rendas, patrimonios, comprasCartao, cartoes, servicos, dividas, pessoas, cardSummaries] =
+    const [rendas, patrimonios, comprasCartao, cartoes, parcelasCompra, cartaoFaturaPagamentos, servicos, dividas, pessoas, cardSummaries] =
       await Promise.all([
         this.repository.getRendas(userId),
         this.repository.getPatrimonios(userId),
         this.repository.getComprasCartao(userId),
         this.repository.getCartoes(userId),
+        this.repository.getParcelasCompraByUser(userId),
+        this.repository.getCartaoFaturaPagamentos(userId),
         this.repository.getServicos(userId),
         this.repository.getDividas(userId),
         this.repository.getPessoas(userId),
@@ -136,7 +140,20 @@ export class ReportsService {
     const competencies = listCompetenciesInPeriod(period.startDate, period.endDate);
 
     const incomeTotal = activeRendas.reduce((sum, item) => sum + toMoneyNumber(item.valor), 0) * monthsInPeriod;
-    const totalCartoesNoPeriodo = periodComprasCartao.reduce((sum, item) => sum + toMoneyNumber(item.valorParcela), 0);
+    const dueDayByCardId = new Map(cartoes.map((cartao) => [cartao.id, cartao.diaVencimento]));
+    const cardSnapshots = buildCardInvoiceSnapshots({
+      installments: getCardObligations({ compras: comprasCartao, parcelasCompra }).map((obligation) => ({
+        cartaoId: obligation.cartaoId,
+        valor: obligation.valor,
+        statusCartao: obligation.statusCartao,
+        dataVencimento: obligation.dataVencimento,
+      })),
+      payments: cartaoFaturaPagamentos,
+      getDueDayForCard: (cartaoId) => dueDayByCardId.get(cartaoId) ?? null,
+    });
+    const totalCartoesNoPeriodo = cardSnapshots
+      .filter((snapshot) => competencies.includes(snapshot.monthReference))
+      .reduce((sum, snapshot) => sum + snapshot.remainingAmount, 0);
     const dividasAPagar = periodDividas
       .filter((item) => item.tipo === "pagar" && item.status === "pendente")
       .reduce((sum, item) => sum + toMoneyNumber(item.valor), 0);

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
+import type { Cartao, CartaoFaturaPagamento, CompraCartao, Divida, Parcela, ParcelaCompra, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
 import { addMonths, format } from "date-fns";
 import { FinancialService } from "../services/financial.service";
 import { ReportsService } from "../services/reports.service";
@@ -12,6 +12,7 @@ type FinancialFixture = {
   dividas: Divida[];
   parcelas: Parcela[];
   parcelasCompra: ParcelaCompra[];
+  cartaoFaturaPagamentos?: CartaoFaturaPagamento[];
   servicos: Servico[];
   cartoes: Cartao[];
   compras: CompraCartao[];
@@ -25,6 +26,7 @@ function createRepository(fixture: FinancialFixture) {
     getDividas: async () => fixture.dividas,
     getParcelas: async () => fixture.parcelas,
     getParcelasCompraByUser: async () => fixture.parcelasCompra,
+    getCartaoFaturaPagamentos: async () => fixture.cartaoFaturaPagamentos ?? [],
     getServicos: async () => fixture.servicos,
     getCartoes: async () => fixture.cartoes,
     getComprasCartao: async () => fixture.compras,
@@ -1660,6 +1662,333 @@ test("getCardSummaries usa competencia do vencimento para fatura atual e parcela
   assert.equal(summary?.limiteComprometido, 330);
   assert.equal(summary?.limiteDisponivel, 670);
   assert.equal(summary?.quantidadeParcelasPendentes, 3);
+});
+
+test("pagamento parcial de fatura reduz fatura atual e comprometido sem mexer nas futuras", async () => {
+  const userId = "user-financial-card-partial-payment";
+  const now = new Date();
+  const currentMonth = format(now, "yyyy-MM");
+  const dueDate = (offsetMonths: number, day: number) =>
+    format(addMonths(new Date(now.getFullYear(), now.getMonth(), day), offsetMonths), "yyyy-MM-dd");
+
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [
+      {
+        id: "pc-current-1",
+        userId,
+        compraCartaoId: "compra-current-1",
+        numero: 1,
+        valor: "120.00",
+        dataVencimento: dueDate(0, 10),
+        statusCartao: "pendente",
+        dataPagamentoCartao: null,
+        statusPessoa: "pendente",
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "pc-current-2",
+        userId,
+        compraCartaoId: "compra-current-2",
+        numero: 1,
+        valor: "80.00",
+        dataVencimento: dueDate(0, 12),
+        statusCartao: "pendente",
+        dataPagamentoCartao: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "pc-future-1",
+        userId,
+        compraCartaoId: "compra-future-1",
+        numero: 1,
+        valor: "90.00",
+        dataVencimento: dueDate(1, 10),
+        statusCartao: "pendente",
+        dataPagamentoCartao: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+    ],
+    cartaoFaturaPagamentos: [
+      {
+        id: "payment-partial-1",
+        userId,
+        cartaoId: "card-1",
+        competenciaMes: Number(currentMonth.slice(5, 7)),
+        competenciaAno: Number(currentMonth.slice(0, 4)),
+        valorPago: "80.00",
+        dataPagamento: dueDate(0, 15),
+        observacao: null,
+        tipoPagamento: "parcial",
+        considerarNoSaldoCompetencia: true,
+        conciliadoEm: null,
+        createdAt: `${currentMonth}-15T12:00:00.000Z`,
+        updatedAt: `${currentMonth}-15T12:00:00.000Z`,
+      },
+    ] as CartaoFaturaPagamento[],
+    servicos: [],
+    cartoes: [
+      {
+        id: "card-1",
+        userId,
+        nome: "Cartão Principal",
+        limite: "1000.00",
+        melhorDiaCompra: 5,
+        diaVencimento: 20,
+        iconeId: null,
+      },
+    ],
+    compras: [
+      {
+        id: "compra-current-1",
+        userId,
+        cartaoId: "card-1",
+        descricao: "Compra atual 1",
+        valorTotal: "120.00",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "120.00",
+        dataCompra: dueDate(0, 1),
+        pessoaId: "pessoa-1",
+        statusPessoa: "pendente",
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "compra-current-2",
+        userId,
+        cartaoId: "card-1",
+        descricao: "Compra atual 2",
+        valorTotal: "80.00",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "80.00",
+        dataCompra: dueDate(0, 2),
+        pessoaId: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "compra-future-1",
+        userId,
+        cartaoId: "card-1",
+        descricao: "Compra futura",
+        valorTotal: "90.00",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "90.00",
+        dataCompra: dueDate(1, 2),
+        pessoaId: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+    ],
+    rendas: [],
+  };
+
+  const service = createService(fixture);
+  const summary = await service.getSummary(userId, currentMonth);
+  const cardSummary = (await service.getCardSummaries(userId)).find((item) => item.cartaoId === "card-1");
+
+  assert.equal(summary.totalCartoesMes, 120);
+  assert.equal(cardSummary?.faturaAtual, 120);
+  assert.equal(cardSummary?.limiteComprometido, 210);
+  assert.equal(cardSummary?.limiteDisponivel, 790);
+});
+
+test("quitação total da fatura zera a competência atual e mantém parcelas futuras comprometidas", async () => {
+  const userId = "user-financial-card-full-payment";
+  const now = new Date();
+  const currentMonth = format(now, "yyyy-MM");
+  const nextMonth = format(addMonths(now, 1), "yyyy-MM");
+  const dueDate = (offsetMonths: number, day: number) =>
+    format(addMonths(new Date(now.getFullYear(), now.getMonth(), day), offsetMonths), "yyyy-MM-dd");
+
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [
+      {
+        id: "pc-current-paid",
+        userId,
+        compraCartaoId: "compra-current-paid",
+        numero: 1,
+        valor: "200.00",
+        dataVencimento: dueDate(0, 10),
+        statusCartao: "pago",
+        dataPagamentoCartao: dueDate(0, 18),
+        statusPessoa: "pendente",
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "pc-future-open",
+        userId,
+        compraCartaoId: "compra-future-open",
+        numero: 1,
+        valor: "90.00",
+        dataVencimento: dueDate(1, 10),
+        statusCartao: "pendente",
+        dataPagamentoCartao: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+    ],
+    cartaoFaturaPagamentos: [
+      {
+        id: "payment-full-1",
+        userId,
+        cartaoId: "card-1",
+        competenciaMes: Number(currentMonth.slice(5, 7)),
+        competenciaAno: Number(currentMonth.slice(0, 4)),
+        valorPago: "200.00",
+        dataPagamento: dueDate(0, 18),
+        observacao: "Quitação da fatura",
+        tipoPagamento: "quitacao_total",
+        considerarNoSaldoCompetencia: false,
+        conciliadoEm: `${currentMonth}-18T12:00:00.000Z`,
+        createdAt: `${currentMonth}-18T12:00:00.000Z`,
+        updatedAt: `${currentMonth}-18T12:00:00.000Z`,
+      },
+    ] as CartaoFaturaPagamento[],
+    servicos: [],
+    cartoes: [
+      {
+        id: "card-1",
+        userId,
+        nome: "Cartão Principal",
+        limite: "1000.00",
+        melhorDiaCompra: 5,
+        diaVencimento: 20,
+        iconeId: null,
+      },
+    ],
+    compras: [
+      {
+        id: "compra-current-paid",
+        userId,
+        cartaoId: "card-1",
+        descricao: "Compra quitada",
+        valorTotal: "200.00",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "200.00",
+        dataCompra: dueDate(0, 1),
+        pessoaId: "pessoa-1",
+        statusPessoa: "pendente",
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "compra-future-open",
+        userId,
+        cartaoId: "card-1",
+        descricao: "Compra futura",
+        valorTotal: "90.00",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "90.00",
+        dataCompra: dueDate(1, 1),
+        pessoaId: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+    ],
+    rendas: [],
+  };
+
+  const service = createService(fixture);
+  const summaryCurrent = await service.getSummary(userId, currentMonth);
+  const summaryNext = await service.getSummary(userId, nextMonth);
+  const cardSummary = (await service.getCardSummaries(userId)).find((item) => item.cartaoId === "card-1");
+
+  assert.equal(summaryCurrent.totalCartoesMes, 0);
+  assert.equal(summaryNext.totalCartoesMes, 90);
+  assert.equal(cardSummary?.faturaAtual, 0);
+  assert.equal(cardSummary?.limiteComprometido, 90);
+  assert.equal(cardSummary?.limiteDisponivel, 910);
+});
+
+test("relatórios usam pagamentos de fatura para evitar dupla contagem no período", async () => {
+  const userId = "user-reports-card-payments";
+  const now = new Date();
+  const currentMonth = format(now, "yyyy-MM");
+  const dueDate = format(new Date(now.getFullYear(), now.getMonth(), 10), "yyyy-MM-dd");
+
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [
+      {
+        id: "pc-report-current",
+        userId,
+        compraCartaoId: "compra-report-current",
+        numero: 1,
+        valor: "300.00",
+        dataVencimento: dueDate,
+        statusCartao: "pendente",
+        dataPagamentoCartao: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+    ],
+    cartaoFaturaPagamentos: [
+      {
+        id: "payment-report-partial",
+        userId,
+        cartaoId: "card-report",
+        competenciaMes: Number(currentMonth.slice(5, 7)),
+        competenciaAno: Number(currentMonth.slice(0, 4)),
+        valorPago: "120.00",
+        dataPagamento: dueDate,
+        observacao: null,
+        tipoPagamento: "parcial",
+        considerarNoSaldoCompetencia: true,
+        conciliadoEm: null,
+        createdAt: `${currentMonth}-10T12:00:00.000Z`,
+        updatedAt: `${currentMonth}-10T12:00:00.000Z`,
+      },
+    ] as CartaoFaturaPagamento[],
+    servicos: [],
+    cartoes: [
+      {
+        id: "card-report",
+        userId,
+        nome: "Cartão Relatório",
+        limite: "1000.00",
+        melhorDiaCompra: 5,
+        diaVencimento: 20,
+        iconeId: null,
+      },
+    ],
+    compras: [
+      {
+        id: "compra-report-current",
+        userId,
+        cartaoId: "card-report",
+        descricao: "Compra relatório",
+        valorTotal: "300.00",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "300.00",
+        dataCompra: dueDate,
+        pessoaId: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+    ],
+    rendas: [],
+    pessoas: [],
+    patrimonios: [],
+  };
+
+  const overview = await createReportsService(fixture).getOverview(userId, {
+    startDate: `${currentMonth}-01`,
+    endDate: `${currentMonth}-28`,
+  });
+
+  assert.equal(overview.summary.expenseTotal, 180);
+  assert.equal(overview.summary.cartoesFaturaAtualTotal, 180);
 });
 
 test("getCardSummaries aplica a mesma regra global para todos os cartões", async () => {

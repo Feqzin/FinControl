@@ -39,6 +39,9 @@ type CartoesComprasGridProps = {
   onEditCartao: (cartao: Cartao) => void;
   onDeleteCartao: (cartaoId: string) => void;
   onAddCompra: (cartaoId: string) => void;
+  canOpenInvoicePaymentDialog: (cartaoId: string) => boolean;
+  getInvoicePaymentActionLabel: (cartaoId: string) => string;
+  onOpenInvoicePaymentDialog: (cartaoId: string) => void;
   onOpenParcelas: (compra: CompraCartao) => void;
   onEditCompra: (compra: CompraCartao) => void;
   onDeleteCompra: (compra: CompraCartao) => void;
@@ -70,6 +73,9 @@ export function CartoesComprasGrid({
   onEditCartao,
   onDeleteCartao,
   onAddCompra,
+  canOpenInvoicePaymentDialog,
+  getInvoicePaymentActionLabel,
+  onOpenInvoicePaymentDialog,
   onOpenParcelas,
   onEditCompra,
   onDeleteCompra,
@@ -248,15 +254,27 @@ export function CartoesComprasGrid({
                 <ShoppingBag className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">Compras parceladas ({cardCompras.length})</span>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full sm:w-auto"
-                onClick={() => onAddCompra(cartao.id)}
-                data-testid={`button-add-compra-${cartao.id}`}
-              >
-                <Plus className="mr-1 h-3 w-3" /> Adicionar
-              </Button>
+              <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  onClick={() => onOpenInvoicePaymentDialog(cartao.id)}
+                  disabled={!canOpenInvoicePaymentDialog(cartao.id)}
+                  data-testid={`button-pay-invoice-${cartao.id}`}
+                >
+                  {getInvoicePaymentActionLabel(cartao.id)}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full sm:w-auto"
+                  onClick={() => onAddCompra(cartao.id)}
+                  data-testid={`button-add-compra-${cartao.id}`}
+                >
+                  <Plus className="mr-1 h-3 w-3" /> Adicionar
+                </Button>
+              </div>
             </div>
             <p className="text-xs text-muted-foreground">Mostrando apenas compras e parcelas desta fatura</p>
 

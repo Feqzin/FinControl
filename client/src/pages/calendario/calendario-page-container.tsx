@@ -195,6 +195,7 @@ export default function CalendarioPageContainer() {
       cartoes: overviewQuery.data.cartoes,
       compras: overviewQuery.data.compras,
       parcelasCompra: overviewQuery.data.parcelasCompra,
+      cartaoFaturaPagamentos: overviewQuery.data.cartaoFaturaPagamentos,
       dividas: overviewQuery.data.dividas,
       parcelas: parcelasQuery.data ?? [],
       pessoas: overviewQuery.data.pessoas,

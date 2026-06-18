@@ -13,6 +13,7 @@ import type { ParsedItem } from "@/pages/cartoes/import-parser";
 import { queryClient } from "@/lib/queryClient";
 import { abaterSaldoParcelaPessoa } from "@/services/api/pessoas";
 import {
+  fetchCartaoFaturaPagamentos,
   fetchCartoesResumo,
   createCartao,
   createCompraCartao,
@@ -20,6 +21,7 @@ import {
   deleteCompraCartaoComEscopo,
   deleteFaturaCartaoMes,
   deleteFaturasMes,
+  registerCartaoFaturaPagamento,
   importComprasLote,
   rollbackImportCompras,
   updateCartao,
@@ -29,10 +31,12 @@ import {
   updateParcelaCompraStatusPessoa,
   updateParcelaCompraCompetencia,
   updateParcelaCompraValores,
+  type CartaoFaturaPagamentoApiModel,
   type CartaoResumo,
   type CartaoPayload,
   type CompraPayload,
   type DeleteCompraScope,
+  type RegisterCartaoFaturaPagamentoPayload,
   type UpdateCompraPayload,
 } from "@/services/api/cartoes";
 
@@ -47,6 +51,10 @@ export function useCartoes(viewingCompraId?: string) {
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
   const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
   const { data: servicoPessoas = [] } = useQuery<ServicoPessoa[]>({ queryKey: ["/api/servico-pessoas"] });
+  const { data: cartaoFaturaPagamentos = [] } = useQuery<CartaoFaturaPagamentoApiModel[]>({
+    queryKey: ["/api/cartoes/fatura-pagamentos"],
+    queryFn: fetchCartaoFaturaPagamentos,
+  });
   const {
     data: cartoesResumo = [],
     isError: isCartoesResumoError,
@@ -85,6 +93,7 @@ export function useCartoes(viewingCompraId?: string) {
     const keys: QueryKey[] = [
       ["/api/cartoes"],
       ["/api/cartoes/resumo"],
+      ["/api/cartoes/fatura-pagamentos"],
       ["/api/compras-cartao"],
       ["/api/parcelas-compra"],
       ["/api/dashboard/overview"],
@@ -199,6 +208,21 @@ export function useCartoes(viewingCompraId?: string) {
     onSuccess: async (_data, variables) => {
       if (variables.dryRun) return;
       await refreshCartoesQueries({ includePessoas: true });
+    },
+  });
+
+  const registerInvoicePaymentMutation = useMutation({
+    mutationFn: ({
+      cartaoId,
+      monthReference,
+      data,
+    }: {
+      cartaoId: string;
+      monthReference: string;
+      data: RegisterCartaoFaturaPagamentoPayload;
+    }) => registerCartaoFaturaPagamento(cartaoId, monthReference, data),
+    onSuccess: async () => {
+      await refreshCartoesQueries();
     },
   });
 
@@ -356,10 +380,11 @@ export function useCartoes(viewingCompraId?: string) {
           parcelasCompraByCompraId,
           monthReference,
           cartao.limite,
+          cartaoFaturaPagamentos,
         ),
       ])),
     );
-  }, [cartoes, compras, parcelasCompraByCompraId]);
+  }, [cartaoFaturaPagamentos, cartoes, compras, parcelasCompraByCompraId]);
 
   // FALLBACK TRANSITORIO:
   // Mantem compatibilidade enquanto a tela migra para a fonte de verdade
@@ -371,6 +396,7 @@ export function useCartoes(viewingCompraId?: string) {
       compras,
       parcelasCompraByCompraId,
       format(new Date(), "yyyy-MM"),
+      cartaoFaturaPagamentos,
     );
   const getCardUsedLimitFallback = (cartaoId: string) =>
     fallbackCardSummariesById.get(cartaoId)?.limiteComprometido ?? 0;
@@ -444,6 +470,7 @@ export function useCartoes(viewingCompraId?: string) {
 
   return {
     cartoes,
+    cartaoFaturaPagamentos,
     compras,
     servicos,
     servicoPessoas,
@@ -470,6 +497,7 @@ export function useCartoes(viewingCompraId?: string) {
     deleteCompraMutation,
     deleteFaturaCartaoMutation,
     deleteFaturasMesMutation,
+    registerInvoicePaymentMutation,
     marcarReembolsoMutation,
     payParcelaMutation,
     payParcelaPessoaMutation,

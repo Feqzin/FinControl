@@ -1,4 +1,4 @@
-﻿import { useMemo } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Cartao, CompraCartao, Divida, ParcelaCompra, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
 import type { DashboardOverviewResponse, FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
@@ -17,6 +17,10 @@ import {
   getNextOutstandingCardInvoiceSnapshot,
   groupParcelasCompraByCompraId,
 } from "@/lib/card-limit-usage";
+import {
+  fetchCartaoFaturaPagamentos,
+  type CartaoFaturaPagamentoApiModel,
+} from "@/services/api/cartoes";
 import { fetchDashboardOverview, fetchFinancialSummary } from "@/services/api/dashboard";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { resolveDashboardServicosMetrics } from "@/pages/dashboard/dashboard-servicos-metrics.utils";
@@ -170,6 +174,11 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     queryFn: () => fetchDashboardJson<ParcelaCompra[]>("/api/parcelas-compra", "parcelas de compra"),
     enabled: shouldEnableLegacyQueries,
   });
+  const cartaoFaturaPagamentosQuery = useQuery<CartaoFaturaPagamentoApiModel[]>({
+    queryKey: ["/api/cartoes/fatura-pagamentos"],
+    queryFn: fetchCartaoFaturaPagamentos,
+    enabled: shouldEnableLegacyQueries,
+  });
   const rendasQuery = useQuery<Renda[]>({
     queryKey: ["/api/rendas"],
     queryFn: () => fetchDashboardJson<Renda[]>("/api/rendas", "rendas"),
@@ -204,6 +213,9 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const cartoes = shouldUseLegacyFallback ? (cartoesQuery.data ?? []) : (dashboardOverview?.cartoes ?? []);
   const compras = shouldUseLegacyFallback ? (comprasQuery.data ?? []) : (dashboardOverview?.compras ?? []);
   const parcelasCompra = shouldUseLegacyFallback ? (parcelasCompraQuery.data ?? []) : (dashboardOverview?.parcelasCompra ?? []);
+  const cartaoFaturaPagamentos: CartaoFaturaPagamentoApiModel[] = shouldUseLegacyFallback
+    ? (cartaoFaturaPagamentosQuery.data ?? [])
+    : ((dashboardOverview?.cartaoFaturaPagamentos ?? []) as unknown as CartaoFaturaPagamentoApiModel[]);
   const rendas = shouldUseLegacyFallback ? (rendasQuery.data ?? []) : (dashboardOverview?.rendas ?? []);
   const patrimonios = shouldUseLegacyFallback ? (patrimoniosQuery.data ?? []) : (dashboardOverview?.patrimonios ?? []);
   const financialScore = shouldUseLegacyFallback ? financialScoreQuery.data : dashboardOverview?.financialScore;
@@ -265,6 +277,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       { isLoading: cartoesQuery.isLoading, isError: cartoesQuery.isError, error: cartoesQuery.error },
       { isLoading: comprasQuery.isLoading, isError: comprasQuery.isError, error: comprasQuery.error },
       { isLoading: parcelasCompraQuery.isLoading, isError: parcelasCompraQuery.isError, error: parcelasCompraQuery.error },
+      { isLoading: cartaoFaturaPagamentosQuery.isLoading, isError: cartaoFaturaPagamentosQuery.isError, error: cartaoFaturaPagamentosQuery.error },
       { isLoading: financialSummaryQuery.isLoading, isError: financialSummaryQuery.isError, error: financialSummaryQuery.error },
     ]),
     proximosVencimentos: combineSectionStatus([
@@ -274,6 +287,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       { isLoading: cartoesQuery.isLoading, isError: cartoesQuery.isError, error: cartoesQuery.error },
       { isLoading: comprasQuery.isLoading, isError: comprasQuery.isError, error: comprasQuery.error },
       { isLoading: parcelasCompraQuery.isLoading, isError: parcelasCompraQuery.isError, error: parcelasCompraQuery.error },
+      { isLoading: cartaoFaturaPagamentosQuery.isLoading, isError: cartaoFaturaPagamentosQuery.isError, error: cartaoFaturaPagamentosQuery.error },
     ]),
     pagarSemana: combineSectionStatus([
       { isLoading: dividasQuery.isLoading, isError: dividasQuery.isError, error: dividasQuery.error },
@@ -282,6 +296,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       { isLoading: comprasQuery.isLoading, isError: comprasQuery.isError, error: comprasQuery.error },
       { isLoading: pessoasQuery.isLoading, isError: pessoasQuery.isError, error: pessoasQuery.error },
       { isLoading: parcelasCompraQuery.isLoading, isError: parcelasCompraQuery.isError, error: parcelasCompraQuery.error },
+      { isLoading: cartaoFaturaPagamentosQuery.isLoading, isError: cartaoFaturaPagamentosQuery.isError, error: cartaoFaturaPagamentosQuery.error },
     ]),
   } as const;
 
@@ -388,6 +403,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
         compras,
         parcelasCompraByCompraId,
         c.diaVencimento,
+        cartaoFaturaPagamentos,
       );
       if (!proximaFatura || proximaFatura.total <= 0) return;
       const dataVenc = proximaFatura.dueDate ?? getNextDueDate(c.diaVencimento);
@@ -438,9 +454,10 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       });
     });
     return items.sort((a, b) => a.dataVenc.localeCompare(b.dataVenc));
-  }, [cartoes, compras, dividas, formatInvoiceMonthLabel, parcelasCompraByCompraId, pessoas, servicos, today, todayMonthReference]);
+  }, [cartaoFaturaPagamentos, cartoes, compras, dividas, formatInvoiceMonthLabel, parcelasCompraByCompraId, pessoas, servicos, today, todayMonthReference]);
 
-  const getCardUsedLimit = (cartaoId: string) => calculateCardUsedLimit(cartaoId, compras, parcelasCompraByCompraId);
+  const getCardUsedLimit = (cartaoId: string) =>
+    calculateCardUsedLimit(cartaoId, compras, parcelasCompraByCompraId, cartaoFaturaPagamentos);
 
   const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "Desconhecido";
 
@@ -465,6 +482,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
         compras,
         parcelasCompraByCompraId,
         c.diaVencimento,
+        cartaoFaturaPagamentos,
       );
       if (!proximaFatura?.dueDate || proximaFatura.total <= 0) return;
       if (proximaFatura.dueDate >= today && proximaFatura.dueDate <= in7Days) {
@@ -489,7 +507,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     });
 
     return items.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
-  }, [cartoes, compras, dividas, in7Days, parcelasCompraByCompraId, pessoas, servicos, today]);
+  }, [cartaoFaturaPagamentos, cartoes, compras, dividas, in7Days, parcelasCompraByCompraId, pessoas, servicos, today]);
 
   const alertCartoes = cartoes.filter((c) => {
     const usado = getCardUsedLimit(c.id);
@@ -721,6 +739,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     sectionStatus,
   };
 }
+
 
 
 

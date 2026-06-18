@@ -1,6 +1,7 @@
 import { addMonths, format, parseISO } from "date-fns";
 import type {
   Cartao,
+  CartaoFaturaPagamento,
   CompraCartao,
   Divida,
   Meta,
@@ -10,6 +11,7 @@ import type {
   Renda,
   Servico,
 } from "@shared/schema";
+import { buildCardInvoiceSnapshots } from "@shared/card-invoice-payments";
 import { resolveDueDateFromCompetencia } from "@shared/parcelas-compra-competency";
 import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
 import {
@@ -19,9 +21,9 @@ import {
 } from "@shared/servico-periodicidade";
 import { toMoneyNumber } from "@/lib/money";
 import {
+  buildInvoiceTrackingInstallmentsForCard,
   groupParcelasCompraByCompraId,
   isParcelaComprometendoLimite,
-  listOutstandingCardInvoiceSnapshots,
 } from "@/lib/card-limit-usage";
 
 export type FinancialCalendarEventGroup =
@@ -62,6 +64,7 @@ export type BuildFinancialCalendarEventsInput = {
   cartoes: Cartao[];
   compras: CompraCartao[];
   parcelasCompra: ParcelaCompra[];
+  cartaoFaturaPagamentos?: CartaoFaturaPagamento[];
   dividas: Divida[];
   parcelas: Parcela[];
   pessoas: Pessoa[];
@@ -247,14 +250,26 @@ function buildCardInvoiceEvents(input: BuildFinancialCalendarEventsInput): Finan
   const events: FinancialCalendarEvent[] = [];
 
   for (const cartao of input.cartoes) {
-    const snapshot = listOutstandingCardInvoiceSnapshots(
-      cartao.id,
-      input.compras,
-      parcelasByCompraId,
-      cartao.diaVencimento,
-    ).find((item) => item.monthReference === input.monthReference);
+    const snapshot = buildCardInvoiceSnapshots({
+      installments: buildInvoiceTrackingInstallmentsForCard(
+        cartao.id,
+        input.compras,
+        parcelasByCompraId,
+      ),
+      payments: (input.cartaoFaturaPagamentos ?? []).filter((payment) => payment.cartaoId === cartao.id),
+      getDueDayForCard: () => cartao.diaVencimento,
+      referenceDate: input.referenceDate,
+    }).find((item) => item.monthReference === input.monthReference);
 
-    if (!snapshot?.dueDate || snapshot.total <= 0) continue;
+    if (!snapshot?.dueDate || snapshot.remainingAmount <= 0) continue;
+
+    const statusLabel = snapshot.status === "vencida"
+      ? "Fatura vencida"
+      : snapshot.status === "vencida_parcialmente_paga"
+        ? "Fatura vencida parcialmente paga"
+        : snapshot.status === "parcialmente_paga"
+          ? "Fatura parcialmente paga"
+          : "Fatura aberta";
 
     events.push({
       id: `fatura-${cartao.id}-${snapshot.monthReference}`,
@@ -264,9 +279,9 @@ function buildCardInvoiceEvents(input: BuildFinancialCalendarEventsInput): Finan
       direction: "saida",
       source: "fatura_cartao",
       title: `Fatura ${cartao.nome}`,
-      subtitle: `${snapshot.installmentCount} ${snapshot.installmentCount === 1 ? "lançamento aberto" : "lançamentos abertos"}`,
-      amount: snapshot.total,
-      statusLabel: snapshot.dueDate < input.referenceDate! ? "Fatura vencida" : "Fatura aberta",
+      subtitle: `${snapshot.openInstallmentsCount} ${snapshot.openInstallmentsCount === 1 ? "lançamento em aberto" : "lançamentos em aberto"}`,
+      amount: snapshot.remainingAmount,
+      statusLabel,
       entityId: cartao.id,
     });
   }

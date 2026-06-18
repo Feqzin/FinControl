@@ -1,6 +1,18 @@
 import { format } from "date-fns";
-import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
+import type {
+  Cartao,
+  CartaoFaturaPagamento,
+  CompraCartao,
+  Divida,
+  Parcela,
+  ParcelaCompra,
+  Patrimonio,
+  Pessoa,
+  Renda,
+  Servico,
+} from "@shared/schema";
 import type { DashboardOverviewResponse, FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
+import { buildCardInvoiceSnapshots } from "@shared/card-invoice-payments";
 import {
   calculateServicoEquivalentMonthlyAmount,
   calculateServicoRealMonthlyExpenseAmount,
@@ -18,15 +30,14 @@ import {
   getOutstandingDebtInstallments,
 } from "./financial-debt-analytics";
 import {
-  getCardPortfolioSummary,
-  getMonthlyCardObligations,
-  getOutstandingCardInstallments,
+  getCardObligations,
 } from "./financial-card-analytics";
 
 type FinancialContext = {
   dividas: Divida[];
   parcelas: Parcela[];
   parcelasCompra: ParcelaCompra[];
+  cartaoFaturaPagamentos: CartaoFaturaPagamento[];
   servicos: Servico[];
   cartoes: Cartao[];
   compras: CompraCartao[];
@@ -145,12 +156,36 @@ function getMonthlyDebtTotals(
 }
 
 function getMonthlyCardTotals(
-  cardInput: Pick<FinancialContext, "compras" | "parcelasCompra">,
+  cardInput: Pick<FinancialContext, "compras" | "parcelasCompra" | "cartaoFaturaPagamentos" | "cartoes">,
   monthReference: string,
 ) {
-  const monthlyCardObligations = getMonthlyCardObligations(cardInput, monthReference);
-  const totalCartoesMes = sumMoneyBy(monthlyCardObligations, (row) => row.valor);
-  return { monthlyCardObligations, totalCartoesMes };
+  const monthlyCardSnapshots = buildMonthlyCardSnapshots(cardInput).filter(
+    (snapshot) => snapshot.monthReference === monthReference,
+  );
+  const totalCartoesMes = monthlyCardSnapshots.reduce((sum, snapshot) => sum + snapshot.remainingAmount, 0);
+  return { monthlyCardSnapshots, totalCartoesMes: round2(totalCartoesMes) };
+}
+
+function buildMonthlyCardSnapshots(
+  cardInput: Pick<FinancialContext, "compras" | "parcelasCompra" | "cartaoFaturaPagamentos" | "cartoes">,
+) {
+  const obligations = getCardObligations({
+    compras: cardInput.compras,
+    parcelasCompra: cardInput.parcelasCompra,
+  });
+  const dueDayByCardId = new Map(cardInput.cartoes.map((cartao) => [cartao.id, cartao.diaVencimento]));
+
+  return buildCardInvoiceSnapshots({
+    installments: obligations.map((obligation) => ({
+      cartaoId: obligation.cartaoId,
+      valor: obligation.valor,
+      statusCartao: obligation.statusCartao,
+      dataVencimento: obligation.dataVencimento,
+    })),
+    payments: cardInput.cartaoFaturaPagamentos,
+    getDueDayForCard: (cartaoId) => dueDayByCardId.get(cartaoId) ?? null,
+    referenceDate: format(new Date(), "yyyy-MM-dd"),
+  });
 }
 
 function calculateServicoSummaryTotals(
@@ -208,22 +243,23 @@ function calculateScoreFromContext({
   dividas,
   parcelas,
   parcelasCompra,
+  cartaoFaturaPagamentos,
   servicos,
   cartoes,
   compras,
   rendas,
-}: Pick<FinancialContext, "dividas" | "parcelas" | "parcelasCompra" | "servicos" | "cartoes" | "compras" | "rendas">): FinancialScore {
+}: Pick<FinancialContext, "dividas" | "parcelas" | "parcelasCompra" | "cartaoFaturaPagamentos" | "servicos" | "cartoes" | "compras" | "rendas">): FinancialScore {
   const today = format(new Date(), "yyyy-MM-dd");
   const currentMonth = format(new Date(), "yyyy-MM");
   const fatores: FinancialScore["fatores"] = [];
   const debtInput = { dividas, parcelas };
-  const cardInput = { compras, parcelasCompra };
+  const cardInput = { compras, parcelasCompra, cartaoFaturaPagamentos, cartoes };
   const outstandingDebtInstallments = getOutstandingDebtInstallments(debtInput);
   const debtPortfolio = getDebtPortfolioSummary(debtInput);
   const { totalReceberMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, currentMonth);
-  const outstandingCardInstallments = getOutstandingCardInstallments(cardInput);
   const { totalCartoesMes } = getMonthlyCardTotals(cardInput, currentMonth);
-  const cardPortfolio = getCardPortfolioSummary(cardInput);
+  const cardSnapshots = buildMonthlyCardSnapshots(cardInput);
+  const limiteComprometidoTotal = sumMoneyValues(cardSnapshots.map((snapshot) => snapshot.remainingAmount));
 
   let score = 60;
 
@@ -277,9 +313,10 @@ function calculateScoreFromContext({
   const cardPenalidades: string[] = [];
   let totalCardPenalty = 0;
   for (const cartao of cartoes) {
-    const usado = sumMoneyBy(
-      outstandingCardInstallments.filter((row) => row.cartaoId === cartao.id),
-      (row) => row.valor,
+    const usado = sumMoneyValues(
+      cardSnapshots
+        .filter((snapshot) => snapshot.cartaoId === cartao.id)
+        .map((snapshot) => snapshot.remainingAmount),
     );
     const limite = toMoneyNumber(cartao.limite);
     const pct = limite > 0 ? (usado / limite) * 100 : 0;
@@ -300,8 +337,8 @@ function calculateScoreFromContext({
     fatores.push({ label: "Uso de cartao saudavel", impacto: +3, tipo: "positivo" });
   }
 
-  if (cardPortfolio.totalPendente > 0 && totalRenda > 0) {
-    const carteiraSobreRenda = (cardPortfolio.totalPendente / totalRenda) * 100;
+  if (limiteComprometidoTotal > 0 && totalRenda > 0) {
+    const carteiraSobreRenda = (limiteComprometidoTotal / totalRenda) * 100;
     if (carteiraSobreRenda > 100) {
       score -= 5;
       fatores.push({
@@ -337,11 +374,12 @@ function generateInsightsFromContext({
   dividas,
   parcelas,
   parcelasCompra,
+  cartaoFaturaPagamentos,
   servicos,
   cartoes,
   compras,
   rendas,
-}: Pick<FinancialContext, "dividas" | "parcelas" | "parcelasCompra" | "servicos" | "cartoes" | "compras" | "rendas">): FinancialInsight[] {
+}: Pick<FinancialContext, "dividas" | "parcelas" | "parcelasCompra" | "cartaoFaturaPagamentos" | "servicos" | "cartoes" | "compras" | "rendas">): FinancialInsight[] {
   const insights: FinancialInsight[] = [];
   const now = new Date();
   const currentMonth = format(now, "yyyy-MM");
@@ -349,10 +387,10 @@ function generateInsightsFromContext({
   const today = format(now, "yyyy-MM-dd");
   const in30 = format(new Date(Date.now() + 30 * 86400000), "yyyy-MM-dd");
   const debtInput = { dividas, parcelas };
-  const cardInput = { compras, parcelasCompra };
+  const cardInput = { compras, parcelasCompra, cartaoFaturaPagamentos, cartoes };
   const debtObligations = getDebtObligations(debtInput);
   const outstandingDebtInstallments = getOutstandingDebtInstallments(debtInput);
-  const outstandingCardInstallments = getOutstandingCardInstallments(cardInput);
+  const cardSnapshots = buildMonthlyCardSnapshots(cardInput);
 
   const totalRenda = sumMoneyBy(rendas.filter((r) => r.ativo), (r) => r.valor);
   const servicosAtivos = servicos.filter((s) => s.status === "ativo");
@@ -462,9 +500,10 @@ function generateInsightsFromContext({
   }
 
   for (const cartao of cartoes) {
-    const usado = sumMoneyBy(
-      outstandingCardInstallments.filter((row) => row.cartaoId === cartao.id),
-      (row) => row.valor,
+    const usado = sumMoneyValues(
+      cardSnapshots
+        .filter((snapshot) => snapshot.cartaoId === cartao.id)
+        .map((snapshot) => snapshot.remainingAmount),
     );
     const limite = toMoneyNumber(cartao.limite);
     const pct = limite > 0 ? (usado / limite) * 100 : 0;
@@ -618,6 +657,7 @@ function applyFinancialSimulation(
     dividas: simulatedDividas,
     parcelas: simulatedParcelas,
     parcelasCompra: context.parcelasCompra,
+    cartaoFaturaPagamentos: context.cartaoFaturaPagamentos,
     servicos: simulatedServicos,
     rendas: simulatedRendas,
   };
@@ -656,7 +696,7 @@ export class FinancialService {
   }
 
   private async loadContext(userId: string): Promise<FinancialContext> {
-    const [dividas, parcelas, parcelasCompra, servicos, cartoes, compras, rendas] = await Promise.all([
+    const [dividas, parcelas, parcelasCompra, cartaoFaturaPagamentos, servicos, cartoes, compras, rendas] = await Promise.all([
       this.loadContextSlice(userId, "dividas", () => this.repository.getDividas(userId), [] as Divida[]),
       this.loadContextSlice(userId, "parcelas", () => this.repository.getParcelas(userId), [] as Parcela[]),
       this.loadContextSlice(
@@ -664,6 +704,12 @@ export class FinancialService {
         "parcelas_compra",
         () => this.repository.getParcelasCompraByUser(userId),
         [] as ParcelaCompra[],
+      ),
+      this.loadContextSlice(
+        userId,
+        "cartao_fatura_pagamentos",
+        () => this.repository.getCartaoFaturaPagamentos(userId),
+        [] as CartaoFaturaPagamento[],
       ),
       this.loadContextSlice(userId, "servicos", () => this.repository.getServicos(userId), [] as Servico[]),
       this.loadContextSlice(userId, "cartoes", () => this.repository.getCartoes(userId), [] as Cartao[]),
@@ -676,7 +722,7 @@ export class FinancialService {
       this.loadContextSlice(userId, "rendas", () => this.repository.getRendas(userId), [] as Renda[]),
     ]);
 
-    return { dividas, parcelas, parcelasCompra, servicos, cartoes, compras, rendas };
+    return { dividas, parcelas, parcelasCompra, cartaoFaturaPagamentos, servicos, cartoes, compras, rendas };
   }
 
   async getSummary(
@@ -688,7 +734,12 @@ export class FinancialService {
     const mesReferencia = resolveMonthReference(monthReference);
     const simulated = applyFinancialSimulation(ctx, simulation, mesReferencia);
     const debtInput = { dividas: simulated.dividas, parcelas: simulated.parcelas };
-    const cardInput = { compras: simulated.compras, parcelasCompra: simulated.parcelasCompra };
+    const cardInput = {
+      compras: simulated.compras,
+      parcelasCompra: simulated.parcelasCompra,
+      cartaoFaturaPagamentos: simulated.cartaoFaturaPagamentos,
+      cartoes: simulated.cartoes,
+    };
     const { totalReceberMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, mesReferencia);
     const { totalCartoesMes } = getMonthlyCardTotals(cardInput, mesReferencia);
     const debtPortfolio = getDebtPortfolioSummary(debtInput);
@@ -755,6 +806,7 @@ export class FinancialService {
       cartoes: simulated.cartoes,
       compras: simulated.compras,
       parcelasCompra: simulated.parcelasCompra,
+      cartaoFaturaPagamentos: simulated.cartaoFaturaPagamentos,
       rendas: simulated.rendas,
       patrimonios,
       financialSummary,
@@ -764,16 +816,22 @@ export class FinancialService {
   }
 
   async getCardSummaries(userId: string): Promise<CardConsolidatedSummary[]> {
-    const [cartoes, compras, parcelasCompra] = await Promise.all([
+    const [cartoes, compras, parcelasCompra, cartaoFaturaPagamentos] = await Promise.all([
       this.repository.getCartoes(userId),
       this.repository.getComprasCartao(userId),
       this.repository.getParcelasCompraByUser(userId),
+      this.loadContextSlice(
+        userId,
+        "cartao_fatura_pagamentos",
+        () => this.repository.getCartaoFaturaPagamentos(userId),
+        [] as CartaoFaturaPagamento[],
+      ),
     ]);
 
     const currentMonthReference = format(new Date(), "yyyy-MM");
-    const pendingRows = getOutstandingCardInstallments({ compras, parcelasCompra });
-    const byCard = new Map<string, typeof pendingRows>();
-    for (const row of pendingRows) {
+    const allObligations = getCardObligations({ compras, parcelasCompra });
+    const byCard = new Map<string, typeof allObligations>();
+    for (const row of allObligations) {
       const rows = byCard.get(row.cartaoId) ?? [];
       rows.push(row);
       byCard.set(row.cartaoId, rows);
@@ -786,6 +844,9 @@ export class FinancialService {
         limiteTotal: cartao.limite,
         monthReference: currentMonthReference,
         installments: cardRows,
+        invoicePayments: cartaoFaturaPagamentos.filter((pagamento) => pagamento.cartaoId === cartao.id),
+        getDueDayForCard: () => cartao.diaVencimento,
+        referenceDate: format(new Date(), "yyyy-MM-dd"),
       });
 
       return {

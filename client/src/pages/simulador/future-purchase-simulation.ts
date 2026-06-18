@@ -2,6 +2,7 @@ import { addMonths, format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type {
   Cartao,
+  CartaoFaturaPagamento,
   CompraCartao,
   Divida,
   Parcela,
@@ -28,6 +29,7 @@ export type FuturePurchaseSimulationContext = {
   cartoes: Cartao[];
   compras: CompraCartao[];
   parcelasCompra: ParcelaCompra[];
+  cartaoFaturaPagamentos?: CartaoFaturaPagamento[];
   dividas: Divida[];
   parcelas: Parcela[];
   servicos: Servico[];
@@ -217,6 +219,7 @@ function buildBaseCashflowMonths(
       cartoes: context.cartoes,
       compras: context.compras,
       parcelasCompra: context.parcelasCompra,
+      cartaoFaturaPagamentos: context.cartaoFaturaPagamentos,
       dividas: context.dividas,
       parcelas: context.parcelas,
       pessoas: [],

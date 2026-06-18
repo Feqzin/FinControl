@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { usePremiumAccess } from "@/hooks/use-premium-access";
@@ -6,6 +6,7 @@ import { useLocation } from "wouter";
 import { useUIPreferences } from "@/context/ui-preferences";
 import { queryClient } from "@/lib/queryClient";
 import type { Cartao, CompraCartao, ParcelaCompra } from "@shared/schema";
+import { findCardInvoiceSnapshot } from "@shared/card-invoice-payments";
 import { format } from "date-fns";
 import {
   detectItauInvoiceText,
@@ -41,6 +42,7 @@ import {
   toIndexedImportDebugLines,
 } from "@/pages/cartoes/cartoes-import.utils";
 import {
+  CartaoFaturaPaymentDialog,
   CartaoFaturaSection,
   CartoesListSection,
   CartoesPageLoadingState,
@@ -91,10 +93,11 @@ import {
   resolveEntityIconSuggestion,
 } from "@/lib/entity-icon-suggestion";
 import {
-  calculateCardInvoiceForCompetency,
+  buildInvoiceTrackingInstallmentsForCard,
   groupParcelasCompraByCompraId,
   isParcelaComprometendoLimite,
 } from "@/lib/card-limit-usage";
+import { parseMoney } from "@/lib/money";
 import {
   parsePlanLimitError,
 } from "@/lib/subscription-plan-limit";
@@ -327,9 +330,11 @@ export default function CartoesPage() {
   const [comprovanteUploadParcelaId, setComprovanteUploadParcelaId] = useState<string | null>(null);
   const [comprovanteDeleteParcelaId, setComprovanteDeleteParcelaId] = useState<string | null>(null);
   const [parcelaComprovantesById, setParcelaComprovantesById] = useState<Record<string, ParcelaComprovanteResumo | null>>({});
+  const [invoicePaymentTarget, setInvoicePaymentTarget] = useState<{ cartaoId: string; monthReference: string } | null>(null);
 
   const {
     cartoes,
+    cartaoFaturaPagamentos,
     compras,
     servicos,
     servicoPessoas,
@@ -354,6 +359,7 @@ export default function CartoesPage() {
     deleteCompraMutation,
     deleteFaturaCartaoMutation,
     deleteFaturasMesMutation,
+    registerInvoicePaymentMutation,
     marcarReembolsoMutation,
     payParcelaMutation,
     payParcelaPessoaMutation,
@@ -758,6 +764,48 @@ export default function CartoesPage() {
     () => groupParcelasCompraByCompraId(parcelasCompraByUser),
     [parcelasCompraByUser],
   );
+  const cartoesById = useMemo(
+    () => new Map(cartoes.map((cartao) => [cartao.id, cartao])),
+    [cartoes],
+  );
+  const invoicePaymentsByCardMonthKey = useMemo(() => {
+    const grouped = new Map<string, typeof cartaoFaturaPagamentos>();
+    for (const payment of cartaoFaturaPagamentos) {
+      const monthReference = `${String(payment.competenciaAno).padStart(4, "0")}-${String(payment.competenciaMes).padStart(2, "0")}`;
+      const key = `${payment.cartaoId}:${monthReference}`;
+      const rows = grouped.get(key) ?? [];
+      rows.push(payment);
+      grouped.set(key, rows);
+    }
+    return grouped;
+  }, [cartaoFaturaPagamentos]);
+  const getInvoicePaymentsForCompetency = useCallback(
+    (cartaoId: string, monthReference: string) =>
+      invoicePaymentsByCardMonthKey.get(`${cartaoId}:${monthReference}`) ?? [],
+    [invoicePaymentsByCardMonthKey],
+  );
+  const getInvoiceSnapshotForCompetency = useCallback((cartaoId: string, monthReference: string) => {
+    const cartao = cartoesById.get(cartaoId);
+    if (!cartao) return null;
+    return findCardInvoiceSnapshot({
+      cartaoId,
+      monthReference,
+      installments: buildInvoiceTrackingInstallmentsForCard(
+        cartaoId,
+        compras,
+        parcelasCompraByCompraId,
+      ),
+      payments: getInvoicePaymentsForCompetency(cartaoId, monthReference),
+      getDueDayForCard: () => cartao.diaVencimento,
+      referenceDate: format(new Date(), "yyyy-MM-dd"),
+    });
+  }, [cartoesById, compras, getInvoicePaymentsForCompetency, parcelasCompraByCompraId]);
+  const selectedInvoiceSnapshotsByCardId = useMemo(
+    () => new Map(
+      cartoes.map((cartao) => [cartao.id, getInvoiceSnapshotForCompetency(cartao.id, selectedInvoiceMonth)]),
+    ),
+    [cartoes, getInvoiceSnapshotForCompetency, selectedInvoiceMonth],
+  );
   const {
     invoiceMonthOptions,
     selectedInvoiceMonthLabel,
@@ -775,16 +823,32 @@ export default function CartoesPage() {
     formatInvoiceCompetencyLabel,
   });
   const getCardTotalForSelectedMonth = (cartaoId: string) =>
-    calculateCardInvoiceForCompetency(
-      cartaoId,
-      compras,
-      parcelasCompraByCompraId,
-      selectedInvoiceMonth,
-    );
+    selectedInvoiceSnapshotsByCardId.get(cartaoId)?.remainingAmount ?? 0;
+  const canOpenInvoicePaymentDialog = (cartaoId: string) => {
+    const snapshot = selectedInvoiceSnapshotsByCardId.get(cartaoId);
+    const payments = getInvoicePaymentsForCompetency(cartaoId, selectedInvoiceMonth);
+    return Boolean((snapshot && snapshot.originalTotal > 0) || payments.length > 0);
+  };
+  const getInvoicePaymentActionLabel = (cartaoId: string) => {
+    const snapshot = selectedInvoiceSnapshotsByCardId.get(cartaoId);
+    const payments = getInvoicePaymentsForCompetency(cartaoId, selectedInvoiceMonth);
+    if ((snapshot?.remainingAmount ?? 0) > 0) return "Pagar fatura";
+    if (payments.length > 0) return "Ver pagamentos";
+    return "Pagamentos";
+  };
   const totalFaturasForSelectedMonth = useMemo(
     () => cartoes.reduce((sum, cartao) => sum + getCardTotalForSelectedMonth(cartao.id), 0),
-    [cartoes, compras, parcelasCompraByCompraId, selectedInvoiceMonth],
+    [cartoes, selectedInvoiceSnapshotsByCardId],
   );
+  const selectedInvoicePaymentCartao = invoicePaymentTarget
+    ? (cartoesById.get(invoicePaymentTarget.cartaoId) ?? null)
+    : null;
+  const selectedInvoicePaymentSnapshot = invoicePaymentTarget
+    ? getInvoiceSnapshotForCompetency(invoicePaymentTarget.cartaoId, invoicePaymentTarget.monthReference)
+    : null;
+  const selectedInvoicePaymentHistory = invoicePaymentTarget
+    ? getInvoicePaymentsForCompetency(invoicePaymentTarget.cartaoId, invoicePaymentTarget.monthReference)
+    : [];
 
   const parcelaComprovanteMutation = useMutation({
     mutationFn: async ({ parcelaId, file }: { parcelaId: string; file: File }) => {
@@ -1454,6 +1518,75 @@ export default function CartoesPage() {
       {
         onSuccess: () => {
           toast({ title: "Status de reembolso atualizado" });
+        },
+      },
+    );
+  };
+
+  const handleOpenInvoicePaymentDialog = (cartaoId: string) => {
+    setInvoicePaymentTarget({
+      cartaoId,
+      monthReference: selectedInvoiceMonth,
+    });
+  };
+
+  const handleRegisterInvoicePayment = (payload: {
+    valorPago: string | number;
+    dataPagamento: string;
+    observacao?: string | null;
+  }) => {
+    if (!invoicePaymentTarget || !selectedInvoicePaymentSnapshot) {
+      toast({
+        title: "Fatura indisponível",
+        description: "Não foi possível localizar a fatura selecionada.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const valorSolicitado = parseMoney(payload.valorPago) ?? 0;
+    const vaiQuitarFatura = valorSolicitado >= selectedInvoicePaymentSnapshot.remainingAmount;
+    const faturaVencida =
+      selectedInvoicePaymentSnapshot.status === "vencida"
+      || selectedInvoicePaymentSnapshot.status === "vencida_parcialmente_paga";
+
+    if (
+      vaiQuitarFatura
+      && faturaVencida
+      && typeof window !== "undefined"
+      && !window.confirm("Isso marcará todas as parcelas desta fatura como pagas. Deseja continuar?")
+    ) {
+      return;
+    }
+
+    registerInvoicePaymentMutation.mutate(
+      {
+        cartaoId: invoicePaymentTarget.cartaoId,
+        monthReference: invoicePaymentTarget.monthReference,
+        data: payload,
+      },
+      {
+        onSuccess: (result) => {
+          const pagamentoLimitado = result.valorAplicado < result.valorSolicitado;
+          const titulo = result.saldoRestante <= 0
+            ? "Fatura quitada"
+            : result.statusFatura === "parcialmente_paga" || result.statusFatura === "vencida_parcialmente_paga"
+              ? "Pagamento parcial registrado"
+              : "Pagamento registrado";
+          const descricaoBase = pagamentoLimitado
+            ? `Pagamento aplicado até o saldo restante: ${formatCartaoCurrency(result.valorAplicado)}.`
+            : `Pagamento aplicado: ${formatCartaoCurrency(result.valorAplicado)}.`;
+          toast({
+            title: titulo,
+            description: `${descricaoBase} Saldo restante: ${formatCartaoCurrency(result.saldoRestante)}.`,
+          });
+        },
+        onError: (error) => {
+          toast({
+            title: "Erro ao registrar pagamento",
+            description: getErrorMessage(error),
+            variant: "destructive",
+          });
         },
       },
     );
@@ -2541,6 +2674,23 @@ export default function CartoesPage() {
         onConfirmDeleteCompra={handleConfirmDeleteCompra}
       />
 
+      <CartaoFaturaPaymentDialog
+        open={!!invoicePaymentTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setInvoicePaymentTarget(null);
+          }
+        }}
+        cartao={selectedInvoicePaymentCartao}
+        monthReference={invoicePaymentTarget?.monthReference ?? selectedInvoiceMonth}
+        snapshot={selectedInvoicePaymentSnapshot}
+        payments={selectedInvoicePaymentHistory}
+        isPending={registerInvoicePaymentMutation.isPending}
+        formatCurrency={formatCartaoCurrency}
+        formatMonthLabel={formatInvoiceCompetencyLabel}
+        onSubmit={handleRegisterInvoicePayment}
+      />
+
       <ParcelasTab
         open={!!viewingCompra}
         onOpenChange={(open) => {
@@ -2771,6 +2921,9 @@ export default function CartoesPage() {
         onEditCartao={handleEditCartaoFromFatura}
         onDeleteCartao={handleDeleteCard}
         onAddCompra={handleAddCompraFromFatura}
+        canOpenInvoicePaymentDialog={canOpenInvoicePaymentDialog}
+        getInvoicePaymentActionLabel={getInvoicePaymentActionLabel}
+        onOpenInvoicePaymentDialog={handleOpenInvoicePaymentDialog}
         getDaysUntilInvoice={getDaysUntilInvoice}
         getNextInvoiceDate={getNextInvoiceDate}
       />

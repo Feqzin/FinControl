@@ -2,7 +2,7 @@ import { eq, and, sql, isNull, isNotNull } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos,
-  servicoPessoas, servicoPagamentos, metas, parcelasCompra, pessoaSaldoMovimentacoes, rendas, patrimonios, compraAliases,
+  servicoPessoas, servicoPagamentos, metas, parcelasCompra, cartaoFaturaPagamentos, pessoaSaldoMovimentacoes, rendas, patrimonios, compraAliases,
   type User, type InsertUser,
   type Pessoa, type InsertPessoa,
   type Divida, type InsertDivida,
@@ -14,6 +14,7 @@ import {
   type ServicoPagamento, type InsertServicoPagamento,
   type Meta, type InsertMeta,
   type ParcelaCompra, type InsertParcelaCompra,
+  type CartaoFaturaPagamento, type InsertCartaoFaturaPagamento,
   type PessoaSaldoMovimentacao,
   type Renda, type InsertRenda,
   type Patrimonio, type InsertPatrimonio,
@@ -107,6 +108,15 @@ export interface IStorage {
   updateParcelaCompra(id: string, userId: string, data: Partial<InsertParcelaCompra>): Promise<ParcelaCompra | undefined>;
   deleteParcelaCompra(id: string, userId: string): Promise<boolean>;
   deleteParcelasCompraBulk(compraCartaoId: string, userId: string): Promise<void>;
+
+  getCartaoFaturaPagamentos(userId: string): Promise<CartaoFaturaPagamento[]>;
+  getCartaoFaturaPagamentosByCartao(cartaoId: string, userId: string): Promise<CartaoFaturaPagamento[]>;
+  createCartaoFaturaPagamento(data: InsertCartaoFaturaPagamento): Promise<CartaoFaturaPagamento>;
+  updateCartaoFaturaPagamento(
+    id: string,
+    userId: string,
+    data: Partial<InsertCartaoFaturaPagamento>,
+  ): Promise<CartaoFaturaPagamento | undefined>;
 
   getRendas(userId: string): Promise<Renda[]>;
   createRenda(data: InsertRenda): Promise<Renda>;
@@ -816,6 +826,31 @@ export class DatabaseStorage implements IStorage {
     await this.database.delete(parcelasCompra).where(
       and(eq(parcelasCompra.compraCartaoId, compraCartaoId), eq(parcelasCompra.userId, userId))
     );
+  }
+
+  async getCartaoFaturaPagamentos(userId: string) {
+    return this.database
+      .select()
+      .from(cartaoFaturaPagamentos)
+      .where(eq(cartaoFaturaPagamentos.userId, userId));
+  }
+  async getCartaoFaturaPagamentosByCartao(cartaoId: string, userId: string) {
+    return this.database
+      .select()
+      .from(cartaoFaturaPagamentos)
+      .where(and(eq(cartaoFaturaPagamentos.cartaoId, cartaoId), eq(cartaoFaturaPagamentos.userId, userId)));
+  }
+  async createCartaoFaturaPagamento(data: InsertCartaoFaturaPagamento) {
+    const [created] = await this.database.insert(cartaoFaturaPagamentos).values(data).returning();
+    return created;
+  }
+  async updateCartaoFaturaPagamento(id: string, userId: string, data: Partial<InsertCartaoFaturaPagamento>) {
+    const [updated] = await this.database
+      .update(cartaoFaturaPagamentos)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(cartaoFaturaPagamentos.id, id), eq(cartaoFaturaPagamentos.userId, userId)))
+      .returning();
+    return updated;
   }
 
   async getRendas(userId: string) { return this.database.select().from(rendas).where(eq(rendas.userId, userId)); }

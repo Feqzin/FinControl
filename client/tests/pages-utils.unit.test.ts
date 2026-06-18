@@ -43,7 +43,7 @@ import {
 } from "../src/pages/cartoes/import-parser";
 import { suggestImportCardByText } from "../src/pages/cartoes/import-card-matching";
 import { parseMoneyLikeValue, resolveReembolsoPreview } from "../src/components/cartoes/CompraCartaoDialog";
-import type { Cartao, CompraCartao, Divida, Meta, Parcela, ParcelaCompra, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
+import type { Cartao, CartaoFaturaPagamento, CompraCartao, Divida, Meta, Parcela, ParcelaCompra, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
 import {
   extractTextFromPdfBuffer,
   hasPdfMagicBytes,
@@ -653,6 +653,26 @@ function buildServicoFixture(overrides: Partial<Servico> = {}): Servico {
     compraCartaoId: overrides.compraCartaoId ?? null,
     status: overrides.status ?? "ativo",
     iconeId: overrides.iconeId ?? null,
+  };
+}
+
+function buildCartaoFaturaPagamentoFixture(
+  overrides: Partial<CartaoFaturaPagamento> = {},
+): CartaoFaturaPagamento {
+  return {
+    id: overrides.id ?? "pagamento-fatura-1",
+    userId: overrides.userId ?? "user-1",
+    cartaoId: overrides.cartaoId ?? "cartao-1",
+    competenciaMes: overrides.competenciaMes ?? 6,
+    competenciaAno: overrides.competenciaAno ?? 2026,
+    valorPago: overrides.valorPago ?? "50.00",
+    dataPagamento: overrides.dataPagamento ?? "2026-06-15",
+    observacao: overrides.observacao ?? null,
+    tipoPagamento: overrides.tipoPagamento ?? "parcial",
+    considerarNoSaldoCompetencia: overrides.considerarNoSaldoCompetencia ?? true,
+    conciliadoEm: overrides.conciliadoEm ?? null,
+    createdAt: overrides.createdAt ?? "2026-06-15T12:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-06-15T12:00:00.000Z",
   };
 }
 
@@ -1466,6 +1486,121 @@ test("card limit usage: parcela pendente do mês atual entra na fatura atual", (
 
   assert.equal(faturaAtual, 150);
   assert.equal(compraHasOpenInstallmentInMonth(compra, grouped.get(compra.id), currentMonth), true);
+});
+
+test("card limit usage: pagamento parcial reduz a fatura atual e o comprometido sem zerar a competência", () => {
+  const currentMonth = format(new Date(), "yyyy-MM");
+  const compraAtual = buildCompraCartaoViewFixture({
+    id: "compra-parcial-atual",
+    cartaoId: "cartao-1",
+    valorParcela: "150.00",
+    valorTotal: "150.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+  });
+  const compraFutura = buildCompraCartaoViewFixture({
+    id: "compra-parcial-futura",
+    cartaoId: "cartao-1",
+    valorParcela: "90.00",
+    valorTotal: "90.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+  });
+  const parcelas = [
+    buildParcelaCompraViewFixture({
+      id: "parcela-parcial-atual",
+      compraCartaoId: compraAtual.id,
+      numero: 1,
+      valor: "150.00",
+      dataVencimento: `${currentMonth}-10`,
+      statusCartao: "pendente",
+    }),
+    buildParcelaCompraViewFixture({
+      id: "parcela-parcial-futura",
+      compraCartaoId: compraFutura.id,
+      numero: 1,
+      valor: "90.00",
+      dataVencimento: `${format(addMonths(new Date(), 1), "yyyy-MM")}-10`,
+      statusCartao: "pendente",
+    }),
+  ];
+  const pagamentos = [
+    buildCartaoFaturaPagamentoFixture({
+      id: "pagamento-parcial-atual",
+      cartaoId: "cartao-1",
+      competenciaAno: Number(currentMonth.slice(0, 4)),
+      competenciaMes: Number(currentMonth.slice(5, 7)),
+      valorPago: "80.00",
+      tipoPagamento: "parcial",
+      considerarNoSaldoCompetencia: true,
+    }),
+  ];
+  const grouped = groupParcelasCompraByCompraId(parcelas);
+
+  const faturaAtual = calculateCardCurrentInvoiceTotal("cartao-1", [compraAtual, compraFutura], grouped, currentMonth, pagamentos);
+  const limiteComprometido = calculateCardUsedLimit("cartao-1", [compraAtual, compraFutura], grouped, pagamentos);
+
+  assert.equal(faturaAtual, 70);
+  assert.equal(limiteComprometido, 160);
+});
+
+test("card limit usage: quitação total zera a fatura paga e preserva parcelas futuras", () => {
+  const currentMonth = format(new Date(), "yyyy-MM");
+  const nextMonth = format(addMonths(new Date(), 1), "yyyy-MM");
+  const compraAtual = buildCompraCartaoViewFixture({
+    id: "compra-quitada-atual",
+    cartaoId: "cartao-1",
+    valorParcela: "150.00",
+    valorTotal: "150.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+  });
+  const compraFutura = buildCompraCartaoViewFixture({
+    id: "compra-quitada-futura",
+    cartaoId: "cartao-1",
+    valorParcela: "90.00",
+    valorTotal: "90.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+  });
+  const parcelas = [
+    buildParcelaCompraViewFixture({
+      id: "parcela-quitada-atual",
+      compraCartaoId: compraAtual.id,
+      numero: 1,
+      valor: "150.00",
+      dataVencimento: `${currentMonth}-10`,
+      statusCartao: "pago",
+      dataPagamentoCartao: `${currentMonth}-15`,
+    }),
+    buildParcelaCompraViewFixture({
+      id: "parcela-quitada-futura",
+      compraCartaoId: compraFutura.id,
+      numero: 1,
+      valor: "90.00",
+      dataVencimento: `${nextMonth}-10`,
+      statusCartao: "pendente",
+    }),
+  ];
+  const pagamentos = [
+    buildCartaoFaturaPagamentoFixture({
+      id: "pagamento-quitacao-total",
+      cartaoId: "cartao-1",
+      competenciaAno: Number(currentMonth.slice(0, 4)),
+      competenciaMes: Number(currentMonth.slice(5, 7)),
+      valorPago: "150.00",
+      tipoPagamento: "quitacao_total",
+      considerarNoSaldoCompetencia: false,
+      conciliadoEm: `${currentMonth}-15T12:00:00.000Z`,
+    }),
+  ];
+  const grouped = groupParcelasCompraByCompraId(parcelas);
+
+  const faturaAtual = calculateCardCurrentInvoiceTotal("cartao-1", [compraAtual, compraFutura], grouped, currentMonth, pagamentos);
+  const limiteComprometido = calculateCardUsedLimit("cartao-1", [compraAtual, compraFutura], grouped, pagamentos);
+
+  assert.equal(faturaAtual, 0);
+  assert.equal(limiteComprometido, 90);
 });
 
 test("card limit usage: parcela vencida não paga continua comprometendo limite, mas fora da competência atual", () => {
@@ -5810,6 +5945,67 @@ test("calendário financeiro: inclui fatura e parcela do cartão sem duplicar se
   assert.equal(linkedServiceEvent, undefined);
   assert.ok(mensalServiceEvent);
   assert.equal(mensalServiceEvent?.amount, 39.9);
+});
+
+test("calendário financeiro: pagamento parcial reduz o valor da fatura e atualiza o status", () => {
+  const currentMonth = "2026-06";
+  const cartao = buildCartaoViewFixture({
+    id: "card-partial-calendar",
+    nome: "Nubank",
+    diaVencimento: 10,
+  });
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-partial-calendar",
+    cartaoId: "card-partial-calendar",
+    descricao: "Compra parcial",
+    valorTotal: "200.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "200.00",
+    dataCompra: "2026-06-02",
+    pessoaId: null,
+    statusPessoa: null,
+  });
+  const parcelaCompra = buildParcelaCompraViewFixture({
+    id: "parcela-partial-calendar",
+    compraCartaoId: "compra-partial-calendar",
+    numero: 1,
+    valor: "200.00",
+    dataVencimento: "2026-06-10",
+    statusCartao: "pendente",
+    statusPessoa: null,
+  });
+  const pagamento = buildCartaoFaturaPagamentoFixture({
+    id: "pagamento-partial-calendar",
+    cartaoId: "card-partial-calendar",
+    competenciaAno: 2026,
+    competenciaMes: 6,
+    valorPago: "80.00",
+    dataPagamento: "2026-06-09",
+    tipoPagamento: "parcial",
+    considerarNoSaldoCompetencia: true,
+  });
+
+  const events = buildFinancialCalendarEvents({
+    monthReference: currentMonth,
+    cartoes: [cartao],
+    compras: [compra],
+    parcelasCompra: [parcelaCompra],
+    cartaoFaturaPagamentos: [pagamento],
+    dividas: [],
+    parcelas: [],
+    pessoas: [],
+    servicos: [],
+    rendas: [],
+    metas: [],
+    referenceDate: "2026-06-01",
+  });
+
+  const invoiceEvent = events.find((event) => event.source === "fatura_cartao" && event.entityId === "card-partial-calendar");
+
+  assert.ok(invoiceEvent);
+  assert.equal(invoiceEvent?.amount, 120);
+  assert.equal(invoiceEvent?.statusLabel, "Fatura parcialmente paga");
 });
 
 test("calendário financeiro: respeita mês de cobrança anual e agrega renda, dívida parcelada e meta no mês correto", () => {

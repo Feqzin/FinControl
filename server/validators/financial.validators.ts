@@ -263,6 +263,21 @@ export const cartaoUpdateBody = z.object({
   iconeId: z.string().optional().nullable(),
 }).strict().refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });
 
+export const cartaoFaturaPagamentoBody = z.object({
+  valorPago: moneyField,
+  dataPagamento: isoDateRequired,
+  observacao: z.string().trim().max(500).optional().nullable(),
+}).strict().superRefine((data, ctx) => {
+  const parsed = parseMoney(data.valorPago);
+  if (parsed == null || parsed <= 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["valorPago"],
+      message: "Informe um valor de pagamento maior que zero",
+    });
+  }
+});
+
 export const parcelaCompraUpdateBody = z.object({
   numero: z.coerce.number().int().min(1).optional(),
   valor: moneyField.optional(),
@@ -324,6 +339,7 @@ export type CompraBodyInput = z.infer<typeof compraBody>;
 export type CompraUpdateBodyInput = z.infer<typeof compraUpdateBody>;
 export type CartaoBodyInput = z.infer<typeof cartaoBody>;
 export type CartaoUpdateBodyInput = z.infer<typeof cartaoUpdateBody>;
+export type CartaoFaturaPagamentoBodyInput = z.infer<typeof cartaoFaturaPagamentoBody>;
 export type ParcelaCompraUpdateBodyInput = z.infer<typeof parcelaCompraUpdateBody>;
 export type ParcelaCompraCompetenciaUpdateBodyInput = z.infer<typeof parcelaCompraCompetenciaUpdateBody>;
 export type ParcelasCompraBulkBodyInput = z.infer<typeof parcelasCompraBulkBody>;

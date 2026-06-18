@@ -9,6 +9,10 @@ import {
   type CardLimitSummary,
   type CardSummaryInstallment,
 } from "@shared/card-limit-summary";
+import {
+  buildCardInvoiceSnapshots,
+  type CardInvoicePaymentRecord,
+} from "@shared/card-invoice-payments";
 
 export type ParcelasCompraByCompraId = Map<string, ParcelaCompra[]>;
 export type CardInvoiceSnapshot = {
@@ -150,6 +154,24 @@ function buildOutstandingInstallmentsForCompra(
   return rows;
 }
 
+function buildInvoiceTrackingInstallmentsForCompra(
+  compra: CompraCartao,
+  parcelasMaterializadas: ParcelaCompra[] | undefined,
+): CardSummaryInstallment[] {
+  if (parcelasMaterializadas && parcelasMaterializadas.length > 0) {
+    return parcelasMaterializadas
+      .filter((row) => String(row.statusCartao ?? "").trim().toLowerCase() !== "cancelado")
+      .map((row) => ({
+        cartaoId: compra.cartaoId,
+        valor: row.valor,
+        statusCartao: row.statusCartao,
+        dataVencimento: row.dataVencimento,
+      }));
+  }
+
+  return buildOutstandingInstallmentsForCompra(compra, parcelasMaterializadas);
+}
+
 function buildOutstandingInstallmentsForCard(
   cartaoId: string,
   compras: CompraCartao[],
@@ -160,50 +182,36 @@ function buildOutstandingInstallmentsForCard(
     .flatMap((compra) => buildOutstandingInstallmentsForCompra(compra, parcelasByCompraId.get(compra.id)));
 }
 
+export function buildInvoiceTrackingInstallmentsForCard(
+  cartaoId: string,
+  compras: CompraCartao[],
+  parcelasByCompraId: ParcelasCompraByCompraId,
+): CardSummaryInstallment[] {
+  return compras
+    .filter((compra) => compra.cartaoId === cartaoId)
+    .flatMap((compra) => buildInvoiceTrackingInstallmentsForCompra(compra, parcelasByCompraId.get(compra.id)));
+}
+
 export function listOutstandingCardInvoiceSnapshots(
   cartaoId: string,
   compras: CompraCartao[],
   parcelasByCompraId: ParcelasCompraByCompraId,
   diaVencimento?: number | null,
+  invoicePayments: CardInvoicePaymentRecord[] = [],
 ): CardInvoiceSnapshot[] {
-  const grouped = new Map<string, CardInvoiceSnapshot>();
-
-  for (const installment of buildOutstandingInstallmentsForCard(cartaoId, compras, parcelasByCompraId)) {
-    const monthReference = getCardInstallmentMonthReference(installment.dataVencimento);
-    if (!monthReference) continue;
-
-    const fallbackDataVencimento = typeof installment.dataVencimento === "string"
-      ? installment.dataVencimento
-      : null;
-    const dueDate = resolveDueDateFromCompetencia({
-      competencia: monthReference,
-      diaVencimento,
-      fallbackDataVencimento,
-    });
-
-    const current = grouped.get(monthReference);
-    if (current) {
-      current.total = Math.round((current.total + toMoneyNumber(installment.valor)) * 100) / 100;
-      current.installmentCount += 1;
-      if (!current.dueDate || (dueDate && dueDate < current.dueDate)) {
-        current.dueDate = dueDate;
-      }
-      continue;
-    }
-
-    grouped.set(monthReference, {
-      monthReference,
-      dueDate,
-      total: Math.round(toMoneyNumber(installment.valor) * 100) / 100,
-      installmentCount: 1,
-    });
-  }
-
-  return Array.from(grouped.values()).sort((a, b) => {
-    const left = a.dueDate ?? `${a.monthReference}-99`;
-    const right = b.dueDate ?? `${b.monthReference}-99`;
-    return left.localeCompare(right);
-  });
+  return buildCardInvoiceSnapshots({
+    installments: buildOutstandingInstallmentsForCard(cartaoId, compras, parcelasByCompraId),
+    payments: invoicePayments.filter((payment) => payment.cartaoId === cartaoId),
+    getDueDayForCard: () => diaVencimento ?? null,
+    referenceDate: format(new Date(), "yyyy-MM-dd"),
+  })
+    .filter((snapshot) => snapshot.remainingAmount > 0)
+    .map((snapshot) => ({
+      monthReference: snapshot.monthReference,
+      dueDate: snapshot.dueDate,
+      total: snapshot.remainingAmount,
+      installmentCount: snapshot.openInstallmentsCount,
+    }));
 }
 
 export function getNextOutstandingCardInvoiceSnapshot(
@@ -211,8 +219,15 @@ export function getNextOutstandingCardInvoiceSnapshot(
   compras: CompraCartao[],
   parcelasByCompraId: ParcelasCompraByCompraId,
   diaVencimento?: number | null,
+  invoicePayments: CardInvoicePaymentRecord[] = [],
 ): CardInvoiceSnapshot | null {
-  return listOutstandingCardInvoiceSnapshots(cartaoId, compras, parcelasByCompraId, diaVencimento)[0] ?? null;
+  return listOutstandingCardInvoiceSnapshots(
+    cartaoId,
+    compras,
+    parcelasByCompraId,
+    diaVencimento,
+    invoicePayments,
+  )[0] ?? null;
 }
 
 export function calculateCardLimitSummary(
@@ -221,12 +236,14 @@ export function calculateCardLimitSummary(
   parcelasByCompraId: ParcelasCompraByCompraId,
   monthReference: string,
   limiteTotal: string | number | null | undefined = 0,
+  invoicePayments: CardInvoicePaymentRecord[] = [],
 ): CardLimitSummary {
   return buildCardLimitSummary({
     cartaoId,
     limiteTotal,
     monthReference,
     installments: buildOutstandingInstallmentsForCard(cartaoId, compras, parcelasByCompraId),
+    invoicePayments: invoicePayments.filter((payment) => payment.cartaoId === cartaoId),
   });
 }
 
@@ -234,12 +251,15 @@ export function calculateCardUsedLimit(
   cartaoId: string,
   compras: CompraCartao[],
   parcelasByCompraId: ParcelasCompraByCompraId,
+  invoicePayments: CardInvoicePaymentRecord[] = [],
 ): number {
   return calculateCardLimitSummary(
     cartaoId,
     compras,
     parcelasByCompraId,
     format(new Date(), "yyyy-MM"),
+    0,
+    invoicePayments,
   ).limiteComprometido;
 }
 
@@ -248,12 +268,15 @@ export function calculateCardCurrentInvoiceTotal(
   compras: CompraCartao[],
   parcelasByCompraId: ParcelasCompraByCompraId,
   monthReference: string,
+  invoicePayments: CardInvoicePaymentRecord[] = [],
 ): number {
   return calculateCardLimitSummary(
     cartaoId,
     compras,
     parcelasByCompraId,
     monthReference,
+    0,
+    invoicePayments,
   ).faturaAtual;
 }
 
@@ -262,6 +285,13 @@ export function calculateCardInvoiceForCompetency(
   compras: CompraCartao[],
   parcelasByCompraId: ParcelasCompraByCompraId,
   monthReference: string,
+  invoicePayments: CardInvoicePaymentRecord[] = [],
 ): number {
-  return calculateCardCurrentInvoiceTotal(cartaoId, compras, parcelasByCompraId, monthReference);
+  return calculateCardCurrentInvoiceTotal(
+    cartaoId,
+    compras,
+    parcelasByCompraId,
+    monthReference,
+    invoicePayments,
+  );
 }

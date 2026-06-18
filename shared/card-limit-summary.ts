@@ -1,5 +1,10 @@
 import { format, parseISO } from "date-fns";
 import { parseMoney } from "../utils/money";
+import {
+  findCardInvoiceSnapshot,
+  getCardInvoicePaymentMonthReference,
+  type CardInvoicePaymentRecord,
+} from "./card-invoice-payments";
 
 type MoneyValue = string | number | null | undefined;
 
@@ -61,15 +66,46 @@ export function buildCardLimitSummary(params: {
   limiteTotal: MoneyValue;
   monthReference: string;
   installments: CardSummaryInstallment[];
+  invoicePayments?: CardInvoicePaymentRecord[];
+  getDueDayForCard?: (cartaoId: string) => number | null | undefined;
+  referenceDate?: string;
 }): CardLimitSummary {
-  const installments = params.installments.filter(
-    (row) => row.cartaoId === params.cartaoId && isCardInstallmentOutstandingStatus(row.statusCartao),
-  );
+  const relevantInstallments = params.installments.filter((row) => row.cartaoId === params.cartaoId);
+  const pendingInstallments = relevantInstallments.filter((row) => isCardInstallmentOutstandingStatus(row.statusCartao));
+  const monthReferences = new Set<string>();
 
-  const limiteComprometido = installments.reduce((sum, row) => sum + toMoneyNumber(row.valor), 0);
-  const faturaAtual = installments
-    .filter((row) => getCardInstallmentMonthReference(row.dataVencimento) === params.monthReference)
-    .reduce((sum, row) => sum + toMoneyNumber(row.valor), 0);
+  for (const installment of relevantInstallments) {
+    const monthReference = getCardInstallmentMonthReference(installment.dataVencimento);
+    if (monthReference) {
+      monthReferences.add(monthReference);
+    }
+  }
+
+  for (const payment of params.invoicePayments ?? []) {
+    if (payment.cartaoId !== params.cartaoId) continue;
+    const monthReference = getCardInvoicePaymentMonthReference(payment);
+    if (monthReference) {
+      monthReferences.add(monthReference);
+    }
+  }
+
+  let limiteComprometido = 0;
+  let faturaAtual = 0;
+  for (const monthReference of Array.from(monthReferences)) {
+    const snapshot = findCardInvoiceSnapshot({
+      cartaoId: params.cartaoId,
+      monthReference,
+      installments: relevantInstallments,
+      payments: params.invoicePayments,
+      getDueDayForCard: params.getDueDayForCard,
+      referenceDate: params.referenceDate,
+    });
+    if (!snapshot) continue;
+    limiteComprometido += snapshot.remainingAmount;
+    if (monthReference === params.monthReference) {
+      faturaAtual = snapshot.remainingAmount;
+    }
+  }
   const limiteDisponivel = toMoneyNumber(params.limiteTotal) - limiteComprometido;
 
   return {
@@ -77,6 +113,6 @@ export function buildCardLimitSummary(params: {
     limiteComprometido: round2(limiteComprometido),
     limiteDisponivel: round2(limiteDisponivel),
     saldoRestanteTotal: round2(limiteComprometido),
-    quantidadeParcelasPendentes: installments.length,
+    quantidadeParcelasPendentes: pendingInstallments.length,
   };
 }

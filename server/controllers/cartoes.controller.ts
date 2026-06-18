@@ -1,7 +1,11 @@
 import type { Request, Response } from "express";
 import { formatMoneyFixed } from "../../utils/money";
 import { CartoesService } from "../services/cartoes.service";
-import { cartaoBody, cartaoUpdateBody } from "../validators/financial.validators";
+import {
+  cartaoBody,
+  cartaoFaturaPagamentoBody,
+  cartaoUpdateBody,
+} from "../validators/financial.validators";
 import {
   auditRequest,
   getParam,
@@ -28,6 +32,11 @@ export function createCartoesController(service: CartoesService) {
     list: async (req: Request, res: Response) => {
       const userId = getUserId(req);
       return res.json(await service.list(userId));
+    },
+
+    listInvoicePayments: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      return res.json(await service.listInvoicePayments(userId));
     },
 
     create: async (req: Request, res: Response) => {
@@ -130,6 +139,72 @@ export function createCartoesController(service: CartoesService) {
         targetId: cartaoId,
       });
       return res.json({ success: true });
+    },
+
+    registerInvoicePayment: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const cartaoId = getParam(req, "cartaoId");
+      const mes = parseMes(getParam(req, "mes"));
+      const parsed = cartaoFaturaPagamentoBody.safeParse(req.body);
+
+      if (!mes) {
+        return sendBadRequest(res, "Mes invalido. Use o formato YYYY-MM.");
+      }
+
+      if (!parsed.success) {
+        auditRequest(req, {
+          action: "create",
+          status: "failure",
+          domain: "cartoes",
+          userId,
+          targetId: cartaoId,
+          details: { reason: "validation_error", mes },
+        });
+        return sendBadRequest(res, parsed.error.message);
+      }
+
+      const result = await service.registerInvoicePayment(userId, cartaoId, mes, parsed.data);
+      if ("error" in result) {
+        const message = result.message
+          ?? (
+            result.error === "CARTAO_NOT_FOUND"
+              ? "Cartao not found"
+              : result.error === "FATURA_JA_QUITADA"
+                ? "A fatura informada ja esta quitada."
+                : result.error === "VALOR_INVALIDO"
+                  ? "Informe um valor valido para registrar o pagamento."
+                  : "Nenhuma cobranca encontrada para esta fatura."
+          );
+        auditRequest(req, {
+          action: "create",
+          status: "failure",
+          domain: "cartoes",
+          userId,
+          targetId: cartaoId,
+          details: { reason: result.error.toLowerCase(), mes, valorPago: parsed.data.valorPago },
+        });
+        if (result.error === "CARTAO_NOT_FOUND") {
+          return sendNotFound(res, message);
+        }
+        return sendBadRequest(res, message);
+      }
+
+      auditRequest(req, {
+        action: "create",
+        status: "success",
+        domain: "cartoes",
+        userId,
+        targetId: cartaoId,
+        details: {
+          mes,
+          valorSolicitado: result.valorSolicitado,
+          valorAplicado: result.valorAplicado,
+          saldoAnterior: result.saldoAnterior,
+          saldoRestante: result.saldoRestante,
+          statusFatura: result.statusFatura,
+        },
+      });
+      return res.json(result);
     },
 
     deleteFaturaByCartaoMonth: async (req: Request, res: Response) => {

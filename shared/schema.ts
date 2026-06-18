@@ -376,6 +376,41 @@ export const insertParcelaCompraSchema = createInsertSchema(parcelasCompra).omit
 export type InsertParcelaCompra = z.infer<typeof insertParcelaCompraSchema>;
 export type ParcelaCompra = typeof parcelasCompra.$inferSelect;
 
+export const cartaoFaturaPagamentos = pgTable("cartao_fatura_pagamentos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  cartaoId: varchar("cartao_id").notNull().references(() => cartoes.id, { onDelete: "cascade" }),
+  competenciaMes: integer("competencia_mes").notNull(),
+  competenciaAno: integer("competencia_ano").notNull(),
+  valorPago: decimal("valor_pago", { precision: 12, scale: 2 }).notNull(),
+  dataPagamento: date("data_pagamento", { mode: "string" }).notNull(),
+  observacao: text("observacao"),
+  tipoPagamento: text("tipo_pagamento").notNull().default("parcial"),
+  considerarNoSaldoCompetencia: boolean("considerar_no_saldo_competencia").notNull().default(true),
+  conciliadoEm: timestamp("conciliado_em"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  cartaoFaturaPagamentosUserIdIdx: index("idx_cartao_fatura_pagamentos_user_id").on(table.userId),
+  cartaoFaturaPagamentosCartaoIdIdx: index("idx_cartao_fatura_pagamentos_cartao_id").on(table.cartaoId),
+  cartaoFaturaPagamentosCompetenciaIdx: index("idx_cartao_fatura_pagamentos_competencia").on(
+    table.userId,
+    table.cartaoId,
+    table.competenciaAno,
+    table.competenciaMes,
+  ),
+  cartaoFaturaPagamentosDataPagamentoIdx: index("idx_cartao_fatura_pagamentos_data_pagamento").on(table.dataPagamento),
+  cartaoFaturaPagamentosCreatedAtIdx: index("idx_cartao_fatura_pagamentos_created_at").on(table.createdAt),
+}));
+
+export const insertCartaoFaturaPagamentoSchema = createInsertSchema(cartaoFaturaPagamentos).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCartaoFaturaPagamento = z.infer<typeof insertCartaoFaturaPagamentoSchema>;
+export type CartaoFaturaPagamento = typeof cartaoFaturaPagamentos.$inferSelect;
+
 export const pessoaSaldoMovimentacoes = pgTable("pessoa_saldo_movimentacoes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),

@@ -33,6 +33,9 @@ type CartaoFaturaSectionProps = {
   onEditCartao: (cartao: Cartao) => void;
   onDeleteCartao: (cartaoId: string) => void;
   onAddCompra: (cartaoId: string) => void;
+  canOpenInvoicePaymentDialog: (cartaoId: string) => boolean;
+  getInvoicePaymentActionLabel: (cartaoId: string) => string;
+  onOpenInvoicePaymentDialog: (cartaoId: string) => void;
   getDaysUntilInvoice: (diaVencimento: number) => number;
   getNextInvoiceDate: (diaVencimento: number) => string;
 };
@@ -65,6 +68,9 @@ export function CartaoFaturaSection({
   onEditCartao,
   onDeleteCartao,
   onAddCompra,
+  canOpenInvoicePaymentDialog,
+  getInvoicePaymentActionLabel,
+  onOpenInvoicePaymentDialog,
   getDaysUntilInvoice,
   getNextInvoiceDate,
 }: CartaoFaturaSectionProps) {
@@ -88,6 +94,9 @@ export function CartaoFaturaSection({
           servicos={servicos}
           onOpenParcelas={onOpenParcelas}
           onDeleteCompra={onDeleteCompra}
+          canOpenInvoicePaymentDialog={canOpenInvoicePaymentDialog}
+          getInvoicePaymentActionLabel={getInvoicePaymentActionLabel}
+          onOpenInvoicePaymentDialog={onOpenInvoicePaymentDialog}
           resolveCompraIconSuggestion={resolveCompraIconSuggestion}
           resolveCardIconId={resolveCardIconId}
         />
@@ -109,6 +118,9 @@ export function CartaoFaturaSection({
           onEditCartao={onEditCartao}
           onDeleteCartao={onDeleteCartao}
           onAddCompra={onAddCompra}
+          canOpenInvoicePaymentDialog={canOpenInvoicePaymentDialog}
+          getInvoicePaymentActionLabel={getInvoicePaymentActionLabel}
+          onOpenInvoicePaymentDialog={onOpenInvoicePaymentDialog}
           onOpenParcelas={onOpenParcelas}
           onEditCompra={onEditCompra}
           onDeleteCompra={onDeleteCompra}
