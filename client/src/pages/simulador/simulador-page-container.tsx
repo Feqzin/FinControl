@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, lazy, Suspense } from "react";
+import { format } from "date-fns";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +26,7 @@ import {
 } from "lucide-react";
 import type { Divida, Servico } from "@shared/schema";
 import type { FinancialScore } from "@shared/financial";
-import { calculateServicoMonthlyFinancialImpactAmount } from "@shared/servico-periodicidade";
+import { calculateServicoRealMonthlyExpenseAmount } from "@shared/servico-periodicidade";
 import { useSimuladorQueries } from "@/pages/simulador/hooks/use-simulador-queries";
 
 const InvestimentoProjectionChart = lazy(
@@ -34,6 +35,12 @@ const InvestimentoProjectionChart = lazy(
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+export function calculateSimuladorBaseServicos(servicos: Servico[], monthReference: string): number {
+  return servicos
+    .filter((s) => s.status === "ativo")
+    .reduce((sum, servico) => sum + calculateServicoRealMonthlyExpenseAmount(servico, monthReference), 0);
 }
 
 export default function SimuladorPageContainer() {
@@ -88,11 +95,10 @@ export default function SimuladorPageContainer() {
   const [aporteIndep, setAporteIndep] = useState(1000);
 
   // Tab 1 Calculations
+  const currentMonth = format(new Date(), "yyyy-MM");
   const baseReceber = dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
   const basePagar = dividas.filter((d) => d.tipo === "pagar" && d.status === "pendente").reduce((s, d) => s + Number(d.valor), 0);
-  const baseServicos = servicos
-    .filter((s) => s.status === "ativo")
-    .reduce((sum, servico) => sum + calculateServicoMonthlyFinancialImpactAmount(servico), 0);
+  const baseServicos = calculateSimuladorBaseServicos(servicos, currentMonth);
   const maxReducaoDespesas = Math.max(0, baseServicos);
   const maxQuitarDivida = Math.max(0, basePagar);
   const canReduceFixedExpenses = maxReducaoDespesas > 0;

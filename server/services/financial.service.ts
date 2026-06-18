@@ -3,7 +3,7 @@ import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Patrimonio, 
 import type { DashboardOverviewResponse, FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
 import {
   calculateServicoEquivalentMonthlyAmount,
-  calculateServicoMonthlyFinancialImpactAmount,
+  calculateServicoRealMonthlyExpenseAmount,
   calculateServicoRealChargeForCompetency,
   isServicoLinkedToCardCharge,
 } from "@shared/servico-periodicidade";
@@ -192,6 +192,18 @@ function calculateServicoSummaryTotals(
   };
 }
 
+function calculateServicoRealMonthlyTotal(
+  servicos: Servico[],
+  monthReference: string,
+): number {
+  return servicos
+    .filter((servico) => servico.status === "ativo")
+    .reduce(
+      (sum, servico) => sum + calculateServicoRealMonthlyExpenseAmount(servico, monthReference),
+      0,
+    );
+}
+
 function calculateScoreFromContext({
   dividas,
   parcelas,
@@ -226,9 +238,7 @@ function calculateScoreFromContext({
   }
 
   const totalRenda = sumMoneyBy(rendas.filter((r) => r.ativo), (r) => r.valor);
-  const totalServicos = servicos
-    .filter((servico) => servico.status === "ativo")
-    .reduce((sum, servico) => sum + calculateServicoMonthlyFinancialImpactAmount(servico), 0);
+  const totalServicos = calculateServicoRealMonthlyTotal(servicos, currentMonth);
 
   const entradas = totalRenda + totalReceberMes;
   const saidas = totalPagarMes + totalServicos + totalCartoesMes;
@@ -346,10 +356,7 @@ function generateInsightsFromContext({
 
   const totalRenda = sumMoneyBy(rendas.filter((r) => r.ativo), (r) => r.valor);
   const servicosAtivos = servicos.filter((s) => s.status === "ativo");
-  const totalServicos = servicosAtivos.reduce(
-    (sum, servico) => sum + calculateServicoMonthlyFinancialImpactAmount(servico),
-    0,
-  );
+  const totalServicos = calculateServicoRealMonthlyTotal(servicosAtivos, currentMonth);
   const { totalReceberMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, currentMonth);
   const { totalCartoesMes } = getMonthlyCardTotals(cardInput, currentMonth);
 
@@ -429,7 +436,7 @@ function generateInsightsFromContext({
   if (totalServicos > 300) {
     insights.push({
       tipo: "negativo",
-      texto: `Seus gastos com servicos/assinaturas sao R$ ${formatMoneyText(totalServicos)} por mes`,
+      texto: `Seus servicos/assinaturas geram R$ ${formatMoneyText(totalServicos)} em cobrancas reais neste mes`,
       icone: "repeat",
       acao: {
         tipo: "abrir_servicos",
@@ -441,7 +448,9 @@ function generateInsightsFromContext({
   } else if (servicosAtivos.length > 0) {
     insights.push({
       tipo: "neutro",
-      texto: `Voce tem ${servicosAtivos.length} servico(s) ativo(s) custando R$ ${formatMoneyText(totalServicos)} mensais`,
+      texto: totalServicos > 0
+        ? `Voce tem ${servicosAtivos.length} servico(s) ativo(s) com R$ ${formatMoneyText(totalServicos)} em cobrancas reais neste mes`
+        : `Voce tem ${servicosAtivos.length} servico(s) ativo(s), mas nenhum gera cobranca real neste mes`,
       icone: "repeat",
       acao: {
         tipo: "abrir_servicos",
@@ -521,8 +530,10 @@ function resolveContextUserId(context: FinancialContext): string {
 function applyFinancialSimulation(
   context: FinancialContext,
   simulation?: FinancialSimulationInput,
+  monthReference?: string,
 ): FinancialContext {
   if (!simulation) return context;
+  const targetMonthReference = resolveMonthReference(monthReference);
 
   const quitarDivida = Math.max(0, simulation.quitarDivida ?? 0);
   const reducaoDespesas = Math.max(0, simulation.reducaoDespesas ?? 0);
@@ -580,10 +591,10 @@ function applyFinancialSimulation(
   let remainingReducao = reducaoDespesas;
   const simulatedServicos = context.servicos.map((servico) => {
     if (servico.status === "ativo" && remainingReducao > 0) {
-      const valor = toMoneyNumber(servico.valorMensal);
+      const valor = calculateServicoRealMonthlyExpenseAmount(servico, targetMonthReference);
       if (remainingReducao >= valor) {
         remainingReducao -= valor;
-        return { ...servico, valorMensal: "0" };
+        return { ...servico, valorMensal: "0", valorCobranca: "0" };
       }
     }
     return servico;
@@ -674,8 +685,8 @@ export class FinancialService {
     simulation?: FinancialSimulationInput,
   ): Promise<FinancialSummary> {
     const ctx = await this.loadContext(userId);
-    const simulated = applyFinancialSimulation(ctx, simulation);
     const mesReferencia = resolveMonthReference(monthReference);
+    const simulated = applyFinancialSimulation(ctx, simulation, mesReferencia);
     const debtInput = { dividas: simulated.dividas, parcelas: simulated.parcelas };
     const cardInput = { compras: simulated.compras, parcelasCompra: simulated.parcelasCompra };
     const { totalReceberMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, mesReferencia);
@@ -734,7 +745,7 @@ export class FinancialService {
       this.getSummary(userId, monthReference, simulation),
     ]);
 
-    const simulated = applyFinancialSimulation(ctx, simulation);
+    const simulated = applyFinancialSimulation(ctx, simulation, financialSummary.mesReferencia);
 
     return {
       mesReferencia: financialSummary.mesReferencia,

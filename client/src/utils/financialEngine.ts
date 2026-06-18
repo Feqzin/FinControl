@@ -1,6 +1,6 @@
 import { format, subMonths } from "date-fns";
 import type { Divida, Servico, Renda } from "@shared/schema";
-import { calculateServicoMonthlyFinancialImpactAmount } from "@shared/servico-periodicidade";
+import { calculateServicoRealMonthlyExpenseAmount } from "@shared/servico-periodicidade";
 import { toMoneyNumber } from "@/lib/money";
 
 export interface MonthlySnapshot {
@@ -20,9 +20,6 @@ export function gerarHistoricoMensal(
   rendas: Renda[] = [],
 ): MonthlySnapshot[] {
   const now = new Date();
-  const servicosMensais = servicos
-    .filter((s) => s.status === "ativo")
-    .reduce((sum, servico) => sum + calculateServicoMonthlyFinancialImpactAmount(servico), 0);
   const rendaMensal = rendas
     .filter((r) => r.ativo)
     .reduce((s, r) => s + toMoneyNumber(r.valor), 0);
@@ -31,6 +28,9 @@ export function gerarHistoricoMensal(
     const data = subMonths(now, meses - 1 - i);
     const mes = format(data, "yyyy-MM");
     const label = format(data, "MMM/yy");
+    const servicosMensais = servicos
+      .filter((s) => s.status === "ativo")
+      .reduce((sum, servico) => sum + calculateServicoRealMonthlyExpenseAmount(servico, mes), 0);
 
     const receitasDividas = dividas
       .filter((d) => d.tipo === "receber" && (d.dataPagamento || d.dataVencimento || "").startsWith(mes))

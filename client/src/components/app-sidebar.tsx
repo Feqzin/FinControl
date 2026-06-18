@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/theme-provider";
 import { useUIPreferences, type UsageMode } from "@/context/ui-preferences";
 import {
-  LayoutDashboard, Users, Receipt, CreditCard, Calendar,
+  LayoutDashboard, Users, Receipt, CreditCard, Calendar, CalendarDays,
   BarChart3, Repeat, LogOut, Target, History, Calculator,
   Sun, Moon, UserCircle, Wallet, PiggyBank, Settings2, AlertCircle,
 } from "lucide-react";
@@ -43,6 +43,7 @@ const mainItems = [
 
 const planejamentoItems = [
   { title: "Metas", url: "/metas", icon: Target },
+  { title: "Calendário", url: "/calendario", icon: CalendarDays },
   { title: "Previsão", url: "/previsao", icon: Calendar },
   { title: "Histórico", url: "/historico", icon: History },
   { title: "Simulador", url: "/simulador", icon: Calculator },
@@ -80,6 +81,7 @@ export function AppSidebar() {
     { title: "Patrimônio", url: "/patrimonio" },
     { title: "Serviços", url: "/servicos" },
     { title: "Metas", url: "/metas" },
+    { title: "Calendário", url: "/calendario" },
     { title: "Previsão", url: "/previsao" },
     { title: "Histórico", url: "/historico" },
     { title: "Simulador", url: "/simulador" },

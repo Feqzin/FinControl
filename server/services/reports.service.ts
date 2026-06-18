@@ -11,7 +11,6 @@ import {
 import type { ReportsOverviewResponse } from "../../shared/reports";
 import {
   calculateServicoEquivalentMonthlyAmount,
-  calculateServicoMonthlyFinancialImpactAmount,
   calculateServicoRealChargeForCompetency,
   isServicoLinkedToCardCharge,
 } from "../../shared/servico-periodicidade";
@@ -145,10 +144,6 @@ export class ReportsService {
       .filter((item) => item.tipo === "receber" && item.status === "pendente")
       .reduce((sum, item) => sum + toMoneyNumber(item.valor), 0);
 
-    const servicosAtivosTotal = activeServicos.reduce(
-      (sum, item) => sum + calculateServicoMonthlyFinancialImpactAmount(item),
-      0,
-    );
     const servicosEquivalenteMensalTotal = activeServicos.reduce(
       (sum, item) => sum + calculateServicoEquivalentMonthlyAmount(item),
       0,
@@ -173,6 +168,7 @@ export class ReportsService {
         sum + competencies.reduce((acc, competency) => acc + calculateServicoRealChargeForCompetency(item, competency), 0)
       ), 0);
     const gastosFixos = servicosNaoVinculadosCartaoCobrancaRealPeriodoTotal;
+    const servicosAtivosTotal = servicosNaoVinculadosCartaoCobrancaRealPeriodoTotal;
     const patrimonioTotal = patrimonios.reduce((sum, item) => sum + toMoneyNumber(item.valorAtual), 0);
 
     const cartoesFaturaAtualTotal = cardSummaries.reduce((sum, item) => sum + item.faturaAtual, 0);

@@ -2,7 +2,6 @@ import type { Servico } from "@shared/schema";
 import type { ReportsOverviewSummary } from "@shared/reports";
 import {
   calculateServicoEquivalentMonthlyAmount,
-  calculateServicoMonthlyFinancialImpactAmount,
   calculateServicoRealMonthlyExpenseAmount,
   calculateServicoRealChargeForCompetency,
   getServicoBillingDisplayInfo,
@@ -29,7 +28,6 @@ export type RelatoriosServicosMetrics = {
   nonLinkedCardMonthlyAverageTotal: number;
   nonLinkedCardRealChargeInPeriodTotal: number;
   hasDetailedSummaryMetrics: boolean;
-  legacyMonthlyTotal: number;
   detailedServices: ServicoDetailedMetric[];
 };
 
@@ -134,11 +132,13 @@ export function buildRelatoriosServicosMetrics({
 
   const monthlyAverageTotal = toMoney(
     overviewSummary?.servicosEquivalenteMensalTotal,
-    overviewSummary?.servicosAtivosTotal ?? computedMonthlyAverageTotal,
+    computedMonthlyAverageTotal,
   );
 
   const realChargeInPeriodTotal = toMoney(
-    overviewSummary?.servicosCobrancaRealPeriodoTotal,
+    overviewSummary?.servicosCobrancaRealPeriodoTotal
+      ?? overviewSummary?.gastosFixos
+      ?? overviewSummary?.servicosAtivosTotal,
     computedRealChargeInPeriodTotal,
   );
 
@@ -158,13 +158,10 @@ export function buildRelatoriosServicosMetrics({
   );
 
   const nonLinkedCardRealChargeInPeriodTotal = toMoney(
-    overviewSummary?.servicosNaoVinculadosCartaoCobrancaRealPeriodoTotal,
+    overviewSummary?.servicosNaoVinculadosCartaoCobrancaRealPeriodoTotal
+      ?? overviewSummary?.gastosFixos
+      ?? overviewSummary?.servicosAtivosTotal,
     Math.max(0, realChargeInPeriodTotal - linkedCardRealChargeInPeriodTotal),
-  );
-
-  const legacyMonthlyTotal = toMoney(
-    overviewSummary?.servicosNaoVinculadosCartaoEquivalenteMensalTotal ?? overviewSummary?.servicosAtivosTotal,
-    activeServicos.reduce((sum, servico) => sum + calculateServicoMonthlyFinancialImpactAmount(servico), 0),
   );
 
   return {
@@ -175,7 +172,6 @@ export function buildRelatoriosServicosMetrics({
     nonLinkedCardMonthlyAverageTotal,
     nonLinkedCardRealChargeInPeriodTotal,
     hasDetailedSummaryMetrics,
-    legacyMonthlyTotal,
     detailedServices,
   };
 }

@@ -1,12 +1,19 @@
 import {
+  addMonths,
   differenceInCalendarMonths,
   endOfMonth,
   format,
+  isAfter,
   isWithinInterval,
   parseISO,
   startOfMonth,
 } from "date-fns";
 import type { ReportsOverviewResponse } from "../../shared/reports.js";
+import {
+  calculateServicoEquivalentMonthlyAmount,
+  calculateServicoRealChargeForCompetency,
+  isServicoLinkedToCardCharge,
+} from "../../shared/servico-periodicidade.js";
 import { parseMoney } from "../../utils/money.js";
 import type { FinancialRepository } from "../repositories/financial.repository.js";
 import { FinancialService } from "./financial.service.js";
@@ -19,6 +26,28 @@ type IsoPeriod = {
 
 function toMoneyNumber(value: string | number | null | undefined): number {
   return parseMoney(value) ?? 0;
+}
+
+function round2(value: number): number {
+  return parseMoney(String(Math.round(value * 100) / 100)) ?? 0;
+}
+
+function listCompetenciesInPeriod(startDateIso: string, endDateIso: string): string[] {
+  try {
+    const start = startOfMonth(parseISO(startDateIso));
+    const end = startOfMonth(parseISO(endDateIso));
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || isAfter(start, end)) return [];
+
+    const competencies: string[] = [];
+    let cursor = start;
+    while (!isAfter(cursor, end)) {
+      competencies.push(format(cursor, "yyyy-MM"));
+      cursor = addMonths(cursor, 1);
+    }
+    return competencies;
+  } catch {
+    return [];
+  }
 }
 
 function resolveReportPeriod(query: ReportsOverviewQueryInput): IsoPeriod {
@@ -108,6 +137,7 @@ export class ReportsService {
 
     const activeRendas = rendas.filter((item) => item.ativo);
     const activeServicos = servicos.filter((item) => item.status === "ativo");
+    const competencies = listCompetenciesInPeriod(period.startDate, period.endDate);
 
     const incomeTotal = activeRendas.reduce((sum, item) => sum + toMoneyNumber(item.valor), 0) * monthsInPeriod;
     const totalCartoesNoPeriodo = periodComprasCartao.reduce((sum, item) => sum + toMoneyNumber(item.valorParcela), 0);
@@ -118,8 +148,31 @@ export class ReportsService {
       .filter((item) => item.tipo === "receber" && item.status === "pendente")
       .reduce((sum, item) => sum + toMoneyNumber(item.valor), 0);
 
-    const servicosAtivosTotal = activeServicos.reduce((sum, item) => sum + toMoneyNumber(item.valorMensal), 0);
-    const gastosFixos = servicosAtivosTotal * monthsInPeriod;
+    const servicosEquivalenteMensalTotal = activeServicos.reduce(
+      (sum, item) => sum + calculateServicoEquivalentMonthlyAmount(item),
+      0,
+    );
+    const servicosVinculadosCartaoEquivalenteMensalTotal = activeServicos
+      .filter((item) => isServicoLinkedToCardCharge(item))
+      .reduce((sum, item) => sum + calculateServicoEquivalentMonthlyAmount(item), 0);
+    const servicosNaoVinculadosCartaoEquivalenteMensalTotal = activeServicos
+      .filter((item) => !isServicoLinkedToCardCharge(item))
+      .reduce((sum, item) => sum + calculateServicoEquivalentMonthlyAmount(item), 0);
+    const servicosCobrancaRealPeriodoTotal = activeServicos.reduce((sum, item) => (
+      sum + competencies.reduce((acc, competency) => acc + calculateServicoRealChargeForCompetency(item, competency), 0)
+    ), 0);
+    const servicosVinculadosCartaoCobrancaRealPeriodoTotal = activeServicos
+      .filter((item) => isServicoLinkedToCardCharge(item))
+      .reduce((sum, item) => (
+        sum + competencies.reduce((acc, competency) => acc + calculateServicoRealChargeForCompetency(item, competency), 0)
+      ), 0);
+    const servicosNaoVinculadosCartaoCobrancaRealPeriodoTotal = activeServicos
+      .filter((item) => !isServicoLinkedToCardCharge(item))
+      .reduce((sum, item) => (
+        sum + competencies.reduce((acc, competency) => acc + calculateServicoRealChargeForCompetency(item, competency), 0)
+      ), 0);
+    const gastosFixos = servicosNaoVinculadosCartaoCobrancaRealPeriodoTotal;
+    const servicosAtivosTotal = servicosNaoVinculadosCartaoCobrancaRealPeriodoTotal;
     const patrimonioTotal = patrimonios.reduce((sum, item) => sum + toMoneyNumber(item.valorAtual), 0);
 
     const cartoesFaturaAtualTotal = cardSummaries.reduce((sum, item) => sum + item.faturaAtual, 0);
@@ -131,16 +184,22 @@ export class ReportsService {
     return {
       period,
       summary: {
-        incomeTotal,
-        expenseTotal,
-        balance,
-        patrimonioTotal,
-        dividasAPagar,
-        valoresAReceber,
-        gastosFixos,
-        servicosAtivosTotal,
-        cartoesFaturaAtualTotal,
-        cartoesLimiteComprometidoTotal,
+        incomeTotal: round2(incomeTotal),
+        expenseTotal: round2(expenseTotal),
+        balance: round2(balance),
+        patrimonioTotal: round2(patrimonioTotal),
+        dividasAPagar: round2(dividasAPagar),
+        valoresAReceber: round2(valoresAReceber),
+        gastosFixos: round2(gastosFixos),
+        servicosAtivosTotal: round2(servicosAtivosTotal),
+        servicosEquivalenteMensalTotal: round2(servicosEquivalenteMensalTotal),
+        servicosCobrancaRealPeriodoTotal: round2(servicosCobrancaRealPeriodoTotal),
+        servicosVinculadosCartaoEquivalenteMensalTotal: round2(servicosVinculadosCartaoEquivalenteMensalTotal),
+        servicosVinculadosCartaoCobrancaRealPeriodoTotal: round2(servicosVinculadosCartaoCobrancaRealPeriodoTotal),
+        servicosNaoVinculadosCartaoEquivalenteMensalTotal: round2(servicosNaoVinculadosCartaoEquivalenteMensalTotal),
+        servicosNaoVinculadosCartaoCobrancaRealPeriodoTotal: round2(servicosNaoVinculadosCartaoCobrancaRealPeriodoTotal),
+        cartoesFaturaAtualTotal: round2(cartoesFaturaAtualTotal),
+        cartoesLimiteComprometidoTotal: round2(cartoesLimiteComprometidoTotal),
       },
       sections: {
         // Rendas não possuem data de referência no schema atual.

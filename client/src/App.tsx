@@ -23,6 +23,7 @@ const DashboardPage = lazy(() => import("@/pages/dashboard"));
 const PessoasPage = lazy(() => import("@/pages/pessoas-page"));
 const DividasPage = lazy(() => import("@/pages/dividas-page"));
 const CartoesPage = lazy(() => import("@/pages/cartoes-page"));
+const CalendarioPage = lazy(() => import("@/pages/calendario-page"));
 const PrevisaoPage = lazy(() => import("@/pages/previsao-page"));
 const ServicosPage = lazy(() => import("@/pages/servicos-page"));
 const RelatoriosPage = lazy(() => import("@/pages/relatorios-page"));
@@ -71,6 +72,9 @@ function Router() {
         </Route>
         <Route path="/cartoes">
           <CartoesPage />
+        </Route>
+        <Route path="/calendario">
+          <CalendarioPage />
         </Route>
         <Route path="/previsao">
           <PrevisaoPage />

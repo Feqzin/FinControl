@@ -1,8 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Renda, Servico } from "@shared/schema";
+import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
 import { addMonths, format } from "date-fns";
 import { FinancialService } from "../services/financial.service";
+import { ReportsService } from "../services/reports.service";
+import { FinancialService as ServerlessFinancialService } from "../../serverless/services/financial.service";
+import { ReportsService as ServerlessReportsService } from "../../serverless/services/reports.service";
 import { buildServicoFixture } from "./fixtures/servico.fixture";
 
 type FinancialFixture = {
@@ -13,10 +16,12 @@ type FinancialFixture = {
   cartoes: Cartao[];
   compras: CompraCartao[];
   rendas: Renda[];
+  pessoas?: Pessoa[];
+  patrimonios?: Patrimonio[];
 };
 
-function createService(fixture: FinancialFixture): FinancialService {
-  const repository = {
+function createRepository(fixture: FinancialFixture) {
+  return {
     getDividas: async () => fixture.dividas,
     getParcelas: async () => fixture.parcelas,
     getParcelasCompraByUser: async () => fixture.parcelasCompra,
@@ -24,9 +29,53 @@ function createService(fixture: FinancialFixture): FinancialService {
     getCartoes: async () => fixture.cartoes,
     getComprasCartao: async () => fixture.compras,
     getRendas: async () => fixture.rendas,
+    getPessoas: async () => fixture.pessoas ?? [],
+    getPatrimonios: async () => fixture.patrimonios ?? [],
+    getPessoaSaldoMovimentacoes: async () => [],
   };
+}
 
-  return new FinancialService(repository as any);
+function createService(fixture: FinancialFixture): FinancialService {
+  return new FinancialService(createRepository(fixture) as any);
+}
+
+function createServerlessService(fixture: FinancialFixture): ServerlessFinancialService {
+  return new ServerlessFinancialService(createRepository(fixture) as any);
+}
+
+function createReportsService(fixture: FinancialFixture): ReportsService {
+  return new ReportsService(createRepository(fixture) as any);
+}
+
+function createServerlessReportsService(fixture: FinancialFixture): ServerlessReportsService {
+  return new ServerlessReportsService(createRepository(fixture) as any);
+}
+
+async function withFakeNow<T>(isoDate: string, run: () => Promise<T> | T): Promise<T> {
+  const RealDate = Date;
+  const fixedTime = new RealDate(isoDate).getTime();
+
+  class FakeDate extends RealDate {
+    constructor(value?: string | number | Date) {
+      if (arguments.length === 0) {
+        super(fixedTime);
+        return;
+      }
+      super(value as string | number | Date);
+    }
+
+    static now() {
+      return fixedTime;
+    }
+  }
+
+  // @ts-expect-error test-only Date override
+  globalThis.Date = FakeDate;
+  try {
+    return await run();
+  } finally {
+    globalThis.Date = RealDate;
+  }
 }
 
 function buildBaseFixture(): FinancialFixture {
@@ -361,6 +410,60 @@ test("resumo financeiro: serviço anual vinculado ao cartão não duplica saída
   assert.equal(summary.totalSaidas, 399.82);
 });
 
+test("resumo financeiro: serviços anuais respeitam mes_cobranca por competência", async () => {
+  const userId = "user-financial-annual-months";
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [],
+    servicos: [
+      buildServicoFixture({
+        id: "svc-distrokid",
+        userId,
+        nome: "DistroKid",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "229.82",
+        valorMensal: "19.15",
+        mesCobranca: 5,
+        compraCartaoId: null,
+      }),
+      buildServicoFixture({
+        id: "svc-meliuz",
+        userId,
+        nome: "Meliuz Prime",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "99.90",
+        valorMensal: "8.33",
+        mesCobranca: 6,
+        compraCartaoId: null,
+      }),
+      buildServicoFixture({
+        id: "svc-google",
+        userId,
+        nome: "Google One",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "120.00",
+        valorMensal: "10.00",
+        mesCobranca: 8,
+        compraCartaoId: null,
+      }),
+    ],
+    cartoes: [],
+    compras: [],
+    rendas: [],
+  };
+
+  const service = createService(fixture);
+
+  const maio = await service.getSummary(userId, "2026-05");
+  const junho = await service.getSummary(userId, "2026-06");
+  const agosto = await service.getSummary(userId, "2026-08");
+
+  assert.equal(maio.totalServicos, 229.82);
+  assert.equal(junho.totalServicos, 99.9);
+  assert.equal(agosto.totalServicos, 120);
+});
+
 test("aplica simulacao de renda extra sem quebrar a consistencia", async () => {
   const fixture = buildBaseFixture();
   const service = createService(fixture);
@@ -374,6 +477,48 @@ test("aplica simulacao de renda extra sem quebrar a consistencia", async () => {
   assert.equal(simulated.totalEntradas, baseline.totalEntradas + 500);
   assert.equal(simulated.totalSaidas, baseline.totalSaidas);
   assert.equal(simulated.saldo, baseline.saldo + 500);
+});
+
+test("simulação de despesas: reduz apenas serviços com cobrança real na competência simulada", async () => {
+  const userId = "user-simulacao-servicos-anual";
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [],
+    servicos: [
+      buildServicoFixture({
+        id: "svc-distrokid",
+        userId,
+        nome: "DistroKid",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "229.82",
+        valorMensal: "19.15",
+        mesCobranca: 5,
+        compraCartaoId: null,
+      }),
+      buildServicoFixture({
+        id: "svc-meliuz",
+        userId,
+        nome: "Meliuz Prime",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "99.90",
+        valorMensal: "8.33",
+        mesCobranca: 6,
+        compraCartaoId: null,
+      }),
+    ],
+    cartoes: [],
+    compras: [],
+    rendas: [],
+  };
+
+  const service = createService(fixture);
+
+  const maio = await service.getSummary(userId, "2026-05", { reducaoDespesas: 99.9 });
+  const junho = await service.getSummary(userId, "2026-06", { reducaoDespesas: 99.9 });
+
+  assert.equal(maio.totalServicos, 229.82);
+  assert.equal(junho.totalServicos, 0);
 });
 
 test("gera score e insights com dividas vencidas e saldo negativo", async () => {
@@ -412,6 +557,175 @@ test("gera score e insights com dividas vencidas e saldo negativo", async () => 
   assert.ok(score.fatores.some((factor) => factor.label.includes("vencida")));
   assert.ok(insights.some((item) => item.texto.toLowerCase().includes("vencida")));
   assert.ok(insights.some((item) => item.tipo === "negativo"));
+});
+
+test("score financeiro: serviço anual fora da competência não afeta o score, mas no mês correto afeta", async () => {
+  const userId = "user-score-servico-anual";
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [],
+    servicos: [
+      buildServicoFixture({
+        id: "svc-distrokid",
+        userId,
+        nome: "DistroKid",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "229.82",
+        valorMensal: "19.15",
+        mesCobranca: 5,
+        compraCartaoId: null,
+      }),
+    ],
+    cartoes: [],
+    compras: [],
+    rendas: [],
+  };
+
+  const service = createService(fixture);
+
+  const scoreMaio = await withFakeNow("2026-05-15T12:00:00.000Z", () => service.getScore(userId));
+  const scoreJunho = await withFakeNow("2026-06-15T12:00:00.000Z", () => service.getScore(userId));
+
+  assert.equal(scoreMaio.valor, 55);
+  assert.equal(scoreJunho.valor, 75);
+});
+
+test("insights financeiros: não usam equivalente mensal como gasto real fora da competência", async () => {
+  const userId = "user-insights-servico-anual";
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [],
+    servicos: [
+      buildServicoFixture({
+        id: "svc-distrokid",
+        userId,
+        nome: "DistroKid",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "229.82",
+        valorMensal: "19.15",
+        mesCobranca: 5,
+        compraCartaoId: null,
+      }),
+    ],
+    cartoes: [],
+    compras: [],
+    rendas: [],
+  };
+
+  const service = createService(fixture);
+
+  const maioInsights = await withFakeNow("2026-05-15T12:00:00.000Z", () => service.getInsights(userId));
+  const junhoInsights = await withFakeNow("2026-06-15T12:00:00.000Z", () => service.getInsights(userId));
+
+  assert.ok(maioInsights.some((item) => item.texto.includes("229,82")));
+  assert.ok(junhoInsights.some((item) => item.texto.includes("nenhum gera cobranca real neste mes")));
+  assert.equal(junhoInsights.some((item) => item.texto.includes("19,15")), false);
+});
+
+test("server e serverless: resumo financeiro usam a mesma regra real de mes_cobranca", async () => {
+  const userId = "user-parity-financial";
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [],
+    servicos: [
+      buildServicoFixture({
+        id: "svc-distrokid",
+        userId,
+        nome: "DistroKid",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "229.82",
+        valorMensal: "19.15",
+        mesCobranca: 5,
+        compraCartaoId: null,
+      }),
+      buildServicoFixture({
+        id: "svc-meliuz",
+        userId,
+        nome: "Meliuz Prime",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "99.90",
+        valorMensal: "8.33",
+        mesCobranca: 6,
+        compraCartaoId: null,
+      }),
+      buildServicoFixture({
+        id: "svc-google",
+        userId,
+        nome: "Google One",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "120.00",
+        valorMensal: "10.00",
+        mesCobranca: 8,
+        compraCartaoId: null,
+      }),
+    ],
+    cartoes: [],
+    compras: [],
+    rendas: [],
+  };
+
+  const serverSummary = await createService(fixture).getSummary(userId, "2026-06");
+  const serverlessSummary = await createServerlessService(fixture).getSummary(userId, "2026-06");
+
+  assert.equal(serverSummary.totalServicos, 99.9);
+  assert.deepEqual(serverlessSummary, serverSummary);
+});
+
+test("server e serverless: relatórios usam o mesmo gasto fixo real por período", async () => {
+  const userId = "user-parity-reports";
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [],
+    servicos: [
+      buildServicoFixture({
+        id: "svc-distrokid",
+        userId,
+        nome: "DistroKid",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "229.82",
+        valorMensal: "19.15",
+        mesCobranca: 5,
+        compraCartaoId: null,
+      }),
+      buildServicoFixture({
+        id: "svc-meliuz",
+        userId,
+        nome: "Meliuz Prime",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "99.90",
+        valorMensal: "8.33",
+        mesCobranca: 6,
+        compraCartaoId: null,
+      }),
+      buildServicoFixture({
+        id: "svc-google",
+        userId,
+        nome: "Google One",
+        periodicidadeCobranca: "anual",
+        valorCobranca: "120.00",
+        valorMensal: "10.00",
+        mesCobranca: 8,
+        compraCartaoId: null,
+      }),
+    ],
+    cartoes: [],
+    compras: [],
+    rendas: [],
+    pessoas: [],
+    patrimonios: [],
+  };
+
+  const query = { startDate: "2026-05-01", endDate: "2026-08-31" };
+  const serverOverview = await createReportsService(fixture).getOverview(userId, query);
+  const serverlessOverview = await createServerlessReportsService(fixture).getOverview(userId, query);
+
+  assert.equal(serverOverview.summary.gastosFixos, 449.72);
+  assert.equal(serverOverview.summary.servicosAtivosTotal, 449.72);
+  assert.deepEqual(serverlessOverview.summary, serverOverview.summary);
 });
 
 test("corrigido: totalPagarMes considera apenas obrigacoes pendentes do periodo", async () => {

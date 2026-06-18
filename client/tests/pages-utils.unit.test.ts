@@ -43,7 +43,7 @@ import {
 } from "../src/pages/cartoes/import-parser";
 import { suggestImportCardByText } from "../src/pages/cartoes/import-card-matching";
 import { parseMoneyLikeValue, resolveReembolsoPreview } from "../src/components/cartoes/CompraCartaoDialog";
-import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Pessoa, Servico } from "@shared/schema";
+import type { Cartao, CompraCartao, Divida, Meta, Parcela, ParcelaCompra, Pessoa, Renda, Servico } from "@shared/schema";
 import {
   extractTextFromPdfBuffer,
   hasPdfMagicBytes,
@@ -52,6 +52,7 @@ import {
 } from "../src/pages/cartoes/import-pdf-utils";
 import { buildRelatorioPdfMetadata } from "../src/pages/relatorios/relatorios-pdf-utils";
 import { formatMoneyFixed } from "../src/lib/money";
+import { gerarHistoricoMensal } from "../src/utils/financialEngine";
 import {
   getCompraReembolsoVisualStatus,
   isCompraReembolsoOutstanding,
@@ -68,6 +69,7 @@ import {
   getInvoiceCompetency,
   groupParcelasCompraByCompraId,
 } from "../src/lib/card-limit-usage";
+import { buildFinancialCalendarEvents } from "../src/lib/financial-calendar";
 import {
   buildTimelineLayout,
   findSelectedTimelineEvent,
@@ -107,6 +109,7 @@ import {
 } from "../src/components/cartoes/invoice-month-selector.utils";
 import { buildRelatoriosServicosMetrics } from "../src/pages/relatorios/relatorios-servicos-metrics.utils";
 import { resolveDashboardServicosMetrics } from "../src/pages/dashboard/dashboard-servicos-metrics.utils";
+import { calculateSimuladorBaseServicos } from "../src/pages/simulador/simulador-page-container";
 import {
   canAutoRematerializeCompetency,
   diffParcelasCompetencySchedules,
@@ -645,6 +648,33 @@ function buildServicoFixture(overrides: Partial<Servico> = {}): Servico {
     status: overrides.status ?? "ativo",
     iconeId: overrides.iconeId ?? null,
   };
+}
+
+function withFakeNow<T>(isoDate: string, run: () => T): T {
+  const RealDate = Date;
+  const fixedTime = new RealDate(isoDate).getTime();
+
+  class FakeDate extends RealDate {
+    constructor(value?: string | number | Date) {
+      if (arguments.length === 0) {
+        super(fixedTime);
+        return;
+      }
+      super(value as string | number | Date);
+    }
+
+    static now() {
+      return fixedTime;
+    }
+  }
+
+  // @ts-expect-error test-only Date override
+  globalThis.Date = FakeDate;
+  try {
+    return run();
+  } finally {
+    globalThis.Date = RealDate;
+  }
 }
 
 test("pessoas utils: ordena por nome A-Z e Z-A", () => {
@@ -5132,14 +5162,13 @@ test("relatórios serviços: separa média mensal e cobrança real no período p
     endDateIso: "2026-05-31",
   });
 
-  assert.equal(metrics.legacyMonthlyTotal, 30);
   assert.equal(metrics.monthlyAverageTotal, 49.15);
   assert.equal(metrics.realChargeInPeriodTotal, 229.82);
   assert.equal(metrics.linkedCardRealChargeInPeriodTotal, 229.82);
   assert.equal(metrics.nonLinkedCardRealChargeInPeriodTotal, 0);
 });
 
-test("relatórios serviços: usa fallback legado quando campos novos não existem no summary", () => {
+test("relatórios serviços: usa cobrança real do summary quando métricas detalhadas ainda não existem", () => {
   const activeServicos = [
     buildServicoFixture({
       id: "s-mensal",
@@ -5159,7 +5188,7 @@ test("relatórios serviços: usa fallback legado quando campos novos não existe
       patrimonioTotal: 0,
       dividasAPagar: 0,
       valoresAReceber: 0,
-      gastosFixos: 0,
+      gastosFixos: 50,
       servicosAtivosTotal: 50,
       cartoesFaturaAtualTotal: 0,
       cartoesLimiteComprometidoTotal: 0,
@@ -5170,7 +5199,6 @@ test("relatórios serviços: usa fallback legado quando campos novos não existe
 
   assert.equal(metrics.hasDetailedSummaryMetrics, false);
   assert.equal(metrics.monthlyAverageTotal, 50);
-  assert.equal(metrics.legacyMonthlyTotal, 50);
   assert.equal(metrics.realChargeInPeriodTotal, 50);
 });
 
@@ -5187,7 +5215,7 @@ test("relatórios serviços: prioriza campos novos quando overview os fornece", 
       dividasAPagar: 0,
       valoresAReceber: 0,
       gastosFixos: 0,
-      servicosAtivosTotal: 10,
+      servicosAtivosTotal: 0,
       servicosEquivalenteMensalTotal: 19.15,
       servicosCobrancaRealPeriodoTotal: 229.82,
       servicosVinculadosCartaoEquivalenteMensalTotal: 19.15,
@@ -5206,6 +5234,90 @@ test("relatórios serviços: prioriza campos novos quando overview os fornece", 
   assert.equal(metrics.realChargeInPeriodTotal, 229.82);
   assert.equal(metrics.linkedCardMonthlyAverageTotal, 19.15);
   assert.equal(metrics.linkedCardRealChargeInPeriodTotal, 229.82);
+});
+
+test("histórico financeiro: serviço anual só entra no mês de cobrança configurado", () => {
+  const anualMaio = buildServicoFixture({
+    id: "svc-distrokid",
+    nome: "DistroKid",
+    periodicidadeCobranca: "anual",
+    valorCobranca: "229.82",
+    valorMensal: "19.15",
+    mesCobranca: 5,
+    compraCartaoId: null,
+    formaPagamento: "pix",
+  });
+  const anualJunho = buildServicoFixture({
+    id: "svc-meliuz",
+    nome: "Meliuz Prime",
+    periodicidadeCobranca: "anual",
+    valorCobranca: "99.90",
+    valorMensal: "8.33",
+    mesCobranca: 6,
+    compraCartaoId: null,
+    formaPagamento: "pix",
+  });
+  const anualAgosto = buildServicoFixture({
+    id: "svc-google",
+    nome: "Google One",
+    periodicidadeCobranca: "anual",
+    valorCobranca: "120.00",
+    valorMensal: "10.00",
+    mesCobranca: 8,
+    compraCartaoId: null,
+    formaPagamento: "pix",
+  });
+
+  const historico = withFakeNow("2026-08-15T12:00:00.000Z", () =>
+    gerarHistoricoMensal([], [anualMaio, anualJunho, anualAgosto], 4, []),
+  );
+
+  assert.deepEqual(
+    historico.map((item) => ({ mes: item.mes, despesas: item.despesas })),
+    [
+      { mes: "2026-05", despesas: 229.82 },
+      { mes: "2026-06", despesas: 99.9 },
+      { mes: "2026-07", despesas: 0 },
+      { mes: "2026-08", despesas: 120 },
+    ],
+  );
+});
+
+test("simulador: gasto base de serviços respeita mes_cobranca no mês informado", () => {
+  const anualMaio = buildServicoFixture({
+    id: "svc-distrokid",
+    nome: "DistroKid",
+    periodicidadeCobranca: "anual",
+    valorCobranca: "229.82",
+    valorMensal: "19.15",
+    mesCobranca: 5,
+    compraCartaoId: null,
+    formaPagamento: "pix",
+  });
+  const anualJunho = buildServicoFixture({
+    id: "svc-meliuz",
+    nome: "Meliuz Prime",
+    periodicidadeCobranca: "anual",
+    valorCobranca: "99.90",
+    valorMensal: "8.33",
+    mesCobranca: 6,
+    compraCartaoId: null,
+    formaPagamento: "pix",
+  });
+  const anualAgosto = buildServicoFixture({
+    id: "svc-google",
+    nome: "Google One",
+    periodicidadeCobranca: "anual",
+    valorCobranca: "120.00",
+    valorMensal: "10.00",
+    mesCobranca: 8,
+    compraCartaoId: null,
+    formaPagamento: "pix",
+  });
+
+  assert.equal(calculateSimuladorBaseServicos([anualMaio, anualJunho, anualAgosto], "2026-05"), 229.82);
+  assert.equal(calculateSimuladorBaseServicos([anualMaio, anualJunho, anualAgosto], "2026-06"), 99.9);
+  assert.equal(calculateSimuladorBaseServicos([anualMaio, anualJunho, anualAgosto], "2026-08"), 120);
 });
 
 test("serviços: impacto financeiro mensal exclui valores já representados por compra de cartão vinculada", () => {
@@ -5263,4 +5375,255 @@ test("serviços: gasto fixo real mensal usa a competência e evita duplicidade c
   assert.equal(calculateServicoRealMonthlyExpenseAmount(servicoAnualSemVinculo, "2026-05"), 229.82);
   assert.equal(calculateServicoRealMonthlyExpenseAmount(servicoAnualSemVinculo, "2026-06"), 0);
   assert.equal(calculateServicoRealMonthlyExpenseAmount(servicoMensal, "2026-06"), 50);
+});
+
+test("calendário financeiro: inclui fatura e parcela do cartão sem duplicar serviço vinculado", () => {
+  const cartao = buildCartaoViewFixture({
+    id: "card-1",
+    nome: "Mercado Pago Visa",
+    diaVencimento: 10,
+  });
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-servico-anual",
+    cartaoId: "card-1",
+    descricao: "DistroKid anual",
+    valorTotal: "99.90",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "99.90",
+    dataCompra: "2026-06-05",
+    pessoaId: "pessoa-a",
+    statusPessoa: "pendente",
+  });
+  const parcelaCompra = buildParcelaCompraViewFixture({
+    id: "parcela-servico-anual",
+    compraCartaoId: "compra-servico-anual",
+    numero: 1,
+    valor: "99.90",
+    dataVencimento: "2026-06-10",
+    statusCartao: "pendente",
+    statusPessoa: "pendente",
+  });
+  const servicoAnualVinculado = buildServicoFixture({
+    id: "servico-linked",
+    nome: "DistroKid",
+    periodicidadeCobranca: "anual",
+    valorCobranca: "99.90",
+    valorMensal: "8.33",
+    dataCobranca: 10,
+    mesCobranca: 6,
+    compraCartaoId: "compra-servico-anual",
+    formaPagamento: "cartao",
+  });
+  const servicoMensal = buildServicoFixture({
+    id: "servico-netflix",
+    nome: "Netflix",
+    periodicidadeCobranca: "mensal",
+    valorCobranca: "39.90",
+    valorMensal: "39.90",
+    dataCobranca: 15,
+    compraCartaoId: null,
+    formaPagamento: "pix",
+  });
+
+  const events = buildFinancialCalendarEvents({
+    monthReference: "2026-06",
+    cartoes: [cartao],
+    compras: [compra],
+    parcelasCompra: [parcelaCompra],
+    dividas: [],
+    parcelas: [],
+    pessoas: [buildPessoaFixture({ id: "pessoa-a", nome: "Ana" })],
+    servicos: [servicoAnualVinculado, servicoMensal],
+    rendas: [],
+    metas: [],
+    referenceDate: "2026-06-01",
+  });
+
+  const invoiceEvent = events.find((event) => event.source === "fatura_cartao" && event.entityId === "card-1");
+  const installmentEvent = events.find((event) => event.source === "parcela_compra" && event.entityId === "compra-servico-anual");
+  const linkedServiceEvent = events.find((event) => event.source === "servico" && event.entityId === "servico-linked");
+  const mensalServiceEvent = events.find((event) => event.source === "servico" && event.entityId === "servico-netflix");
+
+  assert.ok(invoiceEvent);
+  assert.equal(invoiceEvent?.date, "2026-06-10");
+  assert.equal(invoiceEvent?.amount, 99.9);
+
+  assert.ok(installmentEvent);
+  assert.equal(installmentEvent?.statusLabel, "Cartão pendente");
+  assert.equal(installmentEvent?.secondaryStatusLabel, "Ag. reembolso");
+
+  assert.equal(linkedServiceEvent, undefined);
+  assert.ok(mensalServiceEvent);
+  assert.equal(mensalServiceEvent?.amount, 39.9);
+});
+
+test("calendário financeiro: respeita mês de cobrança anual e agrega renda, dívida parcelada e meta no mês correto", () => {
+  const renda: Renda = {
+    id: "renda-1",
+    userId: "user-1",
+    tipo: "fixo",
+    descricao: "Salário",
+    valor: "5000.00",
+    diaRecebimento: 5,
+    ativo: true,
+  };
+  const meta: Meta = {
+    id: "meta-1",
+    userId: "user-1",
+    nome: "Reserva",
+    descricao: "Juntar caixa",
+    valorAlvo: "2000.00",
+    valorAtual: "500.00",
+    prazo: "2026-06-28",
+    status: "ativa",
+  };
+  const pessoa = buildPessoaFixture({ id: "pessoa-b", nome: "Bruno" });
+  const divida = buildDividaFixture({
+    id: "divida-1",
+    pessoaId: "pessoa-b",
+    tipo: "receber",
+    descricao: "Notebook parcelado",
+    valor: "150.00",
+    status: "pendente",
+    dataVencimento: "2026-06-12",
+  }) as Divida;
+  const parcela: Parcela = {
+    id: "parcela-divida-1",
+    userId: "user-1",
+    dividaId: "divida-1",
+    numero: 2,
+    valor: "150.00",
+    dataVencimento: "2026-06-12",
+    status: "pendente",
+    dataPagamento: null,
+    formaPagamento: null,
+    observacaoPagamento: null,
+    comprovantePath: null,
+    comprovanteNome: null,
+    comprovanteMimeType: null,
+    comprovanteTamanho: null,
+    comprovanteEnviadoEm: null,
+  };
+  const parcelaAnterior: Parcela = {
+    id: "parcela-divida-0",
+    userId: "user-1",
+    dividaId: "divida-1",
+    numero: 1,
+    valor: "150.00",
+    dataVencimento: "2026-05-12",
+    status: "pago",
+    dataPagamento: "2026-05-12",
+    formaPagamento: null,
+    observacaoPagamento: null,
+    comprovantePath: null,
+    comprovanteNome: null,
+    comprovanteMimeType: null,
+    comprovanteTamanho: null,
+    comprovanteEnviadoEm: null,
+  };
+  const servicoAnual = buildServicoFixture({
+    id: "servico-anual",
+    nome: "Meliuz Prime",
+    periodicidadeCobranca: "anual",
+    valorCobranca: "99.90",
+    valorMensal: "8.33",
+    dataCobranca: 10,
+    mesCobranca: 6,
+    compraCartaoId: null,
+    formaPagamento: "pix",
+  });
+
+  const juneEvents = buildFinancialCalendarEvents({
+    monthReference: "2026-06",
+    cartoes: [],
+    compras: [],
+    parcelasCompra: [],
+    dividas: [divida],
+    parcelas: [parcelaAnterior, parcela],
+    pessoas: [pessoa],
+    servicos: [servicoAnual],
+    rendas: [renda],
+    metas: [meta],
+    referenceDate: "2026-06-01",
+  });
+  const mayEvents = buildFinancialCalendarEvents({
+    monthReference: "2026-05",
+    cartoes: [],
+    compras: [],
+    parcelasCompra: [],
+    dividas: [divida],
+    parcelas: [parcelaAnterior, parcela],
+    pessoas: [pessoa],
+    servicos: [servicoAnual],
+    rendas: [renda],
+    metas: [meta],
+    referenceDate: "2026-05-01",
+  });
+
+  const juneService = juneEvents.find((event) => event.source === "servico" && event.entityId === "servico-anual");
+  const mayService = mayEvents.find((event) => event.source === "servico" && event.entityId === "servico-anual");
+  const rendaEvent = juneEvents.find((event) => event.source === "renda_prevista" && event.entityId === "renda-1");
+  const debtEvent = juneEvents.find((event) => event.source === "divida_receber" && event.entityId === "divida-1");
+  const metaEvent = juneEvents.find((event) => event.source === "meta_prazo" && event.entityId === "meta-1");
+
+  assert.ok(juneService);
+  assert.equal(juneService?.date, "2026-06-10");
+  assert.equal(juneService?.amount, 99.9);
+  assert.equal(mayService, undefined);
+
+  assert.ok(rendaEvent);
+  assert.equal(rendaEvent?.date, "2026-06-05");
+  assert.equal(rendaEvent?.direction, "entrada");
+
+  assert.ok(debtEvent);
+  assert.equal(debtEvent?.date, "2026-06-12");
+  assert.equal(debtEvent?.subtitle, "Bruno · Parcela 2/2");
+
+  assert.ok(metaEvent);
+  assert.equal(metaEvent?.date, "2026-06-28");
+  assert.equal(metaEvent?.amount, 1500);
+});
+
+test("calendário financeiro: usa fallback legado para parcela futura sem materialização", () => {
+  const cartao = buildCartaoViewFixture({
+    id: "card-fallback",
+    nome: "Cartão legado",
+    diaVencimento: 12,
+  });
+  const compra = {
+    ...buildCompraCartaoViewFixture({
+      id: "compra-legada",
+      cartaoId: "card-fallback",
+      descricao: "Notebook legado",
+      valorTotal: "1200.00",
+      parcelas: 3,
+      parcelaAtual: 2,
+      valorParcela: "400.00",
+      dataCompra: "2026-04-08",
+    }),
+    pessoaId: null,
+    statusPessoa: null,
+  } as CompraCartao;
+
+  const events = buildFinancialCalendarEvents({
+    monthReference: "2026-05",
+    cartoes: [cartao],
+    compras: [compra],
+    parcelasCompra: [],
+    dividas: [],
+    parcelas: [],
+    pessoas: [],
+    servicos: [],
+    rendas: [],
+    metas: [],
+    referenceDate: "2026-05-01",
+  });
+
+  const installmentEvent = events.find((event) => event.source === "parcela_compra" && event.entityId === "compra-legada");
+
+  assert.ok(installmentEvent);
+  assert.equal(installmentEvent?.date, "2026-05-12");
+  assert.equal(installmentEvent?.amount, 400);
+  assert.equal(installmentEvent?.secondaryStatusLabel, undefined);
 });

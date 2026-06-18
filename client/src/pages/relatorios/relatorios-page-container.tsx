@@ -161,7 +161,6 @@ export default function RelatoriosPageContainer() {
     const totalDividasPagar = overviewSummary?.dividasAPagar ?? totalDividasPagarComputed;
     const totalReceber = overviewSummary?.valoresAReceber ?? totalReceberComputed;
     const totalPatrimonio = overviewSummary?.patrimonioTotal ?? totalPatrimonioComputed;
-    const totalServicosMensal = servicosMetrics.legacyMonthlyTotal;
     const totalServicosMediaMensal = servicosMetrics.monthlyAverageTotal;
     const totalServicosCobrancaRealPeriodo = servicosMetrics.realChargeInPeriodTotal;
     const totalServicosVinculadosCartaoMediaMensal = servicosMetrics.linkedCardMonthlyAverageTotal;
@@ -181,7 +180,6 @@ export default function RelatoriosPageContainer() {
       totalPatrimonio,
       saldoLiquido,
       activeServicos,
-      totalServicosMensal,
       totalServicosMediaMensal,
       totalServicosCobrancaRealPeriodo,
       totalServicosVinculadosCartaoMediaMensal,
