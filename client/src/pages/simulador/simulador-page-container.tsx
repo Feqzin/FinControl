@@ -22,12 +22,14 @@ import {
   PieChart, 
   Wallet,
   Target,
-  Info
+  Info,
+  ShoppingBag,
 } from "lucide-react";
 import type { Divida, Servico } from "@shared/schema";
 import type { FinancialScore } from "@shared/financial";
 import { calculateServicoRealMonthlyExpenseAmount } from "@shared/servico-periodicidade";
 import { useSimuladorQueries } from "@/pages/simulador/hooks/use-simulador-queries";
+import FuturePurchaseTab from "@/pages/simulador/components/future-purchase-tab";
 
 const InvestimentoProjectionChart = lazy(
   () => import("@/components/charts/investimento-projection-chart"),
@@ -86,6 +88,7 @@ export default function SimuladorPageContainer() {
   const [periodoMeses, setPeriodoMeses] = useState(120);
   const [inflacaoAnual, setInflacaoAnual] = useState(4.5);
   const [preset, setPreset] = useState("selic");
+  const [simulationResetSignal, setSimulationResetSignal] = useState(0);
 
   // Tab 3: Independencia State
   const [gastosDesejados, setGastosDesejados] = useState(5000);
@@ -241,13 +244,14 @@ export default function SimuladorPageContainer() {
           setRendaExtraCommit(0);
           setReducaoDespesasCommit(0);
           setQuitarDividaCommit(0);
+          setSimulationResetSignal((current) => current + 1);
         }} data-testid="button-resetar-simulacao">
           <RefreshCw className="w-4 h-4 mr-2" /> Resetar
         </Button>
       </div>
 
       <Tabs defaultValue="score" className="w-full">
-        <TabsList className="mb-6 grid h-auto w-full grid-cols-1 gap-1 sm:mb-8 sm:grid-cols-3">
+        <TabsList className="mb-6 grid h-auto w-full grid-cols-1 gap-1 sm:mb-8 sm:grid-cols-4">
           <TabsTrigger value="score" className="flex items-center gap-2 text-xs sm:text-sm">
             <Calculator className="w-4 h-4" /> Score Financeiro
           </TabsTrigger>
@@ -256,6 +260,9 @@ export default function SimuladorPageContainer() {
           </TabsTrigger>
           <TabsTrigger value="independencia" className="flex items-center gap-2 text-xs sm:text-sm">
             <Target className="w-4 h-4" /> Independência
+          </TabsTrigger>
+          <TabsTrigger value="compra-futura" className="flex items-center gap-2 text-xs sm:text-sm">
+            <ShoppingBag className="w-4 h-4" /> Compra Futura
           </TabsTrigger>
         </TabsList>
 
@@ -712,6 +719,11 @@ export default function SimuladorPageContainer() {
               </Card>
             </div>
           </div>
+        </TabsContent>
+
+        {/* Tab 4: Compra Futura */}
+        <TabsContent value="compra-futura" className="space-y-6">
+          <FuturePurchaseTab resetSignal={simulationResetSignal} />
         </TabsContent>
       </Tabs>
 

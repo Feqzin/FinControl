@@ -43,7 +43,7 @@ import {
 } from "../src/pages/cartoes/import-parser";
 import { suggestImportCardByText } from "../src/pages/cartoes/import-card-matching";
 import { parseMoneyLikeValue, resolveReembolsoPreview } from "../src/components/cartoes/CompraCartaoDialog";
-import type { Cartao, CompraCartao, Divida, Meta, Parcela, ParcelaCompra, Pessoa, Renda, Servico } from "@shared/schema";
+import type { Cartao, CompraCartao, Divida, Meta, Parcela, ParcelaCompra, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
 import {
   extractTextFromPdfBuffer,
   hasPdfMagicBytes,
@@ -110,6 +110,12 @@ import {
 import { buildRelatoriosServicosMetrics } from "../src/pages/relatorios/relatorios-servicos-metrics.utils";
 import { resolveDashboardServicosMetrics } from "../src/pages/dashboard/dashboard-servicos-metrics.utils";
 import { calculateSimuladorBaseServicos } from "../src/pages/simulador/simulador-page-container";
+import {
+  buildFuturePurchaseSimulation,
+  calculateSafePurchaseAmount,
+  projectFuturePurchaseCashflow,
+  type FuturePurchaseSimulationInput,
+} from "../src/pages/simulador/future-purchase-simulation";
 import {
   canAutoRematerializeCompetency,
   diffParcelasCompetencySchedules,
@@ -5318,6 +5324,354 @@ test("simulador: gasto base de serviços respeita mes_cobranca no mês informado
   assert.equal(calculateSimuladorBaseServicos([anualMaio, anualJunho, anualAgosto], "2026-05"), 229.82);
   assert.equal(calculateSimuladorBaseServicos([anualMaio, anualJunho, anualAgosto], "2026-06"), 99.9);
   assert.equal(calculateSimuladorBaseServicos([anualMaio, anualJunho, anualAgosto], "2026-08"), 120);
+});
+
+function buildSimuladorRendaFixture(overrides: Partial<Renda> = {}): Renda {
+  return {
+    id: overrides.id ?? "renda-1",
+    userId: overrides.userId ?? "user-1",
+    tipo: overrides.tipo ?? "fixo",
+    descricao: overrides.descricao ?? "Salário",
+    valor: overrides.valor ?? "1000.00",
+    diaRecebimento: overrides.diaRecebimento ?? 5,
+    ativo: overrides.ativo ?? true,
+  };
+}
+
+function buildSimuladorPatrimonioFixture(overrides: Partial<Patrimonio> = {}): Patrimonio {
+  return {
+    id: overrides.id ?? "patrimonio-1",
+    userId: overrides.userId ?? "user-1",
+    nome: overrides.nome ?? "Conta principal",
+    tipo: overrides.tipo ?? "conta_bancaria",
+    valorAtual: overrides.valorAtual ?? "1000.00",
+    iconeId: overrides.iconeId ?? null,
+  };
+}
+
+function buildFuturePurchaseContextFixture(overrides: Partial<{
+  cartoes: Cartao[];
+  compras: CompraCartao[];
+  parcelasCompra: ParcelaCompra[];
+  dividas: Divida[];
+  parcelas: Parcela[];
+  servicos: Servico[];
+  rendas: Renda[];
+  patrimonios: Patrimonio[];
+}> = {}) {
+  return {
+    cartoes: overrides.cartoes ?? [buildCartaoViewFixture({ id: "card-1", nome: "Cartão principal", diaVencimento: 10, limite: "5000.00" })],
+    compras: overrides.compras ?? [],
+    parcelasCompra: overrides.parcelasCompra ?? [],
+    dividas: overrides.dividas ?? [],
+    parcelas: overrides.parcelas ?? [],
+    servicos: overrides.servicos ?? [],
+    rendas: overrides.rendas ?? [buildSimuladorRendaFixture()],
+    patrimonios: overrides.patrimonios ?? [buildSimuladorPatrimonioFixture()],
+  };
+}
+
+test("simulador compra futura: compra cabe no orçamento", () => {
+  const context = buildFuturePurchaseContextFixture({
+    servicos: [
+      buildServicoFixture({
+        id: "svc-streaming",
+        nome: "Streaming",
+        periodicidadeCobranca: "mensal",
+        valorMensal: "500.00",
+        valorCobranca: "500.00",
+        dataCobranca: 12,
+        compraCartaoId: null,
+        formaPagamento: "pix",
+      }),
+    ],
+    rendas: [buildSimuladorRendaFixture({ valor: "3000.00" })],
+    patrimonios: [buildSimuladorPatrimonioFixture({ valorAtual: "1500.00" })],
+  });
+
+  const result = withFakeNow("2026-06-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, {
+    nomeCompra: "Notebook",
+    valorTotal: 2000,
+    parcelas: 10,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-06",
+    reservaMinima: 300,
+    entradasExtras: [],
+  }));
+
+  assert.equal(result.status, "Pode comprar");
+  assert.equal(result.monthsNegativeCount, 0);
+  assert.equal(result.monthsBelowReserveCount, 0);
+});
+
+test("simulador compra futura: compra pode deixar saldo negativo em mês futuro", () => {
+  const context = buildFuturePurchaseContextFixture({
+    servicos: [
+      buildServicoFixture({
+        id: "svc-fixos",
+        nome: "Custos fixos",
+        periodicidadeCobranca: "mensal",
+        valorMensal: "950.00",
+        valorCobranca: "950.00",
+        dataCobranca: 12,
+        compraCartaoId: null,
+        formaPagamento: "pix",
+      }),
+    ],
+    rendas: [buildSimuladorRendaFixture({ valor: "1000.00" })],
+    patrimonios: [buildSimuladorPatrimonioFixture({ valorAtual: "300.00" })],
+  });
+
+  const result = withFakeNow("2026-06-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, {
+    nomeCompra: "Celular",
+    valorTotal: 5000,
+    parcelas: 12,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-06",
+    reservaMinima: 0,
+    entradasExtras: [],
+  }));
+
+  assert.equal(result.status, "Não recomendado");
+  assert.ok(result.monthsNegativeCount >= 1);
+  assert.ok(result.lowestBalance < 0);
+});
+
+test("simulador compra futura: compra pode ficar abaixo da reserva mínima", () => {
+  const context = buildFuturePurchaseContextFixture({
+    servicos: [
+      buildServicoFixture({
+        id: "svc-casa",
+        nome: "Custos da casa",
+        periodicidadeCobranca: "mensal",
+        valorMensal: "850.00",
+        valorCobranca: "850.00",
+        dataCobranca: 12,
+        compraCartaoId: null,
+        formaPagamento: "pix",
+      }),
+    ],
+    rendas: [buildSimuladorRendaFixture({ valor: "1000.00" })],
+    patrimonios: [buildSimuladorPatrimonioFixture({ valorAtual: "1000.00" })],
+  });
+
+  const result = withFakeNow("2026-06-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, {
+    nomeCompra: "TV",
+    valorTotal: 2000,
+    parcelas: 10,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-06",
+    reservaMinima: 1000,
+    entradasExtras: [],
+  }));
+
+  assert.equal(result.status, "Atenção");
+  assert.equal(result.monthsNegativeCount, 0);
+  assert.ok(result.monthsBelowReserveCount >= 1);
+});
+
+test("simulador compra futura: entrada extra simulada pode evitar saldo negativo", () => {
+  const context = buildFuturePurchaseContextFixture({
+    servicos: [
+      buildServicoFixture({
+        id: "svc-fixos",
+        nome: "Custos fixos",
+        periodicidadeCobranca: "mensal",
+        valorMensal: "950.00",
+        valorCobranca: "950.00",
+        dataCobranca: 12,
+        compraCartaoId: null,
+        formaPagamento: "pix",
+      }),
+    ],
+    rendas: [buildSimuladorRendaFixture({ valor: "1000.00" })],
+    patrimonios: [buildSimuladorPatrimonioFixture({ valorAtual: "300.00" })],
+  });
+
+  const semEntradaExtra = withFakeNow("2026-06-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, {
+    nomeCompra: "Celular",
+    valorTotal: 5000,
+    parcelas: 12,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-06",
+    reservaMinima: 0,
+    entradasExtras: [],
+  }));
+  const comEntradaExtra = withFakeNow("2026-06-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, {
+    nomeCompra: "Celular",
+    valorTotal: 5000,
+    parcelas: 12,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-06",
+    reservaMinima: 0,
+    entradasExtras: [{
+      id: "extra-1",
+      descricao: "Freela",
+      valor: 300,
+      data: "2026-06-03",
+      recorrente: true,
+    }],
+  }));
+
+  assert.equal(semEntradaExtra.status, "Não recomendado");
+  assert.ok(comEntradaExtra.lowestBalance > semEntradaExtra.lowestBalance);
+  assert.ok(comEntradaExtra.monthsNegativeCount < semEntradaExtra.monthsNegativeCount);
+});
+
+test("simulador compra futura: serviço anual com mes_cobranca entra apenas no mês correto", () => {
+  const context = buildFuturePurchaseContextFixture({
+    servicos: [
+      buildServicoFixture({
+        id: "svc-anual",
+        nome: "Meliuz Prime",
+        periodicidadeCobranca: "anual",
+        valorMensal: "8.33",
+        valorCobranca: "99.90",
+        dataCobranca: 10,
+        mesCobranca: 6,
+        compraCartaoId: null,
+        formaPagamento: "pix",
+      }),
+    ],
+    rendas: [buildSimuladorRendaFixture({ valor: "0.00" })],
+    patrimonios: [buildSimuladorPatrimonioFixture({ valorAtual: "1000.00" })],
+  });
+
+  const months = withFakeNow("2026-05-01T12:00:00.000Z", () => projectFuturePurchaseCashflow(context, {
+    nomeCompra: "Compra teste",
+    valorTotal: 0,
+    parcelas: 3,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-05",
+    reservaMinima: 0,
+    entradasExtras: [],
+  }));
+
+  assert.deepEqual(
+    months.slice(0, 3).map((month) => ({ mes: month.monthReference, saidas: month.actualExpenses })),
+    [
+      { mes: "2026-05", saidas: 0 },
+      { mes: "2026-06", saidas: 99.9 },
+      { mes: "2026-07", saidas: 0 },
+    ],
+  );
+});
+
+test("simulador compra futura: compra no cartão respeita faturas futuras já existentes", () => {
+  const existingPurchase = buildCompraCartaoViewFixture({
+    id: "compra-existente",
+    cartaoId: "card-1",
+    descricao: "Curso atual",
+    valorTotal: "300.00",
+    parcelas: 2,
+    parcelaAtual: 1,
+    valorParcela: "150.00",
+    dataCompra: "2026-05-20",
+    pessoaId: null,
+    statusPessoa: null,
+  });
+  const existingInstallment = buildParcelaCompraViewFixture({
+    id: "parcela-existente",
+    compraCartaoId: "compra-existente",
+    numero: 1,
+    valor: "150.00",
+    dataVencimento: "2026-06-10",
+    statusCartao: "pendente",
+    statusPessoa: null,
+  });
+  const context = buildFuturePurchaseContextFixture({
+    compras: [existingPurchase],
+    parcelasCompra: [existingInstallment],
+    rendas: [buildSimuladorRendaFixture({ valor: "0.00" })],
+    patrimonios: [buildSimuladorPatrimonioFixture({ valorAtual: "1000.00" })],
+  });
+
+  const months = withFakeNow("2026-06-01T12:00:00.000Z", () => projectFuturePurchaseCashflow(context, {
+    nomeCompra: "Nova compra",
+    valorTotal: 200,
+    parcelas: 2,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-06",
+    reservaMinima: 0,
+    entradasExtras: [],
+  }));
+
+  assert.equal(months[0]?.actualExpenses, 150);
+  assert.equal(months[0]?.simulatedInstallment, 100);
+});
+
+test("simulador compra futura: valor máximo seguro é calculado considerando efeito acumulado", () => {
+  const context = buildFuturePurchaseContextFixture({
+    servicos: [
+      buildServicoFixture({
+        id: "svc-essencial",
+        nome: "Essencial",
+        periodicidadeCobranca: "mensal",
+        valorMensal: "800.00",
+        valorCobranca: "800.00",
+        dataCobranca: 12,
+        compraCartaoId: null,
+        formaPagamento: "pix",
+      }),
+    ],
+    rendas: [buildSimuladorRendaFixture({ valor: "1000.00" })],
+    patrimonios: [buildSimuladorPatrimonioFixture({ valorAtual: "1000.00" })],
+  });
+
+  const safeAmount = withFakeNow("2026-06-01T12:00:00.000Z", () => calculateSafePurchaseAmount(context, {
+    nomeCompra: "Compra segura",
+    valorTotal: 2000,
+    parcelas: 2,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-06",
+    reservaMinima: 500,
+    entradasExtras: [],
+  }));
+
+  assert.equal(safeAmount, 900);
+});
+
+test("simulador compra futura: simulação não altera dados reais", () => {
+  const context = buildFuturePurchaseContextFixture({
+    servicos: [
+      buildServicoFixture({
+        id: "svc-anual",
+        nome: "Google One",
+        periodicidadeCobranca: "anual",
+        valorMensal: "10.00",
+        valorCobranca: "120.00",
+        mesCobranca: 8,
+        dataCobranca: 15,
+        compraCartaoId: null,
+        formaPagamento: "pix",
+      }),
+    ],
+  });
+  const input = {
+    nomeCompra: "Compra imutável",
+    valorTotal: 1200,
+    parcelas: 6,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-06",
+    reservaMinima: 200,
+    entradasExtras: [{
+      id: "extra-imutavel",
+      descricao: "Bônus",
+      valor: 250,
+      data: "2026-06-05",
+      recorrente: false,
+    }],
+  } satisfies FuturePurchaseSimulationInput;
+
+  const contextSnapshot = structuredClone(context);
+  const inputSnapshot = structuredClone(input);
+
+  withFakeNow("2026-06-01T12:00:00.000Z", () => {
+    buildFuturePurchaseSimulation(context, input);
+  });
+
+  assert.deepEqual(context, contextSnapshot);
+  assert.deepEqual(input, inputSnapshot);
 });
 
 test("serviços: impacto financeiro mensal exclui valores já representados por compra de cartão vinculada", () => {
