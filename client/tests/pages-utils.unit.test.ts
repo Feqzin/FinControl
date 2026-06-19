@@ -43,7 +43,20 @@ import {
 } from "../src/pages/cartoes/import-parser";
 import { suggestImportCardByText } from "../src/pages/cartoes/import-card-matching";
 import { parseMoneyLikeValue, resolveReembolsoPreview } from "../src/components/cartoes/CompraCartaoDialog";
-import type { Cartao, CartaoFaturaPagamento, CompraCartao, Divida, Meta, Parcela, ParcelaCompra, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
+import type {
+  Cartao,
+  CartaoFaturaPagamento,
+  CompraCartao,
+  Divida,
+  Meta,
+  Parcela,
+  ParcelaCompra,
+  Patrimonio,
+  Pessoa,
+  Renda,
+  Servico,
+  ServicoCobrancaPagamento,
+} from "@shared/schema";
 import {
   extractTextFromPdfBuffer,
   hasPdfMagicBytes,
@@ -123,9 +136,11 @@ import {
   resolveDueDateFromCompetencia,
 } from "@shared/parcelas-compra-competency";
 import {
+  calculateServicoChargePaidAmountForCompetency,
   calculateServicoDefaultMonthlyAmount,
   calculateServicoEquivalentMonthlyAmount,
   calculateServicoMonthlyFinancialImpactAmount,
+  calculateServicoOutstandingChargeForCompetency,
   calculateServicoRealMonthlyExpenseAmount,
   calculateServicoValorMensalEquivalente,
   calculateServicoRealChargeForCompetency,
@@ -6338,4 +6353,89 @@ test("calendário financeiro: usa fallback legado para parcela futura sem materi
   assert.equal(installmentEvent?.date, "2026-05-12");
   assert.equal(installmentEvent?.amount, 400);
   assert.equal(installmentEvent?.secondaryStatusLabel, undefined);
+});
+
+test("serviços: cobrança pendente na competência considera apenas o restante após pagamento", () => {
+  const servico = buildServicoFixture({
+    id: "servico-mensal-pago",
+    nome: "Academia",
+    periodicidadeCobranca: "mensal",
+    valorCobranca: "120.00",
+    valorMensal: "120.00",
+    dataCobranca: 8,
+    compraCartaoId: null,
+    formaPagamento: "pix",
+  });
+
+  const pagamentos: ServicoCobrancaPagamento[] = [
+    {
+      id: "svc-pay-1",
+      userId: "user-1",
+      servicoId: "servico-mensal-pago",
+      competenciaMes: 6,
+      competenciaAno: 2026,
+      valorPago: "50.00",
+      dataPagamento: "2026-06-08",
+      observacao: null,
+      canceladoEm: null,
+      motivoCancelamento: null,
+      createdAt: new Date("2026-06-08T12:00:00.000Z"),
+      updatedAt: new Date("2026-06-08T12:00:00.000Z"),
+    },
+  ];
+
+  assert.equal(calculateServicoChargePaidAmountForCompetency(servico.id, "2026-06", pagamentos), 50);
+  assert.equal(calculateServicoOutstandingChargeForCompetency(servico, "2026-06", pagamentos), 70);
+});
+
+test("calendário financeiro: serviço pago na competência vira evento informativo e sai do fluxo de saída", () => {
+  const servico = buildServicoFixture({
+    id: "servico-pago-calendario",
+    nome: "Internet Fibra",
+    periodicidadeCobranca: "mensal",
+    valorCobranca: "99.90",
+    valorMensal: "99.90",
+    dataCobranca: 10,
+    compraCartaoId: null,
+    formaPagamento: "debito",
+  });
+  const pagamentos: ServicoCobrancaPagamento[] = [
+    {
+      id: "svc-pay-2",
+      userId: "user-1",
+      servicoId: "servico-pago-calendario",
+      competenciaMes: 6,
+      competenciaAno: 2026,
+      valorPago: "99.90",
+      dataPagamento: "2026-06-10",
+      observacao: null,
+      canceladoEm: null,
+      motivoCancelamento: null,
+      createdAt: new Date("2026-06-10T15:00:00.000Z"),
+      updatedAt: new Date("2026-06-10T15:00:00.000Z"),
+    },
+  ];
+
+  const events = buildFinancialCalendarEvents({
+    monthReference: "2026-06",
+    cartoes: [],
+    compras: [],
+    parcelasCompra: [],
+    cartaoFaturaPagamentos: [],
+    dividas: [],
+    parcelas: [],
+    pessoas: [],
+    servicos: [servico],
+    servicoCobrancaPagamentos: pagamentos,
+    rendas: [],
+    metas: [],
+    referenceDate: "2026-06-01",
+  });
+
+  const serviceEvent = events.find((event) => event.source === "servico" && event.entityId === "servico-pago-calendario");
+
+  assert.ok(serviceEvent);
+  assert.equal(serviceEvent?.direction, "info");
+  assert.equal(serviceEvent?.statusLabel, "Serviço pago");
+  assert.equal(serviceEvent?.amount, 99.9);
 });

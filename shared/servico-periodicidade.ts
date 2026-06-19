@@ -17,6 +17,7 @@ export type ServicoBillingLike = {
 };
 
 export type ServicoPeriodicidadeComputationLike = ServicoBillingLike & {
+  id?: string | null;
   compraCartaoId?: string | null;
   cartaoId?: string | null;
   formaPagamento?: string | null;
@@ -41,6 +42,14 @@ export type ServicoBillingDisplayInfo = {
   equivalenteMensal: number;
   equivalenteMensalCents: number;
   shortText: string;
+};
+
+export type ServicoCompetencyPaymentLike = {
+  servicoId?: string | null;
+  competenciaMes?: number | string | null;
+  competenciaAno?: number | string | null;
+  valorPago?: string | number | null;
+  canceladoEm?: string | Date | null;
 };
 
 const PERIODICIDADE_EQUIVALENTE_MENSAL_FACTOR: Record<ServicoPeriodicidade, { numerator: number; denominator: number }> = {
@@ -264,6 +273,65 @@ function buildLocalIsoDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function normalizeCompetenciaNumber(
+  value: number | string | null | undefined,
+  max: number,
+): number | null {
+  if (typeof value === "number") {
+    return Number.isInteger(value) && value >= 0 && value <= max ? value : null;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!/^\d+$/.test(normalized)) return null;
+    const numeric = Number(normalized);
+    return Number.isInteger(numeric) && numeric >= 0 && numeric <= max ? numeric : null;
+  }
+
+  return null;
+}
+
+function isServicoCompetencyPaymentCanceled(
+  payment: Pick<ServicoCompetencyPaymentLike, "canceladoEm">,
+): boolean {
+  if (!payment.canceladoEm) return false;
+  if (payment.canceladoEm instanceof Date) {
+    return !Number.isNaN(payment.canceladoEm.getTime());
+  }
+  return String(payment.canceladoEm).trim().length > 0;
+}
+
+export function getServicoCompetencyPaymentMonthReference(
+  payment: ServicoCompetencyPaymentLike,
+): string | null {
+  const competenciaAno = normalizeCompetenciaNumber(payment.competenciaAno, 9999);
+  const competenciaMes = normalizeCompetenciaNumber(payment.competenciaMes, 12);
+  if (!competenciaAno || !competenciaMes || competenciaMes < 1) return null;
+  return `${String(competenciaAno).padStart(4, "0")}-${String(competenciaMes).padStart(2, "0")}`;
+}
+
+export function getActiveServicoCompetencyPayments<TPayment extends ServicoCompetencyPaymentLike>(
+  payments: TPayment[] = [],
+): TPayment[] {
+  return payments.filter((payment) => !isServicoCompetencyPaymentCanceled(payment));
+}
+
+export function calculateServicoChargePaidAmountForCompetency(
+  servicoId: string | null | undefined,
+  competencia: string,
+  payments: ServicoCompetencyPaymentLike[] = [],
+): number {
+  const normalizedServicoId = typeof servicoId === "string" ? servicoId.trim() : "";
+  if (!normalizedServicoId) return 0;
+
+  const paidCents = getActiveServicoCompetencyPayments(payments)
+    .filter((payment) => payment.servicoId === normalizedServicoId)
+    .filter((payment) => getServicoCompetencyPaymentMonthReference(payment) === competencia)
+    .reduce((sum, payment) => sum + (parseMoneyToCents(payment.valorPago) ?? 0), 0);
+
+  return paidCents / 100;
+}
+
 export function isServicoPeriodicidade(value: unknown): value is ServicoPeriodicidade {
   if (typeof value !== "string") return false;
   return (SERVICO_PERIODICIDADE_VALUES as readonly string[]).includes(value);
@@ -432,6 +500,27 @@ export function calculateServicoRealMonthlyExpenseAmount(
 ): number {
   if (isServicoLinkedToCardCharge(servico)) return 0;
   return calculateServicoRealChargeForCompetency(servico, competencia);
+}
+
+export function calculateServicoOutstandingChargeForCompetency(
+  servico: ServicoPeriodicidadeComputationLike,
+  competencia: string,
+  payments: ServicoCompetencyPaymentLike[] = [],
+): number {
+  const charge = calculateServicoRealMonthlyExpenseAmount(servico, competencia);
+  if (charge <= 0) return 0;
+
+  const paidAmount = calculateServicoChargePaidAmountForCompetency(servico.id ?? null, competencia, payments);
+  const remainingCents = Math.max(0, Math.round((charge - paidAmount) * 100));
+  return remainingCents / 100;
+}
+
+export function isServicoChargeSettledForCompetency(
+  servico: ServicoPeriodicidadeComputationLike,
+  competencia: string,
+  payments: ServicoCompetencyPaymentLike[] = [],
+): boolean {
+  return calculateServicoOutstandingChargeForCompetency(servico, competencia, payments) <= 0;
 }
 
 export function isServicoLinkedToCardCharge(servico: ServicoPeriodicidadeComputationLike): boolean {

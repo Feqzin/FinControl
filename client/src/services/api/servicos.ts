@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
+import type { ServicoCobrancaPagamento } from "@shared/schema";
 
 export type ServicoPayload = {
   nome: string;
@@ -19,6 +20,14 @@ export type ServicoPessoaPayload = {
   servicoId: string;
   pessoaId: string;
   valorDevido: string;
+};
+
+export type ServicoCobrancaPagamentoPayload = {
+  servicoId: string;
+  monthReference: string;
+  valorPago: string | number;
+  dataPagamento?: string;
+  observacao?: string | null;
 };
 
 function serializeServicoDataCobranca(value: ServicoPayload["dataCobranca"] | undefined): number | null | undefined {
@@ -109,4 +118,32 @@ export async function marcarServicoPessoaPago(params: {
 
 export async function reverterServicoPessoaPago(pagamentoId: string): Promise<void> {
   await apiRequest("DELETE", `/api/servico-pagamentos/${pagamentoId}`);
+}
+
+export async function fetchServicoCobrancaPagamentos(): Promise<ServicoCobrancaPagamento[]> {
+  const response = await apiRequest("GET", "/api/servicos/cobranca-pagamentos");
+  return response.json();
+}
+
+export async function registrarServicoCobrancaPagamento(
+  payload: ServicoCobrancaPagamentoPayload,
+): Promise<ServicoCobrancaPagamento> {
+  const response = await apiRequest("POST", `/api/servicos/${payload.servicoId}/cobranca-pagamentos`, {
+    monthReference: payload.monthReference,
+    valorPago: String(payload.valorPago),
+    dataPagamento: payload.dataPagamento ?? format(new Date(), "yyyy-MM-dd"),
+    observacao: payload.observacao ?? null,
+  });
+  return response.json();
+}
+
+export async function cancelarServicoCobrancaPagamento(
+  servicoId: string,
+  paymentId: string,
+  motivoCancelamento?: string | null,
+): Promise<ServicoCobrancaPagamento> {
+  const response = await apiRequest("POST", `/api/servicos/${servicoId}/cobranca-pagamentos/${paymentId}/cancelar`, {
+    motivoCancelamento: motivoCancelamento ?? null,
+  });
+  return response.json();
 }

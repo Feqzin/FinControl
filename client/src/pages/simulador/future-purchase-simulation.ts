@@ -10,6 +10,7 @@ import type {
   Patrimonio,
   Renda,
   Servico,
+  ServicoCobrancaPagamento,
 } from "@shared/schema";
 import { resolveDueDateFromCompetencia } from "@shared/parcelas-compra-competency";
 import { buildFinancialCalendarEvents } from "@/lib/financial-calendar";
@@ -33,6 +34,7 @@ export type FuturePurchaseSimulationContext = {
   dividas: Divida[];
   parcelas: Parcela[];
   servicos: Servico[];
+  servicoCobrancaPagamentos?: ServicoCobrancaPagamento[];
   rendas: Renda[];
   patrimonios: Patrimonio[];
   referenceDate?: string;
@@ -224,6 +226,7 @@ function buildBaseCashflowMonths(
       parcelas: context.parcelas,
       pessoas: [],
       servicos: context.servicos,
+      servicoCobrancaPagamentos: context.servicoCobrancaPagamentos,
       rendas: context.rendas,
       metas: [],
       referenceDate: context.referenceDate,

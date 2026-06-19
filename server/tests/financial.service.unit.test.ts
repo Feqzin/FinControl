@@ -12,6 +12,7 @@ import type {
   Pessoa,
   Renda,
   Servico,
+  ServicoCobrancaPagamento,
 } from "@shared/schema";
 import { addMonths, format } from "date-fns";
 import { FinancialService } from "../services/financial.service";
@@ -27,6 +28,7 @@ type FinancialFixture = {
   cartaoFaturaPagamentos?: CartaoFaturaPagamento[];
   cartaoFaturaPagamentoAlocacoes?: CartaoFaturaPagamentoAlocacao[];
   servicos: Servico[];
+  servicoCobrancaPagamentos?: ServicoCobrancaPagamento[];
   cartoes: Cartao[];
   compras: CompraCartao[];
   rendas: Renda[];
@@ -47,6 +49,7 @@ function createRepository(fixture: FinancialFixture) {
       (fixture.cartaoFaturaPagamentoAlocacoes ?? []).filter((alocacao) => paymentIds.includes(alocacao.pagamentoId))
     ),
     getServicos: async () => fixture.servicos,
+    getServicoCobrancaPagamentos: async () => fixture.servicoCobrancaPagamentos ?? [],
     getCartoes: async () => fixture.cartoes,
     getComprasCartao: async () => fixture.compras,
     getRendas: async () => fixture.rendas,

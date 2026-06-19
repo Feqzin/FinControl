@@ -6,16 +6,18 @@ import type {
   Divida,
   Meta,
   Parcela,
-  ParcelaCompra,
-  Pessoa,
-  Renda,
-  Servico,
+    ParcelaCompra,
+    Pessoa,
+    Renda,
+    Servico,
+    ServicoCobrancaPagamento,
 } from "@shared/schema";
 import { buildCardInvoiceSnapshots } from "@shared/card-invoice-payments";
 import { resolveDueDateFromCompetencia } from "@shared/parcelas-compra-competency";
 import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
 import {
   calculateServicoEquivalentMonthlyAmount,
+  calculateServicoOutstandingChargeForCompetency,
   calculateServicoRealMonthlyExpenseAmount,
   isServicoLinkedToCardCharge,
 } from "@shared/servico-periodicidade";
@@ -69,6 +71,7 @@ export type BuildFinancialCalendarEventsInput = {
   parcelas: Parcela[];
   pessoas: Pessoa[];
   servicos: Servico[];
+  servicoCobrancaPagamentos?: ServicoCobrancaPagamento[];
   rendas: Renda[];
   metas?: Meta[];
   referenceDate?: string;
@@ -362,8 +365,14 @@ function buildServiceEvents(input: BuildFinancialCalendarEventsInput): Financial
   for (const servico of input.servicos) {
     if (servico.status !== "ativo") continue;
 
-    const amount = calculateServicoRealMonthlyExpenseAmount(servico, input.monthReference);
-    if (amount <= 0) continue;
+    const chargeAmount = calculateServicoRealMonthlyExpenseAmount(servico, input.monthReference);
+    if (chargeAmount <= 0) continue;
+    const outstandingAmount = calculateServicoOutstandingChargeForCompetency(
+      servico,
+      input.monthReference,
+      input.servicoCobrancaPagamentos ?? [],
+    );
+    const isPaid = outstandingAmount <= 0;
 
     const hasFixedBillingDay = Number.isFinite(Number(servico.dataCobranca)) && Number(servico.dataCobranca) >= 1;
     const date = clampDayDate(input.monthReference, servico.dataCobranca, 1);
@@ -376,7 +385,7 @@ function buildServiceEvents(input: BuildFinancialCalendarEventsInput): Financial
         : `Cobrança ${servico.periodicidadeCobranca}`;
 
     const equivalentMonthlyAmount = calculateServicoEquivalentMonthlyAmount(servico);
-    const planningHint = equivalentMonthlyAmount > 0 && equivalentMonthlyAmount !== amount
+    const planningHint = equivalentMonthlyAmount > 0 && equivalentMonthlyAmount !== chargeAmount
       ? servico.periodicidadeCobranca === "semanal"
         ? ` · média anualizada ${equivalentMonthlyAmount.toFixed(2).replace(".", ",")}/mês`
         : ` · equiv. ${equivalentMonthlyAmount.toFixed(2).replace(".", ",")}/mês`
@@ -387,12 +396,16 @@ function buildServiceEvents(input: BuildFinancialCalendarEventsInput): Financial
       date,
       monthReference: input.monthReference,
       group: "servico",
-      direction: "saida",
+      direction: isPaid ? "info" : "saida",
       source: "servico",
       title: servico.nome,
       subtitle: `${periodicidadeLabel}${hasFixedBillingDay ? "" : " · sem data fixa"}${planningHint}`,
-      amount,
-      statusLabel: isServicoLinkedToCardCharge(servico) ? "Vinculado ao cartão" : "Cobrança do mês",
+      amount: isPaid ? chargeAmount : outstandingAmount,
+      statusLabel: isPaid
+        ? "Serviço pago"
+        : isServicoLinkedToCardCharge(servico)
+          ? "Vinculado ao cartão"
+          : "Cobrança do mês",
       entityId: servico.id,
     });
   }

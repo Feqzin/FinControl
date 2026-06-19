@@ -2,6 +2,8 @@ import type { Request, Response } from "express";
 import { ServicosService } from "../services/servicos.service";
 import {
   servicoBody,
+  servicoCobrancaPagamentoBody,
+  servicoCobrancaPagamentoCancelBody,
   servicoPagamentoBody,
   servicoPessoaBody,
   servicoPessoaUpdateBody,
@@ -131,6 +133,52 @@ export function createServicosController(service: ServicosService) {
         return sendNotFound(res);
       }
       return res.json({ success: true });
+    },
+
+    listServicoCobrancaPagamentos: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      return res.json(await service.listServicoCobrancaPagamentos(userId));
+    },
+
+    createServicoCobrancaPagamento: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const servicoId = getParam(req, "id");
+      const parsed = servicoCobrancaPagamentoBody.safeParse(req.body);
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+
+      const result = await service.createServicoCobrancaPagamento(userId, servicoId, parsed.data);
+      if ("error" in result) {
+        if (result.error === "SERVICO_NOT_FOUND") {
+          return sendNotFound(res);
+        }
+        if (result.error === "VALOR_ACIMA_DO_PENDENTE") {
+          return sendBadRequest(res, `Valor acima do pendente para esta cobrança. Restante: ${result.remainingAmount.toFixed(2)}`);
+        }
+        return sendBadRequest(res, "Serviço sem cobrança pendente na competência informada.");
+      }
+
+      return res.json(result.created);
+    },
+
+    cancelServicoCobrancaPagamento: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const servicoId = getParam(req, "id");
+      const paymentId = getParam(req, "paymentId");
+      const parsed = servicoCobrancaPagamentoCancelBody.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+
+      const result = await service.cancelServicoCobrancaPagamento(userId, servicoId, paymentId, parsed.data);
+      if ("error" in result) {
+        if (result.error === "SERVICO_NOT_FOUND" || result.error === "PAGAMENTO_NOT_FOUND") {
+          return sendNotFound(res);
+        }
+      }
+
+      return res.json(result.updated);
     },
   };
 }

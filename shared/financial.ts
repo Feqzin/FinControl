@@ -4,11 +4,13 @@ import type {
   CartaoFaturaPagamentoAlocacao,
   CompraCartao,
   Divida,
+  Parcela,
   ParcelaCompra,
   Patrimonio,
   Pessoa,
   Renda,
   Servico,
+  ServicoCobrancaPagamento,
 } from "./schema.js";
 
 export interface FinancialScoreFactor {
@@ -69,7 +71,9 @@ export interface FinancialSummary {
 export interface DashboardOverviewResponse {
   mesReferencia: string;
   dividas: Divida[];
+  parcelas: Parcela[];
   servicos: Servico[];
+  servicoCobrancaPagamentos: ServicoCobrancaPagamento[];
   pessoas: Pessoa[];
   cartoes: Cartao[];
   compras: CompraCartao[];

@@ -1,6 +1,17 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Cartao, CompraCartao, Divida, ParcelaCompra, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
+import type {
+  Cartao,
+  CompraCartao,
+  Divida,
+  Parcela,
+  ParcelaCompra,
+  Patrimonio,
+  Pessoa,
+  Renda,
+  Servico,
+  ServicoCobrancaPagamento,
+} from "@shared/schema";
 import type { DashboardOverviewResponse, FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
 import { addDays, differenceInDays, format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -9,19 +20,23 @@ import { maskValue } from "@/context/values-visibility";
 import { toMoneyNumber } from "@/lib/money";
 import {
   calculateServicoRealMonthlyExpenseAmount,
+  calculateServicoOutstandingChargeForCompetency,
   isServicoLinkedToCardCharge,
   resolveServicoNextChargeDate,
 } from "@shared/servico-periodicidade";
 import {
   calculateCardUsedLimit,
+  getInvoiceCompetency,
   getNextOutstandingCardInvoiceSnapshot,
   groupParcelasCompraByCompraId,
+  isParcelaComprometendoLimite,
 } from "@/lib/card-limit-usage";
 import {
   fetchCartaoFaturaPagamentos,
   type CartaoFaturaPagamentoApiModel,
 } from "@/services/api/cartoes";
 import { fetchDashboardOverview, fetchFinancialSummary } from "@/services/api/dashboard";
+import { fetchServicoCobrancaPagamentos } from "@/services/api/servicos";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { resolveDashboardServicosMetrics } from "@/pages/dashboard/dashboard-servicos-metrics.utils";
 
@@ -35,10 +50,19 @@ export type DashboardAlert = {
 export interface VencimentoItem {
   id: string;
   tipo: "cartao" | "divida" | "servico";
+  kind: "cartao_fatura" | "cartao_parcela" | "divida_pagar" | "divida_receber" | "servico";
   nome: string;
   subtitulo: string;
   valor: number;
   dataVenc: string;
+  actionLabel: string;
+  cartaoId?: string;
+  monthReference?: string;
+  compraCartaoId?: string;
+  parcelaCompraId?: string;
+  dividaId?: string;
+  parcelaId?: string;
+  servicoId?: string;
 }
 
 export interface PagarSemanaItem {
@@ -169,6 +193,11 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     queryFn: () => fetchDashboardJson<CompraCartao[]>("/api/compras-cartao", "compras de cartão"),
     enabled: shouldEnableLegacyQueries,
   });
+  const parcelasQuery = useQuery<Parcela[]>({
+    queryKey: ["/api/parcelas"],
+    queryFn: () => fetchDashboardJson<Parcela[]>("/api/parcelas", "parcelas"),
+    enabled: shouldEnableLegacyQueries,
+  });
   const parcelasCompraQuery = useQuery<ParcelaCompra[]>({
     queryKey: ["/api/parcelas-compra"],
     queryFn: () => fetchDashboardJson<ParcelaCompra[]>("/api/parcelas-compra", "parcelas de compra"),
@@ -177,6 +206,11 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const cartaoFaturaPagamentosQuery = useQuery<CartaoFaturaPagamentoApiModel[]>({
     queryKey: ["/api/cartoes/fatura-pagamentos"],
     queryFn: fetchCartaoFaturaPagamentos,
+    enabled: shouldEnableLegacyQueries,
+  });
+  const servicoCobrancaPagamentosQuery = useQuery<ServicoCobrancaPagamento[]>({
+    queryKey: ["/api/servicos/cobranca-pagamentos"],
+    queryFn: fetchServicoCobrancaPagamentos,
     enabled: shouldEnableLegacyQueries,
   });
   const rendasQuery = useQuery<Renda[]>({
@@ -212,10 +246,14 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const pessoas = shouldUseLegacyFallback ? (pessoasQuery.data ?? []) : (dashboardOverview?.pessoas ?? []);
   const cartoes = shouldUseLegacyFallback ? (cartoesQuery.data ?? []) : (dashboardOverview?.cartoes ?? []);
   const compras = shouldUseLegacyFallback ? (comprasQuery.data ?? []) : (dashboardOverview?.compras ?? []);
+  const parcelas = shouldUseLegacyFallback ? (parcelasQuery.data ?? []) : (dashboardOverview?.parcelas ?? []);
   const parcelasCompra = shouldUseLegacyFallback ? (parcelasCompraQuery.data ?? []) : (dashboardOverview?.parcelasCompra ?? []);
   const cartaoFaturaPagamentos: CartaoFaturaPagamentoApiModel[] = shouldUseLegacyFallback
     ? (cartaoFaturaPagamentosQuery.data ?? [])
     : ((dashboardOverview?.cartaoFaturaPagamentos ?? []) as unknown as CartaoFaturaPagamentoApiModel[]);
+  const servicoCobrancaPagamentos = shouldUseLegacyFallback
+    ? (servicoCobrancaPagamentosQuery.data ?? [])
+    : (dashboardOverview?.servicoCobrancaPagamentos ?? []);
   const rendas = shouldUseLegacyFallback ? (rendasQuery.data ?? []) : (dashboardOverview?.rendas ?? []);
   const patrimonios = shouldUseLegacyFallback ? (patrimoniosQuery.data ?? []) : (dashboardOverview?.patrimonios ?? []);
   const financialScore = shouldUseLegacyFallback ? financialScoreQuery.data : dashboardOverview?.financialScore;
@@ -225,6 +263,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const legacyIsLoading =
     dividasQuery.isLoading
     || servicosQuery.isLoading
+    || parcelasQuery.isLoading
     || pessoasQuery.isLoading
     || financialScoreQuery.isLoading
     || financialInsightsQuery.isLoading
@@ -276,8 +315,10 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       { isLoading: servicosQuery.isLoading, isError: servicosQuery.isError, error: servicosQuery.error },
       { isLoading: cartoesQuery.isLoading, isError: cartoesQuery.isError, error: cartoesQuery.error },
       { isLoading: comprasQuery.isLoading, isError: comprasQuery.isError, error: comprasQuery.error },
+      { isLoading: parcelasQuery.isLoading, isError: parcelasQuery.isError, error: parcelasQuery.error },
       { isLoading: parcelasCompraQuery.isLoading, isError: parcelasCompraQuery.isError, error: parcelasCompraQuery.error },
       { isLoading: cartaoFaturaPagamentosQuery.isLoading, isError: cartaoFaturaPagamentosQuery.isError, error: cartaoFaturaPagamentosQuery.error },
+      { isLoading: servicoCobrancaPagamentosQuery.isLoading, isError: servicoCobrancaPagamentosQuery.isError, error: servicoCobrancaPagamentosQuery.error },
       { isLoading: financialSummaryQuery.isLoading, isError: financialSummaryQuery.isError, error: financialSummaryQuery.error },
     ]),
     proximosVencimentos: combineSectionStatus([
@@ -286,8 +327,10 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       { isLoading: pessoasQuery.isLoading, isError: pessoasQuery.isError, error: pessoasQuery.error },
       { isLoading: cartoesQuery.isLoading, isError: cartoesQuery.isError, error: cartoesQuery.error },
       { isLoading: comprasQuery.isLoading, isError: comprasQuery.isError, error: comprasQuery.error },
+      { isLoading: parcelasQuery.isLoading, isError: parcelasQuery.isError, error: parcelasQuery.error },
       { isLoading: parcelasCompraQuery.isLoading, isError: parcelasCompraQuery.isError, error: parcelasCompraQuery.error },
       { isLoading: cartaoFaturaPagamentosQuery.isLoading, isError: cartaoFaturaPagamentosQuery.isError, error: cartaoFaturaPagamentosQuery.error },
+      { isLoading: servicoCobrancaPagamentosQuery.isLoading, isError: servicoCobrancaPagamentosQuery.isError, error: servicoCobrancaPagamentosQuery.error },
     ]),
     pagarSemana: combineSectionStatus([
       { isLoading: dividasQuery.isLoading, isError: dividasQuery.isError, error: dividasQuery.error },
@@ -295,8 +338,10 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       { isLoading: cartoesQuery.isLoading, isError: cartoesQuery.isError, error: cartoesQuery.error },
       { isLoading: comprasQuery.isLoading, isError: comprasQuery.isError, error: comprasQuery.error },
       { isLoading: pessoasQuery.isLoading, isError: pessoasQuery.isError, error: pessoasQuery.error },
+      { isLoading: parcelasQuery.isLoading, isError: parcelasQuery.isError, error: parcelasQuery.error },
       { isLoading: parcelasCompraQuery.isLoading, isError: parcelasCompraQuery.isError, error: parcelasCompraQuery.error },
       { isLoading: cartaoFaturaPagamentosQuery.isLoading, isError: cartaoFaturaPagamentosQuery.isError, error: cartaoFaturaPagamentosQuery.error },
+      { isLoading: servicoCobrancaPagamentosQuery.isLoading, isError: servicoCobrancaPagamentosQuery.isError, error: servicoCobrancaPagamentosQuery.error },
     ]),
   } as const;
 
@@ -389,6 +434,23 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     }
   };
 
+  const pessoasById = useMemo(
+    () => new Map(pessoas.map((pessoa) => [pessoa.id, pessoa] as const)),
+    [pessoas],
+  );
+  const cartoesById = useMemo(
+    () => new Map(cartoes.map((cartao) => [cartao.id, cartao] as const)),
+    [cartoes],
+  );
+  const parcelasByDividaId = useMemo(() => {
+    const grouped = new Map<string, Parcela[]>();
+    for (const parcela of parcelas) {
+      const rows = grouped.get(parcela.dividaId) ?? [];
+      rows.push(parcela);
+      grouped.set(parcela.dividaId, rows);
+    }
+    return grouped;
+  }, [parcelas]);
   const parcelasCompraByCompraId = useMemo(
     () => groupParcelasCompraByCompraId(parcelasCompra),
     [parcelasCompra],
@@ -396,6 +458,12 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
 
   const proximosVencimentos: VencimentoItem[] = useMemo(() => {
     const items: VencimentoItem[] = [];
+    const buildUrgencyLabel = (dateValue: string, options?: { todayLabel?: string; futureVerb?: string; pastVerb?: string }) => {
+      const daysUntil = differenceInDays(parseISO(dateValue), new Date());
+      if (daysUntil === 0) return options?.todayLabel ?? "Vence hoje";
+      if (daysUntil < 0) return `${options?.pastVerb ?? "Venceu"} há ${Math.abs(daysUntil)}d`;
+      return `${options?.futureVerb ?? "Vence em"} ${daysUntil} dia${daysUntil === 1 ? "" : "s"}`;
+    };
 
     cartoes.forEach((c) => {
       const proximaFatura = getNextOutstandingCardInvoiceSnapshot(
@@ -408,53 +476,141 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       if (!proximaFatura || proximaFatura.total <= 0) return;
       const dataVenc = proximaFatura.dueDate ?? getNextDueDate(c.diaVencimento);
       if (!dataVenc) return;
-      const daysUntil = differenceInDays(parseISO(dataVenc), new Date());
       const invoiceMonthLabel = formatInvoiceMonthLabel(proximaFatura.monthReference);
       const futureInvoiceLabel = proximaFatura.monthReference !== todayMonthReference ? " · Próxima fatura" : "";
       items.push({
         id: `cartao-${c.id}-${proximaFatura.monthReference}`,
         tipo: "cartao",
+        kind: "cartao_fatura",
         nome: `Fatura ${c.nome} · ${invoiceMonthLabel}`,
-        subtitulo: `${daysUntil === 0 ? "Vence hoje" : daysUntil < 0 ? `Venceu há ${Math.abs(daysUntil)}d` : `Vence em ${daysUntil} dia${daysUntil === 1 ? "" : "s"}`}${futureInvoiceLabel}`,
+        subtitulo: `${buildUrgencyLabel(dataVenc)}${futureInvoiceLabel}`,
         valor: proximaFatura.total,
         dataVenc,
+        actionLabel: "Pagar fatura",
+        cartaoId: c.id,
+        monthReference: proximaFatura.monthReference,
       });
     });
 
-    dividas
-      .filter((d) => d.tipo === "pagar" && d.status === "pendente" && d.dataVencimento)
-      .forEach((d) => {
-        const pessoa = pessoas.find((p) => p.id === d.pessoaId);
-        const nome = d.descricao || pessoa?.nome || "Pagamento";
-        const daysUntil = differenceInDays(parseISO(d.dataVencimento!), new Date());
-        const urgLabel = daysUntil < 0 ? `Venceu há ${Math.abs(daysUntil)}d` : daysUntil === 0 ? "Vence hoje" : `Vence em ${daysUntil}d`;
+    compras.forEach((compra) => {
+      const cartao = cartoesById.get(compra.cartaoId);
+      const parcelasDaCompra = parcelasCompraByCompraId.get(compra.id) ?? [];
+      parcelasDaCompra
+        .filter((parcela) =>
+          isParcelaComprometendoLimite(parcela.statusCartao)
+          && Boolean(parcela.dataVencimento)
+          && (parcela.dataVencimento! <= in7Days || parcela.dataVencimento! < today),
+        )
+        .forEach((parcela) => {
+          const invoiceMonth = getInvoiceCompetency(parcela.dataVencimento);
+          const urgencyLabel = buildUrgencyLabel(parcela.dataVencimento!, {
+            todayLabel: "Parcela vence hoje",
+            futureVerb: "Parcela vence em",
+            pastVerb: "Parcela venceu",
+          });
+
+          items.push({
+            id: `cartao-parcela-${parcela.id}`,
+            tipo: "cartao",
+            kind: "cartao_parcela",
+            nome: compra.descricao,
+            subtitulo: `${cartao?.nome ?? "Cartão"} · Parcela ${parcela.numero}/${compra.parcelas} · já incluída na fatura · ${urgencyLabel}`,
+            valor: toMoneyNumber(parcela.valor),
+            dataVenc: parcela.dataVencimento!,
+            actionLabel: "Marcar parcela paga",
+            cartaoId: compra.cartaoId,
+            compraCartaoId: compra.id,
+            parcelaCompraId: parcela.id,
+            monthReference: invoiceMonth ?? undefined,
+          });
+        });
+    });
+
+    dividas.forEach((d) => {
+      const pessoa = pessoasById.get(d.pessoaId);
+      const nome = d.descricao || pessoa?.nome || (d.tipo === "receber" ? "Recebimento" : "Pagamento");
+      const parcelasDaDivida = (parcelasByDividaId.get(d.id) ?? []).filter(
+        (parcela) => parcela.status === "pendente" && Boolean(parcela.dataVencimento),
+      );
+
+      if (parcelasDaDivida.length > 0) {
+        parcelasDaDivida.forEach((parcela) => {
+          const urgencyLabel = buildUrgencyLabel(parcela.dataVencimento!);
+          items.push({
+            id: `divida-${d.id}-parcela-${parcela.id}`,
+            tipo: "divida",
+            kind: d.tipo === "receber" ? "divida_receber" : "divida_pagar",
+            nome,
+            subtitulo: `${urgencyLabel} · Parcela ${parcela.numero}${pessoa ? ` · ${pessoa.nome}` : ""}`,
+            valor: toMoneyNumber(parcela.valor),
+            dataVenc: parcela.dataVencimento!,
+            actionLabel: d.tipo === "receber" ? "Marcar recebido" : "Marcar pago",
+            dividaId: d.id,
+            parcelaId: parcela.id,
+          });
+        });
+        return;
+      }
+
+      if (d.status !== "pendente" || !d.dataVencimento) return;
+      const urgLabel = buildUrgencyLabel(d.dataVencimento);
+      items.push({
+        id: `divida-${d.id}`,
+        tipo: "divida",
+        kind: d.tipo === "receber" ? "divida_receber" : "divida_pagar",
+        nome,
+        subtitulo: pessoa ? `${urgLabel} · ${pessoa.nome}` : urgLabel,
+        valor: toMoneyNumber(d.valor),
+        dataVenc: d.dataVencimento,
+        actionLabel: d.tipo === "receber" ? "Marcar recebido" : "Marcar pago",
+        dividaId: d.id,
+      });
+    });
+
+    servicos
+      .filter((s) => s.status === "ativo" && !isServicoLinkedToCardCharge(s))
+      .forEach((s) => {
+        const dataVenc = resolveServicoNextChargeDate(s, todayReferenceDate);
+        if (!dataVenc) return;
+        const competencia = dataVenc.slice(0, 7);
+        const valor = calculateServicoOutstandingChargeForCompetency(s, competencia, servicoCobrancaPagamentos);
+        if (valor <= 0) return;
+        const subtitulo = buildUrgencyLabel(dataVenc, {
+          todayLabel: "Cobrado hoje",
+          futureVerb: "Cobra em",
+          pastVerb: "Cobrado",
+        });
         items.push({
-          id: `divida-${d.id}`,
-          tipo: "divida",
-          nome,
-          subtitulo: pessoa ? `${urgLabel} · ${pessoa.nome}` : urgLabel,
-          valor: toMoneyNumber(d.valor),
-          dataVenc: d.dataVencimento!,
+          id: `servico-${s.id}-${competencia}`,
+          tipo: "servico",
+          kind: "servico",
+          nome: s.nome,
+          subtitulo,
+          valor,
+          dataVenc,
+          actionLabel: "Marcar pago",
+          servicoId: s.id,
+          monthReference: competencia,
         });
       });
 
-    servicos.filter((s) => s.status === "ativo").forEach((s) => {
-      const dataVenc = resolveServicoNextChargeDate(s, todayReferenceDate);
-      if (!dataVenc) return;
-      const valor = calculateServicoRealMonthlyExpenseAmount(s, dataVenc.slice(0, 7));
-      if (valor <= 0) return;
-      const daysUntil = differenceInDays(parseISO(dataVenc), new Date());
-      items.push({
-        id: `servico-${s.id}`,
-        tipo: "servico",
-        nome: s.nome,
-        subtitulo: daysUntil === 0 ? "Cobrado hoje" : daysUntil < 0 ? `Cobrado há ${Math.abs(daysUntil)}d` : `Cobra em ${daysUntil} dia${daysUntil === 1 ? "" : "s"}`,
-        valor,
-        dataVenc,
-      });
-    });
     return items.sort((a, b) => a.dataVenc.localeCompare(b.dataVenc));
-  }, [cartaoFaturaPagamentos, cartoes, compras, dividas, formatInvoiceMonthLabel, parcelasCompraByCompraId, pessoas, servicos, today, todayMonthReference]);
+  }, [
+    cartaoFaturaPagamentos,
+    cartoes,
+    cartoesById,
+    compras,
+    dividas,
+    in7Days,
+    parcelasByDividaId,
+    parcelasCompraByCompraId,
+    pessoasById,
+    servicoCobrancaPagamentos,
+    servicos,
+    today,
+    todayMonthReference,
+    todayReferenceDate,
+  ]);
 
   const getCardUsedLimit = (cartaoId: string) =>
     calculateCardUsedLimit(cartaoId, compras, parcelasCompraByCompraId, cartaoFaturaPagamentos);
@@ -464,17 +620,36 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const pagarSemana: PagarSemanaItem[] = useMemo(() => {
     const items: PagarSemanaItem[] = [];
 
-    dividas
-      .filter((d) => d.tipo === "pagar" && d.status === "pendente" && d.dataVencimento && d.dataVencimento <= in7Days)
-      .forEach((d) => {
+    dividas.forEach((d) => {
+      if (d.tipo !== "pagar") return;
+      const parcelasDaDivida = (parcelasByDividaId.get(d.id) ?? []).filter(
+        (parcela) => parcela.status === "pendente" && Boolean(parcela.dataVencimento),
+      );
+      if (parcelasDaDivida.length > 0) {
+        parcelasDaDivida
+          .filter((parcela) => parcela.dataVencimento! <= in7Days)
+          .forEach((parcela) => {
+            items.push({
+              id: `div-parcela-${parcela.id}`,
+              title: d.descricao || pessoasById.get(d.pessoaId)?.nome || "Pagamento",
+              dateStr: parcela.dataVencimento!,
+              amount: toMoneyNumber(parcela.valor),
+              type: "divida",
+            });
+          });
+        return;
+      }
+
+      if (d.status === "pendente" && d.dataVencimento && d.dataVencimento <= in7Days) {
         items.push({
           id: `div-${d.id}`,
-          title: d.descricao || pessoas.find((p) => p.id === d.pessoaId)?.nome || "Pagamento",
-          dateStr: d.dataVencimento!,
+          title: d.descricao || pessoasById.get(d.pessoaId)?.nome || "Pagamento",
+          dateStr: d.dataVencimento,
           amount: toMoneyNumber(d.valor),
           type: "divida",
         });
-      });
+      }
+    });
 
     cartoes.forEach((c) => {
       const proximaFatura = getNextOutstandingCardInvoiceSnapshot(
@@ -496,18 +671,31 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       }
     });
 
-    servicos.filter((s) => s.status === "ativo").forEach((s) => {
+    servicos.filter((s) => s.status === "ativo" && !isServicoLinkedToCardCharge(s)).forEach((s) => {
       const dueDate = resolveServicoNextChargeDate(s, todayReferenceDate);
       if (!dueDate) return;
-      const amount = calculateServicoRealMonthlyExpenseAmount(s, dueDate.slice(0, 7));
+      const amount = calculateServicoOutstandingChargeForCompetency(s, dueDate.slice(0, 7), servicoCobrancaPagamentos);
       if (amount <= 0) return;
       if (dueDate >= today && dueDate <= in7Days) {
-        items.push({ id: `svc-${s.id}`, title: s.nome, dateStr: dueDate, amount, type: "servico" });
+        items.push({ id: `svc-${s.id}-${dueDate.slice(0, 7)}`, title: s.nome, dateStr: dueDate, amount, type: "servico" });
       }
     });
 
     return items.sort((a, b) => a.dateStr.localeCompare(b.dateStr));
-  }, [cartaoFaturaPagamentos, cartoes, compras, dividas, in7Days, parcelasCompraByCompraId, pessoas, servicos, today]);
+  }, [
+    cartaoFaturaPagamentos,
+    cartoes,
+    compras,
+    dividas,
+    in7Days,
+    parcelasByDividaId,
+    parcelasCompraByCompraId,
+    pessoasById,
+    servicoCobrancaPagamentos,
+    servicos,
+    today,
+    todayReferenceDate,
+  ]);
 
   const alertCartoes = cartoes.filter((c) => {
     const usado = getCardUsedLimit(c.id);
@@ -699,6 +887,10 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     pessoas,
     cartoes,
     compras,
+    parcelas,
+    parcelasCompra,
+    cartaoFaturaPagamentos,
+    servicoCobrancaPagamentos,
     rendas,
     patrimonios,
     totalRenda,

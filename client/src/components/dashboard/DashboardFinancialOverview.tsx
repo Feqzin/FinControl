@@ -1,4 +1,6 @@
 import type { FinancialScore } from "@shared/financial";
+import type { PagarSemanaItem, VencimentoItem } from "@/hooks/useDashboard";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowDownRight, CalendarClock, CreditCard, Receipt, TrendingUp } from "lucide-react";
@@ -11,28 +13,13 @@ type DashboardSectionStatus = {
   message: string | null;
 };
 
-type VencimentoItem = {
-  id: string;
-  tipo: "cartao" | "divida" | "servico";
-  nome: string;
-  subtitulo: string;
-  valor: number;
-  dataVenc: string;
-};
-
-type PagarSemanaItem = {
-  id: string;
-  title: string;
-  dateStr: string;
-  amount: number;
-};
-
 type DashboardFinancialOverviewProps = {
   proximosStatus: DashboardSectionStatus;
   scoreDetalhadoStatus: DashboardSectionStatus;
   pagarSemanaStatus: DashboardSectionStatus;
   proximosVencimentos: VencimentoItem[];
   pagarSemana: PagarSemanaItem[];
+  pendingActionId?: string | null;
   score: FinancialScore;
   scoreBarColor: string;
   scoreLabelColor: string;
@@ -43,6 +30,7 @@ type DashboardFinancialOverviewProps = {
   today: string;
   in7Days: string;
   formatMoney: (value: number) => string;
+  onTriggerAction: (item: VencimentoItem) => void;
 };
 
 function SectionErrorState({ message }: { message?: string | null }) {
@@ -60,6 +48,7 @@ export function DashboardFinancialOverview({
   pagarSemanaStatus,
   proximosVencimentos,
   pagarSemana,
+  pendingActionId,
   score,
   scoreBarColor,
   scoreLabelColor,
@@ -70,6 +59,7 @@ export function DashboardFinancialOverview({
   today,
   in7Days,
   formatMoney,
+  onTriggerAction,
 }: DashboardFinancialOverviewProps) {
   const pagarSemanaTotal = pagarSemana.reduce((sum, item) => sum + item.amount, 0);
 
@@ -145,6 +135,18 @@ export function DashboardFinancialOverview({
                         <p className={`text-xs leading-relaxed ${isPast || isToday ? "font-medium text-red-600" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
                           {item.subtitulo}
                         </p>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={item.kind === "cartao_fatura" ? "outline" : "secondary"}
+                          className="h-8 rounded-full px-3 text-xs font-medium"
+                          onClick={() => onTriggerAction(item)}
+                          disabled={pendingActionId === item.id}
+                        >
+                          {pendingActionId === item.id ? "Processando..." : item.actionLabel}
+                        </Button>
                       </div>
                     </div>
                   </div>

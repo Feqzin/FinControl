@@ -17,10 +17,11 @@ import {
   FintechLoadingSurface,
 } from "@/components/layout/fintech-loading-shell";
 import { ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown, Wallet } from "lucide-react";
-import type { Divida, Servico, Renda } from "@shared/schema";
-import { calculateServicoRealMonthlyExpenseAmount } from "@shared/servico-periodicidade";
+import type { Divida, Renda, Servico, ServicoCobrancaPagamento } from "@shared/schema";
+import { calculateServicoOutstandingChargeForCompetency } from "@shared/servico-periodicidade";
 import { format, getDaysInMonth } from "date-fns";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
+import { fetchServicoCobrancaPagamentos } from "@/services/api/servicos";
 
 const PrevisaoSaldoChart = lazy(
   () => import("@/components/charts/previsao-saldo-chart"),
@@ -40,7 +41,11 @@ export default function PrevisaoPage() {
   const { data: dividas = [], isLoading: l1 } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [], isLoading: l2 } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
   const { data: rendas = [], isLoading: l3 } = useQuery<Renda[]>({ queryKey: ["/api/rendas"] });
-  const isLoading = l1 || l2 || l3;
+  const { data: servicoCobrancaPagamentos = [], isLoading: l4 } = useQuery<ServicoCobrancaPagamento[]>({
+    queryKey: ["/api/servicos/cobranca-pagamentos"],
+    queryFn: fetchServicoCobrancaPagamentos,
+  });
+  const isLoading = l1 || l2 || l3 || l4;
 
   const mask = (v: string) => maskValue(v, visible);
 
@@ -54,7 +59,7 @@ export default function PrevisaoPage() {
   const servicosSaidaMes = servicosAtivos
     .map((servico) => ({
       servico,
-      valor: calculateServicoRealMonthlyExpenseAmount(servico, currentMonth),
+      valor: calculateServicoOutstandingChargeForCompetency(servico, currentMonth, servicoCobrancaPagamentos),
     }))
     .filter((item) => item.valor > 0);
   const rendaMensal = rendasAtivas.reduce((s, r) => s + Number(r.valor), 0);

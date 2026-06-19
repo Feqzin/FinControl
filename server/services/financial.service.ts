@@ -4,12 +4,13 @@ import type {
   CartaoFaturaPagamento,
   CompraCartao,
   Divida,
-  Parcela,
-  ParcelaCompra,
-  Patrimonio,
-  Pessoa,
-  Renda,
-  Servico,
+    Parcela,
+    ParcelaCompra,
+    Patrimonio,
+    Pessoa,
+    Renda,
+    Servico,
+    ServicoCobrancaPagamento,
 } from "@shared/schema";
 import type { DashboardOverviewResponse, FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
 import { buildCardInvoiceSnapshots } from "@shared/card-invoice-payments";
@@ -40,6 +41,7 @@ type FinancialContext = {
   parcelasCompra: ParcelaCompra[];
   cartaoFaturaPagamentos: CartaoFaturaPagamento[];
   servicos: Servico[];
+  servicoCobrancaPagamentos: ServicoCobrancaPagamento[];
   cartoes: Cartao[];
   compras: CompraCartao[];
   rendas: Renda[];
@@ -698,7 +700,7 @@ export class FinancialService {
   }
 
   private async loadContext(userId: string): Promise<FinancialContext> {
-    const [dividas, parcelas, parcelasCompra, cartaoFaturaPagamentos, servicos, cartoes, compras, rendas] = await Promise.all([
+    const [dividas, parcelas, parcelasCompra, cartaoFaturaPagamentos, servicos, servicoCobrancaPagamentos, cartoes, compras, rendas] = await Promise.all([
       this.loadContextSlice(userId, "dividas", () => this.repository.getDividas(userId), [] as Divida[]),
       this.loadContextSlice(userId, "parcelas", () => this.repository.getParcelas(userId), [] as Parcela[]),
       this.loadContextSlice(
@@ -714,6 +716,12 @@ export class FinancialService {
         [] as CartaoFaturaPagamento[],
       ),
       this.loadContextSlice(userId, "servicos", () => this.repository.getServicos(userId), [] as Servico[]),
+      this.loadContextSlice(
+        userId,
+        "servico_cobranca_pagamentos",
+        () => this.repository.getServicoCobrancaPagamentos(userId),
+        [] as ServicoCobrancaPagamento[],
+      ),
       this.loadContextSlice(userId, "cartoes", () => this.repository.getCartoes(userId), [] as Cartao[]),
       this.loadContextSlice(
         userId,
@@ -724,7 +732,7 @@ export class FinancialService {
       this.loadContextSlice(userId, "rendas", () => this.repository.getRendas(userId), [] as Renda[]),
     ]);
 
-    return { dividas, parcelas, parcelasCompra, cartaoFaturaPagamentos, servicos, cartoes, compras, rendas };
+    return { dividas, parcelas, parcelasCompra, cartaoFaturaPagamentos, servicos, servicoCobrancaPagamentos, cartoes, compras, rendas };
   }
 
   async getSummary(
@@ -803,7 +811,9 @@ export class FinancialService {
     return {
       mesReferencia: financialSummary.mesReferencia,
       dividas: simulated.dividas,
+      parcelas: simulated.parcelas,
       servicos: simulated.servicos,
+      servicoCobrancaPagamentos: simulated.servicoCobrancaPagamentos,
       pessoas,
       cartoes: simulated.cartoes,
       compras: simulated.compras,

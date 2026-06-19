@@ -3,7 +3,7 @@ import { db } from "./db.js";
 import { writeTechnicalLog } from "./logger.js";
 import {
   users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos,
-  servicoPessoas, servicoPagamentos, metas, parcelasCompra, cartaoFaturaPagamentos, cartaoFaturaPagamentoAlocacoes, pessoaSaldoMovimentacoes, rendas, patrimonios, compraAliases,
+  servicoPessoas, servicoPagamentos, servicoCobrancaPagamentos, metas, parcelasCompra, cartaoFaturaPagamentos, cartaoFaturaPagamentoAlocacoes, pessoaSaldoMovimentacoes, rendas, patrimonios, compraAliases,
   type User, type InsertUser,
   type Pessoa, type InsertPessoa,
   type PessoaSaldoMovimentacao, type InsertPessoaSaldoMovimentacao,
@@ -14,6 +14,7 @@ import {
   type Servico, type InsertServico,
   type ServicoPessoa, type InsertServicoPessoa,
   type ServicoPagamento, type InsertServicoPagamento,
+  type ServicoCobrancaPagamento, type InsertServicoCobrancaPagamento,
   type Meta, type InsertMeta,
   type ParcelaCompra, type InsertParcelaCompra,
   type CartaoFaturaPagamento, type InsertCartaoFaturaPagamento,
@@ -359,6 +360,14 @@ export interface IStorage {
   createServicoPagamento(sp: InsertServicoPagamento): Promise<ServicoPagamento>;
   deleteServicoPagamento(id: string, userId: string): Promise<boolean>;
   deleteServicoPagamentosByServicoPessoa(servicoPessoaId: string, userId: string): Promise<void>;
+  getServicoCobrancaPagamentos(userId: string): Promise<ServicoCobrancaPagamento[]>;
+  getServicoCobrancaPagamentosByServico(servicoId: string, userId: string): Promise<ServicoCobrancaPagamento[]>;
+  createServicoCobrancaPagamento(data: InsertServicoCobrancaPagamento): Promise<ServicoCobrancaPagamento>;
+  updateServicoCobrancaPagamento(
+    id: string,
+    userId: string,
+    data: Partial<InsertServicoCobrancaPagamento>,
+  ): Promise<ServicoCobrancaPagamento | undefined>;
 
   getMetas(userId: string): Promise<Meta[]>;
   getMeta(id: string, userId: string): Promise<Meta | undefined>;
@@ -932,6 +941,24 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteServicoPagamentosByServicoPessoa(servicoPessoaId: string, userId: string) {
     await this.database.delete(servicoPagamentos).where(and(eq(servicoPagamentos.servicoPessoaId, servicoPessoaId), eq(servicoPagamentos.userId, userId)));
+  }
+  async getServicoCobrancaPagamentos(userId: string) {
+    return this.database.select().from(servicoCobrancaPagamentos).where(eq(servicoCobrancaPagamentos.userId, userId));
+  }
+  async getServicoCobrancaPagamentosByServico(servicoId: string, userId: string) {
+    return this.database.select().from(servicoCobrancaPagamentos).where(
+      and(eq(servicoCobrancaPagamentos.servicoId, servicoId), eq(servicoCobrancaPagamentos.userId, userId)),
+    );
+  }
+  async createServicoCobrancaPagamento(data: InsertServicoCobrancaPagamento) {
+    const [row] = await this.database.insert(servicoCobrancaPagamentos).values(data).returning();
+    return row;
+  }
+  async updateServicoCobrancaPagamento(id: string, userId: string, data: Partial<InsertServicoCobrancaPagamento>) {
+    const [row] = await this.database.update(servicoCobrancaPagamentos).set(data).where(
+      and(eq(servicoCobrancaPagamentos.id, id), eq(servicoCobrancaPagamentos.userId, userId)),
+    ).returning();
+    return row;
   }
 
   async getMetas(userId: string) { return this.database.select().from(metas).where(eq(metas.userId, userId)); }

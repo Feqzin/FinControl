@@ -59,6 +59,7 @@ import {
 import { formatCurrencyBRL } from "@/utils/formatters";
 import type { Servico } from "@shared/schema";
 import {
+  calculateServicoChargePaidAmountForCompetency,
   calculateServicoRealMonthlyExpenseAmount,
   resolveServicoBillingFields,
   type ServicoPeriodicidade,
@@ -189,6 +190,7 @@ export default function ServicosPage() {
     servicos,
     servicoPessoas,
     servicoPagamentos,
+    servicoCobrancaPagamentos,
     pessoas,
     cartoes,
     compras,
@@ -391,6 +393,22 @@ export default function ServicosPage() {
   };
 
   const getOrigemPagamentoMesAtual = (servico: Servico) => {
+    const cobrancaMesAtual = calculateServicoRealMonthlyExpenseAmount(servico, mesAtual);
+    const valorPagoCobrancaMesAtual = calculateServicoChargePaidAmountForCompetency(
+      servico.id,
+      mesAtual,
+      servicoCobrancaPagamentos,
+    );
+
+    if (cobrancaMesAtual > 0) {
+      if (valorPagoCobrancaMesAtual >= cobrancaMesAtual) {
+        return { label: "Cobrança do mês atual: Paga", className: "text-emerald-600" };
+      }
+      if (valorPagoCobrancaMesAtual > 0) {
+        return { label: "Cobrança do mês atual: Parcial", className: "text-amber-600" };
+      }
+    }
+
     const vinculados = servicoPessoasByServicoId.get(servico.id) ?? [];
     const hasPagamentoPessoaMes = vinculados.some((sp) =>
       servicoPagamentos.some((pagamento) => pagamento.servicoPessoaId === sp.id && pagamento.mes === mesAtual),
@@ -425,7 +443,14 @@ export default function ServicosPage() {
       return pagamento?.status === "pago";
     }).length;
     const pendentes = Math.max(0, totalVinculos - pagos);
-    return { totalVinculos, pagos, pendentes };
+    const cobrancaDoMes = calculateServicoRealMonthlyExpenseAmount(servico, mesAtual);
+    const valorPagoCobrancaMes = calculateServicoChargePaidAmountForCompetency(
+      servico.id,
+      mesAtual,
+      servicoCobrancaPagamentos,
+    );
+    const cobrancaPaga = cobrancaDoMes > 0 && valorPagoCobrancaMes >= cobrancaDoMes;
+    return { totalVinculos, pagos, pendentes, cobrancaDoMes, cobrancaPaga };
   };
 
   const servicosFiltradosPorAba = servicos.filter((servico) => {
@@ -435,9 +460,13 @@ export default function ServicosPage() {
       case "ativos":
         return isAtivo;
       case "pendentes":
-        return isAtivo && resumoMes.pendentes > 0;
+        return isAtivo && (resumoMes.totalVinculos > 0 ? resumoMes.pendentes > 0 : (resumoMes.cobrancaDoMes > 0 && !resumoMes.cobrancaPaga));
       case "pagos":
-        return isAtivo && resumoMes.totalVinculos > 0 && resumoMes.pendentes === 0;
+        return isAtivo && (
+          resumoMes.totalVinculos > 0
+            ? (resumoMes.totalVinculos > 0 && resumoMes.pendentes === 0)
+            : resumoMes.cobrancaPaga
+        );
       case "divisao":
         return resumoMes.totalVinculos > 0;
       case "vinculos":

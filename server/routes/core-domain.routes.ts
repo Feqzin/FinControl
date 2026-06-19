@@ -27,6 +27,9 @@ type ServicosController = {
   listServicoPagamentos: RequestHandler;
   createServicoPagamento: RequestHandler;
   deleteServicoPagamento: RequestHandler;
+  listServicoCobrancaPagamentos: RequestHandler;
+  createServicoCobrancaPagamento: RequestHandler;
+  cancelServicoCobrancaPagamento: RequestHandler;
 };
 
 type MetasController = {
@@ -92,6 +95,9 @@ export function registerCoreDomainRoutes(app: Express, controllers: CoreDomainCo
   app.get("/api/servico-pagamentos", requireAuth, servicosController.listServicoPagamentos);
   app.post("/api/servico-pagamentos", requireAuth, servicosController.createServicoPagamento);
   app.delete("/api/servico-pagamentos/:id", requireAuth, servicosController.deleteServicoPagamento);
+  app.get("/api/servicos/cobranca-pagamentos", requireAuth, servicosController.listServicoCobrancaPagamentos);
+  app.post("/api/servicos/:id/cobranca-pagamentos", requireAuth, servicosController.createServicoCobrancaPagamento);
+  app.post("/api/servicos/:id/cobranca-pagamentos/:paymentId/cancelar", requireAuth, servicosController.cancelServicoCobrancaPagamento);
 
   app.get("/api/metas", requireAuth, metasController.list);
   app.post("/api/metas", requireAuth, metasController.create);

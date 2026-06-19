@@ -1,12 +1,20 @@
+import { format } from "date-fns";
 import type { IStorage } from "../storage";
 import type {
   ServicoBodyInput,
+  ServicoCobrancaPagamentoBodyInput,
+  ServicoCobrancaPagamentoCancelBodyInput,
   ServicoPagamentoBodyInput,
   ServicoPessoaBodyInput,
   ServicoPessoaUpdateBodyInput,
   ServicoUpdateBodyInput,
 } from "../validators/core-domain.validators";
-import { resolveServicoBillingFields } from "@shared/servico-periodicidade";
+import {
+  calculateServicoChargePaidAmountForCompetency,
+  calculateServicoRealMonthlyExpenseAmount,
+  resolveServicoBillingFields,
+} from "@shared/servico-periodicidade";
+import { parseMoney } from "../../utils/money";
 
 type UpdateServicoPessoaResult =
   | { error: "SERVICO_NOT_FOUND" }
@@ -21,6 +29,28 @@ type CreateServicoPessoaResult =
 type CreateServicoPagamentoResult =
   | { error: "SERVICO_PESSOA_NOT_FOUND" }
   | { created: Awaited<ReturnType<IStorage["createServicoPagamento"]>> };
+
+type CreateServicoCobrancaPagamentoResult =
+  | { error: "SERVICO_NOT_FOUND" }
+  | { error: "SERVICO_SEM_COBRANCA_NA_COMPETENCIA" }
+  | { error: "VALOR_ACIMA_DO_PENDENTE"; remainingAmount: number }
+  | { created: Awaited<ReturnType<IStorage["createServicoCobrancaPagamento"]>> };
+
+type CancelServicoCobrancaPagamentoResult =
+  | { error: "SERVICO_NOT_FOUND" }
+  | { error: "PAGAMENTO_NOT_FOUND" }
+  | { updated: Awaited<ReturnType<IStorage["updateServicoCobrancaPagamento"]>> };
+
+function parseMonthReferenceParts(monthReference: string): { competenciaAno: number; competenciaMes: number } | null {
+  const match = monthReference.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  const competenciaAno = Number(match[1]);
+  const competenciaMes = Number(match[2]);
+  if (!Number.isInteger(competenciaAno) || !Number.isInteger(competenciaMes) || competenciaMes < 1 || competenciaMes > 12) {
+    return null;
+  }
+  return { competenciaAno, competenciaMes };
+}
 
 export class ServicosService {
   constructor(private readonly storage: IStorage) {}
@@ -119,5 +149,92 @@ export class ServicosService {
 
   async deleteServicoPagamento(id: string, userId: string) {
     return this.storage.deleteServicoPagamento(id, userId);
+  }
+
+  async listServicoCobrancaPagamentos(userId: string) {
+    const rows = await this.storage.getServicoCobrancaPagamentos(userId);
+    return [...rows].sort(
+      (left, right) =>
+        String(right.dataPagamento ?? "").localeCompare(String(left.dataPagamento ?? ""))
+        || String(right.createdAt ?? "").localeCompare(String(left.createdAt ?? "")),
+    );
+  }
+
+  async createServicoCobrancaPagamento(
+    userId: string,
+    servicoId: string,
+    data: ServicoCobrancaPagamentoBodyInput,
+  ): Promise<CreateServicoCobrancaPagamentoResult> {
+    const servico = await this.storage.getServico(servicoId, userId);
+    if (!servico) return { error: "SERVICO_NOT_FOUND" };
+
+    const monthParts = parseMonthReferenceParts(data.monthReference);
+    if (!monthParts) {
+      return { error: "SERVICO_SEM_COBRANCA_NA_COMPETENCIA" };
+    }
+
+    const chargeAmount = servico.status === "ativo"
+      ? calculateServicoRealMonthlyExpenseAmount(servico, data.monthReference)
+      : 0;
+    if (chargeAmount <= 0) {
+      return { error: "SERVICO_SEM_COBRANCA_NA_COMPETENCIA" };
+    }
+
+    const existingPayments = await this.storage.getServicoCobrancaPagamentosByServico(servicoId, userId);
+    const paidAmount = calculateServicoChargePaidAmountForCompetency(servicoId, data.monthReference, existingPayments);
+    const remainingAmount = Math.max(0, Math.round((chargeAmount - paidAmount) * 100) / 100);
+    if (remainingAmount <= 0) {
+      const latestActive = [...existingPayments]
+        .filter((payment) => !payment.canceladoEm)
+        .filter((payment) => `${payment.competenciaAno}-${String(payment.competenciaMes).padStart(2, "0")}` === data.monthReference)
+        .sort((left, right) => String(right.createdAt ?? "").localeCompare(String(left.createdAt ?? "")))[0];
+      if (latestActive) return { created: latestActive };
+      return { error: "SERVICO_SEM_COBRANCA_NA_COMPETENCIA" };
+    }
+
+    const requestedAmount = parseMoney(data.valorPago) ?? 0;
+    if (requestedAmount <= 0) {
+      return { error: "VALOR_ACIMA_DO_PENDENTE", remainingAmount };
+    }
+    if (requestedAmount > remainingAmount + 0.0001) {
+      return { error: "VALOR_ACIMA_DO_PENDENTE", remainingAmount };
+    }
+
+    const created = await this.storage.createServicoCobrancaPagamento({
+      userId,
+      servicoId,
+      competenciaAno: monthParts.competenciaAno,
+      competenciaMes: monthParts.competenciaMes,
+      valorPago: data.valorPago,
+      dataPagamento: data.dataPagamento ?? format(new Date(), "yyyy-MM-dd"),
+      observacao: data.observacao ?? null,
+      canceladoEm: null,
+      motivoCancelamento: null,
+    });
+
+    return { created };
+  }
+
+  async cancelServicoCobrancaPagamento(
+    userId: string,
+    servicoId: string,
+    paymentId: string,
+    data: ServicoCobrancaPagamentoCancelBodyInput,
+  ): Promise<CancelServicoCobrancaPagamentoResult> {
+    const servico = await this.storage.getServico(servicoId, userId);
+    if (!servico) return { error: "SERVICO_NOT_FOUND" };
+
+    const existingPayments = await this.storage.getServicoCobrancaPagamentosByServico(servicoId, userId);
+    const payment = existingPayments.find((item) => item.id === paymentId);
+    if (!payment) return { error: "PAGAMENTO_NOT_FOUND" };
+    if (payment.canceladoEm) {
+      return { updated: payment };
+    }
+
+    const updated = await this.storage.updateServicoCobrancaPagamento(paymentId, userId, {
+      canceladoEm: new Date(),
+      motivoCancelamento: data.motivoCancelamento ?? null,
+    });
+    return { updated };
   }
 }

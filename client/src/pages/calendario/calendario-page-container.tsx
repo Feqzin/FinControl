@@ -200,6 +200,7 @@ export default function CalendarioPageContainer() {
       parcelas: parcelasQuery.data ?? [],
       pessoas: overviewQuery.data.pessoas,
       servicos: overviewQuery.data.servicos,
+      servicoCobrancaPagamentos: overviewQuery.data.servicoCobrancaPagamentos,
       rendas: overviewQuery.data.rendas,
       metas: metasQuery.data ?? [],
     });

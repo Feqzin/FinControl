@@ -131,6 +131,17 @@ export const servicoPagamentoBody = z.object({
   dataPagamento: z.string().optional().nullable(),
 });
 
+export const servicoCobrancaPagamentoBody = z.object({
+  monthReference: z.string().trim().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Mes invalido. Use o formato yyyy-MM"),
+  valorPago: moneyField,
+  dataPagamento: isoDateField.optional().nullable(),
+  observacao: z.string().trim().optional().nullable(),
+});
+
+export const servicoCobrancaPagamentoCancelBody = z.object({
+  motivoCancelamento: z.string().trim().optional().nullable(),
+});
+
 export const metaBody = z.object({
   nome: z.string().min(1),
   descricao: z.string().optional().nullable(),
@@ -177,6 +188,8 @@ export type ServicoUpdateBodyInput = z.infer<typeof servicoUpdateBody>;
 export type ServicoPessoaBodyInput = z.infer<typeof servicoPessoaBody>;
 export type ServicoPessoaUpdateBodyInput = z.infer<typeof servicoPessoaUpdateBody>;
 export type ServicoPagamentoBodyInput = z.infer<typeof servicoPagamentoBody>;
+export type ServicoCobrancaPagamentoBodyInput = z.infer<typeof servicoCobrancaPagamentoBody>;
+export type ServicoCobrancaPagamentoCancelBodyInput = z.infer<typeof servicoCobrancaPagamentoCancelBody>;
 export type MetaBodyInput = z.infer<typeof metaBody>;
 export type MetaUpdateBodyInput = z.infer<typeof metaUpdateBody>;
 export type RendaCreateBodyInput = z.infer<typeof rendaCreateBody>;

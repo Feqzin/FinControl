@@ -5,6 +5,7 @@ import type {
   InsertDivida,
   InsertParcela,
   InsertParcelaCompra,
+  InsertServicoCobrancaPagamento,
 } from "@shared/schema";
 import { db } from "../db";
 import { DatabaseStorage, storage, type IStorage } from "../storage";
@@ -109,6 +110,22 @@ function createFinancialRepositoryBase(targetStorage: IStorage) {
 
     async getServicos(userId: string) {
       return targetStorage.getServicos(userId);
+    },
+
+    async getServicoCobrancaPagamentos(userId: string) {
+      return targetStorage.getServicoCobrancaPagamentos(userId);
+    },
+
+    async getServicoCobrancaPagamentosByServico(servicoId: string, userId: string) {
+      return targetStorage.getServicoCobrancaPagamentosByServico(servicoId, userId);
+    },
+
+    async createServicoCobrancaPagamento(data: InsertServicoCobrancaPagamento) {
+      return targetStorage.createServicoCobrancaPagamento(data);
+    },
+
+    async updateServicoCobrancaPagamento(id: string, userId: string, data: Partial<InsertServicoCobrancaPagamento>) {
+      return targetStorage.updateServicoCobrancaPagamento(id, userId, data);
     },
 
     async getPessoas(userId: string) {

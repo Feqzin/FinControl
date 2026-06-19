@@ -6,6 +6,7 @@ import type {
   Pessoa,
   PessoaSaldoMovimentacao,
   Servico,
+  ServicoCobrancaPagamento,
   ServicoPagamento,
   ServicoPessoa,
 } from "@shared/schema";
@@ -13,6 +14,7 @@ import { queryClient } from "@/lib/queryClient";
 import {
   createServico,
   deleteServico,
+  fetchServicoCobrancaPagamentos,
   toggleServicoStatus,
   updateServico,
   type ServicoPayload,
@@ -22,6 +24,10 @@ export function useServicos() {
   const { data: servicos = [], isLoading } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
   const { data: servicoPessoas = [] } = useQuery<ServicoPessoa[]>({ queryKey: ["/api/servico-pessoas"] });
   const { data: servicoPagamentos = [] } = useQuery<ServicoPagamento[]>({ queryKey: ["/api/servico-pagamentos"] });
+  const { data: servicoCobrancaPagamentos = [] } = useQuery<ServicoCobrancaPagamento[]>({
+    queryKey: ["/api/servicos/cobranca-pagamentos"],
+    queryFn: fetchServicoCobrancaPagamentos,
+  });
   const { data: pessoas = [] } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
   const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
@@ -66,6 +72,7 @@ export function useServicos() {
     servicos,
     servicoPessoas,
     servicoPagamentos,
+    servicoCobrancaPagamentos,
     pessoas,
     cartoes,
     compras,

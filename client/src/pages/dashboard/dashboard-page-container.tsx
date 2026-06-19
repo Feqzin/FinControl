@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToastAction } from "@/components/ui/toast";
 import {
   TrendingUp, TrendingDown, CalendarClock,
   ArrowUpRight, ArrowDownRight, Receipt,
@@ -8,7 +9,9 @@ import {
   Settings2, Smartphone,
 } from "lucide-react";
 import { format } from "date-fns";
-import { useState } from "react";
+import { ptBR } from "date-fns/locale";
+import { useMemo, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { useUIPreferences } from "@/context/ui-preferences";
 import { Button } from "@/components/ui/button";
@@ -29,7 +32,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useDashboard } from "@/hooks/useDashboard";
+import { useDashboard, type VencimentoItem } from "@/hooks/useDashboard";
+import { useToast } from "@/hooks/use-toast";
+import { parseMoney } from "@/lib/money";
+import { queryClient } from "@/lib/queryClient";
+import { CartaoFaturaPaymentDialog } from "@/pages/cartoes/components";
+import {
+  buildInvoiceTrackingInstallmentsForCard,
+  getInvoiceCompetency,
+  groupParcelasCompraByCompraId,
+} from "@/lib/card-limit-usage";
+import {
+  findCardInvoiceSnapshot,
+  getInstallmentEffectivePaidAmount,
+  getInstallmentInvoicePaymentStatus,
+} from "@shared/card-invoice-payments";
+import {
+  cancelCartaoFaturaPagamento,
+  registerCartaoFaturaPagamento,
+  updateParcelaCompraStatusCartao,
+} from "@/services/api/cartoes";
+import { updateParcela } from "@/services/api/dividas";
+import {
+  marcarDividaPessoaComoPaga,
+  reverterDividaPessoaParaPendente,
+} from "@/services/api/pessoas";
+import {
+  cancelarServicoCobrancaPagamento,
+  registrarServicoCobrancaPagamento,
+} from "@/services/api/servicos";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { useLocation } from "wouter";
 import { DashboardQuickActions } from "@/components/dashboard/DashboardQuickActions";
@@ -105,6 +136,7 @@ function resolveVencimentoPath(item: { tipo: "cartao" | "divida" | "servico" } |
 
 export default function Dashboard() {
   const { visible } = useValuesVisibility();
+  const { toast } = useToast();
   const [, setLocation] = useLocation();
   const {
     prefs,
@@ -118,6 +150,9 @@ export default function Dashboard() {
     setMobileModeManual,
   } = useUIPreferences();
   const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), "yyyy-MM"));
+  const [pendingVencimentoActionId, setPendingVencimentoActionId] = useState<string | null>(null);
+  const [invoicePaymentTarget, setInvoicePaymentTarget] = useState<{ cartaoId: string; monthReference: string } | null>(null);
+  const [cancelPendingPaymentId, setCancelPendingPaymentId] = useState<string | null>(null);
 
   const {
     monthOptions,
@@ -126,6 +161,10 @@ export default function Dashboard() {
     pessoas,
     rendas,
     patrimonios,
+    cartoes,
+    compras,
+    parcelasCompra,
+    cartaoFaturaPagamentos,
     totalRenda,
     totalPatrimonio,
     totalServicos,
@@ -187,6 +226,404 @@ export default function Dashboard() {
     : null;
   const pagarSemanaTotal = pagarSemana.reduce((sum, item) => sum + item.amount, 0);
   const servicosAtivosCount = servicos.filter((servico) => servico.status === "ativo").length;
+  const dashboardParcelasCompraByCompraId = useMemo(
+    () => groupParcelasCompraByCompraId(parcelasCompra),
+    [parcelasCompra],
+  );
+  const dashboardCartoesById = useMemo(
+    () => new Map(cartoes.map((cartao) => [cartao.id, cartao] as const)),
+    [cartoes],
+  );
+  const invoicePaymentsByCardMonthKey = useMemo(() => {
+    const grouped = new Map<string, typeof cartaoFaturaPagamentos>();
+    for (const payment of cartaoFaturaPagamentos) {
+      const monthReference = `${String(payment.competenciaAno).padStart(4, "0")}-${String(payment.competenciaMes).padStart(2, "0")}`;
+      const key = `${payment.cartaoId}:${monthReference}`;
+      const rows = grouped.get(key) ?? [];
+      rows.push(payment);
+      grouped.set(key, rows);
+    }
+    return grouped;
+  }, [cartaoFaturaPagamentos]);
+
+  const invalidateFinancialViews = async () => {
+    const keys: Array<readonly unknown[]> = [
+      ["/api/dashboard/overview"],
+      ["/api/financial/summary"],
+      ["/api/financial/score"],
+      ["/api/financial/insights"],
+      ["/api/servicos"],
+      ["/api/servicos/cobranca-pagamentos"],
+      ["/api/dividas"],
+      ["/api/parcelas"],
+      ["/api/cartoes"],
+      ["/api/cartoes/fatura-pagamentos"],
+      ["/api/parcelas-compra"],
+      ["/api/reports/overview"],
+      ["/api/pessoas"],
+    ];
+
+    await Promise.all(keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
+  };
+
+  const getInvoicePaymentsForCompetency = (cartaoId: string, monthReference: string) =>
+    invoicePaymentsByCardMonthKey.get(`${cartaoId}:${monthReference}`) ?? [];
+
+  const getInvoiceSnapshotForCompetency = (cartaoId: string, monthReference: string) => {
+    const cartao = dashboardCartoesById.get(cartaoId);
+    if (!cartao) return null;
+
+    return findCardInvoiceSnapshot({
+      cartaoId,
+      monthReference,
+      installments: buildInvoiceTrackingInstallmentsForCard(
+        cartaoId,
+        compras,
+        dashboardParcelasCompraByCompraId,
+      ),
+      payments: getInvoicePaymentsForCompetency(cartaoId, monthReference),
+      getDueDayForCard: () => cartao.diaVencimento,
+      referenceDate: format(new Date(), "yyyy-MM-dd"),
+    });
+  };
+
+  const selectedInvoicePaymentCartao = invoicePaymentTarget
+    ? (dashboardCartoesById.get(invoicePaymentTarget.cartaoId) ?? null)
+    : null;
+  const selectedInvoicePaymentSnapshot = invoicePaymentTarget
+    ? getInvoiceSnapshotForCompetency(invoicePaymentTarget.cartaoId, invoicePaymentTarget.monthReference)
+    : null;
+  const selectedInvoicePaymentHistory = invoicePaymentTarget
+    ? getInvoicePaymentsForCompetency(invoicePaymentTarget.cartaoId, invoicePaymentTarget.monthReference)
+    : [];
+  const selectedInvoiceInstallments = useMemo(() => {
+    if (!invoicePaymentTarget) return [];
+
+    return compras
+      .filter((compra) => compra.cartaoId === invoicePaymentTarget.cartaoId)
+      .flatMap((compra) => (
+        (dashboardParcelasCompraByCompraId.get(compra.id) ?? [])
+          .filter((parcela) => getInvoiceCompetency(parcela.dataVencimento) === invoicePaymentTarget.monthReference)
+          .map((parcela) => {
+            const valorPagoAtual = getInstallmentEffectivePaidAmount({
+              id: parcela.id,
+              valor: parcela.valor,
+              statusCartao: parcela.statusCartao,
+            }, selectedInvoicePaymentHistory);
+            const valorParcela = Number(parcela.valor);
+
+            return {
+              parcelaCompraId: parcela.id,
+              compraCartaoId: compra.id,
+              descricao: compra.descricao,
+              numero: parcela.numero,
+              valor: valorParcela,
+              valorPagoAtual,
+              valorPendente: Math.max(0, valorParcela - valorPagoAtual),
+              status: getInstallmentInvoicePaymentStatus({
+                id: parcela.id,
+                valor: parcela.valor,
+                statusCartao: parcela.statusCartao,
+              }, selectedInvoicePaymentHistory),
+            };
+          })
+      ));
+  }, [compras, dashboardParcelasCompraByCompraId, invoicePaymentTarget, selectedInvoicePaymentHistory]);
+
+  const registerInvoicePaymentMutation = useMutation({
+    mutationFn: ({
+      cartaoId,
+      monthReference,
+      data,
+    }: {
+      cartaoId: string;
+      monthReference: string;
+      data: Parameters<typeof registerCartaoFaturaPagamento>[2];
+    }) => registerCartaoFaturaPagamento(cartaoId, monthReference, data),
+    onSuccess: async (result) => {
+      await invalidateFinancialViews();
+      const pagamentoLimitado = result.valorAplicado < result.valorSolicitado;
+      const titulo = result.saldoRestante <= 0
+        ? "Fatura quitada"
+        : result.statusFatura === "parcialmente_paga" || result.statusFatura === "vencida_parcialmente_paga"
+          ? "Pagamento parcial registrado"
+          : "Pagamento registrado";
+      const descricaoBase = pagamentoLimitado
+        ? `Pagamento aplicado até o saldo restante: ${formatCurrencyBRL(result.valorAplicado)}.`
+        : `Pagamento aplicado: ${formatCurrencyBRL(result.valorAplicado)}.`;
+      toast({
+        title: titulo,
+        description: `${descricaoBase} Saldo restante: ${formatCurrencyBRL(result.saldoRestante)}.`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro ao registrar pagamento",
+        description: error instanceof Error ? error.message : "Não foi possível registrar o pagamento da fatura.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const cancelInvoicePaymentMutation = useMutation({
+    mutationFn: ({
+      cartaoId,
+      monthReference,
+      pagamentoId,
+    }: {
+      cartaoId: string;
+      monthReference: string;
+      pagamentoId: string;
+    }) => cancelCartaoFaturaPagamento(cartaoId, monthReference, pagamentoId),
+    onMutate: ({ pagamentoId }) => {
+      setCancelPendingPaymentId(pagamentoId);
+    },
+    onSuccess: async (result) => {
+      await invalidateFinancialViews();
+      toast({
+        title: "Pagamento desfeito com sucesso",
+        description: `Saldo restante da fatura atualizado para ${formatCurrencyBRL(result.saldoRestante)}.`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Não foi possível desfazer o pagamento",
+        description: error instanceof Error ? error.message : "Falha ao desfazer o pagamento da fatura.",
+        variant: "destructive",
+      });
+    },
+    onSettled: () => {
+      setCancelPendingPaymentId(null);
+    },
+  });
+
+  const runUndoableAction = (
+    params: {
+      title: string;
+      description?: string;
+      undoTitle: string;
+      undoDescription?: string;
+      undo: () => Promise<void>;
+    },
+  ) => {
+    toast({
+      title: params.title,
+      description: params.description,
+      action: (
+        <ToastAction
+          altText="Desfazer ação"
+          onClick={() => {
+            void params.undo()
+              .then(async () => {
+                await invalidateFinancialViews();
+                toast({
+                  title: params.undoTitle,
+                  description: params.undoDescription,
+                });
+              })
+              .catch((error: unknown) => {
+                toast({
+                  title: "Não foi possível desfazer",
+                  description: error instanceof Error ? error.message : "Tente novamente em instantes.",
+                  variant: "destructive",
+                });
+              });
+          }}
+        >
+          Desfazer
+        </ToastAction>
+      ),
+    });
+  };
+
+  const handleTriggerVencimentoAction = async (item: VencimentoItem) => {
+    if (item.kind === "cartao_fatura") {
+      if (!item.cartaoId || !item.monthReference) return;
+      setInvoicePaymentTarget({
+        cartaoId: item.cartaoId,
+        monthReference: item.monthReference,
+      });
+      return;
+    }
+
+    const todayIso = format(new Date(), "yyyy-MM-dd");
+
+    if (item.kind === "servico") {
+      if (!item.servicoId || !item.monthReference) return;
+      setPendingVencimentoActionId(item.id);
+      try {
+        const payment = await registrarServicoCobrancaPagamento({
+          servicoId: item.servicoId,
+          monthReference: item.monthReference,
+          valorPago: item.valor,
+          dataPagamento: todayIso,
+        });
+        await invalidateFinancialViews();
+        runUndoableAction({
+          title: "Cobrança marcada como paga",
+          description: `${item.nome} foi baixado em ${formatCurrencyBRL(item.valor)}.`,
+          undoTitle: "Pagamento desfeito",
+          undoDescription: `${item.nome} voltou para os próximos vencimentos.`,
+          undo: async () => {
+            await cancelarServicoCobrancaPagamento(item.servicoId!, payment.id);
+          },
+        });
+      } catch (error) {
+        toast({
+          title: "Não foi possível registrar o pagamento",
+          description: error instanceof Error ? error.message : "Tente novamente em instantes.",
+          variant: "destructive",
+        });
+      } finally {
+        setPendingVencimentoActionId(null);
+      }
+      return;
+    }
+
+    if (item.kind === "cartao_parcela") {
+      if (!item.parcelaCompraId) return;
+      const confirmed = typeof window === "undefined"
+        ? true
+        : window.confirm(`Marcar a parcela "${item.nome}" como paga no cartão?`);
+      if (!confirmed) return;
+
+      setPendingVencimentoActionId(item.id);
+      try {
+        await updateParcelaCompraStatusCartao(item.parcelaCompraId, true, todayIso);
+        await invalidateFinancialViews();
+        runUndoableAction({
+          title: "Pagamento registrado",
+          description: `A parcela de ${item.nome} foi marcada como paga no cartão.`,
+          undoTitle: "Pagamento da parcela desfeito",
+          undoDescription: `${item.nome} voltou para o estado pendente.`,
+          undo: () => updateParcelaCompraStatusCartao(item.parcelaCompraId!, false),
+        });
+      } catch (error) {
+        toast({
+          title: "Não foi possível registrar o pagamento",
+          description: error instanceof Error ? error.message : "Tente novamente em instantes.",
+          variant: "destructive",
+        });
+      } finally {
+        setPendingVencimentoActionId(null);
+      }
+      return;
+    }
+
+    if (item.kind === "divida_pagar" || item.kind === "divida_receber") {
+      const confirmed = typeof window === "undefined"
+        ? true
+        : window.confirm(
+          item.kind === "divida_receber"
+            ? `Marcar "${item.nome}" como recebido?`
+            : `Marcar "${item.nome}" como pago?`,
+        );
+      if (!confirmed) return;
+
+      setPendingVencimentoActionId(item.id);
+      try {
+        if (item.parcelaId) {
+          await updateParcela(item.parcelaId, {
+            status: "pago",
+            dataPagamento: todayIso,
+            formaPagamento: "dashboard",
+          });
+        } else if (item.dividaId) {
+          await marcarDividaPessoaComoPaga({
+            id: item.dividaId,
+            formaPagamento: "dashboard",
+            dataPagamento: todayIso,
+          });
+        }
+        await invalidateFinancialViews();
+        runUndoableAction({
+          title: item.kind === "divida_receber" ? "Recebimento registrado" : "Pagamento registrado",
+          description: item.kind === "divida_receber"
+            ? `${item.nome} foi marcado como recebido.`
+            : `${item.nome} foi marcado como pago.`,
+          undoTitle: item.kind === "divida_receber" ? "Recebimento desfeito" : "Pagamento desfeito",
+          undoDescription: `${item.nome} voltou para o estado pendente.`,
+          undo: async () => {
+            if (item.parcelaId) {
+              await updateParcela(item.parcelaId, {
+                status: "pendente",
+                dataPagamento: null,
+                formaPagamento: null,
+              });
+              return;
+            }
+            if (item.dividaId) {
+              await reverterDividaPessoaParaPendente(item.dividaId);
+            }
+          },
+        });
+      } catch (error) {
+        toast({
+          title: "Não foi possível registrar a ação",
+          description: error instanceof Error ? error.message : "Tente novamente em instantes.",
+          variant: "destructive",
+        });
+      } finally {
+        setPendingVencimentoActionId(null);
+      }
+    }
+  };
+
+  const handleRegisterInvoicePayment = (payload: {
+    valorPago: string | number;
+    dataPagamento: string;
+    observacao?: string | null;
+    modoAlocacao?: "ordem_fatura" | "menores_primeiro" | "maiores_primeiro" | "manual";
+    aplicarRestanteAutomaticamente?: boolean;
+    alocacoesManuais?: Array<{ parcelaCompraId: string; valorAplicado?: string | number }>;
+  }) => {
+    if (!invoicePaymentTarget || !selectedInvoicePaymentSnapshot) {
+      toast({
+        title: "Fatura indisponível",
+        description: "Não foi possível localizar a fatura selecionada.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const valorSolicitado = parseMoney(payload.valorPago) ?? 0;
+    const vaiQuitarFatura = valorSolicitado >= selectedInvoicePaymentSnapshot.remainingAmount;
+    const faturaVencida =
+      selectedInvoicePaymentSnapshot.status === "vencida"
+      || selectedInvoicePaymentSnapshot.status === "vencida_parcialmente_paga";
+
+    if (
+      vaiQuitarFatura
+      && faturaVencida
+      && typeof window !== "undefined"
+      && !window.confirm("Isso marcará todas as parcelas desta fatura como pagas. Deseja continuar?")
+    ) {
+      return;
+    }
+
+    registerInvoicePaymentMutation.mutate({
+      cartaoId: invoicePaymentTarget.cartaoId,
+      monthReference: invoicePaymentTarget.monthReference,
+      data: payload,
+    });
+  };
+
+  const handleCancelInvoicePayment = (paymentId: string) => {
+    if (!invoicePaymentTarget) {
+      toast({
+        title: "Pagamento indisponível",
+        description: "Não foi possível localizar a fatura selecionada para desfazer o pagamento.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    cancelInvoicePaymentMutation.mutate({
+      cartaoId: invoicePaymentTarget.cartaoId,
+      monthReference: invoicePaymentTarget.monthReference,
+      pagamentoId: paymentId,
+    });
+  };
   const summaryCards = [
     {
       id: "receber",
@@ -445,14 +882,26 @@ export default function Dashboard() {
                   <p className="text-2xl font-bold leading-tight tracking-tight">
                     {maskValue(formatCurrencyBRL(proximoVencimento.valor), visible)}
                   </p>
-                  <Button
-                    type="button"
-                    className="mt-auto h-11 w-full justify-center rounded-xl text-sm"
-                    variant="outline"
-                    onClick={() => setLocation(resolveVencimentoPath(proximoVencimento))}
-                  >
-                    Ver contas
-                  </Button>
+                  <div className="mt-auto grid gap-2 sm:grid-cols-2">
+                    <Button
+                      type="button"
+                      className="h-11 w-full justify-center rounded-xl text-sm"
+                      onClick={() => {
+                        void handleTriggerVencimentoAction(proximoVencimento);
+                      }}
+                      disabled={pendingVencimentoActionId === proximoVencimento.id}
+                    >
+                      {pendingVencimentoActionId === proximoVencimento.id ? "Processando..." : proximoVencimento.actionLabel}
+                    </Button>
+                    <Button
+                      type="button"
+                      className="h-11 w-full justify-center rounded-xl text-sm"
+                      variant="outline"
+                      onClick={() => setLocation(resolveVencimentoPath(proximoVencimento))}
+                    >
+                      Ver contas
+                    </Button>
+                  </div>
                 </>
               )}
             </CardContent>
@@ -868,6 +1317,20 @@ export default function Dashboard() {
                         <span className="mt-2 block text-sm font-semibold [overflow-wrap:anywhere]">
                           {maskValue(formatCurrencyBRL(item.valor), visible)}
                         </span>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={item.kind === "cartao_fatura" ? "outline" : "secondary"}
+                            className="h-8 rounded-full px-3 text-xs"
+                            onClick={() => {
+                              void handleTriggerVencimentoAction(item);
+                            }}
+                            disabled={pendingVencimentoActionId === item.id}
+                          >
+                            {pendingVencimentoActionId === item.id ? "Processando..." : item.actionLabel}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1083,6 +1546,7 @@ export default function Dashboard() {
         pagarSemanaStatus={sectionStatus.pagarSemana}
         proximosVencimentos={proximosVencimentos}
         pagarSemana={pagarSemana}
+        pendingActionId={pendingVencimentoActionId}
         score={score}
         scoreBarColor={scoreBarColor}
         scoreLabelColor={scoreLabelColor}
@@ -1093,6 +1557,32 @@ export default function Dashboard() {
         today={today}
         in7Days={in7Days}
         formatMoney={(value) => maskValue(formatCurrencyBRL(value), visible)}
+        onTriggerAction={(item) => {
+          void handleTriggerVencimentoAction(item);
+        }}
+      />
+
+      <CartaoFaturaPaymentDialog
+        open={!!invoicePaymentTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setInvoicePaymentTarget(null);
+          }
+        }}
+        cartao={selectedInvoicePaymentCartao}
+        monthReference={invoicePaymentTarget?.monthReference ?? selectedMonth}
+        snapshot={selectedInvoicePaymentSnapshot}
+        payments={selectedInvoicePaymentHistory}
+        installments={selectedInvoiceInstallments}
+        isPending={registerInvoicePaymentMutation.isPending}
+        cancelPendingPaymentId={cancelPendingPaymentId}
+        formatCurrency={(value) => formatCurrencyBRL(value)}
+        formatMonthLabel={(monthReference) => {
+          const label = format(new Date(`${monthReference}-01T00:00:00`), "MMMM 'de' yyyy", { locale: ptBR });
+          return label.charAt(0).toUpperCase() + label.slice(1);
+        }}
+        onSubmit={handleRegisterInvoicePayment}
+        onCancelPayment={handleCancelInvoicePayment}
       />
     </div>
   );

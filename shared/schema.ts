@@ -348,6 +348,40 @@ export const insertServicoPagamentoSchema = createInsertSchema(servicoPagamentos
 export type InsertServicoPagamento = z.infer<typeof insertServicoPagamentoSchema>;
 export type ServicoPagamento = typeof servicoPagamentos.$inferSelect;
 
+export const servicoCobrancaPagamentos = pgTable("servico_cobranca_pagamentos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  servicoId: varchar("servico_id").notNull().references(() => servicos.id, { onDelete: "cascade" }),
+  competenciaMes: integer("competencia_mes").notNull(),
+  competenciaAno: integer("competencia_ano").notNull(),
+  valorPago: decimal("valor_pago", { precision: 12, scale: 2 }).notNull(),
+  dataPagamento: date("data_pagamento", { mode: "string" }).notNull(),
+  observacao: text("observacao"),
+  canceladoEm: timestamp("cancelado_em"),
+  motivoCancelamento: text("motivo_cancelamento"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  servicoCobrancaPagamentosUserIdIdx: index("idx_servico_cobranca_pagamentos_user_id").on(table.userId),
+  servicoCobrancaPagamentosServicoIdIdx: index("idx_servico_cobranca_pagamentos_servico_id").on(table.servicoId),
+  servicoCobrancaPagamentosCompetenciaIdx: index("idx_servico_cobranca_pagamentos_competencia").on(
+    table.userId,
+    table.servicoId,
+    table.competenciaAno,
+    table.competenciaMes,
+  ),
+  servicoCobrancaPagamentosDataPagamentoIdx: index("idx_servico_cobranca_pagamentos_data_pagamento").on(table.dataPagamento),
+  servicoCobrancaPagamentosCreatedAtIdx: index("idx_servico_cobranca_pagamentos_created_at").on(table.createdAt),
+}));
+
+export const insertServicoCobrancaPagamentoSchema = createInsertSchema(servicoCobrancaPagamentos).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertServicoCobrancaPagamento = z.infer<typeof insertServicoCobrancaPagamentoSchema>;
+export type ServicoCobrancaPagamento = typeof servicoCobrancaPagamentos.$inferSelect;
+
 export const parcelasCompra = pgTable("parcelas_compra", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
