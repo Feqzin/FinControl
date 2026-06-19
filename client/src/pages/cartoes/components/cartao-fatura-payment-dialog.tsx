@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Cartao } from "@shared/schema";
-import type { CardInvoiceSnapshot } from "@shared/card-invoice-payments";
+import { getInvoicePaymentAuditStatus, type CardInvoiceSnapshot } from "@shared/card-invoice-payments";
 import { format } from "date-fns";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -44,9 +54,11 @@ type CartaoFaturaPaymentDialogProps = {
   payments: CartaoFaturaPagamentoApiModel[];
   installments: InvoiceInstallmentModel[];
   isPending: boolean;
+  cancelPendingPaymentId?: string | null;
   formatCurrency: (value: number) => string;
   formatMonthLabel: (monthReference: string) => string;
   onSubmit: (payload: RegisterCartaoFaturaPagamentoPayload) => void;
+  onCancelPayment: (paymentId: string) => void;
 };
 
 const STATUS_LABELS: Record<CardInvoiceSnapshot["status"], string> = {
@@ -88,9 +100,11 @@ export function CartaoFaturaPaymentDialog({
   payments,
   installments,
   isPending,
+  cancelPendingPaymentId,
   formatCurrency,
   formatMonthLabel,
   onSubmit,
+  onCancelPayment,
 }: CartaoFaturaPaymentDialogProps) {
   const amountInputRef = useRef<HTMLInputElement | null>(null);
   const [valorPago, setValorPago] = useState("");
@@ -99,6 +113,7 @@ export function CartaoFaturaPaymentDialog({
   const [modoAlocacao, setModoAlocacao] = useState<RegisterCartaoFaturaPagamentoPayload["modoAlocacao"]>("ordem_fatura");
   const [aplicarRestanteAutomaticamente, setAplicarRestanteAutomaticamente] = useState(false);
   const [manualSelections, setManualSelections] = useState<Record<string, boolean>>({});
+  const [paymentPendingCancelConfirm, setPaymentPendingCancelConfirm] = useState<CartaoFaturaPagamentoApiModel | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -108,7 +123,16 @@ export function CartaoFaturaPaymentDialog({
     setModoAlocacao("ordem_fatura");
     setAplicarRestanteAutomaticamente(false);
     setManualSelections({});
+    setPaymentPendingCancelConfirm(null);
   }, [open, snapshot?.remainingAmount]);
+
+  useEffect(() => {
+    if (!paymentPendingCancelConfirm) return;
+    const updatedPayment = payments.find((payment) => payment.id === paymentPendingCancelConfirm.id);
+    if (updatedPayment && getInvoicePaymentAuditStatus(updatedPayment) === "cancelado") {
+      setPaymentPendingCancelConfirm(null);
+    }
+  }, [paymentPendingCancelConfirm, payments]);
 
   const sortedPayments = useMemo(
     () => [...payments].sort((left, right) => (
@@ -438,7 +462,11 @@ export function CartaoFaturaPaymentDialog({
                   {sortedPayments.map((payment) => (
                     <div
                       key={payment.id}
-                      className="space-y-2 rounded-lg border border-border/60 bg-muted/15 px-3 py-3"
+                      className={`space-y-2 rounded-lg border px-3 py-3 ${
+                        getInvoicePaymentAuditStatus(payment) === "cancelado"
+                          ? "border-dashed border-border/50 bg-muted/10 opacity-80"
+                          : "border-border/60 bg-muted/15"
+                      }`}
                     >
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
@@ -452,6 +480,11 @@ export function CartaoFaturaPaymentDialog({
                             <Badge variant="outline" className="border-border/60 bg-background/80 text-muted-foreground">
                               {ALOCACAO_LABELS[payment.modoAlocacao ?? "ordem_fatura"]}
                             </Badge>
+                            {getInvoicePaymentAuditStatus(payment) === "cancelado" ? (
+                              <Badge variant="outline" className="border-border/60 bg-background/70 text-muted-foreground">
+                                Cancelado
+                              </Badge>
+                            ) : null}
                             {payment.considerarNoSaldoCompetencia === false ? (
                               <Badge variant="outline" className="border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
                                 Conciliado na fatura
@@ -461,10 +494,29 @@ export function CartaoFaturaPaymentDialog({
                           {payment.observacao ? (
                             <p className="mt-2 text-xs text-muted-foreground break-words">{payment.observacao}</p>
                           ) : null}
+                          {getInvoicePaymentAuditStatus(payment) === "cancelado" && payment.canceladoEm ? (
+                            <p className="mt-2 text-xs text-muted-foreground break-words">
+                              Cancelado em {formatIsoDateToBR(payment.canceladoEm.slice(0, 10))}
+                              {payment.motivoCancelamento ? ` · ${payment.motivoCancelamento}` : ""}
+                            </p>
+                          ) : null}
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          Lançado em {formatIsoDateToBR(payment.createdAt.slice(0, 10))}
-                        </p>
+                        <div className="flex flex-col items-start gap-2 sm:items-end">
+                          <p className="text-xs text-muted-foreground">
+                            Lançado em {formatIsoDateToBR(payment.createdAt.slice(0, 10))}
+                          </p>
+                          {getInvoicePaymentAuditStatus(payment) !== "cancelado" ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setPaymentPendingCancelConfirm(payment)}
+                              disabled={isPending || Boolean(cancelPendingPaymentId)}
+                            >
+                              {cancelPendingPaymentId === payment.id ? "Desfazendo..." : "Desfazer"}
+                            </Button>
+                          ) : null}
+                        </div>
                       </div>
 
                       {(payment.alocacoes?.length ?? 0) > 0 ? (
@@ -530,6 +582,43 @@ export function CartaoFaturaPaymentDialog({
             </Button>
           ) : null}
         </DialogFooter>
+
+        <AlertDialog
+          open={Boolean(paymentPendingCancelConfirm)}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen && !cancelPendingPaymentId) {
+              setPaymentPendingCancelConfirm(null);
+            }
+          }}
+        >
+          <AlertDialogContent overlayClassName="z-[80]" className="z-[80]">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Desfazer pagamento</AlertDialogTitle>
+              <AlertDialogDescription>
+                {paymentPendingCancelConfirm
+                  ? `Deseja desfazer este pagamento de ${formatCurrency(Number(paymentPendingCancelConfirm.valorPago))}? As parcelas cobertas por ele voltarão ao estado anterior conforme os outros pagamentos existentes. Essa ação não altera reembolsos de pessoas.`
+                  : "Confirme o cancelamento do pagamento selecionado."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={Boolean(cancelPendingPaymentId)}>
+                Cancelar
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={!paymentPendingCancelConfirm || isPending || Boolean(cancelPendingPaymentId)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (!paymentPendingCancelConfirm) return;
+                  onCancelPayment(paymentPendingCancelConfirm.id);
+                }}
+              >
+                {cancelPendingPaymentId === paymentPendingCancelConfirm?.id
+                  ? "Desfazendo pagamento..."
+                  : "Desfazer pagamento"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

@@ -669,8 +669,12 @@ function buildCartaoFaturaPagamentoFixture(
     dataPagamento: overrides.dataPagamento ?? "2026-06-15",
     observacao: overrides.observacao ?? null,
     tipoPagamento: overrides.tipoPagamento ?? "parcial",
+    modoAlocacao: overrides.modoAlocacao ?? "ordem_fatura",
     considerarNoSaldoCompetencia: overrides.considerarNoSaldoCompetencia ?? true,
     conciliadoEm: overrides.conciliadoEm ?? null,
+    canceladoEm: overrides.canceladoEm ?? null,
+    motivoCancelamento: overrides.motivoCancelamento ?? null,
+    canceladoPor: overrides.canceladoPor ?? null,
     createdAt: overrides.createdAt ?? "2026-06-15T12:00:00.000Z",
     updatedAt: overrides.updatedAt ?? "2026-06-15T12:00:00.000Z",
   };
@@ -6006,6 +6010,70 @@ test("calendário financeiro: pagamento parcial reduz o valor da fatura e atuali
   assert.ok(invoiceEvent);
   assert.equal(invoiceEvent?.amount, 120);
   assert.equal(invoiceEvent?.statusLabel, "Fatura parcialmente paga");
+});
+
+test("calendário financeiro: pagamento cancelado não reduz a fatura nem reaproveita alocação cancelada", () => {
+  const currentMonth = "2026-06";
+  const cartao = buildCartaoViewFixture({
+    id: "card-canceled-calendar",
+    nome: "Nubank",
+    diaVencimento: 10,
+  });
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-canceled-calendar",
+    cartaoId: "card-canceled-calendar",
+    descricao: "Compra cancelada",
+    valorTotal: "200.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "200.00",
+    dataCompra: "2026-06-02",
+    pessoaId: null,
+    statusPessoa: null,
+  });
+  const parcelaCompra = buildParcelaCompraViewFixture({
+    id: "parcela-canceled-calendar",
+    compraCartaoId: "compra-canceled-calendar",
+    numero: 1,
+    valor: "200.00",
+    dataVencimento: "2026-06-10",
+    statusCartao: "pendente",
+    statusPessoa: null,
+  });
+  const pagamento = buildCartaoFaturaPagamentoFixture({
+    id: "pagamento-canceled-calendar",
+    cartaoId: "card-canceled-calendar",
+    competenciaAno: 2026,
+    competenciaMes: 6,
+    valorPago: "80.00",
+    dataPagamento: "2026-06-09",
+    tipoPagamento: "parcial",
+    considerarNoSaldoCompetencia: true,
+    canceladoEm: "2026-06-10T10:00:00.000Z" as any,
+    motivoCancelamento: "Desfeito",
+    canceladoPor: "user-1",
+  });
+
+  const events = buildFinancialCalendarEvents({
+    monthReference: currentMonth,
+    cartoes: [cartao],
+    compras: [compra],
+    parcelasCompra: [parcelaCompra],
+    cartaoFaturaPagamentos: [pagamento],
+    dividas: [],
+    parcelas: [],
+    pessoas: [],
+    servicos: [],
+    rendas: [],
+    metas: [],
+    referenceDate: "2026-06-01",
+  });
+
+  const invoiceEvent = events.find((event) => event.source === "fatura_cartao" && event.entityId === "card-canceled-calendar");
+
+  assert.ok(invoiceEvent);
+  assert.equal(invoiceEvent?.amount, 200);
+  assert.equal(invoiceEvent?.statusLabel, "Fatura aberta");
 });
 
 test("calendário financeiro: respeita mês de cobrança anual e agrega renda, dívida parcelada e meta no mês correto", () => {

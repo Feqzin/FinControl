@@ -49,6 +49,9 @@ export type CardInvoicePaymentRecord = {
   considerarNoSaldoCompetencia?: boolean | null | undefined;
   dataPagamento?: string | null | undefined;
   modoAlocacao?: CardInvoiceAllocationMode | string | null | undefined;
+  canceladoEm?: string | Date | null | undefined;
+  motivoCancelamento?: string | null | undefined;
+  canceladoPor?: string | null | undefined;
   alocacoes?: CardInvoicePaymentAllocationRecord[] | null | undefined;
 };
 
@@ -129,8 +132,32 @@ function isOutstandingStatus(status: string | null | undefined): boolean {
   return !isPaidStatus(status) && !isCanceledStatus(status);
 }
 
+export function isInvoicePaymentCanceled(payment: Pick<CardInvoicePaymentRecord, "canceladoEm">): boolean {
+  const value = payment.canceladoEm;
+  if (!value) return false;
+  if (value instanceof Date) {
+    return !Number.isNaN(value.getTime());
+  }
+  return String(value).trim().length > 0;
+}
+
+export function getInvoicePaymentAuditStatus(payment: Pick<CardInvoicePaymentRecord, "canceladoEm">): "ativo" | "cancelado" {
+  return isInvoicePaymentCanceled(payment) ? "cancelado" : "ativo";
+}
+
+export function getActiveInvoicePayments<TPayment extends CardInvoicePaymentRecord>(payments: TPayment[] = []): TPayment[] {
+  return payments.filter((payment) => !isInvoicePaymentCanceled(payment));
+}
+
+export function getActiveInvoicePaymentAllocations(
+  payment: CardInvoicePaymentRecord,
+): CardInvoicePaymentAllocationRecord[] {
+  if (isInvoicePaymentCanceled(payment)) return [];
+  return payment.alocacoes ?? [];
+}
+
 function hasPersistedAllocations(payment: CardInvoicePaymentRecord): boolean {
-  return (payment.alocacoes ?? []).length > 0;
+  return getActiveInvoicePaymentAllocations(payment).length > 0;
 }
 
 function compareOptionalText(left: string | null | undefined, right: string | null | undefined): number {
@@ -166,8 +193,8 @@ function buildPaymentAllocationAmountMap(
 ): Map<string, number> {
   const map = new Map<string, number>();
 
-  for (const payment of payments) {
-    for (const allocation of payment.alocacoes ?? []) {
+  for (const payment of getActiveInvoicePayments(payments)) {
+    for (const allocation of getActiveInvoicePaymentAllocations(payment)) {
       if (!allocation.parcelaCompraId) continue;
       const current = map.get(allocation.parcelaCompraId) ?? 0;
       map.set(
@@ -493,7 +520,7 @@ export function buildCardInvoiceSnapshots(params: {
   referenceDate?: string;
 }): CardInvoiceSnapshot[] {
   const grouped = new Map<string, SnapshotAccumulator>();
-  const payments = params.payments ?? [];
+  const payments = getActiveInvoicePayments(params.payments ?? []);
   const referenceDate = params.referenceDate && /^\d{4}-\d{2}-\d{2}$/.test(params.referenceDate)
     ? params.referenceDate
     : format(new Date(), "yyyy-MM-dd");

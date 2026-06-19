@@ -42,6 +42,7 @@ type FinancialDomainControllers = {
   cartoesController: Required<Pick<CrudController, "list" | "create" | "update" | "delete">> & {
     listInvoicePayments: RequestHandler;
     registerInvoicePayment: RequestHandler;
+    cancelInvoicePayment: RequestHandler;
     deleteFaturaByCartaoMonth: RequestHandler;
     deleteFaturasByMonth: RequestHandler;
   };
@@ -88,6 +89,7 @@ export function registerFinancialDomainRoutes(app: Express, controllers: Financi
   app.delete("/api/cartoes/:id", requireAuth, cartoesController.delete);
   app.get("/api/cartoes/fatura-pagamentos", requireAuth, cartoesController.listInvoicePayments);
   app.post("/api/cartoes/:cartaoId/faturas/:mes/pagamentos", requireAuth, cartoesController.registerInvoicePayment);
+  app.post("/api/cartoes/:cartaoId/faturas/:mes/pagamentos/:pagamentoId/cancelar", requireAuth, cartoesController.cancelInvoicePayment);
   app.delete("/api/cartoes/:cartaoId/faturas/:mes", requireAuth, cartoesController.deleteFaturaByCartaoMonth);
   app.delete("/api/cartoes/faturas/:mes", requireAuth, cartoesController.deleteFaturasByMonth);
   app.get("/api/cartoes/resumo", requireAuth, financialController.cardSummary);

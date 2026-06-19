@@ -304,6 +304,10 @@ export const cartaoFaturaPagamentoBody = z.object({
   });
 });
 
+export const cartaoFaturaPagamentoCancelBody = z.object({
+  motivoCancelamento: z.string().trim().max(500).optional().nullable(),
+}).strict();
+
 export const parcelaCompraUpdateBody = z.object({
   numero: z.coerce.number().int().min(1).optional(),
   valor: moneyField.optional(),
@@ -366,6 +370,7 @@ export type CompraUpdateBodyInput = z.infer<typeof compraUpdateBody>;
 export type CartaoBodyInput = z.infer<typeof cartaoBody>;
 export type CartaoUpdateBodyInput = z.infer<typeof cartaoUpdateBody>;
 export type CartaoFaturaPagamentoBodyInput = z.infer<typeof cartaoFaturaPagamentoBody>;
+export type CartaoFaturaPagamentoCancelBodyInput = z.infer<typeof cartaoFaturaPagamentoCancelBody>;
 export type ParcelaCompraUpdateBodyInput = z.infer<typeof parcelaCompraUpdateBody>;
 export type ParcelaCompraCompetenciaUpdateBodyInput = z.infer<typeof parcelaCompraCompetenciaUpdateBody>;
 export type ParcelasCompraBulkBodyInput = z.infer<typeof parcelasCompraBulkBody>;

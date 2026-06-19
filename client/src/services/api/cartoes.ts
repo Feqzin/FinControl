@@ -351,6 +351,9 @@ export type CartaoFaturaPagamentoApiModel = {
   modoAlocacao: "ordem_fatura" | "menores_primeiro" | "maiores_primeiro" | "manual";
   considerarNoSaldoCompetencia: boolean;
   conciliadoEm: string | null;
+  canceladoEm: string | null;
+  motivoCancelamento: string | null;
+  canceladoPor: string | null;
   createdAt: string;
   updatedAt: string;
   alocacoes?: Array<{
@@ -405,6 +408,40 @@ export type RegisterCartaoFaturaPagamentoResponse = {
   };
   limiteComprometidoAtualizado: number;
   limiteDisponivelEstimadoAtualizado: number;
+};
+
+export type CancelCartaoFaturaPagamentoPayload = {
+  motivoCancelamento?: string | null;
+};
+
+export type CancelCartaoFaturaPagamentoResponse = {
+  pagamentoCancelado: CartaoFaturaPagamentoApiModel;
+  saldoAnterior: number;
+  saldoRestante: number;
+  statusFatura:
+    | "aberta"
+    | "parcialmente_paga"
+    | "paga"
+    | "vencida"
+    | "vencida_parcialmente_paga";
+  valorOriginalFatura: number;
+  snapshotAtualizado: {
+    cartaoId: string;
+    monthReference: string;
+    dueDate: string | null;
+    originalTotal: number;
+    paidInstallmentsTotal: number;
+    activePartialPaymentsTotal: number;
+    registeredPaymentsTotal: number;
+    amountPaid: number;
+    remainingAmount: number;
+    installmentCount: number;
+    openInstallmentsCount: number;
+    status: "aberta" | "parcialmente_paga" | "paga" | "vencida" | "vencida_parcialmente_paga";
+  };
+  limiteComprometidoAtualizado: number;
+  limiteDisponivelEstimadoAtualizado: number;
+  parcelasAfetadas: string[];
 };
 
 export type DeleteFaturaImpact = {
@@ -475,6 +512,22 @@ export async function registerCartaoFaturaPagamento(
         : {}),
     })),
   });
+  return response.json();
+}
+
+export async function cancelCartaoFaturaPagamento(
+  cartaoId: string,
+  monthReference: string,
+  pagamentoId: string,
+  payload?: CancelCartaoFaturaPagamentoPayload,
+): Promise<CancelCartaoFaturaPagamentoResponse> {
+  const response = await apiRequest(
+    "POST",
+    `/api/cartoes/${cartaoId}/faturas/${monthReference}/pagamentos/${pagamentoId}/cancelar`,
+    {
+      motivoCancelamento: payload?.motivoCancelamento ?? null,
+    },
+  );
   return response.json();
 }
 

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { getInstallmentInvoicePaymentStatus } from "@shared/card-invoice-payments";
 import { CartoesService } from "../services/cartoes.service";
 
 test("CartoesService.create inclui userId e preserva payload de cartao", async () => {
@@ -612,4 +613,419 @@ test("CartoesService.registerInvoicePayment bloqueia modo manual com sobra sem a
     error: "ALOCACAO_INVALIDA",
     message: "O valor informado é maior que a soma das parcelas selecionadas. Ative a aplicação automática do restante ou ajuste a seleção manual.",
   });
+});
+
+test("CartoesService.cancelInvoicePayment cancela pagamento parcial, reabre a fatura e preserva reembolso da pessoa", async () => {
+  const userId = "user-cancel-partial";
+  const currentMonth = "2026-06";
+  const cartao = {
+    id: "cartao-cancel-partial",
+    userId,
+    nome: "Nubank",
+    limite: "1000.00",
+    melhorDiaCompra: 5,
+    diaVencimento: 20,
+    iconeId: null,
+  };
+  const compras = [
+    {
+      id: "compra-atual",
+      userId,
+      cartaoId: cartao.id,
+      descricao: "Compra atual",
+      valorTotal: "200.00",
+      parcelas: 2,
+      parcelaAtual: 1,
+      valorParcela: "100.00",
+      dataCompra: "2026-06-01",
+      pessoaId: "pessoa-1",
+      statusPessoa: "pendente",
+      dataPagamentoPessoa: null,
+    },
+    {
+      id: "compra-futura",
+      userId,
+      cartaoId: cartao.id,
+      descricao: "Compra futura",
+      valorTotal: "90.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "90.00",
+      dataCompra: "2026-07-01",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    },
+  ];
+  const parcelasCompra = [
+    {
+      id: "parcela-atual-1",
+      userId,
+      compraCartaoId: "compra-atual",
+      numero: 1,
+      valor: "100.00",
+      dataVencimento: "2026-06-10",
+      statusCartao: "pendente",
+      dataPagamentoCartao: null,
+      statusPessoa: "pendente",
+      dataPagamentoPessoa: null,
+    },
+    {
+      id: "parcela-atual-2",
+      userId,
+      compraCartaoId: "compra-atual",
+      numero: 2,
+      valor: "100.00",
+      dataVencimento: "2026-06-20",
+      statusCartao: "pendente",
+      dataPagamentoCartao: null,
+      statusPessoa: "pendente",
+      dataPagamentoPessoa: null,
+    },
+    {
+      id: "parcela-futura-1",
+      userId,
+      compraCartaoId: "compra-futura",
+      numero: 1,
+      valor: "90.00",
+      dataVencimento: "2026-07-10",
+      statusCartao: "pendente",
+      dataPagamentoCartao: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    },
+  ];
+  const pagamentos: any[] = [
+    {
+      id: "payment-partial-active",
+      userId,
+      cartaoId: cartao.id,
+      competenciaAno: 2026,
+      competenciaMes: 6,
+      valorPago: "80.00",
+      dataPagamento: "2026-06-15",
+      observacao: "Pagamento parcial",
+      tipoPagamento: "parcial",
+      modoAlocacao: "ordem_fatura",
+      considerarNoSaldoCompetencia: true,
+      conciliadoEm: null,
+      canceladoEm: null,
+      motivoCancelamento: null,
+      canceladoPor: null,
+      createdAt: "2026-06-15T12:00:00.000Z",
+      updatedAt: "2026-06-15T12:00:00.000Z",
+    },
+  ];
+  const alocacoes: any[] = [
+    {
+      id: "allocation-partial-active",
+      pagamentoId: "payment-partial-active",
+      parcelaCompraId: "parcela-atual-1",
+      valorAplicado: "80.00",
+      createdAt: "2026-06-15T12:00:00.000Z",
+      updatedAt: "2026-06-15T12:00:00.000Z",
+    },
+  ];
+
+  const repository = {
+    getCartao: async () => cartao,
+    getComprasByCartao: async () => compras,
+    getParcelasCompra: async (compraId: string) => parcelasCompra.filter((item) => item.compraCartaoId === compraId),
+    getParcelasCompraByUser: async () => parcelasCompra,
+    getCartaoFaturaPagamentos: async () => pagamentos,
+    getCartaoFaturaPagamentosByCartao: async () => pagamentos,
+    getCartaoFaturaPagamentoAlocacoesByPagamentoIds: async (paymentIds: string[]) => (
+      alocacoes.filter((item) => paymentIds.includes(item.pagamentoId))
+    ),
+    getCompraCartao: async (compraId: string) => compras.find((item) => item.id === compraId),
+    updateCompraCartao: async (compraId: string, _userId: string, patch: Record<string, unknown>) => {
+      const compra = compras.find((item) => item.id === compraId);
+      if (!compra) return undefined;
+      Object.assign(compra, patch);
+      return compra;
+    },
+    updateParcelaCompra: async (parcelaId: string, _userId: string, patch: Record<string, unknown>) => {
+      const parcela = parcelasCompra.find((item) => item.id === parcelaId);
+      if (!parcela) return undefined;
+      Object.assign(parcela, patch);
+      return parcela;
+    },
+    createCartaoFaturaPagamento: async () => undefined,
+    createCartaoFaturaPagamentoAlocacoesBulk: async () => [],
+    updateCartaoFaturaPagamento: async (paymentId: string, _userId: string, patch: Record<string, unknown>) => {
+      const pagamento = pagamentos.find((item) => item.id === paymentId);
+      if (!pagamento) return undefined;
+      Object.assign(pagamento, patch);
+      return pagamento;
+    },
+  } as any;
+
+  const service = new CartoesService(repository);
+  const result = await service.cancelInvoicePayment(userId, cartao.id, currentMonth, "payment-partial-active");
+
+  if ("error" in result) {
+    assert.fail(`Cancelamento deveria funcionar, mas retornou ${result.error}`);
+  }
+
+  assert.equal(result.saldoAnterior, 120);
+  assert.equal(result.saldoRestante, 200);
+  assert.equal(result.statusFatura, "aberta");
+  assert.equal(result.limiteComprometidoAtualizado, 290);
+  assert.equal(result.limiteDisponivelEstimadoAtualizado, 710);
+  assert.equal(result.parcelasAfetadas.length, 1);
+  assert.ok(result.pagamentoCancelado.canceladoEm);
+  assert.equal(result.pagamentoCancelado.canceladoPor, userId);
+
+  const pagamentoCancelado = pagamentos.find((payment) => payment.id === "payment-partial-active");
+  assert.ok(pagamentoCancelado?.canceladoEm);
+  assert.equal(pagamentoCancelado?.motivoCancelamento ?? null, null);
+
+  const parcelaAtual = parcelasCompra.find((parcela) => parcela.id === "parcela-atual-1");
+  const parcelaFutura = parcelasCompra.find((parcela) => parcela.id === "parcela-futura-1");
+  assert.equal(parcelaAtual?.statusCartao, "pendente");
+  assert.equal(parcelaAtual?.statusPessoa, "pendente");
+  assert.equal(parcelaFutura?.statusCartao, "pendente");
+
+  const pagamentosAtivos = pagamentos
+    .filter((payment) => !payment.canceladoEm)
+    .map((payment) => ({
+      ...payment,
+      alocacoes: alocacoes.filter((allocation) => allocation.pagamentoId === payment.id),
+    }));
+  assert.equal(
+    getInstallmentInvoicePaymentStatus({
+      id: "parcela-atual-1",
+      valor: "100.00",
+      statusCartao: parcelaAtual?.statusCartao,
+    }, pagamentosAtivos),
+    "pendente",
+  );
+});
+
+test("CartoesService.cancelInvoicePayment desfaz quitação total, mantém parcelas futuras e preserva cobertura de outros pagamentos ativos", async () => {
+  const userId = "user-cancel-full";
+  const currentMonth = "2026-06";
+  const cartao = {
+    id: "cartao-cancel-full",
+    userId,
+    nome: "Nubank",
+    limite: "1000.00",
+    melhorDiaCompra: 5,
+    diaVencimento: 20,
+    iconeId: null,
+  };
+  const compras = [
+    {
+      id: "compra-atual",
+      userId,
+      cartaoId: cartao.id,
+      descricao: "Compra atual",
+      valorTotal: "200.00",
+      parcelas: 2,
+      parcelaAtual: 1,
+      valorParcela: "100.00",
+      dataCompra: "2026-06-01",
+      pessoaId: "pessoa-1",
+      statusPessoa: "pendente",
+      dataPagamentoPessoa: null,
+    },
+    {
+      id: "compra-futura",
+      userId,
+      cartaoId: cartao.id,
+      descricao: "Compra futura",
+      valorTotal: "90.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "90.00",
+      dataCompra: "2026-07-01",
+      pessoaId: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    },
+  ];
+  const parcelasCompra = [
+    {
+      id: "parcela-atual-1",
+      userId,
+      compraCartaoId: "compra-atual",
+      numero: 1,
+      valor: "100.00",
+      dataVencimento: "2026-06-10",
+      statusCartao: "pago",
+      dataPagamentoCartao: "2026-06-18",
+      statusPessoa: "pendente",
+      dataPagamentoPessoa: null,
+    },
+    {
+      id: "parcela-atual-2",
+      userId,
+      compraCartaoId: "compra-atual",
+      numero: 2,
+      valor: "100.00",
+      dataVencimento: "2026-06-20",
+      statusCartao: "pago",
+      dataPagamentoCartao: "2026-06-18",
+      statusPessoa: "pendente",
+      dataPagamentoPessoa: null,
+    },
+    {
+      id: "parcela-futura-1",
+      userId,
+      compraCartaoId: "compra-futura",
+      numero: 1,
+      valor: "90.00",
+      dataVencimento: "2026-07-10",
+      statusCartao: "pendente",
+      dataPagamentoCartao: null,
+      statusPessoa: null,
+      dataPagamentoPessoa: null,
+    },
+  ];
+  const pagamentos: any[] = [
+    {
+      id: "payment-partial-legacy",
+      userId,
+      cartaoId: cartao.id,
+      competenciaAno: 2026,
+      competenciaMes: 6,
+      valorPago: "50.00",
+      dataPagamento: "2026-06-12",
+      observacao: null,
+      tipoPagamento: "parcial",
+      modoAlocacao: "ordem_fatura",
+      considerarNoSaldoCompetencia: false,
+      conciliadoEm: "2026-06-18T12:00:00.000Z",
+      canceladoEm: null,
+      motivoCancelamento: null,
+      canceladoPor: null,
+      createdAt: "2026-06-12T12:00:00.000Z",
+      updatedAt: "2026-06-18T12:00:00.000Z",
+    },
+    {
+      id: "payment-full-active",
+      userId,
+      cartaoId: cartao.id,
+      competenciaAno: 2026,
+      competenciaMes: 6,
+      valorPago: "150.00",
+      dataPagamento: "2026-06-18",
+      observacao: "Quitação da fatura",
+      tipoPagamento: "quitacao_total",
+      modoAlocacao: "ordem_fatura",
+      considerarNoSaldoCompetencia: false,
+      conciliadoEm: "2026-06-18T12:00:00.000Z",
+      canceladoEm: null,
+      motivoCancelamento: null,
+      canceladoPor: null,
+      createdAt: "2026-06-18T12:00:00.000Z",
+      updatedAt: "2026-06-18T12:00:00.000Z",
+    },
+  ];
+  const alocacoes: any[] = [
+    {
+      id: "allocation-partial-legacy",
+      pagamentoId: "payment-partial-legacy",
+      parcelaCompraId: "parcela-atual-1",
+      valorAplicado: "50.00",
+      createdAt: "2026-06-12T12:00:00.000Z",
+      updatedAt: "2026-06-12T12:00:00.000Z",
+    },
+    {
+      id: "allocation-full-1",
+      pagamentoId: "payment-full-active",
+      parcelaCompraId: "parcela-atual-1",
+      valorAplicado: "50.00",
+      createdAt: "2026-06-18T12:00:00.000Z",
+      updatedAt: "2026-06-18T12:00:00.000Z",
+    },
+    {
+      id: "allocation-full-2",
+      pagamentoId: "payment-full-active",
+      parcelaCompraId: "parcela-atual-2",
+      valorAplicado: "100.00",
+      createdAt: "2026-06-18T12:00:00.000Z",
+      updatedAt: "2026-06-18T12:00:00.000Z",
+    },
+  ];
+
+  const repository = {
+    getCartao: async () => cartao,
+    getComprasByCartao: async () => compras,
+    getParcelasCompra: async (compraId: string) => parcelasCompra.filter((item) => item.compraCartaoId === compraId),
+    getParcelasCompraByUser: async () => parcelasCompra,
+    getCartaoFaturaPagamentos: async () => pagamentos,
+    getCartaoFaturaPagamentosByCartao: async () => pagamentos,
+    getCartaoFaturaPagamentoAlocacoesByPagamentoIds: async (paymentIds: string[]) => (
+      alocacoes.filter((item) => paymentIds.includes(item.pagamentoId))
+    ),
+    getCompraCartao: async (compraId: string) => compras.find((item) => item.id === compraId),
+    updateCompraCartao: async (compraId: string, _userId: string, patch: Record<string, unknown>) => {
+      const compra = compras.find((item) => item.id === compraId);
+      if (!compra) return undefined;
+      Object.assign(compra, patch);
+      return compra;
+    },
+    updateParcelaCompra: async (parcelaId: string, _userId: string, patch: Record<string, unknown>) => {
+      const parcela = parcelasCompra.find((item) => item.id === parcelaId);
+      if (!parcela) return undefined;
+      Object.assign(parcela, patch);
+      return parcela;
+    },
+    createCartaoFaturaPagamento: async () => undefined,
+    createCartaoFaturaPagamentoAlocacoesBulk: async () => [],
+    updateCartaoFaturaPagamento: async (paymentId: string, _userId: string, patch: Record<string, unknown>) => {
+      const pagamento = pagamentos.find((item) => item.id === paymentId);
+      if (!pagamento) return undefined;
+      Object.assign(pagamento, patch);
+      return pagamento;
+    },
+  } as any;
+
+  const service = new CartoesService(repository);
+  const result = await service.cancelInvoicePayment(userId, cartao.id, currentMonth, "payment-full-active");
+
+  if ("error" in result) {
+    assert.fail(`Cancelamento da quitação total deveria funcionar, mas retornou ${result.error}`);
+  }
+
+  assert.equal(result.saldoAnterior, 0);
+  assert.equal(result.saldoRestante, 150);
+  assert.equal(result.statusFatura, "parcialmente_paga");
+  assert.equal(result.limiteComprometidoAtualizado, 240);
+  assert.equal(result.limiteDisponivelEstimadoAtualizado, 760);
+  assert.equal(result.parcelasAfetadas.length, 2);
+  assert.ok(result.pagamentoCancelado.canceladoEm);
+
+  const parcelaAtual1 = parcelasCompra.find((parcela) => parcela.id === "parcela-atual-1");
+  const parcelaAtual2 = parcelasCompra.find((parcela) => parcela.id === "parcela-atual-2");
+  const parcelaFutura = parcelasCompra.find((parcela) => parcela.id === "parcela-futura-1");
+  assert.equal(parcelaAtual1?.statusCartao, "pendente");
+  assert.equal(parcelaAtual2?.statusCartao, "pendente");
+  assert.equal(parcelaAtual1?.statusPessoa, "pendente");
+  assert.equal(parcelaAtual2?.statusPessoa, "pendente");
+  assert.equal(parcelaFutura?.statusCartao, "pendente");
+
+  const pagamentosAtivos = pagamentos
+    .filter((payment) => !payment.canceladoEm)
+    .map((payment) => ({
+      ...payment,
+      alocacoes: alocacoes.filter((allocation) => allocation.pagamentoId === payment.id),
+    }));
+  assert.equal(
+    getInstallmentInvoicePaymentStatus({
+      id: "parcela-atual-1",
+      valor: "100.00",
+      statusCartao: parcelaAtual1?.statusCartao,
+    }, pagamentosAtivos),
+    "parcialmente_pago",
+  );
+  assert.equal(
+    getInstallmentInvoicePaymentStatus({
+      id: "parcela-atual-2",
+      valor: "100.00",
+      statusCartao: parcelaAtual2?.statusCartao,
+    }, pagamentosAtivos),
+    "pendente",
+  );
 });

@@ -37,6 +37,7 @@ function createNoopController() {
 function createCartoesFaturaPagamentosRouteApp() {
   const invoicePaymentsCalls: Array<{ userId: string }> = [];
   const registerCalls: Array<{ userId: string; cartaoId: string; mes: string; body: unknown }> = [];
+  const cancelCalls: Array<{ userId: string; cartaoId: string; mes: string; pagamentoId: string; body: unknown }> = [];
 
   const cartoesController = {
     list: createNoopController(),
@@ -57,6 +58,19 @@ function createCartoesFaturaPagamentosRouteApp() {
         userId: String(req.user?.id ?? ""),
         cartaoId: req.params.cartaoId,
         mes: req.params.mes,
+        body: req.body,
+      });
+      return res.status(200).json({ ok: true });
+    },
+    cancelInvoicePayment: async (
+      req: express.Request<{ cartaoId: string; mes: string; pagamentoId: string }> & { user?: { id?: string } },
+      res: express.Response,
+    ) => {
+      cancelCalls.push({
+        userId: String(req.user?.id ?? ""),
+        cartaoId: req.params.cartaoId,
+        mes: req.params.mes,
+        pagamentoId: req.params.pagamentoId,
         body: req.body,
       });
       return res.status(200).json({ ok: true });
@@ -115,7 +129,7 @@ function createCartoesFaturaPagamentosRouteApp() {
     },
   });
 
-  return { app, invoicePaymentsCalls, registerCalls };
+  return { app, invoicePaymentsCalls, registerCalls, cancelCalls };
 }
 
 test("rotas de pagamento de fatura em serverless exigem requireAuth", async () => {
@@ -124,13 +138,15 @@ test("rotas de pagamento de fatura em serverless exigem requireAuth", async () =
 
   const getPattern = /app\.get\(\s*"\/api\/cartoes\/fatura-pagamentos"\s*,\s*requireAuth\s*,\s*cartoesController\.listInvoicePayments\s*\)/m;
   const postPattern = /app\.post\(\s*"\/api\/cartoes\/:cartaoId\/faturas\/:mes\/pagamentos"\s*,\s*requireAuth\s*,\s*cartoesController\.registerInvoicePayment\s*\)/m;
+  const cancelPattern = /app\.post\(\s*"\/api\/cartoes\/:cartaoId\/faturas\/:mes\/pagamentos\/:pagamentoId\/cancelar"\s*,\s*requireAuth\s*,\s*cartoesController\.cancelInvoicePayment\s*\)/m;
 
   assert.ok(getPattern.test(routesSource), "A rota GET /api/cartoes/fatura-pagamentos deve exigir requireAuth.");
   assert.ok(postPattern.test(routesSource), "A rota POST /api/cartoes/:cartaoId/faturas/:mes/pagamentos deve exigir requireAuth.");
+  assert.ok(cancelPattern.test(routesSource), "A rota POST /api/cartoes/:cartaoId/faturas/:mes/pagamentos/:pagamentoId/cancelar deve exigir requireAuth.");
 });
 
 test("rotas de pagamento de fatura em serverless bloqueiam sem auth e usam userId autenticado", async () => {
-  const { app, invoicePaymentsCalls, registerCalls } = createCartoesFaturaPagamentosRouteApp();
+  const { app, invoicePaymentsCalls, registerCalls, cancelCalls } = createCartoesFaturaPagamentosRouteApp();
 
   await withTestServer(app, async (baseUrl) => {
     const unauthGet = await fetch(`${baseUrl}/api/cartoes/fatura-pagamentos`);
@@ -163,5 +179,27 @@ test("rotas de pagamento de fatura em serverless bloqueiam sem auth e usam userI
     assert.equal(registerCalls[0]?.userId, "user_a");
     assert.equal(registerCalls[0]?.cartaoId, "cartao_1");
     assert.equal(registerCalls[0]?.mes, "2026-06");
+
+    const unauthCancel = await fetch(`${baseUrl}/api/cartoes/cartao_1/faturas/2026-06/pagamentos/payment_1/cancelar`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ motivoCancelamento: "teste" }),
+    });
+    assert.equal(unauthCancel.status, 401);
+
+    const authCancel = await fetch(`${baseUrl}/api/cartoes/cartao_1/faturas/2026-06/pagamentos/payment_1/cancelar`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-test-auth": "ok",
+      },
+      body: JSON.stringify({ motivoCancelamento: "teste" }),
+    });
+    assert.equal(authCancel.status, 200);
+    assert.equal(cancelCalls.length, 1);
+    assert.equal(cancelCalls[0]?.userId, "user_a");
+    assert.equal(cancelCalls[0]?.cartaoId, "cartao_1");
+    assert.equal(cancelCalls[0]?.mes, "2026-06");
+    assert.equal(cancelCalls[0]?.pagamentoId, "payment_1");
   });
 });

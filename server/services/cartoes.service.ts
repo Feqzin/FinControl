@@ -1,8 +1,11 @@
 import { format } from "date-fns";
 import {
   buildInvoicePaymentAllocationPlan,
+  calculateInvoicePaidAmountByInstallment,
   findCardInvoiceSnapshot,
+  getActiveInvoicePayments,
   getInstallmentInvoicePaymentStatus,
+  isInvoicePaymentCanceled,
   type CardInvoiceAllocationMode,
   type CardInvoiceInstallment,
 } from "@shared/card-invoice-payments";
@@ -77,6 +80,32 @@ export type RegisterCartaoFaturaPagamentoResult =
     snapshotAtualizado: NonNullable<ReturnType<typeof findCardInvoiceSnapshot>>;
     limiteComprometidoAtualizado: number;
     limiteDisponivelEstimadoAtualizado: number;
+  };
+
+export type CancelCartaoFaturaPagamentoResult =
+  | {
+    error:
+      | "CARTAO_NOT_FOUND"
+      | "FATURA_NOT_FOUND"
+      | "PAGAMENTO_NOT_FOUND"
+      | "PAGAMENTO_JA_CANCELADO";
+    message?: string;
+  }
+  | {
+    pagamentoCancelado: CartaoFaturaPagamento;
+    saldoAnterior: number;
+    saldoRestante: number;
+    statusFatura:
+      | "aberta"
+      | "parcialmente_paga"
+      | "paga"
+      | "vencida"
+      | "vencida_parcialmente_paga";
+    valorOriginalFatura: number;
+    snapshotAtualizado: NonNullable<ReturnType<typeof findCardInvoiceSnapshot>>;
+    limiteComprometidoAtualizado: number;
+    limiteDisponivelEstimadoAtualizado: number;
+    parcelasAfetadas: string[];
   };
 
 type DeleteFaturaInput = {
@@ -168,6 +197,73 @@ function buildInvoiceInstallmentsForCompetency(
       || String(left.descricao ?? "").localeCompare(String(right.descricao ?? ""))
       || String(left.id ?? "").localeCompare(String(right.id ?? ""))
     ));
+}
+
+function normalizeCardStatus(status: string | null | undefined): string {
+  return String(status ?? "").trim().toLowerCase();
+}
+
+function listInstallmentAllocationHistory(
+  installmentId: string,
+  pagamentos: DetailedCartaoFaturaPagamento[],
+) {
+  return pagamentos.filter((payment) => (
+    (payment.alocacoes ?? []).some((allocation) => allocation.parcelaCompraId === installmentId)
+  ));
+}
+
+function getLatestActivePaymentDateForInstallment(
+  installmentId: string,
+  pagamentos: DetailedCartaoFaturaPagamento[],
+): string | null {
+  let latestDate: string | null = null;
+
+  for (const payment of getActiveInvoicePayments(pagamentos)) {
+    if (!payment.dataPagamento) continue;
+    const appliesToInstallment = (payment.alocacoes ?? []).some((allocation) => allocation.parcelaCompraId === installmentId);
+    if (!appliesToInstallment) continue;
+    if (!latestDate || payment.dataPagamento > latestDate) {
+      latestDate = payment.dataPagamento;
+    }
+  }
+
+  return latestDate;
+}
+
+function recomputeInvoiceInstallmentEffectiveStatus(params: {
+  parcela: ParcelaCompra;
+  pagamentosDaCompetencia: DetailedCartaoFaturaPagamento[];
+}): Pick<ParcelaCompra, "statusCartao" | "dataPagamentoCartao"> {
+  const allocationHistory = listInstallmentAllocationHistory(params.parcela.id, params.pagamentosDaCompetencia);
+  const valorOriginal = toMoneyNumber(params.parcela.valor);
+  const valorPagoAtivo = calculateInvoicePaidAmountByInstallment(
+    params.parcela.id,
+    params.pagamentosDaCompetencia,
+  );
+
+  if (valorPagoAtivo >= valorOriginal && valorOriginal > 0) {
+    return {
+      statusCartao: "pago",
+      dataPagamentoCartao: getLatestActivePaymentDateForInstallment(
+        params.parcela.id,
+        params.pagamentosDaCompetencia,
+      ) ?? params.parcela.dataPagamentoCartao ?? null,
+    };
+  }
+
+  if (allocationHistory.length > 0) {
+    return {
+      statusCartao: "pendente",
+      dataPagamentoCartao: null,
+    };
+  }
+
+  return {
+    statusCartao: normalizeCardStatus(params.parcela.statusCartao) === "pago" ? "pago" : "pendente",
+    dataPagamentoCartao: normalizeCardStatus(params.parcela.statusCartao) === "pago"
+      ? (params.parcela.dataPagamentoCartao ?? null)
+      : null,
+  };
 }
 
 export class CartoesService {
@@ -289,7 +385,7 @@ export class CartoesService {
       }
 
       if (quitacaoTotal) {
-        const pagamentosParciaisAtivos = pagamentos.filter((pagamento) => (
+        const pagamentosParciaisAtivos = getActiveInvoicePayments(pagamentos).filter((pagamento) => (
           pagamento.cartaoId === cartaoId
           && pagamento.competenciaAno === parsedMonth.ano
           && pagamento.competenciaMes === parsedMonth.mes
@@ -403,6 +499,178 @@ export class CartoesService {
         snapshotAtualizado: snapshotDepois,
         limiteComprometidoAtualizado: round2(resumoAtualizado.limiteComprometido),
         limiteDisponivelEstimadoAtualizado: round2(resumoAtualizado.limiteDisponivel),
+      };
+    });
+  }
+
+  async cancelInvoicePayment(
+    userId: string,
+    cartaoId: string,
+    monthReference: string,
+    pagamentoId: string,
+    data?: { motivoCancelamento?: string | null },
+  ): Promise<CancelCartaoFaturaPagamentoResult> {
+    return runFinancialTransaction(this.repository, async (repository) => {
+      const cartao = await repository.getCartao(cartaoId, userId);
+      if (!cartao) {
+        return { error: "CARTAO_NOT_FOUND" as const };
+      }
+
+      const parsedMonth = parseMonthReference(monthReference);
+      if (!parsedMonth) {
+        return { error: "FATURA_NOT_FOUND" as const, message: "Competência da fatura inválida." };
+      }
+
+      const compras = await repository.getComprasByCartao(cartaoId, userId);
+      for (const compra of compras) {
+        await materializeParcelasCompraIfMissing(repository, compra);
+      }
+
+      const compraIds = new Set(compras.map((compra) => compra.id));
+      const parcelasCompra = (await repository.getParcelasCompraByUser(userId))
+        .filter((parcela) => compraIds.has(parcela.compraCartaoId));
+      const pagamentos = await loadInvoicePaymentsWithAllocations(repository, userId, { cartaoId });
+
+      const pagamentoAlvo = pagamentos.find((payment) => (
+        payment.id === pagamentoId
+        && payment.competenciaAno === parsedMonth.ano
+        && payment.competenciaMes === parsedMonth.mes
+      ));
+
+      if (!pagamentoAlvo) {
+        return {
+          error: "PAGAMENTO_NOT_FOUND" as const,
+          message: "Pagamento de fatura não encontrado para esta competência.",
+        };
+      }
+
+      if (isInvoicePaymentCanceled(pagamentoAlvo)) {
+        return {
+          error: "PAGAMENTO_JA_CANCELADO" as const,
+          message: "Este pagamento de fatura já foi cancelado.",
+        };
+      }
+
+      const snapshotAntes = buildFaturaSnapshot({
+        cartao,
+        monthReference,
+        parcelasCompra,
+        pagamentos,
+      });
+
+      if (!snapshotAntes) {
+        return {
+          error: "FATURA_NOT_FOUND" as const,
+          message: "Não foi possível localizar a fatura para desfazer este pagamento.",
+        };
+      }
+
+      const nowTimestamp = new Date();
+      const affectedInstallmentIds = Array.from(
+        new Set(
+          (pagamentoAlvo.alocacoes ?? [])
+            .map((allocation) => allocation.parcelaCompraId)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      );
+
+      const pagamentoCancelado = await repository.updateCartaoFaturaPagamento(
+        pagamentoAlvo.id,
+        userId,
+        {
+          canceladoEm: nowTimestamp,
+          motivoCancelamento: data?.motivoCancelamento?.trim() || null,
+          canceladoPor: userId,
+          considerarNoSaldoCompetencia: false,
+        },
+      );
+
+      if (!pagamentoCancelado) {
+        return {
+          error: "PAGAMENTO_NOT_FOUND" as const,
+          message: "Pagamento de fatura não encontrado para cancelamento.",
+        };
+      }
+
+      const pagamentosAtualizados = await loadInvoicePaymentsWithAllocations(repository, userId, { cartaoId });
+      const pagamentosDaCompetencia = pagamentosAtualizados.filter((payment) => (
+        payment.competenciaAno === parsedMonth.ano && payment.competenciaMes === parsedMonth.mes
+      ));
+
+      const parcelaById = new Map(parcelasCompra.map((parcela) => [parcela.id, parcela]));
+      const compraIdsAfetadas = new Set<string>();
+
+      for (const installmentId of affectedInstallmentIds) {
+        const parcela = parcelaById.get(installmentId);
+        if (!parcela) continue;
+
+        const recomputed = recomputeInvoiceInstallmentEffectiveStatus({
+          parcela,
+          pagamentosDaCompetencia,
+        });
+
+        const statusChanged = normalizeCardStatus(parcela.statusCartao) !== normalizeCardStatus(recomputed.statusCartao);
+        const paymentDateChanged = (parcela.dataPagamentoCartao ?? null) !== (recomputed.dataPagamentoCartao ?? null);
+        if (!statusChanged && !paymentDateChanged) continue;
+
+        await repository.updateParcelaCompra(parcela.id, userId, {
+          statusCartao: recomputed.statusCartao,
+          dataPagamentoCartao: recomputed.dataPagamentoCartao,
+        });
+
+        parcela.statusCartao = recomputed.statusCartao;
+        parcela.dataPagamentoCartao = recomputed.dataPagamentoCartao;
+        compraIdsAfetadas.add(parcela.compraCartaoId);
+      }
+
+      for (const compraId of Array.from(compraIdsAfetadas)) {
+        await recomputeCardPurchaseAggregate(repository, compraId, userId);
+      }
+
+      const parcelasAtualizadas = (await repository.getParcelasCompraByUser(userId))
+        .filter((parcela) => compraIds.has(parcela.compraCartaoId));
+
+      const pagamentosAtualizadosComAlocacoes = await loadInvoicePaymentsWithAllocations(repository, userId, { cartaoId });
+      const snapshotDepois = buildFaturaSnapshot({
+        cartao,
+        monthReference,
+        parcelasCompra: parcelasAtualizadas,
+        pagamentos: pagamentosAtualizadosComAlocacoes,
+      });
+
+      if (!snapshotDepois) {
+        return {
+          error: "FATURA_NOT_FOUND" as const,
+          message: "Não foi possível reconstruir a fatura após desfazer o pagamento.",
+        };
+      }
+
+      const resumoAtualizado = buildCardLimitSummary({
+        cartaoId: cartao.id,
+        limiteTotal: cartao.limite,
+        monthReference,
+        installments: parcelasAtualizadas.map((parcela) => ({
+          id: parcela.id,
+          cartaoId: cartao.id,
+          valor: parcela.valor,
+          statusCartao: parcela.statusCartao,
+          dataVencimento: parcela.dataVencimento,
+        })),
+        invoicePayments: pagamentosAtualizadosComAlocacoes.filter((payment) => payment.cartaoId === cartao.id),
+        getDueDayForCard: () => cartao.diaVencimento,
+        referenceDate: format(new Date(), "yyyy-MM-dd"),
+      });
+
+      return {
+        pagamentoCancelado,
+        saldoAnterior: round2(snapshotAntes.remainingAmount),
+        saldoRestante: round2(snapshotDepois.remainingAmount),
+        statusFatura: snapshotDepois.status,
+        valorOriginalFatura: round2(snapshotAntes.originalTotal),
+        snapshotAtualizado: snapshotDepois,
+        limiteComprometidoAtualizado: round2(resumoAtualizado.limiteComprometido),
+        limiteDisponivelEstimadoAtualizado: round2(resumoAtualizado.limiteDisponivel),
+        parcelasAfetadas: affectedInstallmentIds,
       };
     });
   }

@@ -17,6 +17,7 @@ import {
   fetchCartoesResumo,
   createCartao,
   createCompraCartao,
+  cancelCartaoFaturaPagamento,
   deleteCartao,
   deleteCompraCartaoComEscopo,
   deleteFaturaCartaoMes,
@@ -34,6 +35,7 @@ import {
   type CartaoFaturaPagamentoApiModel,
   type CartaoResumo,
   type CartaoPayload,
+  type CancelCartaoFaturaPagamentoPayload,
   type CompraPayload,
   type DeleteCompraScope,
   type RegisterCartaoFaturaPagamentoPayload,
@@ -222,6 +224,23 @@ export function useCartoes(viewingCompraId?: string) {
       monthReference: string;
       data: RegisterCartaoFaturaPagamentoPayload;
     }) => registerCartaoFaturaPagamento(cartaoId, monthReference, data),
+    onSuccess: async () => {
+      await refreshCartoesQueries();
+    },
+  });
+
+  const cancelInvoicePaymentMutation = useMutation({
+    mutationFn: ({
+      cartaoId,
+      monthReference,
+      pagamentoId,
+      data,
+    }: {
+      cartaoId: string;
+      monthReference: string;
+      pagamentoId: string;
+      data?: CancelCartaoFaturaPagamentoPayload;
+    }) => cancelCartaoFaturaPagamento(cartaoId, monthReference, pagamentoId, data),
     onSuccess: async () => {
       await refreshCartoesQueries();
     },
@@ -499,6 +518,7 @@ export function useCartoes(viewingCompraId?: string) {
     deleteFaturaCartaoMutation,
     deleteFaturasMesMutation,
     registerInvoicePaymentMutation,
+    cancelInvoicePaymentMutation,
     marcarReembolsoMutation,
     payParcelaMutation,
     payParcelaPessoaMutation,

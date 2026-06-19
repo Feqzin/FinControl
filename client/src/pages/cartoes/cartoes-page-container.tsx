@@ -365,6 +365,7 @@ export default function CartoesPage() {
     deleteFaturaCartaoMutation,
     deleteFaturasMesMutation,
     registerInvoicePaymentMutation,
+    cancelInvoicePaymentMutation,
     marcarReembolsoMutation,
     payParcelaMutation,
     payParcelaPessoaMutation,
@@ -1674,6 +1675,44 @@ export default function CartoesPage() {
     );
   };
 
+  const cancelInvoicePaymentPendingId = cancelInvoicePaymentMutation.isPending
+    ? (cancelInvoicePaymentMutation.variables?.pagamentoId ?? null)
+    : null;
+
+  const handleCancelInvoicePayment = (pagamentoId: string) => {
+    if (!invoicePaymentTarget) {
+      toast({
+        title: "Pagamento indisponível",
+        description: "Não foi possível localizar a fatura selecionada para desfazer o pagamento.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    cancelInvoicePaymentMutation.mutate(
+      {
+        cartaoId: invoicePaymentTarget.cartaoId,
+        monthReference: invoicePaymentTarget.monthReference,
+        pagamentoId,
+      },
+      {
+        onSuccess: (result) => {
+          toast({
+            title: "Pagamento desfeito com sucesso",
+            description: `Saldo restante da fatura atualizado para ${formatCartaoCurrency(result.saldoRestante)}.`,
+          });
+        },
+        onError: (error) => {
+          toast({
+            title: "Não foi possível desfazer o pagamento",
+            description: getErrorMessage(error),
+            variant: "destructive",
+          });
+        },
+      },
+    );
+  };
+
   const handleDeleteCard = (id: string) => {
     deleteCardMutation.mutate(id, {
       onSuccess: () => {
@@ -2769,9 +2808,11 @@ export default function CartoesPage() {
         payments={selectedInvoicePaymentHistory}
         installments={selectedInvoiceInstallments}
         isPending={registerInvoicePaymentMutation.isPending}
+        cancelPendingPaymentId={cancelInvoicePaymentPendingId}
         formatCurrency={formatCartaoCurrency}
         formatMonthLabel={formatInvoiceCompetencyLabel}
         onSubmit={handleRegisterInvoicePayment}
+        onCancelPayment={handleCancelInvoicePayment}
       />
 
       <ParcelasTab

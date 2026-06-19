@@ -1742,8 +1742,12 @@ test("pagamento parcial de fatura reduz fatura atual e comprometido sem mexer na
         dataPagamento: dueDate(0, 15),
         observacao: null,
         tipoPagamento: "parcial",
+        modoAlocacao: "ordem_fatura",
         considerarNoSaldoCompetencia: true,
         conciliadoEm: null,
+        canceladoEm: null,
+        motivoCancelamento: null,
+        canceladoPor: null,
         createdAt: `${currentMonth}-15T12:00:00.000Z`,
         updatedAt: `${currentMonth}-15T12:00:00.000Z`,
       },
@@ -1865,8 +1869,12 @@ test("quitação total da fatura zera a competência atual e mantém parcelas fu
         dataPagamento: dueDate(0, 18),
         observacao: "Quitação da fatura",
         tipoPagamento: "quitacao_total",
+        modoAlocacao: "ordem_fatura",
         considerarNoSaldoCompetencia: false,
         conciliadoEm: `${currentMonth}-18T12:00:00.000Z`,
+        canceladoEm: null,
+        motivoCancelamento: null,
+        canceladoPor: null,
         createdAt: `${currentMonth}-18T12:00:00.000Z`,
         updatedAt: `${currentMonth}-18T12:00:00.000Z`,
       },
@@ -1962,8 +1970,12 @@ test("relatórios usam pagamentos de fatura para evitar dupla contagem no perío
         dataPagamento: dueDate,
         observacao: null,
         tipoPagamento: "parcial",
+        modoAlocacao: "ordem_fatura",
         considerarNoSaldoCompetencia: true,
         conciliadoEm: null,
+        canceladoEm: null,
+        motivoCancelamento: null,
+        canceladoPor: null,
         createdAt: `${currentMonth}-10T12:00:00.000Z`,
         updatedAt: `${currentMonth}-10T12:00:00.000Z`,
       },
@@ -2008,6 +2020,144 @@ test("relatórios usam pagamentos de fatura para evitar dupla contagem no perío
 
   assert.equal(overview.summary.expenseTotal, 180);
   assert.equal(overview.summary.cartoesFaturaAtualTotal, 180);
+});
+
+test("pagamento de fatura cancelado é ignorado por resumo, cartões e relatórios em server e serverless", async () => {
+  const userId = "user-canceled-card-payment";
+  const currentMonth = "2026-06";
+
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [
+      {
+        id: "pc-canceled-current",
+        userId,
+        compraCartaoId: "compra-canceled-current",
+        numero: 1,
+        valor: "200.00",
+        dataVencimento: "2026-06-10",
+        statusCartao: "pendente",
+        dataPagamentoCartao: null,
+        statusPessoa: "pendente",
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "pc-canceled-future",
+        userId,
+        compraCartaoId: "compra-canceled-future",
+        numero: 1,
+        valor: "90.00",
+        dataVencimento: "2026-07-10",
+        statusCartao: "pendente",
+        dataPagamentoCartao: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+    ],
+    cartaoFaturaPagamentos: [
+      {
+        id: "payment-canceled-card",
+        userId,
+        cartaoId: "card-canceled",
+        competenciaMes: 6,
+        competenciaAno: 2026,
+        valorPago: "80.00",
+        dataPagamento: "2026-06-09",
+        observacao: "Lançado errado",
+        tipoPagamento: "parcial",
+        modoAlocacao: "ordem_fatura",
+        considerarNoSaldoCompetencia: true,
+        conciliadoEm: null,
+        canceladoEm: "2026-06-10T10:00:00.000Z",
+        motivoCancelamento: "Desfeito",
+        canceladoPor: userId,
+        createdAt: "2026-06-09T12:00:00.000Z",
+        updatedAt: "2026-06-10T10:00:00.000Z",
+      },
+    ] as CartaoFaturaPagamento[],
+    cartaoFaturaPagamentoAlocacoes: [
+      {
+        id: "allocation-canceled-card",
+        pagamentoId: "payment-canceled-card",
+        parcelaCompraId: "pc-canceled-current",
+        valorAplicado: "80.00",
+        createdAt: "2026-06-09T12:00:00.000Z",
+        updatedAt: "2026-06-09T12:00:00.000Z",
+      },
+    ],
+    servicos: [],
+    cartoes: [
+      {
+        id: "card-canceled",
+        userId,
+        nome: "Cartão Cancelado",
+        limite: "1000.00",
+        melhorDiaCompra: 5,
+        diaVencimento: 20,
+        iconeId: null,
+      },
+    ],
+    compras: [
+      {
+        id: "compra-canceled-current",
+        userId,
+        cartaoId: "card-canceled",
+        descricao: "Compra atual",
+        valorTotal: "200.00",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "200.00",
+        dataCompra: "2026-06-02",
+        pessoaId: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+      {
+        id: "compra-canceled-future",
+        userId,
+        cartaoId: "card-canceled",
+        descricao: "Compra futura",
+        valorTotal: "90.00",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "90.00",
+        dataCompra: "2026-07-02",
+        pessoaId: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+    ],
+    rendas: [],
+    pessoas: [],
+    patrimonios: [],
+  };
+
+  const summary = await createService(fixture).getSummary(userId, currentMonth);
+  const summaryServerless = await createServerlessService(fixture).getSummary(userId, currentMonth);
+  const cardSummary = (await createService(fixture).getCardSummaries(userId)).find((item) => item.cartaoId === "card-canceled");
+  const cardSummaryServerless = (await createServerlessService(fixture).getCardSummaries(userId)).find((item) => item.cartaoId === "card-canceled");
+  const reportsOverview = await createReportsService(fixture).getOverview(userId, {
+    startDate: "2026-06-01",
+    endDate: "2026-06-30",
+  });
+  const reportsOverviewServerless = await createServerlessReportsService(fixture).getOverview(userId, {
+    startDate: "2026-06-01",
+    endDate: "2026-06-30",
+  });
+
+  assert.equal(summary.totalCartoesMes, 200);
+  assert.equal(summaryServerless.totalCartoesMes, 200);
+  assert.equal(cardSummary?.faturaAtual, 200);
+  assert.equal(cardSummary?.limiteComprometido, 290);
+  assert.equal(cardSummary?.limiteDisponivel, 710);
+  assert.equal(cardSummaryServerless?.faturaAtual, 200);
+  assert.equal(cardSummaryServerless?.limiteComprometido, 290);
+  assert.equal(cardSummaryServerless?.limiteDisponivel, 710);
+  assert.equal(reportsOverview.summary.expenseTotal, 200);
+  assert.equal(reportsOverview.summary.cartoesFaturaAtualTotal, 200);
+  assert.equal(reportsOverviewServerless.summary.expenseTotal, 200);
+  assert.equal(reportsOverviewServerless.summary.cartoesFaturaAtualTotal, 200);
 });
 
 test("getCardSummaries aplica a mesma regra global para todos os cartões", async () => {

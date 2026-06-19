@@ -3,6 +3,7 @@ import { formatMoneyFixed } from "../../utils/money";
 import { CartoesService } from "../services/cartoes.service";
 import {
   cartaoBody,
+  cartaoFaturaPagamentoCancelBody,
   cartaoFaturaPagamentoBody,
   cartaoUpdateBody,
 } from "../validators/financial.validators";
@@ -204,6 +205,73 @@ export function createCartoesController(service: CartoesService) {
           saldoAnterior: result.saldoAnterior,
           saldoRestante: result.saldoRestante,
           statusFatura: result.statusFatura,
+        },
+      });
+      return res.json(result);
+    },
+
+    cancelInvoicePayment: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const cartaoId = getParam(req, "cartaoId");
+      const pagamentoId = getParam(req, "pagamentoId");
+      const mes = parseMes(getParam(req, "mes"));
+      const parsed = cartaoFaturaPagamentoCancelBody.safeParse(req.body ?? {});
+
+      if (!mes) {
+        return sendBadRequest(res, "Mes invalido. Use o formato YYYY-MM.");
+      }
+
+      if (!parsed.success) {
+        auditRequest(req, {
+          action: "update",
+          status: "failure",
+          domain: "cartoes",
+          userId,
+          targetId: cartaoId,
+          details: { reason: "validation_error", mes, pagamentoId },
+        });
+        return sendBadRequest(res, parsed.error.message);
+      }
+
+      const result = await service.cancelInvoicePayment(userId, cartaoId, mes, pagamentoId, parsed.data);
+      if ("error" in result) {
+        const message = result.message
+          ?? (
+            result.error === "CARTAO_NOT_FOUND"
+              ? "Cartao not found"
+              : result.error === "PAGAMENTO_NOT_FOUND"
+                ? "Pagamento de fatura nao encontrado."
+                : result.error === "PAGAMENTO_JA_CANCELADO"
+                  ? "Este pagamento de fatura ja foi cancelado."
+                  : "Nenhuma cobranca encontrada para esta fatura."
+          );
+        auditRequest(req, {
+          action: "update",
+          status: "failure",
+          domain: "cartoes",
+          userId,
+          targetId: cartaoId,
+          details: { reason: result.error.toLowerCase(), mes, pagamentoId },
+        });
+        if (result.error === "CARTAO_NOT_FOUND" || result.error === "PAGAMENTO_NOT_FOUND") {
+          return sendNotFound(res, message);
+        }
+        return sendBadRequest(res, message);
+      }
+
+      auditRequest(req, {
+        action: "update",
+        status: "success",
+        domain: "cartoes",
+        userId,
+        targetId: cartaoId,
+        details: {
+          mes,
+          pagamentoId,
+          saldoAnterior: result.saldoAnterior,
+          saldoRestante: result.saldoRestante,
+          statusFatura: result.statusFatura,
+          parcelasAfetadas: result.parcelasAfetadas.length,
         },
       });
       return res.json(result);

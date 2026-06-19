@@ -389,6 +389,9 @@ export const cartaoFaturaPagamentos = pgTable("cartao_fatura_pagamentos", {
   modoAlocacao: text("modo_alocacao").notNull().default("ordem_fatura"),
   considerarNoSaldoCompetencia: boolean("considerar_no_saldo_competencia").notNull().default(true),
   conciliadoEm: timestamp("conciliado_em"),
+  canceladoEm: timestamp("cancelado_em"),
+  motivoCancelamento: text("motivo_cancelamento"),
+  canceladoPor: varchar("cancelado_por").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
