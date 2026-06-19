@@ -123,6 +123,7 @@ import {
   resolveDueDateFromCompetencia,
 } from "@shared/parcelas-compra-competency";
 import {
+  calculateServicoDefaultMonthlyAmount,
   calculateServicoEquivalentMonthlyAmount,
   calculateServicoMonthlyFinancialImpactAmount,
   calculateServicoRealMonthlyExpenseAmount,
@@ -1016,6 +1017,26 @@ test("servicos periodicidade canônica: semanal usa aproximação mensal documen
   assert.equal(semanal, 303.33);
 });
 
+test("servicos periodicidade canônica: semanal separa gasto mensal padrão e média anualizada", () => {
+  const semanalServico = buildServicoFixture({
+    periodicidadeCobranca: "semanal",
+    valorCobranca: "45.00",
+    valorMensal: "195.00",
+  });
+
+  const billing = resolveServicoBillingView(semanalServico);
+  const resumo = buildServicoPeriodicidadeResumo("semanal", "45.00");
+  const info = getServicoBillingDisplayInfo(semanalServico);
+
+  assert.equal(calculateServicoDefaultMonthlyAmount(semanalServico), 180);
+  assert.equal(billing.valorMensalPadrao, 180);
+  assert.equal(billing.valorMensalEquivalente, 195);
+  assert.equal(formatServicoBillingValue(semanalServico), "R$\u00a045,00/semana · R$\u00a0180,00/mês");
+  assert.equal(info.shortText, "R$\u00a045,00/semana · R$\u00a0180,00/mês");
+  assert.equal(resumo.secondary?.includes("R$\u00a0180,00"), true);
+  assert.equal(resumo.secondary?.includes("R$\u00a0195,00"), true);
+});
+
 test("servicos periodicidade canônica: legado sem periodicidade mantém fallback mensal compatível", () => {
   const legado = calculateServicoEquivalentMonthlyAmount(buildServicoFixture({
     periodicidadeCobranca: null,
@@ -1051,14 +1072,14 @@ test("servicos periodicidade canônica: cobrança real anual e trimestral respei
   assert.equal(calculateServicoRealChargeForCompetency(trimestralServico, "2026-04"), 90);
 });
 
-test("servicos periodicidade canônica: cobrança real semanal usa aproximação mensal por competência", () => {
+test("servicos periodicidade canônica: cobrança real semanal usa 4 semanas por competência", () => {
   const semanalServico = buildServicoFixture({
     periodicidadeCobranca: "semanal",
     valorCobranca: "70.00",
     valorMensal: "303.33",
   });
-  assert.equal(calculateServicoRealChargeForCompetency(semanalServico, "2026-05"), 303.33);
-  assert.equal(calculateServicoRealChargeForCompetency(semanalServico, "2026-06"), 303.33);
+  assert.equal(calculateServicoRealChargeForCompetency(semanalServico, "2026-05"), 280);
+  assert.equal(calculateServicoRealChargeForCompetency(semanalServico, "2026-06"), 280);
 });
 
 test("servicos periodicidade canÃ´nica: anual sem mÃªs usa fallback seguro do mÃªs atual", () => {
@@ -5313,6 +5334,30 @@ test("relatórios serviços: separa média mensal e cobrança real no período p
   assert.equal(metrics.nonLinkedCardRealChargeInPeriodTotal, 0);
 });
 
+test("relatórios serviços: semanal usa 4 semanas no gasto real e mantém média anualizada no planejamento", () => {
+  const activeServicos = [
+    buildServicoFixture({
+      id: "s-semanal",
+      nome: "Personal semanal",
+      periodicidadeCobranca: "semanal",
+      valorCobranca: "45.00",
+      valorMensal: "195.00",
+      compraCartaoId: null,
+    }),
+  ];
+
+  const metrics = buildRelatoriosServicosMetrics({
+    activeServicos,
+    overviewSummary: null,
+    startDateIso: "2026-05-01",
+    endDateIso: "2026-05-31",
+  });
+
+  assert.equal(metrics.monthlyAverageTotal, 195);
+  assert.equal(metrics.realChargeInPeriodTotal, 180);
+  assert.equal(metrics.nonLinkedCardRealChargeInPeriodTotal, 180);
+});
+
 test("relatórios serviços: usa cobrança real do summary quando métricas detalhadas ainda não existem", () => {
   const activeServicos = [
     buildServicoFixture({
@@ -5459,10 +5504,20 @@ test("simulador: gasto base de serviços respeita mes_cobranca no mês informado
     compraCartaoId: null,
     formaPagamento: "pix",
   });
+  const semanal = buildServicoFixture({
+    id: "svc-semanal",
+    nome: "Personal semanal",
+    periodicidadeCobranca: "semanal",
+    valorCobranca: "45.00",
+    valorMensal: "195.00",
+    compraCartaoId: null,
+    formaPagamento: "pix",
+  });
 
   assert.equal(calculateSimuladorBaseServicos([anualMaio, anualJunho, anualAgosto], "2026-05"), 229.82);
   assert.equal(calculateSimuladorBaseServicos([anualMaio, anualJunho, anualAgosto], "2026-06"), 99.9);
   assert.equal(calculateSimuladorBaseServicos([anualMaio, anualJunho, anualAgosto], "2026-08"), 120);
+  assert.equal(calculateSimuladorBaseServicos([semanal], "2026-06"), 180);
 });
 
 function buildSimuladorRendaFixture(overrides: Partial<Renda> = {}): Renda {
@@ -5863,11 +5918,18 @@ test("serviços: gasto fixo real mensal usa a competência e evita duplicidade c
     valorMensal: "50.00",
     compraCartaoId: null,
   });
+  const servicoSemanal = buildServicoFixture({
+    periodicidadeCobranca: "semanal",
+    valorCobranca: "45.00",
+    valorMensal: "195.00",
+    compraCartaoId: null,
+  });
 
   assert.equal(calculateServicoRealMonthlyExpenseAmount(servicoAnualVinculado, "2026-05"), 0);
   assert.equal(calculateServicoRealMonthlyExpenseAmount(servicoAnualSemVinculo, "2026-05"), 229.82);
   assert.equal(calculateServicoRealMonthlyExpenseAmount(servicoAnualSemVinculo, "2026-06"), 0);
   assert.equal(calculateServicoRealMonthlyExpenseAmount(servicoMensal, "2026-06"), 50);
+  assert.equal(calculateServicoRealMonthlyExpenseAmount(servicoSemanal, "2026-06"), 180);
 });
 
 test("calendário financeiro: inclui fatura e parcela do cartão sem duplicar serviço vinculado", () => {
@@ -5949,6 +6011,38 @@ test("calendário financeiro: inclui fatura e parcela do cartão sem duplicar se
   assert.equal(linkedServiceEvent, undefined);
   assert.ok(mensalServiceEvent);
   assert.equal(mensalServiceEvent?.amount, 39.9);
+});
+
+test("calendário financeiro: serviço semanal usa 4 semanas e deixa anualização só como hint secundário", () => {
+  const weeklyService = buildServicoFixture({
+    id: "servico-semanal",
+    nome: "Personal semanal",
+    periodicidadeCobranca: "semanal",
+    valorCobranca: "45.00",
+    valorMensal: "195.00",
+    dataCobranca: 7,
+    compraCartaoId: null,
+    formaPagamento: "pix",
+  });
+
+  const events = buildFinancialCalendarEvents({
+    monthReference: "2026-06",
+    cartoes: [],
+    compras: [],
+    parcelasCompra: [],
+    dividas: [],
+    parcelas: [],
+    pessoas: [],
+    servicos: [weeklyService],
+    rendas: [],
+    metas: [],
+    referenceDate: "2026-06-01",
+  });
+
+  const serviceEvent = events.find((event) => event.id === "servico-servico-semanal-2026-06");
+  assert.equal(serviceEvent?.amount, 180);
+  assert.equal(serviceEvent?.subtitle.includes("média anualizada 195,00/mês"), true);
+  assert.equal(serviceEvent?.subtitle.includes("equiv."), false);
 });
 
 test("calendário financeiro: pagamento parcial reduz o valor da fatura e atualiza o status", () => {

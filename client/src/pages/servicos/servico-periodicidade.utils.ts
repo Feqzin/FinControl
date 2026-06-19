@@ -1,4 +1,5 @@
 import {
+  calculateServicoDefaultMonthlyAmount,
   calculateServicoValorMensalEquivalente,
   normalizeServicoPeriodicidade,
   resolveServicoBillingFields,
@@ -37,22 +38,28 @@ function getPeriodicidadeLabel(periodicidade: ServicoPeriodicidade): string {
 export function resolveServicoBillingView(servico: ServicoBillingLike): {
   periodicidade: ServicoPeriodicidade;
   valorCobranca: number;
+  valorMensalPadrao: number;
   valorMensalEquivalente: number;
 } {
   const resolved = resolveServicoBillingFields({}, servico);
   return {
     periodicidade: resolved.periodicidadeCobranca,
     valorCobranca: resolved.valorCobrancaNumber,
+    valorMensalPadrao: calculateServicoDefaultMonthlyAmount(servico),
     valorMensalEquivalente: resolved.valorMensalNumber,
   };
 }
 
 export function formatServicoBillingValue(servico: ServicoBillingLike): string {
-  const { periodicidade, valorCobranca, valorMensalEquivalente } = resolveServicoBillingView(servico);
+  const { periodicidade, valorCobranca, valorMensalPadrao, valorMensalEquivalente } = resolveServicoBillingView(servico);
   const formattedValorCobranca = formatCurrencyBRL(valorCobranca);
 
   if (periodicidade === "mensal") {
     return `${formattedValorCobranca}/mês`;
+  }
+
+  if (periodicidade === "semanal") {
+    return `${formattedValorCobranca}/${getPeriodicidadeLabel(periodicidade)} · ${formatCurrencyBRL(valorMensalPadrao)}/mês`;
   }
 
   return `${formattedValorCobranca}/${getPeriodicidadeLabel(periodicidade)} · equiv. ${formatCurrencyBRL(valorMensalEquivalente)}/mês`;
@@ -63,6 +70,10 @@ export function buildServicoPeriodicidadeResumo(
   valorCobrancaInput: string | number | null | undefined,
 ): { primary: string; secondary?: string; equivalenteMensal: number } {
   const periodicidade = normalizeServicoPeriodicidade(periodicidadeInput);
+  const valorMensalPadrao = calculateServicoDefaultMonthlyAmount({
+    periodicidadeCobranca: periodicidade,
+    valorCobranca: valorCobrancaInput,
+  });
   const equivalenteMensal = calculateServicoValorMensalEquivalente(valorCobrancaInput, periodicidade);
   const valorFormatado = formatCurrencyBRL(Number.isFinite(Number(valorCobrancaInput)) ? Number(valorCobrancaInput) : (resolveServicoBillingFields({
     periodicidadeCobranca: periodicidade,
@@ -97,7 +108,9 @@ export function buildServicoPeriodicidadeResumo(
     case "semanal":
       return {
         primary: `Você paga ${valorFormatado} por semana.`,
-        secondary: `Equivalente mensal: ${formatCurrencyBRL(equivalenteMensal)}.`,
+        secondary: valorMensalPadrao === equivalenteMensal
+          ? `Gasto mensal padrão: ${formatCurrencyBRL(valorMensalPadrao)}/mês.`
+          : `Gasto mensal padrão: ${formatCurrencyBRL(valorMensalPadrao)}/mês. Média anualizada: ${formatCurrencyBRL(equivalenteMensal)}/mês.`,
         equivalenteMensal,
       };
     case "mensal":

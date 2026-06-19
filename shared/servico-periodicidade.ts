@@ -36,6 +36,8 @@ export type ServicoBillingDisplayInfo = {
   periodicidadeLabel: string;
   valorCobranca: number;
   valorCobrancaCents: number;
+  valorMensalPadrao: number;
+  valorMensalPadraoCents: number;
   equivalenteMensal: number;
   equivalenteMensalCents: number;
   shortText: string;
@@ -311,11 +313,36 @@ export function calculateServicoEquivalentMonthlyAmount(
   return calculateServicoEquivalentMonthlyAmountCents(servico) / 100;
 }
 
+export function calculateServicoDefaultMonthlyAmountCents(
+  valorCobrancaCents: number,
+  periodicidadeInput: unknown,
+): number {
+  const periodicidade = normalizeServicoPeriodicidade(periodicidadeInput);
+  const normalizedValorCobrancaCents = Math.max(0, Math.round(valorCobrancaCents));
+
+  if (periodicidade === "semanal") {
+    return normalizedValorCobrancaCents * 4;
+  }
+
+  return calculateServicoValorMensalEquivalenteCents(normalizedValorCobrancaCents, periodicidade);
+}
+
+export function calculateServicoDefaultMonthlyAmount(
+  servico: ServicoPeriodicidadeComputationLike,
+): number {
+  const resolved = resolveServicoBillingFields({}, servico);
+  const valorCobrancaCents = parseMoneyToCents(resolved.valorCobranca) ?? 0;
+
+  return calculateServicoDefaultMonthlyAmountCents(valorCobrancaCents, resolved.periodicidadeCobranca) / 100;
+}
+
 export function calculateServicoMonthlyFinancialImpactAmountCents(
   servico: ServicoPeriodicidadeComputationLike,
 ): number {
   if (isServicoLinkedToCardCharge(servico)) return 0;
 
+  // Mantido como referência mensal de planejamento/compatibilidade.
+  // Gasto real mensal por competência deve usar calculateServicoRealChargeForCompetency.
   const storedMonthlyCents = parseMoneyToCents(servico.valorMensal);
   if (storedMonthlyCents != null) {
     return Math.max(0, storedMonthlyCents);
@@ -352,9 +379,8 @@ export function calculateServicoRealChargeForCompetency(
   }
 
   if (periodicidade === "semanal") {
-    // Sem uma data-base semanal (weekday + início), usamos aproximação mensal equivalente
-    // para manter compatibilidade e evitar queda brusca de valores nas telas antigas.
-    return calculateServicoValorMensalEquivalenteCents(valorCobrancaCents, periodicidade) / 100;
+    // Para gasto real mensal padrão, o app considera 4 semanas por mês.
+    return calculateServicoDefaultMonthlyAmountCents(valorCobrancaCents, periodicidade) / 100;
   }
 
   const interval = PERIODICIDADE_INTERVALO_MESES[periodicidade];
@@ -424,18 +450,23 @@ export function getServicoBillingDisplayInfo(
   const resolved = resolveServicoBillingFields({}, servico);
   const periodicidade = resolved.periodicidadeCobranca;
   const valorCobrancaCents = parseMoneyToCents(resolved.valorCobranca) ?? 0;
+  const valorMensalPadraoCents = calculateServicoDefaultMonthlyAmountCents(valorCobrancaCents, periodicidade);
   const equivalenteMensalCents = calculateServicoEquivalentMonthlyAmountCents(servico);
   const periodicidadeLabel = periodicidadeToShortLabel(periodicidade);
 
   const shortText = periodicidade === "mensal"
     ? `${formatBrlFromCents(valorCobrancaCents)}/mês`
-    : `${formatBrlFromCents(valorCobrancaCents)}/${periodicidadeLabel} · equiv. ${formatBrlFromCents(equivalenteMensalCents)}/mês`;
+    : periodicidade === "semanal"
+      ? `${formatBrlFromCents(valorCobrancaCents)}/${periodicidadeLabel} · ${formatBrlFromCents(valorMensalPadraoCents)}/mês`
+      : `${formatBrlFromCents(valorCobrancaCents)}/${periodicidadeLabel} · equiv. ${formatBrlFromCents(equivalenteMensalCents)}/mês`;
 
   return {
     periodicidade,
     periodicidadeLabel,
     valorCobranca: valorCobrancaCents / 100,
     valorCobrancaCents,
+    valorMensalPadrao: valorMensalPadraoCents / 100,
+    valorMensalPadraoCents,
     equivalenteMensal: equivalenteMensalCents / 100,
     equivalenteMensalCents,
     shortText,

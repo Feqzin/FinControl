@@ -377,7 +377,9 @@ function buildServiceEvents(input: BuildFinancialCalendarEventsInput): Financial
 
     const equivalentMonthlyAmount = calculateServicoEquivalentMonthlyAmount(servico);
     const planningHint = equivalentMonthlyAmount > 0 && equivalentMonthlyAmount !== amount
-      ? ` · equiv. ${equivalentMonthlyAmount.toFixed(2).replace(".", ",")}/mês`
+      ? servico.periodicidadeCobranca === "semanal"
+        ? ` · média anualizada ${equivalentMonthlyAmount.toFixed(2).replace(".", ",")}/mês`
+        : ` · equiv. ${equivalentMonthlyAmount.toFixed(2).replace(".", ",")}/mês`
       : "";
 
     events.push({

@@ -300,6 +300,14 @@ test("resumo financeiro: métricas de serviços separam equivalente mensal, cobr
       valorMensal: "40.00",
       compraCartaoId: null,
     }),
+    buildServicoFixture({
+      id: "s-semanal",
+      nome: "Personal semanal",
+      periodicidadeCobranca: "semanal",
+      valorCobranca: "45.00",
+      valorMensal: "195.00",
+      compraCartaoId: null,
+    }),
   ];
 
   const service = createService(fixture);
@@ -307,20 +315,20 @@ test("resumo financeiro: métricas de serviços separam equivalente mensal, cobr
   const summaryMaio = await service.getSummary("user-financial-unit", "2026-05");
 
   // Saída mensal real não duplica serviços já representados pela fatura do cartão.
-  assert.equal(summaryAbril.totalServicos, 180);
-  assert.equal(summaryMaio.totalServicos, 90);
-  assert.equal(summaryAbril.totalSaidas, 380);
-  assert.equal(summaryMaio.totalSaidas, 340);
+  assert.equal(summaryAbril.totalServicos, 360);
+  assert.equal(summaryMaio.totalServicos, 270);
+  assert.equal(summaryAbril.totalSaidas, 560);
+  assert.equal(summaryMaio.totalSaidas, 520);
 
   // Planejamento mensal (equivalente) inclui todos os ativos.
-  assert.equal(summaryAbril.servicosEquivalenteMensalTotal, 139.15);
-  assert.equal(summaryMaio.servicosEquivalenteMensalTotal, 139.15);
+  assert.equal(summaryAbril.servicosEquivalenteMensalTotal, 334.15);
+  assert.equal(summaryMaio.servicosEquivalenteMensalTotal, 334.15);
 
   // Cobrança real por competência: anual cobra só no mês âncora e trimestral no intervalo.
-  // Abril: mensal(50) + trimestral(90) + legado(40) = 180
-  assert.equal(summaryAbril.servicosCobrancaRealCompetenciaTotal, 180);
-  // Maio: mensal(50) + anual(229,82) + legado(40) = 319,82
-  assert.equal(summaryMaio.servicosCobrancaRealCompetenciaTotal, 319.82);
+  // Abril: mensal(50) + trimestral(90) + legado(40) + semanal(180) = 360
+  assert.equal(summaryAbril.servicosCobrancaRealCompetenciaTotal, 360);
+  // Maio: mensal(50) + anual(229,82) + legado(40) + semanal(180) = 499,82
+  assert.equal(summaryMaio.servicosCobrancaRealCompetenciaTotal, 499.82);
 
   // Vinculado ao cartão: apenas o anual.
   assert.equal(summaryAbril.servicosVinculadosCartaoEquivalenteMensalTotal, 19.15);
@@ -328,11 +336,11 @@ test("resumo financeiro: métricas de serviços separam equivalente mensal, cobr
   assert.equal(summaryAbril.servicosVinculadosCartaoCobrancaRealTotal, 0);
   assert.equal(summaryMaio.servicosVinculadosCartaoCobrancaRealTotal, 229.82);
 
-  // Não vinculados: mensal + trimestral + legado.
-  assert.equal(summaryAbril.servicosNaoVinculadosCartaoEquivalenteMensalTotal, 120);
-  assert.equal(summaryMaio.servicosNaoVinculadosCartaoEquivalenteMensalTotal, 120);
-  assert.equal(summaryAbril.servicosNaoVinculadosCartaoCobrancaRealTotal, 180);
-  assert.equal(summaryMaio.servicosNaoVinculadosCartaoCobrancaRealTotal, 90);
+  // Não vinculados: mensal + trimestral + legado + semanal.
+  assert.equal(summaryAbril.servicosNaoVinculadosCartaoEquivalenteMensalTotal, 315);
+  assert.equal(summaryMaio.servicosNaoVinculadosCartaoEquivalenteMensalTotal, 315);
+  assert.equal(summaryAbril.servicosNaoVinculadosCartaoCobrancaRealTotal, 360);
+  assert.equal(summaryMaio.servicosNaoVinculadosCartaoCobrancaRealTotal, 270);
 
   // Cartões/faturas não mudam nesta fase.
   assert.equal(summaryAbril.totalCartoesMes, 200);
