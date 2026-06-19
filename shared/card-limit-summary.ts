@@ -1,10 +1,10 @@
 import { format, parseISO } from "date-fns";
-import { parseMoney } from "../utils/money";
+import { parseMoney } from "../utils/money.js";
 import {
   findCardInvoiceSnapshot,
   getCardInvoicePaymentMonthReference,
   type CardInvoicePaymentRecord,
-} from "./card-invoice-payments";
+} from "./card-invoice-payments.js";
 
 type MoneyValue = string | number | null | undefined;
 

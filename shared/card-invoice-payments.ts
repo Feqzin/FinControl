@@ -1,6 +1,6 @@
 import { format, parseISO } from "date-fns";
-import { resolveDueDateFromCompetencia } from "./parcelas-compra-competency";
-import { parseMoney } from "../utils/money";
+import { resolveDueDateFromCompetencia } from "./parcelas-compra-competency.js";
+import { parseMoney } from "../utils/money.js";
 
 type MoneyValue = string | number | null | undefined;
 

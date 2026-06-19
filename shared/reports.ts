@@ -6,7 +6,7 @@ import type {
   Pessoa,
   Renda,
   Servico,
-} from "./schema";
+} from "./schema.js";
 
 export type ReportsOverviewPeriod = {
   startDate: string;

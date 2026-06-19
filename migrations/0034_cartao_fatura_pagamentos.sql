@@ -1,9 +1,9 @@
 BEGIN;
 
-CREATE TABLE IF NOT EXISTS cartao_fatura_pagamentos (
-  id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  cartao_id varchar NOT NULL REFERENCES cartoes(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS public.cartao_fatura_pagamentos (
+  id varchar PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id varchar NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  cartao_id varchar NOT NULL REFERENCES public.cartoes(id) ON DELETE CASCADE,
   competencia_mes integer NOT NULL,
   competencia_ano integer NOT NULL,
   valor_pago numeric(12, 2) NOT NULL,
@@ -17,19 +17,19 @@ CREATE TABLE IF NOT EXISTS cartao_fatura_pagamentos (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cartao_fatura_pagamentos_user_id
-  ON cartao_fatura_pagamentos(user_id);
+  ON public.cartao_fatura_pagamentos(user_id);
 
 CREATE INDEX IF NOT EXISTS idx_cartao_fatura_pagamentos_cartao_id
-  ON cartao_fatura_pagamentos(cartao_id);
+  ON public.cartao_fatura_pagamentos(cartao_id);
 
 CREATE INDEX IF NOT EXISTS idx_cartao_fatura_pagamentos_competencia
-  ON cartao_fatura_pagamentos(user_id, cartao_id, competencia_ano, competencia_mes);
+  ON public.cartao_fatura_pagamentos(user_id, cartao_id, competencia_ano, competencia_mes);
 
 CREATE INDEX IF NOT EXISTS idx_cartao_fatura_pagamentos_data_pagamento
-  ON cartao_fatura_pagamentos(data_pagamento);
+  ON public.cartao_fatura_pagamentos(data_pagamento);
 
 CREATE INDEX IF NOT EXISTS idx_cartao_fatura_pagamentos_created_at
-  ON cartao_fatura_pagamentos(created_at);
+  ON public.cartao_fatura_pagamentos(created_at);
 
 DO $$
 BEGIN
@@ -37,8 +37,9 @@ BEGIN
     SELECT 1
     FROM pg_constraint
     WHERE conname = 'cartao_fatura_pagamentos_competencia_mes_check'
+      AND conrelid = 'public.cartao_fatura_pagamentos'::regclass
   ) THEN
-    ALTER TABLE cartao_fatura_pagamentos
+    ALTER TABLE public.cartao_fatura_pagamentos
       ADD CONSTRAINT cartao_fatura_pagamentos_competencia_mes_check
       CHECK (competencia_mes BETWEEN 1 AND 12);
   END IF;
@@ -50,8 +51,9 @@ BEGIN
     SELECT 1
     FROM pg_constraint
     WHERE conname = 'cartao_fatura_pagamentos_valor_pago_check'
+      AND conrelid = 'public.cartao_fatura_pagamentos'::regclass
   ) THEN
-    ALTER TABLE cartao_fatura_pagamentos
+    ALTER TABLE public.cartao_fatura_pagamentos
       ADD CONSTRAINT cartao_fatura_pagamentos_valor_pago_check
       CHECK (valor_pago >= 0);
   END IF;
@@ -63,8 +65,9 @@ BEGIN
     SELECT 1
     FROM pg_constraint
     WHERE conname = 'cartao_fatura_pagamentos_tipo_pagamento_check'
+      AND conrelid = 'public.cartao_fatura_pagamentos'::regclass
   ) THEN
-    ALTER TABLE cartao_fatura_pagamentos
+    ALTER TABLE public.cartao_fatura_pagamentos
       ADD CONSTRAINT cartao_fatura_pagamentos_tipo_pagamento_check
       CHECK (tipo_pagamento IN ('parcial', 'quitacao_total'));
   END IF;
