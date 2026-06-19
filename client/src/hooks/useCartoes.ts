@@ -100,6 +100,7 @@ export function useCartoes(viewingCompraId?: string) {
       ["/api/financial/summary"],
       ["/api/financial/score"],
       ["/api/financial/insights"],
+      ["/api/reports/overview"],
     ];
 
     if (viewingCompraId) {

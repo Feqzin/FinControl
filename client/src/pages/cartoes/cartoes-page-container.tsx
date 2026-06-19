@@ -6,7 +6,11 @@ import { useLocation } from "wouter";
 import { useUIPreferences } from "@/context/ui-preferences";
 import { queryClient } from "@/lib/queryClient";
 import type { Cartao, CompraCartao, ParcelaCompra } from "@shared/schema";
-import { findCardInvoiceSnapshot } from "@shared/card-invoice-payments";
+import {
+  findCardInvoiceSnapshot,
+  getInstallmentEffectivePaidAmount,
+  getInstallmentInvoicePaymentStatus,
+} from "@shared/card-invoice-payments";
 import { format } from "date-fns";
 import {
   detectItauInvoiceText,
@@ -94,6 +98,7 @@ import {
 } from "@/lib/entity-icon-suggestion";
 import {
   buildInvoiceTrackingInstallmentsForCard,
+  getInvoiceCompetency,
   groupParcelasCompraByCompraId,
   isParcelaComprometendoLimite,
 } from "@/lib/card-limit-usage";
@@ -764,6 +769,10 @@ export default function CartoesPage() {
     () => groupParcelasCompraByCompraId(parcelasCompraByUser),
     [parcelasCompraByUser],
   );
+  const getCompraParcelas = useCallback(
+    (compraId: string) => parcelasCompraByCompraId.get(compraId) ?? [],
+    [parcelasCompraByCompraId],
+  );
   const cartoesById = useMemo(
     () => new Map(cartoes.map((cartao) => [cartao.id, cartao])),
     [cartoes],
@@ -849,6 +858,76 @@ export default function CartoesPage() {
   const selectedInvoicePaymentHistory = invoicePaymentTarget
     ? getInvoicePaymentsForCompetency(invoicePaymentTarget.cartaoId, invoicePaymentTarget.monthReference)
     : [];
+  const selectedInvoiceInstallments = useMemo(() => {
+    if (!invoicePaymentTarget) return [];
+    const comprasDaFatura = getFilteredCardFaturaCompras(invoicePaymentTarget.cartaoId);
+    const pagamentosDaCompetencia = getInvoicePaymentsForCompetency(
+      invoicePaymentTarget.cartaoId,
+      invoicePaymentTarget.monthReference,
+    );
+
+    return comprasDaFatura.flatMap((compra) => (
+      getCompraParcelas(compra.id)
+        .filter((parcela) => getInvoiceCompetency(parcela.dataVencimento) === invoicePaymentTarget.monthReference)
+        .map((parcela) => {
+          const valorPagoAtual = getInstallmentEffectivePaidAmount({
+            id: parcela.id,
+            valor: parcela.valor,
+            statusCartao: parcela.statusCartao,
+          }, pagamentosDaCompetencia);
+          const valorParcela = Number(parcela.valor);
+
+          return {
+            parcelaCompraId: parcela.id,
+            compraCartaoId: compra.id,
+            descricao: compra.descricao,
+            numero: parcela.numero,
+            valor: valorParcela,
+            valorPagoAtual,
+            valorPendente: Math.max(0, valorParcela - valorPagoAtual),
+            status: getInstallmentInvoicePaymentStatus({
+              id: parcela.id,
+              valor: parcela.valor,
+              statusCartao: parcela.statusCartao,
+            }, pagamentosDaCompetencia),
+          };
+        })
+    ));
+  }, [
+    getCompraParcelas,
+    getFilteredCardFaturaCompras,
+    getInvoicePaymentsForCompetency,
+    invoicePaymentTarget,
+  ]);
+  const getCompraInvoicePaymentStatus = useCallback((compraId: string, cartaoId: string) => {
+    const compra = compras.find((item) => item.id === compraId);
+    if (!compra) return null;
+    const pagamentosDaCompetencia = getInvoicePaymentsForCompetency(cartaoId, selectedInvoiceMonth);
+    const parcelasDaCompetencia = getCompraParcelas(compraId)
+      .filter((parcela) => getInvoiceCompetency(parcela.dataVencimento) === selectedInvoiceMonth);
+
+    if (parcelasDaCompetencia.length === 0) return null;
+
+    let hasPaid = false;
+    let hasPartial = false;
+    let hasPending = false;
+
+    for (const parcela of parcelasDaCompetencia) {
+      const status = getInstallmentInvoicePaymentStatus({
+        id: parcela.id,
+        valor: parcela.valor,
+        statusCartao: parcela.statusCartao,
+      }, pagamentosDaCompetencia);
+
+      if (status === "pago") hasPaid = true;
+      else if (status === "parcialmente_pago") hasPartial = true;
+      else hasPending = true;
+    }
+
+    if (hasPartial || (hasPaid && hasPending)) return "parcialmente_pago";
+    if (hasPaid) return "pago";
+    return "pendente";
+  }, [compras, getCompraParcelas, getInvoicePaymentsForCompetency, selectedInvoiceMonth]);
 
   const parcelaComprovanteMutation = useMutation({
     mutationFn: async ({ parcelaId, file }: { parcelaId: string; file: File }) => {
@@ -1534,6 +1613,9 @@ export default function CartoesPage() {
     valorPago: string | number;
     dataPagamento: string;
     observacao?: string | null;
+    modoAlocacao?: "ordem_fatura" | "menores_primeiro" | "maiores_primeiro" | "manual";
+    aplicarRestanteAutomaticamente?: boolean;
+    alocacoesManuais?: Array<{ parcelaCompraId: string; valorAplicado?: string | number }>;
   }) => {
     if (!invoicePaymentTarget || !selectedInvoicePaymentSnapshot) {
       toast({
@@ -2685,6 +2767,7 @@ export default function CartoesPage() {
         monthReference={invoicePaymentTarget?.monthReference ?? selectedInvoiceMonth}
         snapshot={selectedInvoicePaymentSnapshot}
         payments={selectedInvoicePaymentHistory}
+        installments={selectedInvoiceInstallments}
         isPending={registerInvoicePaymentMutation.isPending}
         formatCurrency={formatCartaoCurrency}
         formatMonthLabel={formatInvoiceCompetencyLabel}
@@ -2780,6 +2863,7 @@ export default function CartoesPage() {
           await deleteParcelaComprovanteMutation.mutateAsync({ parcelaId });
         }}
         comprovanteDeleteLoadingId={comprovanteDeleteParcelaId}
+        cartaoFaturaPagamentos={cartaoFaturaPagamentos}
       />
 
       <ImportFaturaDialog
@@ -2906,7 +2990,8 @@ export default function CartoesPage() {
         getCardUsedLimit={getCardUsedLimit}
         getCardAvailableLimit={getCardAvailableLimit}
         getFilteredCardFaturaCompras={getFilteredCardFaturaCompras}
-        getCompraParcelas={(compraId) => parcelasCompraByCompraId.get(compraId) ?? []}
+        getCompraParcelas={getCompraParcelas}
+        getCompraInvoicePaymentStatus={getCompraInvoicePaymentStatus}
         selectedInvoiceMonthLabel={selectedInvoiceMonthLabel}
         servicos={servicos}
         pessoas={pessoas}

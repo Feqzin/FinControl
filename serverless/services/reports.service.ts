@@ -19,6 +19,7 @@ import { parseMoney } from "../../utils/money.js";
 import type { FinancialRepository } from "../repositories/financial.repository.js";
 import { FinancialService } from "./financial.service.js";
 import { getCardObligations } from "./financial-card-analytics.js";
+import { loadInvoicePaymentsWithAllocations } from "./cartao-fatura-payment-loader.js";
 import { MAX_REPORT_MONTHS, type ReportsOverviewQueryInput } from "../validators/reports.validators.js";
 
 type IsoPeriod = {
@@ -115,7 +116,7 @@ export class ReportsService {
         this.repository.getComprasCartao(userId),
         this.repository.getCartoes(userId),
         this.repository.getParcelasCompraByUser(userId),
-        this.repository.getCartaoFaturaPagamentos(userId),
+        loadInvoicePaymentsWithAllocations(this.repository, userId),
         this.repository.getServicos(userId),
         this.repository.getDividas(userId),
         this.repository.getPessoas(userId),
@@ -147,6 +148,7 @@ export class ReportsService {
     const dueDayByCardId = new Map(cartoes.map((cartao) => [cartao.id, cartao.diaVencimento]));
     const cardSnapshots = buildCardInvoiceSnapshots({
       installments: getCardObligations({ compras: comprasCartao, parcelasCompra }).map((obligation) => ({
+        id: obligation.parcelaCompraId,
         cartaoId: obligation.cartaoId,
         valor: obligation.valor,
         statusCartao: obligation.statusCartao,

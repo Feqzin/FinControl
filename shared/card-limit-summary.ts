@@ -9,6 +9,7 @@ import {
 type MoneyValue = string | number | null | undefined;
 
 export type CardSummaryInstallment = {
+  id?: string | null;
   cartaoId: string;
   valor: MoneyValue;
   statusCartao: string | null | undefined;

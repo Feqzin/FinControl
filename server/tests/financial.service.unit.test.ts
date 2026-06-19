@@ -1,6 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { Cartao, CartaoFaturaPagamento, CompraCartao, Divida, Parcela, ParcelaCompra, Patrimonio, Pessoa, Renda, Servico } from "@shared/schema";
+import type {
+  Cartao,
+  CartaoFaturaPagamento,
+  CartaoFaturaPagamentoAlocacao,
+  CompraCartao,
+  Divida,
+  Parcela,
+  ParcelaCompra,
+  Patrimonio,
+  Pessoa,
+  Renda,
+  Servico,
+} from "@shared/schema";
 import { addMonths, format } from "date-fns";
 import { FinancialService } from "../services/financial.service";
 import { ReportsService } from "../services/reports.service";
@@ -13,6 +25,7 @@ type FinancialFixture = {
   parcelas: Parcela[];
   parcelasCompra: ParcelaCompra[];
   cartaoFaturaPagamentos?: CartaoFaturaPagamento[];
+  cartaoFaturaPagamentoAlocacoes?: CartaoFaturaPagamentoAlocacao[];
   servicos: Servico[];
   cartoes: Cartao[];
   compras: CompraCartao[];
@@ -27,6 +40,12 @@ function createRepository(fixture: FinancialFixture) {
     getParcelas: async () => fixture.parcelas,
     getParcelasCompraByUser: async () => fixture.parcelasCompra,
     getCartaoFaturaPagamentos: async () => fixture.cartaoFaturaPagamentos ?? [],
+    getCartaoFaturaPagamentosByCartao: async (cartaoId: string) => (
+      (fixture.cartaoFaturaPagamentos ?? []).filter((pagamento) => pagamento.cartaoId === cartaoId)
+    ),
+    getCartaoFaturaPagamentoAlocacoesByPagamentoIds: async (paymentIds: string[]) => (
+      (fixture.cartaoFaturaPagamentoAlocacoes ?? []).filter((alocacao) => paymentIds.includes(alocacao.pagamentoId))
+    ),
     getServicos: async () => fixture.servicos,
     getCartoes: async () => fixture.cartoes,
     getComprasCartao: async () => fixture.compras,

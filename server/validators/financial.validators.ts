@@ -267,6 +267,12 @@ export const cartaoFaturaPagamentoBody = z.object({
   valorPago: moneyField,
   dataPagamento: isoDateRequired,
   observacao: z.string().trim().max(500).optional().nullable(),
+  modoAlocacao: z.enum(["ordem_fatura", "menores_primeiro", "maiores_primeiro", "manual"]).default("ordem_fatura"),
+  aplicarRestanteAutomaticamente: z.boolean().optional().default(false),
+  alocacoesManuais: z.array(z.object({
+    parcelaCompraId: z.string().min(1),
+    valorAplicado: moneyField.optional(),
+  }).strict()).optional(),
 }).strict().superRefine((data, ctx) => {
   const parsed = parseMoney(data.valorPago);
   if (parsed == null || parsed <= 0) {
@@ -276,6 +282,26 @@ export const cartaoFaturaPagamentoBody = z.object({
       message: "Informe um valor de pagamento maior que zero",
     });
   }
+
+  if (data.modoAlocacao === "manual" && (!data.alocacoesManuais || data.alocacoesManuais.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["alocacoesManuais"],
+      message: "Selecione ao menos uma parcela para a alocação manual",
+    });
+  }
+
+  (data.alocacoesManuais ?? []).forEach((allocation, index) => {
+    if (allocation.valorAplicado == null) return;
+    const value = parseMoney(allocation.valorAplicado);
+    if (value == null || value < 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["alocacoesManuais", index, "valorAplicado"],
+        message: "Informe um valor aplicado válido",
+      });
+    }
+  });
 });
 
 export const parcelaCompraUpdateBody = z.object({

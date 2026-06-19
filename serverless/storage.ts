@@ -1,9 +1,9 @@
-import { eq, and, sql, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, sql, isNull, isNotNull, inArray } from "drizzle-orm";
 import { db } from "./db.js";
 import { writeTechnicalLog } from "./logger.js";
 import {
   users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos,
-  servicoPessoas, servicoPagamentos, metas, parcelasCompra, cartaoFaturaPagamentos, pessoaSaldoMovimentacoes, rendas, patrimonios, compraAliases,
+  servicoPessoas, servicoPagamentos, metas, parcelasCompra, cartaoFaturaPagamentos, cartaoFaturaPagamentoAlocacoes, pessoaSaldoMovimentacoes, rendas, patrimonios, compraAliases,
   type User, type InsertUser,
   type Pessoa, type InsertPessoa,
   type PessoaSaldoMovimentacao, type InsertPessoaSaldoMovimentacao,
@@ -17,6 +17,7 @@ import {
   type Meta, type InsertMeta,
   type ParcelaCompra, type InsertParcelaCompra,
   type CartaoFaturaPagamento, type InsertCartaoFaturaPagamento,
+  type CartaoFaturaPagamentoAlocacao, type InsertCartaoFaturaPagamentoAlocacao,
   type Renda, type InsertRenda,
   type Patrimonio, type InsertPatrimonio,
   type CompraAlias, type InsertCompraAlias,
@@ -375,7 +376,11 @@ export interface IStorage {
 
   getCartaoFaturaPagamentos(userId: string): Promise<CartaoFaturaPagamento[]>;
   getCartaoFaturaPagamentosByCartao(cartaoId: string, userId: string): Promise<CartaoFaturaPagamento[]>;
+  getCartaoFaturaPagamentoAlocacoesByPagamentoIds(paymentIds: string[], userId: string): Promise<CartaoFaturaPagamentoAlocacao[]>;
   createCartaoFaturaPagamento(data: InsertCartaoFaturaPagamento): Promise<CartaoFaturaPagamento>;
+  createCartaoFaturaPagamentoAlocacoesBulk(
+    rows: InsertCartaoFaturaPagamentoAlocacao[],
+  ): Promise<CartaoFaturaPagamentoAlocacao[]>;
   updateCartaoFaturaPagamento(
     id: string,
     userId: string,
@@ -1068,9 +1073,31 @@ export class DatabaseStorage implements IStorage {
       .from(cartaoFaturaPagamentos)
       .where(and(eq(cartaoFaturaPagamentos.cartaoId, cartaoId), eq(cartaoFaturaPagamentos.userId, userId)));
   }
+  async getCartaoFaturaPagamentoAlocacoesByPagamentoIds(paymentIds: string[], userId: string) {
+    if (paymentIds.length === 0) return [];
+    return this.database
+      .select({
+        id: cartaoFaturaPagamentoAlocacoes.id,
+        pagamentoId: cartaoFaturaPagamentoAlocacoes.pagamentoId,
+        parcelaCompraId: cartaoFaturaPagamentoAlocacoes.parcelaCompraId,
+        valorAplicado: cartaoFaturaPagamentoAlocacoes.valorAplicado,
+        createdAt: cartaoFaturaPagamentoAlocacoes.createdAt,
+        updatedAt: cartaoFaturaPagamentoAlocacoes.updatedAt,
+      })
+      .from(cartaoFaturaPagamentoAlocacoes)
+      .innerJoin(cartaoFaturaPagamentos, eq(cartaoFaturaPagamentos.id, cartaoFaturaPagamentoAlocacoes.pagamentoId))
+      .where(and(
+        inArray(cartaoFaturaPagamentoAlocacoes.pagamentoId, paymentIds),
+        eq(cartaoFaturaPagamentos.userId, userId),
+      ));
+  }
   async createCartaoFaturaPagamento(data: InsertCartaoFaturaPagamento) {
     const [created] = await this.database.insert(cartaoFaturaPagamentos).values(data).returning();
     return created;
+  }
+  async createCartaoFaturaPagamentoAlocacoesBulk(rows: InsertCartaoFaturaPagamentoAlocacao[]) {
+    if (rows.length === 0) return [];
+    return this.database.insert(cartaoFaturaPagamentoAlocacoes).values(rows).returning();
   }
   async updateCartaoFaturaPagamento(id: string, userId: string, data: Partial<InsertCartaoFaturaPagamento>) {
     const [updated] = await this.database

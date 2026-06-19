@@ -1,6 +1,7 @@
 import type {
   Cartao,
   CartaoFaturaPagamento,
+  CartaoFaturaPagamentoAlocacao,
   CompraCartao,
   Divida,
   ParcelaCompra,
@@ -73,7 +74,9 @@ export interface DashboardOverviewResponse {
   cartoes: Cartao[];
   compras: CompraCartao[];
   parcelasCompra: ParcelaCompra[];
-  cartaoFaturaPagamentos: CartaoFaturaPagamento[];
+  cartaoFaturaPagamentos: Array<CartaoFaturaPagamento & {
+    alocacoes?: CartaoFaturaPagamentoAlocacao[];
+  }>;
   rendas: Renda[];
   patrimonios: Patrimonio[];
   financialSummary: FinancialSummary;

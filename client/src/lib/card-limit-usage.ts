@@ -131,6 +131,7 @@ function buildOutstandingInstallmentsForCompra(
     return parcelasMaterializadas
       .filter((row) => isParcelaComprometendoLimite(row.statusCartao))
       .map((row) => ({
+        id: row.id,
         cartaoId: compra.cartaoId,
         valor: row.valor,
         statusCartao: row.statusCartao,
@@ -162,6 +163,7 @@ function buildInvoiceTrackingInstallmentsForCompra(
     return parcelasMaterializadas
       .filter((row) => String(row.statusCartao ?? "").trim().toLowerCase() !== "cancelado")
       .map((row) => ({
+        id: row.id,
         cartaoId: compra.cartaoId,
         valor: row.valor,
         statusCartao: row.statusCartao,

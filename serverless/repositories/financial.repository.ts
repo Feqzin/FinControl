@@ -1,6 +1,7 @@
 import type {
   InsertCompraCartao,
   InsertCartaoFaturaPagamento,
+  InsertCartaoFaturaPagamentoAlocacao,
   InsertDivida,
   InsertParcela,
   InsertParcelaCompra,
@@ -182,8 +183,16 @@ function createFinancialRepositoryBase(targetStorage: IStorage) {
       return targetStorage.getCartaoFaturaPagamentosByCartao(cartaoId, userId);
     },
 
+    async getCartaoFaturaPagamentoAlocacoesByPagamentoIds(paymentIds: string[], userId: string) {
+      return targetStorage.getCartaoFaturaPagamentoAlocacoesByPagamentoIds(paymentIds, userId);
+    },
+
     async createCartaoFaturaPagamento(data: InsertCartaoFaturaPagamento) {
       return targetStorage.createCartaoFaturaPagamento(data);
+    },
+
+    async createCartaoFaturaPagamentoAlocacoesBulk(rows: InsertCartaoFaturaPagamentoAlocacao[]) {
+      return targetStorage.createCartaoFaturaPagamentoAlocacoesBulk(rows);
     },
 
     async updateCartaoFaturaPagamento(id: string, userId: string, data: Partial<InsertCartaoFaturaPagamento>) {

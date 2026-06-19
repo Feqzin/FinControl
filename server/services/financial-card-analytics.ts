@@ -10,6 +10,7 @@ export type CardAnalyticsInput = {
 };
 
 export type CardInstallmentObligation = {
+  parcelaCompraId: string | null;
   compraId: string;
   cartaoId: string;
   source: "compra" | "parcela_compra";
@@ -99,6 +100,7 @@ function buildFallbackInstallments(compra: CompraCartao): CardInstallmentObligat
     const numero = index + 1;
     const isPaid = numero < parcelaAtual;
     return {
+      parcelaCompraId: null,
       compraId: compra.id,
       cartaoId: compra.cartaoId,
       source: "compra" as const,
@@ -131,6 +133,7 @@ export function getCardObligations(input: CardAnalyticsInput): CardInstallmentOb
     if (rows.length > 0) {
       for (const row of rows) {
         obligations.push({
+          parcelaCompraId: row.id,
           compraId: compra.id,
           cartaoId: compra.cartaoId,
           source: "parcela_compra",
@@ -200,4 +203,3 @@ export function getCardPortfolioSummary(input: CardAnalyticsInput): CardPortfoli
     },
   };
 }
-

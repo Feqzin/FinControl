@@ -34,6 +34,7 @@ type CartoesComprasGridProps = {
   getCardAvailableLimit: (cartaoId: string) => number;
   getFilteredCardCompras: (cartaoId: string) => CompraCartao[];
   getCompraParcelas: (compraId: string) => ParcelaCompra[];
+  getCompraInvoicePaymentStatus: (compraId: string, cartaoId: string) => "pendente" | "parcialmente_pago" | "pago" | null;
   getDaysUntilInvoice: (diaVencimento: number) => number;
   getNextInvoiceDate: (diaVencimento: number) => string;
   onEditCartao: (cartao: Cartao) => void;
@@ -68,6 +69,7 @@ export function CartoesComprasGrid({
   getCardAvailableLimit,
   getFilteredCardCompras,
   getCompraParcelas,
+  getCompraInvoicePaymentStatus,
   getDaysUntilInvoice,
   getNextInvoiceDate,
   onEditCartao,
@@ -285,6 +287,7 @@ export function CartoesComprasGrid({
                 </p>
                 <div className="space-y-2">
                   {visibleCompras.map((compra) => {
+                    const invoicePaymentStatus = getCompraInvoicePaymentStatus(compra.id, cartao.id);
                     const reembolsoStatus = getCompraReembolsoVisualStatus(compra, getCompraParcelas(compra.id));
                     const aguardandoReembolso = reembolsoStatus === "aguardando_reembolso";
                     const reembolsoVencido = reembolsoStatus === "reembolso_vencido";
@@ -314,6 +317,21 @@ export function CartoesComprasGrid({
                                 <span className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-xs text-blue-600 dark:text-blue-400">
                                   <User className="h-2.5 w-2.5" />
                                   {pessoas.find((pessoa) => pessoa.id === compra.pessoaId)?.nome ?? "Pessoa"}
+                                </span>
+                              ) : null}
+                              {invoicePaymentStatus === "pago" ? (
+                                <span className="inline-flex flex-shrink-0 items-center rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-600">
+                                  Pago na fatura
+                                </span>
+                              ) : null}
+                              {invoicePaymentStatus === "parcialmente_pago" ? (
+                                <span className="inline-flex flex-shrink-0 items-center rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-700 dark:text-amber-300">
+                                  Parcialmente pago
+                                </span>
+                              ) : null}
+                              {invoicePaymentStatus === "pendente" ? (
+                                <span className="inline-flex flex-shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                                  Pendente
                                 </span>
                               ) : null}
                               {aguardandoReembolso ? (

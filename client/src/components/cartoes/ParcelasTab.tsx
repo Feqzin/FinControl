@@ -4,10 +4,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  getInstallmentEffectivePaidAmount,
+  getInstallmentInvoicePaymentStatus,
+} from "@shared/card-invoice-payments";
 import type { CompraCartao, ParcelaCompra, Pessoa } from "@shared/schema";
 import { Check, ExternalLink, Paperclip, Pencil, RefreshCw, Trash2, Wallet, X } from "lucide-react";
 import { formatBytes } from "@/pages/pessoas/payment-timeline.utils";
 import { getInvoiceCompetency } from "@/lib/card-limit-usage";
+import type { CartaoFaturaPagamentoApiModel } from "@/services/api/cartoes";
 
 type AbaterSaldoParcelaForm = {
   valor: string;
@@ -39,6 +44,7 @@ type ParcelasTabProps = {
   onOpenChange: (open: boolean) => void;
   viewingCompra: CompraCartao | null;
   parcelasCompraData: ParcelaCompra[];
+  cartaoFaturaPagamentos: CartaoFaturaPagamentoApiModel[];
   parcelasLoading: boolean;
   parcelasErrorMessage: string | null;
   pessoas: Pessoa[];
@@ -83,6 +89,7 @@ export function ParcelasTab({
   onOpenChange,
   viewingCompra,
   parcelasCompraData,
+  cartaoFaturaPagamentos,
   parcelasLoading,
   parcelasErrorMessage,
   pessoas,
@@ -162,8 +169,30 @@ export function ParcelasTab({
                 </div>
               ) : (
                 (() => {
-                  const pagas = parcelasCompraData.filter((parcela) => parcela.statusCartao === "pago").length;
-                  const pendentes = parcelasCompraData.filter((parcela) => isParcelaComprometendoLimite(parcela.statusCartao)).length;
+                  const pagas = parcelasCompraData.filter((parcela) => {
+                    const competencia = getInvoiceCompetency(parcela.dataVencimento);
+                    const pagamentosDaCompetencia = cartaoFaturaPagamentos.filter((payment) => (
+                      payment.cartaoId === viewingCompra?.cartaoId
+                      && `${String(payment.competenciaAno).padStart(4, "0")}-${String(payment.competenciaMes).padStart(2, "0")}` === competencia
+                    ));
+                    return getInstallmentInvoicePaymentStatus({
+                      id: parcela.id,
+                      valor: parcela.valor,
+                      statusCartao: parcela.statusCartao,
+                    }, pagamentosDaCompetencia) === "pago";
+                  }).length;
+                  const pendentes = parcelasCompraData.filter((parcela) => {
+                    const competencia = getInvoiceCompetency(parcela.dataVencimento);
+                    const pagamentosDaCompetencia = cartaoFaturaPagamentos.filter((payment) => (
+                      payment.cartaoId === viewingCompra?.cartaoId
+                      && `${String(payment.competenciaAno).padStart(4, "0")}-${String(payment.competenciaMes).padStart(2, "0")}` === competencia
+                    ));
+                    return getInstallmentInvoicePaymentStatus({
+                      id: parcela.id,
+                      valor: parcela.valor,
+                      statusCartao: parcela.statusCartao,
+                    }, pagamentosDaCompetencia) !== "pago";
+                  }).length;
                   const vencidas = parcelasCompraData.filter(
                     (parcela) => isParcelaVencida(parcela) && getParcelaSaldoPendente(parcela) > 0,
                   ).length;
@@ -197,7 +226,22 @@ export function ParcelasTab({
               {!parcelasLoading && !parcelasErrorMessage ? parcelasCompraData.map((parcela) => {
                 const saldoPendente = getParcelaSaldoPendente(parcela);
                 const vencida = isParcelaVencida(parcela) && saldoPendente > 0;
-                const pago = parcela.statusCartao === "pago";
+                const competenciaParcela = getInvoiceCompetency(parcela.dataVencimento);
+                const pagamentosDaCompetencia = cartaoFaturaPagamentos.filter((payment) => (
+                  payment.cartaoId === viewingCompra?.cartaoId
+                  && `${String(payment.competenciaAno).padStart(4, "0")}-${String(payment.competenciaMes).padStart(2, "0")}` === competenciaParcela
+                ));
+                const statusPagamentoFatura = getInstallmentInvoicePaymentStatus({
+                  id: parcela.id,
+                  valor: parcela.valor,
+                  statusCartao: parcela.statusCartao,
+                }, pagamentosDaCompetencia);
+                const valorPagoNaFatura = getInstallmentEffectivePaidAmount({
+                  id: parcela.id,
+                  valor: parcela.valor,
+                  statusCartao: parcela.statusCartao,
+                }, pagamentosDaCompetencia);
+                const pago = statusPagamentoFatura === "pago";
                 const isPaying = payingParcelaId === parcela.id;
                 const isEditing = editingParcelaId === parcela.id;
                 const isMovingCompetencia = movingParcelaId === parcela.id;
@@ -228,12 +272,12 @@ export function ParcelasTab({
                 return (
                   <div
                     key={parcela.id}
-                    className={`space-y-2 rounded-md border p-3 text-sm ${pago ? "border-emerald-500/10 bg-emerald-500/5" : vencida ? "border-red-500/20 bg-red-500/5" : "border-border/40 bg-muted/20"}`}
+                    className={`space-y-2 rounded-md border p-3 text-sm ${pago ? "border-emerald-500/10 bg-emerald-500/5" : statusPagamentoFatura === "parcialmente_pago" ? "border-amber-500/20 bg-amber-500/5" : vencida ? "border-red-500/20 bg-red-500/5" : "border-border/40 bg-muted/20"}`}
                     data-testid={`row-parcela-compra-${parcela.id}`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <div className={`h-6 w-6 flex-shrink-0 rounded-full text-xs font-bold flex items-center justify-center ${pago ? "bg-emerald-500 text-white" : vencida ? "bg-red-500 text-white" : "bg-muted text-muted-foreground"}`}>
+                        <div className={`h-6 w-6 flex-shrink-0 rounded-full text-xs font-bold flex items-center justify-center ${pago ? "bg-emerald-500 text-white" : statusPagamentoFatura === "parcialmente_pago" ? "bg-amber-500 text-white" : vencida ? "bg-red-500 text-white" : "bg-muted text-muted-foreground"}`}>
                           {pago ? <Check className="h-3 w-3" /> : parcela.numero}
                         </div>
                         {isEditing ? (
@@ -281,6 +325,11 @@ export function ParcelasTab({
                                   Pago {parcela.dataPagamentoCartao ? `em ${parcela.dataPagamentoCartao}` : ""}
                                 </span>
                               ) : null}
+                              {statusPagamentoFatura === "parcialmente_pago" ? (
+                                <span className="text-xs text-amber-600">
+                                  Parcialmente pago na fatura: {formatCurrency(valorPagoNaFatura)}
+                                </span>
+                              ) : null}
                               {parcialViaSaldo ? (
                                 <span className="text-xs text-blue-600">
                                   Parcial via saldo: abatido {formatCurrency(saldoAbatido)} · pendente {formatCurrency(saldoPendente)}
@@ -300,6 +349,12 @@ export function ParcelasTab({
                             <div className="mt-0.5 flex flex-wrap items-center gap-1">
                               {saldoAbatido > 0 ? (
                                 <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-xs text-blue-600">Saldo pessoa</span>
+                              ) : null}
+                              {statusPagamentoFatura === "pago" ? (
+                                <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs text-emerald-600">Pago na fatura</span>
+                              ) : null}
+                              {statusPagamentoFatura === "parcialmente_pago" ? (
+                                <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-700 dark:text-amber-300">Parcialmente pago</span>
                               ) : null}
                               {aguardaReembolso ? (
                                 <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-600">Ag. reembolso</span>

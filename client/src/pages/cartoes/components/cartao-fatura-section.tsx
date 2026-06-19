@@ -19,6 +19,7 @@ type CartaoFaturaSectionProps = {
   getCardAvailableLimit: (cartaoId: string) => number;
   getFilteredCardFaturaCompras: (cartaoId: string) => CompraCartao[];
   getCompraParcelas: (compraId: string) => ParcelaCompra[];
+  getCompraInvoicePaymentStatus: (compraId: string, cartaoId: string) => "pendente" | "parcialmente_pago" | "pago" | null;
   selectedInvoiceMonthLabel: string;
   servicos: Servico[];
   pessoas: Pessoa[];
@@ -54,6 +55,7 @@ export function CartaoFaturaSection({
   getCardAvailableLimit,
   getFilteredCardFaturaCompras,
   getCompraParcelas,
+  getCompraInvoicePaymentStatus,
   selectedInvoiceMonthLabel,
   servicos,
   pessoas,
@@ -90,6 +92,7 @@ export function CartaoFaturaSection({
           getCardAvailableLimit={getCardAvailableLimit}
           getFilteredCardCompras={getFilteredCardFaturaCompras}
           getCompraParcelas={getCompraParcelas}
+          getCompraInvoicePaymentStatus={getCompraInvoicePaymentStatus}
           invoiceMonthLabel={selectedInvoiceMonthLabel}
           servicos={servicos}
           onOpenParcelas={onOpenParcelas}
@@ -112,6 +115,7 @@ export function CartaoFaturaSection({
           getCardAvailableLimit={getCardAvailableLimit}
           getFilteredCardCompras={getFilteredCardFaturaCompras}
           getCompraParcelas={getCompraParcelas}
+          getCompraInvoicePaymentStatus={getCompraInvoicePaymentStatus}
           getDaysUntilInvoice={getDaysUntilInvoice}
           getNextInvoiceDate={getNextInvoiceDate}
           focusedCartaoId={comprasCartaoFocadoId}

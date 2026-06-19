@@ -348,20 +348,36 @@ export type CartaoFaturaPagamentoApiModel = {
   dataPagamento: string;
   observacao: string | null;
   tipoPagamento: string;
+  modoAlocacao: "ordem_fatura" | "menores_primeiro" | "maiores_primeiro" | "manual";
   considerarNoSaldoCompetencia: boolean;
   conciliadoEm: string | null;
   createdAt: string;
   updatedAt: string;
+  alocacoes?: Array<{
+    id: string;
+    pagamentoId: string;
+    parcelaCompraId: string;
+    valorAplicado: string;
+    createdAt: string;
+    updatedAt: string;
+  }>;
 };
 
 export type RegisterCartaoFaturaPagamentoPayload = {
   valorPago: string | number;
   dataPagamento: string;
   observacao?: string | null;
+  modoAlocacao?: "ordem_fatura" | "menores_primeiro" | "maiores_primeiro" | "manual";
+  aplicarRestanteAutomaticamente?: boolean;
+  alocacoesManuais?: Array<{
+    parcelaCompraId: string;
+    valorAplicado?: string | number;
+  }>;
 };
 
 export type RegisterCartaoFaturaPagamentoResponse = {
   pagamento: CartaoFaturaPagamentoApiModel;
+  alocacoes: NonNullable<CartaoFaturaPagamentoApiModel["alocacoes"]>;
   valorSolicitado: number;
   valorAplicado: number;
   saldoAnterior: number;
@@ -373,6 +389,22 @@ export type RegisterCartaoFaturaPagamentoResponse = {
     | "vencida"
     | "vencida_parcialmente_paga";
   valorOriginalFatura: number;
+  snapshotAtualizado: {
+    cartaoId: string;
+    monthReference: string;
+    dueDate: string | null;
+    originalTotal: number;
+    paidInstallmentsTotal: number;
+    activePartialPaymentsTotal: number;
+    registeredPaymentsTotal: number;
+    amountPaid: number;
+    remainingAmount: number;
+    installmentCount: number;
+    openInstallmentsCount: number;
+    status: "aberta" | "parcialmente_paga" | "paga" | "vencida" | "vencida_parcialmente_paga";
+  };
+  limiteComprometidoAtualizado: number;
+  limiteDisponivelEstimadoAtualizado: number;
 };
 
 export type DeleteFaturaImpact = {
@@ -434,6 +466,14 @@ export async function registerCartaoFaturaPagamento(
     valorPago,
     dataPagamento: payload.dataPagamento,
     observacao: payload.observacao ?? null,
+    modoAlocacao: payload.modoAlocacao ?? "ordem_fatura",
+    aplicarRestanteAutomaticamente: payload.aplicarRestanteAutomaticamente ?? false,
+    alocacoesManuais: payload.alocacoesManuais?.map((allocation) => ({
+      parcelaCompraId: allocation.parcelaCompraId,
+      ...(allocation.valorAplicado !== undefined
+        ? { valorAplicado: formatMoneyFixed(allocation.valorAplicado) ?? "0.00" }
+        : {}),
+    })),
   });
   return response.json();
 }

@@ -1,7 +1,20 @@
 import { format } from "date-fns";
-import { findCardInvoiceSnapshot } from "../../shared/card-invoice-payments.js";
+import {
+  buildInvoicePaymentAllocationPlan,
+  findCardInvoiceSnapshot,
+  getInstallmentInvoicePaymentStatus,
+  type CardInvoiceAllocationMode,
+  type CardInvoiceInstallment,
+} from "../../shared/card-invoice-payments.js";
+import { buildCardLimitSummary } from "../../shared/card-limit-summary.js";
 import { formatMoneyFixed, parseMoney } from "../../utils/money.js";
-import type { Cartao, CartaoFaturaPagamento, CompraCartao, ParcelaCompra } from "../../shared/schema.js";
+import type {
+  Cartao,
+  CartaoFaturaPagamento,
+  CartaoFaturaPagamentoAlocacao,
+  CompraCartao,
+  ParcelaCompra,
+} from "../../shared/schema.js";
 import type { FinancialRepository } from "../repositories/financial.repository.js";
 import type {
   CartaoBodyInput,
@@ -10,6 +23,10 @@ import type {
 } from "../validators/financial.validators.js";
 import { recomputeCardPurchaseAggregate } from "./financial-aggregate-consistency.js";
 import { materializeParcelasCompraIfMissing } from "./parcelas-compra-materialization.js";
+import {
+  loadInvoicePaymentsWithAllocations,
+  type DetailedCartaoFaturaPagamento,
+} from "./cartao-fatura-payment-loader.js";
 import { runFinancialTransaction } from "./transaction-utils.js";
 
 export type FaturaDeleteImpactPorCartao = {
@@ -35,11 +52,17 @@ export type DeleteFaturaResult = {
 
 export type RegisterCartaoFaturaPagamentoResult =
   | {
-    error: "CARTAO_NOT_FOUND" | "FATURA_NOT_FOUND" | "FATURA_JA_QUITADA" | "VALOR_INVALIDO";
+    error:
+      | "CARTAO_NOT_FOUND"
+      | "FATURA_NOT_FOUND"
+      | "FATURA_JA_QUITADA"
+      | "VALOR_INVALIDO"
+      | "ALOCACAO_INVALIDA";
     message?: string;
   }
   | {
     pagamento: CartaoFaturaPagamento;
+    alocacoes: CartaoFaturaPagamentoAlocacao[];
     valorSolicitado: number;
     valorAplicado: number;
     saldoAnterior: number;
@@ -51,6 +74,9 @@ export type RegisterCartaoFaturaPagamentoResult =
       | "vencida"
       | "vencida_parcialmente_paga";
     valorOriginalFatura: number;
+    snapshotAtualizado: NonNullable<ReturnType<typeof findCardInvoiceSnapshot>>;
+    limiteComprometidoAtualizado: number;
+    limiteDisponivelEstimadoAtualizado: number;
   };
 
 type DeleteFaturaInput = {
@@ -87,12 +113,13 @@ function buildFaturaSnapshot(params: {
   cartao: Cartao;
   monthReference: string;
   parcelasCompra: ParcelaCompra[];
-  pagamentos: CartaoFaturaPagamento[];
+  pagamentos: DetailedCartaoFaturaPagamento[];
 }): ReturnType<typeof findCardInvoiceSnapshot> {
   return findCardInvoiceSnapshot({
     cartaoId: params.cartao.id,
     monthReference: params.monthReference,
     installments: params.parcelasCompra.map((parcela) => ({
+      id: parcela.id,
       cartaoId: params.cartao.id,
       valor: parcela.valor,
       statusCartao: parcela.statusCartao,
@@ -117,6 +144,32 @@ function sumCompraValorTotal(compra: CompraCartao, linkedParcelas: Array<{ valor
   return toMoneyNumber(compra.valorTotal);
 }
 
+function buildInvoiceInstallmentsForCompetency(
+  cartaoId: string,
+  monthReference: string,
+  parcelasCompra: ParcelaCompra[],
+  comprasById: Map<string, CompraCartao>,
+): CardInvoiceInstallment[] {
+  return parcelasCompra
+    .filter((parcela) => getMonth(parcela.dataVencimento) === monthReference)
+    .map((parcela) => ({
+      id: parcela.id,
+      compraId: parcela.compraCartaoId,
+      descricao: comprasById.get(parcela.compraCartaoId)?.descricao ?? null,
+      numero: parcela.numero,
+      cartaoId,
+      valor: parcela.valor,
+      statusCartao: parcela.statusCartao,
+      dataVencimento: parcela.dataVencimento,
+    }))
+    .sort((left, right) => (
+      String(left.dataVencimento ?? "").localeCompare(String(right.dataVencimento ?? ""))
+      || (left.numero ?? 0) - (right.numero ?? 0)
+      || String(left.descricao ?? "").localeCompare(String(right.descricao ?? ""))
+      || String(left.id ?? "").localeCompare(String(right.id ?? ""))
+    ));
+}
+
 export class CartoesService {
   constructor(private readonly repository: FinancialRepository) {}
 
@@ -125,7 +178,7 @@ export class CartoesService {
   }
 
   async listInvoicePayments(userId: string) {
-    return this.repository.getCartaoFaturaPagamentos(userId);
+    return loadInvoicePaymentsWithAllocations(this.repository, userId);
   }
 
   async create(userId: string, data: CartaoBodyInput) {
@@ -168,9 +221,10 @@ export class CartoesService {
       }
 
       const compraIds = new Set(compras.map((compra) => compra.id));
+      const comprasById = new Map(compras.map((compra) => [compra.id, compra]));
       const parcelasCompra = (await repository.getParcelasCompraByUser(userId))
         .filter((parcela) => compraIds.has(parcela.compraCartaoId));
-      const pagamentos = await repository.getCartaoFaturaPagamentosByCartao(cartaoId, userId);
+      const pagamentos = await loadInvoicePaymentsWithAllocations(repository, userId, { cartaoId });
 
       const snapshotAntes = buildFaturaSnapshot({
         cartao,
@@ -196,6 +250,43 @@ export class CartoesService {
       const valorAplicado = Math.min(valorSolicitado, snapshotAntes.remainingAmount);
       const quitacaoTotal = valorAplicado >= snapshotAntes.remainingAmount;
       const nowTimestamp = new Date();
+      const modoAlocacao = data.modoAlocacao ?? "ordem_fatura";
+      const installmentsDaCompetencia = buildInvoiceInstallmentsForCompetency(
+        cartao.id,
+        monthReference,
+        parcelasCompra,
+        comprasById,
+      );
+
+      if (installmentsDaCompetencia.length === 0) {
+        return {
+          error: "FATURA_NOT_FOUND" as const,
+          message: "Nenhuma parcela da competência foi encontrada para esta fatura.",
+        };
+      }
+
+      const allocationPlan = buildInvoicePaymentAllocationPlan({
+        installments: installmentsDaCompetencia,
+        payments: pagamentos,
+        paymentAmount: valorAplicado,
+        mode: modoAlocacao as CardInvoiceAllocationMode,
+        manualAllocations: data.alocacoesManuais,
+        applyRemainingAutomatically: data.aplicarRestanteAutomaticamente,
+      });
+
+      if (modoAlocacao === "manual" && allocationPlan.valorNaoAlocado > 0 && !data.aplicarRestanteAutomaticamente) {
+        return {
+          error: "ALOCACAO_INVALIDA" as const,
+          message: "O valor informado é maior que a soma das parcelas selecionadas. Ative a aplicação automática do restante ou ajuste a seleção manual.",
+        };
+      }
+
+      if (allocationPlan.valorAlocado <= 0 || allocationPlan.alocacoes.length === 0) {
+        return {
+          error: "ALOCACAO_INVALIDA" as const,
+          message: "Não foi possível aplicar o pagamento às parcelas abertas desta competência.",
+        };
+      }
 
       if (quitacaoTotal) {
         const pagamentosParciaisAtivos = pagamentos.filter((pagamento) => (
@@ -211,24 +302,6 @@ export class CartoesService {
             conciliadoEm: nowTimestamp,
           });
         }
-
-        const parcelasAbertasDaCompetencia = parcelasCompra.filter((parcela) => (
-          getMonth(parcela.dataVencimento) === monthReference
-          && String(parcela.statusCartao ?? "").trim().toLowerCase() !== "pago"
-          && String(parcela.statusCartao ?? "").trim().toLowerCase() !== "cancelado"
-        ));
-
-        for (const parcela of parcelasAbertasDaCompetencia) {
-          await repository.updateParcelaCompra(parcela.id, userId, {
-            statusCartao: "pago",
-            dataPagamentoCartao: data.dataPagamento,
-          });
-        }
-
-        const compraIdsAfetadas = Array.from(new Set(parcelasAbertasDaCompetencia.map((parcela) => parcela.compraCartaoId)));
-        for (const compraId of compraIdsAfetadas) {
-          await recomputeCardPurchaseAggregate(repository, compraId, userId);
-        }
       }
 
       const pagamento = await repository.createCartaoFaturaPagamento({
@@ -240,28 +313,96 @@ export class CartoesService {
         dataPagamento: data.dataPagamento,
         observacao: data.observacao ?? null,
         tipoPagamento: quitacaoTotal ? "quitacao_total" : "parcial",
+        modoAlocacao,
         considerarNoSaldoCompetencia: !quitacaoTotal,
         conciliadoEm: quitacaoTotal ? nowTimestamp : null,
       });
 
+      const alocacoes = await repository.createCartaoFaturaPagamentoAlocacoesBulk(
+        allocationPlan.alocacoes.map((allocation) => ({
+          pagamentoId: pagamento.id,
+          parcelaCompraId: allocation.parcelaCompraId,
+          valorAplicado: formatMoneyFixed(allocation.valorAplicado) ?? "0.00",
+        })),
+      );
+
+      const pagamentosAtualizados = await loadInvoicePaymentsWithAllocations(repository, userId, { cartaoId });
+      const pagamentosDaCompetencia = pagamentosAtualizados.filter((payment) => (
+        payment.competenciaAno === parsedMonth.ano && payment.competenciaMes === parsedMonth.mes
+      ));
+
+      const parcelaById = new Map(parcelasCompra.map((parcela) => [parcela.id, parcela]));
+      const compraIdsAfetadas = new Set<string>();
+
+      for (const installment of installmentsDaCompetencia) {
+        const parcela = installment.id ? parcelaById.get(installment.id) : undefined;
+        if (!parcela) continue;
+        const statusEfetivo = getInstallmentInvoicePaymentStatus({
+          id: parcela.id,
+          valor: parcela.valor,
+          statusCartao: parcela.statusCartao,
+        }, pagamentosDaCompetencia);
+
+        const shouldMarkAsPaid = quitacaoTotal || statusEfetivo === "pago";
+        if (shouldMarkAsPaid && String(parcela.statusCartao ?? "").trim().toLowerCase() !== "pago") {
+          await repository.updateParcelaCompra(parcela.id, userId, {
+            statusCartao: "pago",
+            dataPagamentoCartao: data.dataPagamento,
+          });
+          compraIdsAfetadas.add(parcela.compraCartaoId);
+        }
+      }
+
       const parcelasAtualizadas = (await repository.getParcelasCompraByUser(userId))
         .filter((parcela) => compraIds.has(parcela.compraCartaoId));
-      const pagamentosAtualizados = await repository.getCartaoFaturaPagamentosByCartao(cartaoId, userId);
+
+      for (const compraId of Array.from(compraIdsAfetadas)) {
+        await recomputeCardPurchaseAggregate(repository, compraId, userId);
+      }
+
+      const pagamentosAtualizadosComAlocacoes = await loadInvoicePaymentsWithAllocations(repository, userId, { cartaoId });
       const snapshotDepois = buildFaturaSnapshot({
         cartao,
         monthReference,
         parcelasCompra: parcelasAtualizadas,
-        pagamentos: pagamentosAtualizados,
+        pagamentos: pagamentosAtualizadosComAlocacoes,
+      });
+
+      if (!snapshotDepois) {
+        return {
+          error: "FATURA_NOT_FOUND" as const,
+          message: "Não foi possível reconstruir a fatura após o pagamento.",
+        };
+      }
+
+      const resumoAtualizado = buildCardLimitSummary({
+        cartaoId: cartao.id,
+        limiteTotal: cartao.limite,
+        monthReference,
+        installments: parcelasAtualizadas.map((parcela) => ({
+          id: parcela.id,
+          cartaoId: cartao.id,
+          valor: parcela.valor,
+          statusCartao: parcela.statusCartao,
+          dataVencimento: parcela.dataVencimento,
+        })),
+        invoicePayments: pagamentosAtualizadosComAlocacoes.filter((payment) => payment.cartaoId === cartao.id),
+        getDueDayForCard: () => cartao.diaVencimento,
+        referenceDate: format(new Date(), "yyyy-MM-dd"),
       });
 
       return {
         pagamento,
+        alocacoes,
         valorSolicitado: round2(valorSolicitado),
         valorAplicado: round2(valorAplicado),
         saldoAnterior: round2(snapshotAntes.remainingAmount),
-        saldoRestante: round2(snapshotDepois?.remainingAmount ?? 0),
-        statusFatura: snapshotDepois?.status ?? "paga",
+        saldoRestante: round2(snapshotDepois.remainingAmount),
+        statusFatura: snapshotDepois.status,
         valorOriginalFatura: round2(snapshotAntes.originalTotal),
+        snapshotAtualizado: snapshotDepois,
+        limiteComprometidoAtualizado: round2(resumoAtualizado.limiteComprometido),
+        limiteDisponivelEstimadoAtualizado: round2(resumoAtualizado.limiteDisponivel),
       };
     });
   }

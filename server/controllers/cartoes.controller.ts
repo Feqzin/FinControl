@@ -173,6 +173,8 @@ export function createCartoesController(service: CartoesService) {
                 ? "A fatura informada ja esta quitada."
                 : result.error === "VALOR_INVALIDO"
                   ? "Informe um valor valido para registrar o pagamento."
+                  : result.error === "ALOCACAO_INVALIDA"
+                    ? "Nao foi possivel distribuir o pagamento entre as parcelas selecionadas."
                   : "Nenhuma cobranca encontrada para esta fatura."
           );
         auditRequest(req, {

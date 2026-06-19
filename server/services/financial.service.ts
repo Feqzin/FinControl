@@ -32,6 +32,7 @@ import {
 import {
   getCardObligations,
 } from "./financial-card-analytics";
+import { loadInvoicePaymentsWithAllocations } from "./cartao-fatura-payment-loader";
 
 type FinancialContext = {
   dividas: Divida[];
@@ -177,6 +178,7 @@ function buildMonthlyCardSnapshots(
 
   return buildCardInvoiceSnapshots({
     installments: obligations.map((obligation) => ({
+      id: obligation.parcelaCompraId,
       cartaoId: obligation.cartaoId,
       valor: obligation.valor,
       statusCartao: obligation.statusCartao,
@@ -708,7 +710,7 @@ export class FinancialService {
       this.loadContextSlice(
         userId,
         "cartao_fatura_pagamentos",
-        () => this.repository.getCartaoFaturaPagamentos(userId),
+        () => loadInvoicePaymentsWithAllocations(this.repository, userId),
         [] as CartaoFaturaPagamento[],
       ),
       this.loadContextSlice(userId, "servicos", () => this.repository.getServicos(userId), [] as Servico[]),
@@ -823,7 +825,7 @@ export class FinancialService {
       this.loadContextSlice(
         userId,
         "cartao_fatura_pagamentos",
-        () => this.repository.getCartaoFaturaPagamentos(userId),
+        () => loadInvoicePaymentsWithAllocations(this.repository, userId),
         [] as CartaoFaturaPagamento[],
       ),
     ]);

@@ -19,6 +19,7 @@ type CartoesMobileTabsProps = {
   getCardAvailableLimit: (cartaoId: string) => number;
   getFilteredCardCompras: (cartaoId: string) => CompraCartao[];
   getCompraParcelas: (compraId: string) => ParcelaCompra[];
+  getCompraInvoicePaymentStatus: (compraId: string, cartaoId: string) => "pendente" | "parcialmente_pago" | "pago" | null;
   invoiceMonthLabel: string;
   servicos: Servico[];
   canOpenInvoicePaymentDialog: (cartaoId: string) => boolean;
@@ -46,6 +47,7 @@ export function CartoesMobileTabs({
   getCardAvailableLimit,
   getFilteredCardCompras,
   getCompraParcelas,
+  getCompraInvoicePaymentStatus,
   invoiceMonthLabel,
   servicos,
   canOpenInvoicePaymentDialog,
@@ -159,6 +161,7 @@ export function CartoesMobileTabs({
                       {visibleCompras.map((compra) => {
                         const servicosVinculados = servicos.filter((servico) => servico.compraCartaoId === compra.id);
                         const iconSuggestion = resolveCompraIconSuggestion(compra);
+                        const invoicePaymentStatus = getCompraInvoicePaymentStatus(compra.id, cartao.id);
                         const reembolsoStatus = getCompraReembolsoVisualStatus(compra, getCompraParcelas(compra.id));
                         return (
                           <div key={compra.id} className="touch-feedback flex items-start gap-3 px-4 py-3">
@@ -172,6 +175,15 @@ export function CartoesMobileTabs({
                               <p className="text-xs text-muted-foreground">
                                 {compra.parcelaAtual}/{compra.parcelas}x
                               </p>
+                              {invoicePaymentStatus === "pago" ? (
+                                <p className="mt-0.5 text-[11px] text-emerald-600">Pago na fatura</p>
+                              ) : null}
+                              {invoicePaymentStatus === "parcialmente_pago" ? (
+                                <p className="mt-0.5 text-[11px] text-amber-600">Parcialmente pago</p>
+                              ) : null}
+                              {invoicePaymentStatus === "pendente" ? (
+                                <p className="mt-0.5 text-[11px] text-muted-foreground">Pendente</p>
+                              ) : null}
                               {reembolsoStatus === "aguardando_reembolso" ? (
                                 <p className="mt-0.5 text-[11px] text-amber-600">Ag. reembolso</p>
                               ) : null}
