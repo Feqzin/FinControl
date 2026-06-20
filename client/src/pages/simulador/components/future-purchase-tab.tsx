@@ -30,6 +30,7 @@ import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { parseMoney } from "@/lib/money";
 import {
   buildFuturePurchaseSimulation,
+  canBuildFuturePurchaseSimulationInput,
   type FuturePurchaseExtraReceivable,
   type FuturePurchaseSimulationInput,
 } from "@/pages/simulador/future-purchase-simulation";
@@ -47,8 +48,26 @@ type ExtraReceivableFormRow = {
   recorrente: boolean;
 };
 
+const FUTURE_PURCHASE_SIMULATION_DEBOUNCE_MS = 250;
+
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedValue(value);
+    }, delayMs);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [delayMs, value]);
+
+  return debouncedValue;
 }
 
 function createExtraReceivableRow(defaultMonth: string): ExtraReceivableFormRow {
@@ -117,7 +136,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     [entradasExtras],
   );
 
-  const simulationInput = useMemo<FuturePurchaseSimulationInput>(() => ({
+  const immediateSimulationInput = useMemo<FuturePurchaseSimulationInput>(() => ({
     nomeCompra,
     valorTotal: parseMoney(valorTotal) ?? 0,
     parcelas: Math.max(1, Math.trunc(Number(parcelas) || 1)),
@@ -127,19 +146,15 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     entradasExtras: entradasExtrasNormalizadas,
   }), [cartaoId, entradasExtrasNormalizadas, mesPrimeiraParcela, nomeCompra, parcelas, reservaMinima, valorTotal]);
 
-  const canSimulate = (
-    simulationInput.valorTotal > 0
-    && simulationInput.parcelas >= 1
-    && simulationInput.cartaoId.length > 0
-    && /^\d{4}-\d{2}$/.test(simulationInput.mesPrimeiraParcela)
-    && Boolean(overviewQuery.data)
-    && Boolean(parcelasQuery.data)
+  const debouncedSimulationInput = useDebouncedValue(
+    immediateSimulationInput,
+    FUTURE_PURCHASE_SIMULATION_DEBOUNCE_MS,
   );
 
-  const simulation = useMemo(() => {
-    if (!canSimulate || !overviewQuery.data || !parcelasQuery.data) return null;
+  const simulationContext = useMemo(() => {
+    if (!overviewQuery.data || !parcelasQuery.data) return null;
 
-    return buildFuturePurchaseSimulation({
+    return {
       cartoes: overviewQuery.data.cartoes,
       compras: overviewQuery.data.compras,
       parcelasCompra: overviewQuery.data.parcelasCompra,
@@ -150,10 +165,25 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
       servicoCobrancaPagamentos: overviewQuery.data.servicoCobrancaPagamentos,
       rendas: overviewQuery.data.rendas,
       patrimonios: overviewQuery.data.patrimonios,
-    }, simulationInput);
-  }, [canSimulate, overviewQuery.data, parcelasQuery.data, simulationInput]);
+    };
+  }, [overviewQuery.data, parcelasQuery.data]);
 
-  const selectedCard = overviewQuery.data?.cartoes.find((card) => card.id === cartaoId) ?? null;
+  const canSimulateImmediately = Boolean(simulationContext)
+    && canBuildFuturePurchaseSimulationInput(immediateSimulationInput);
+  const canSimulateDebounced = Boolean(simulationContext)
+    && canBuildFuturePurchaseSimulationInput(debouncedSimulationInput);
+  const isSimulationUpdating = canSimulateImmediately && debouncedSimulationInput !== immediateSimulationInput;
+
+  const simulation = useMemo(() => {
+    if (!canSimulateDebounced || !simulationContext) return null;
+
+    return buildFuturePurchaseSimulation(simulationContext, debouncedSimulationInput);
+  }, [canSimulateDebounced, debouncedSimulationInput, simulationContext]);
+
+  const selectedCard = useMemo(
+    () => overviewQuery.data?.cartoes.find((card) => card.id === cartaoId) ?? null,
+    [cartaoId, overviewQuery.data],
+  );
 
   const addExtraReceivable = () => {
     setEntradasExtras((current) => [...current, createExtraReceivableRow(mesPrimeiraParcela)]);
@@ -235,6 +265,11 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                 <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
                   Simule uma compra parcelada sem mexer nos seus dados reais e veja mês a mês se o cenário segue saudável.
                 </p>
+                {isSimulationUpdating ? (
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Atualizando simulação...
+                  </p>
+                ) : null}
               </div>
 
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -538,7 +573,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Reserva mínima</p>
-                    <p className="mt-1 text-lg font-semibold text-foreground">{fc(simulationInput.reservaMinima)}</p>
+                    <p className="mt-1 text-lg font-semibold text-foreground">{fc(immediateSimulationInput.reservaMinima)}</p>
                   </div>
                   <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Receita extra necessária</p>

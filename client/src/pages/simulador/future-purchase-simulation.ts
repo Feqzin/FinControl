@@ -91,6 +91,22 @@ type BaseCashflowMonth = {
   actualExpenses: number;
 };
 
+type StaticCashflowMonth = {
+  monthReference: string;
+  label: string;
+  actualIncome: number;
+  actualExpenses: number;
+};
+
+type PreparedFuturePurchaseProjectionBase = {
+  currentMonthReference: string;
+  normalizedInput: FuturePurchaseSimulationInput;
+  initialAvailableBalance: number;
+  monthReferences: string[];
+  staticCashflowByMonthReference: Map<string, StaticCashflowMonth>;
+  simulatedExtraIncomeByMonthReference: Map<string, number>;
+};
+
 type TemporaryReceivableEntry = {
   id: string;
   descricao: string;
@@ -121,6 +137,31 @@ function normalizeMonthReference(value: string, fallback: string): string {
   return isMonthReference(value) ? value : fallback;
 }
 
+function normalizeFuturePurchaseSimulationInput(
+  input: FuturePurchaseSimulationInput,
+  currentMonthReference: string,
+): FuturePurchaseSimulationInput {
+  return {
+    ...input,
+    valorTotal: Math.max(0, round2(Number(input.valorTotal) || 0)),
+    parcelas: Math.max(1, Math.trunc(Number(input.parcelas) || 1)),
+    cartaoId: String(input.cartaoId ?? ""),
+    mesPrimeiraParcela: normalizeMonthReference(input.mesPrimeiraParcela, currentMonthReference),
+    reservaMinima: Math.max(0, round2(Number(input.reservaMinima) || 0)),
+  };
+}
+
+export function canBuildFuturePurchaseSimulationInput(
+  input: Pick<FuturePurchaseSimulationInput, "valorTotal" | "parcelas" | "cartaoId" | "mesPrimeiraParcela">,
+): boolean {
+  return (
+    Number(input.valorTotal) > 0
+    && Math.max(1, Math.trunc(Number(input.parcelas) || 1)) >= 1
+    && String(input.cartaoId ?? "").trim().length > 0
+    && isMonthReference(String(input.mesPrimeiraParcela ?? ""))
+  );
+}
+
 function listMonthReferences(startMonthReference: string, totalMonths: number): string[] {
   const start = parseISO(`${startMonthReference}-01`);
   return Array.from({ length: totalMonths }, (_, index) => format(addMonths(start, index), "yyyy-MM"));
@@ -144,7 +185,6 @@ function resolveInstallmentAmount(totalAmount: number, installmentCount: number)
 }
 
 function buildInstallmentSchedule(params: {
-  card: Cartao | undefined;
   totalAmount: number;
   installmentCount: number;
   firstInstallmentMonth: string;
@@ -198,24 +238,27 @@ export function includeTemporaryReceivables(
   });
 }
 
-function buildBaseCashflowMonths(
-  context: FuturePurchaseSimulationContext,
-  input: FuturePurchaseSimulationInput,
+function resolveProjectionMonthReferences(
   currentMonthReference: string,
-): BaseCashflowMonth[] {
-  const firstInstallmentMonth = normalizeMonthReference(input.mesPrimeiraParcela, currentMonthReference);
-  const installmentCount = Math.max(1, Math.trunc(Number(input.parcelas) || 1));
-  const startMonthReference = currentMonthReference;
-  const startDate = parseISO(`${startMonthReference}-01`);
+  firstInstallmentMonth: string,
+  installmentCount: number,
+): string[] {
+  const startDate = parseISO(`${currentMonthReference}-01`);
   const firstInstallmentDate = parseISO(`${firstInstallmentMonth}-01`);
   const monthOffsetUntilFirstInstallment = Math.max(
     0,
     (firstInstallmentDate.getFullYear() - startDate.getFullYear()) * 12 + (firstInstallmentDate.getMonth() - startDate.getMonth()),
   );
   const totalMonths = Math.max(installmentCount, monthOffsetUntilFirstInstallment + installmentCount);
-  const monthReferences = listMonthReferences(startMonthReference, totalMonths);
 
-  return monthReferences.map((monthReference) => {
+  return listMonthReferences(currentMonthReference, totalMonths);
+}
+
+function buildStaticCashflowByMonthReference(
+  context: FuturePurchaseSimulationContext,
+  monthReferences: string[],
+): Map<string, StaticCashflowMonth> {
+  return new Map(monthReferences.map((monthReference) => {
     const events = buildFinancialCalendarEvents({
       monthReference,
       cartoes: context.cartoes,
@@ -242,17 +285,77 @@ function buildBaseCashflowMonths(
         .filter((event) => event.direction === "saida")
         .reduce((sum, event) => sum + (event.amount ?? 0), 0),
     );
-    const temporaryReceivables = includeTemporaryReceivables(monthReference, input.entradasExtras);
-    const simulatedExtraIncome = round2(
-      temporaryReceivables.reduce((sum, receivable) => sum + receivable.valor, 0),
-    );
 
-    return {
+    return [monthReference, {
       monthReference,
       label: format(parseISO(`${monthReference}-01`), "MMM 'de' yyyy", { locale: ptBR }),
       actualIncome,
-      simulatedExtraIncome,
       actualExpenses,
+    }];
+  }));
+}
+
+function buildSimulatedExtraIncomeByMonthReference(
+  monthReferences: string[],
+  receivables: FuturePurchaseExtraReceivable[],
+): Map<string, number> {
+  return new Map(
+    monthReferences.map((monthReference) => {
+      const temporaryReceivables = includeTemporaryReceivables(monthReference, receivables);
+      const simulatedExtraIncome = round2(
+        temporaryReceivables.reduce((sum, receivable) => sum + receivable.valor, 0),
+      );
+
+      return [monthReference, simulatedExtraIncome];
+    }),
+  );
+}
+
+function prepareFuturePurchaseProjectionBase(
+  context: FuturePurchaseSimulationContext,
+  input: FuturePurchaseSimulationInput,
+  maxInstallmentCount = Math.max(1, Math.trunc(Number(input.parcelas) || 1)),
+): PreparedFuturePurchaseProjectionBase {
+  const currentMonthReference = format(new Date(), "yyyy-MM");
+  const normalizedInput = normalizeFuturePurchaseSimulationInput(input, currentMonthReference);
+  const monthReferences = resolveProjectionMonthReferences(
+    currentMonthReference,
+    normalizedInput.mesPrimeiraParcela,
+    Math.max(normalizedInput.parcelas, maxInstallmentCount),
+  );
+
+  return {
+    currentMonthReference,
+    normalizedInput,
+    initialAvailableBalance: getLiquidBalance(context.patrimonios),
+    monthReferences,
+    staticCashflowByMonthReference: buildStaticCashflowByMonthReference(context, monthReferences),
+    simulatedExtraIncomeByMonthReference: buildSimulatedExtraIncomeByMonthReference(
+      monthReferences,
+      normalizedInput.entradasExtras,
+    ),
+  };
+}
+
+function buildBaseCashflowMonthsFromPreparedBase(
+  preparedBase: PreparedFuturePurchaseProjectionBase,
+  input: FuturePurchaseSimulationInput,
+): BaseCashflowMonth[] {
+  const monthReferences = resolveProjectionMonthReferences(
+    preparedBase.currentMonthReference,
+    input.mesPrimeiraParcela,
+    input.parcelas,
+  );
+
+  return monthReferences.map((monthReference) => {
+    const staticCashflow = preparedBase.staticCashflowByMonthReference.get(monthReference);
+
+    return {
+      monthReference,
+      label: staticCashflow?.label ?? format(parseISO(`${monthReference}-01`), "MMM 'de' yyyy", { locale: ptBR }),
+      actualIncome: staticCashflow?.actualIncome ?? 0,
+      simulatedExtraIncome: preparedBase.simulatedExtraIncomeByMonthReference.get(monthReference) ?? 0,
+      actualExpenses: staticCashflow?.actualExpenses ?? 0,
     };
   });
 }
@@ -311,23 +414,19 @@ function findWorstMonth(months: FuturePurchaseSimulationMonth[]): FuturePurchase
   return months.reduce((worst, month) => (month.endingBalance < worst.endingBalance ? month : worst), months[0]);
 }
 
-export function projectFuturePurchaseCashflow(
-  context: FuturePurchaseSimulationContext,
-  input: FuturePurchaseSimulationInput,
+function projectFuturePurchaseCashflowFromPreparedBase(
+  preparedBase: PreparedFuturePurchaseProjectionBase,
+  inputOverrides: Partial<FuturePurchaseSimulationInput> = {},
 ): FuturePurchaseSimulationMonth[] {
-  const currentMonthReference = format(new Date(), "yyyy-MM");
-  const normalizedInput: FuturePurchaseSimulationInput = {
-    ...input,
-    valorTotal: Math.max(0, round2(Number(input.valorTotal) || 0)),
-    parcelas: Math.max(1, Math.trunc(Number(input.parcelas) || 1)),
-    mesPrimeiraParcela: normalizeMonthReference(input.mesPrimeiraParcela, currentMonthReference),
-    reservaMinima: Math.max(0, round2(Number(input.reservaMinima) || 0)),
-  };
-
-  const initialAvailableBalance = getLiquidBalance(context.patrimonios);
-  const baseMonths = buildBaseCashflowMonths(context, normalizedInput, currentMonthReference);
+  const normalizedInput = normalizeFuturePurchaseSimulationInput(
+    {
+      ...preparedBase.normalizedInput,
+      ...inputOverrides,
+    },
+    preparedBase.currentMonthReference,
+  );
+  const baseMonths = buildBaseCashflowMonthsFromPreparedBase(preparedBase, normalizedInput);
   const installmentSchedule = buildInstallmentSchedule({
-    card: context.cartoes.find((cartao) => cartao.id === normalizedInput.cartaoId),
     totalAmount: normalizedInput.valorTotal,
     installmentCount: normalizedInput.parcelas,
     firstInstallmentMonth: normalizedInput.mesPrimeiraParcela,
@@ -335,36 +434,35 @@ export function projectFuturePurchaseCashflow(
 
   return applyInstallmentsToBaseMonths(
     baseMonths,
-    initialAvailableBalance,
+    preparedBase.initialAvailableBalance,
     installmentSchedule,
     normalizedInput.reservaMinima,
   );
 }
 
-export function calculateSafePurchaseAmount(
+export function projectFuturePurchaseCashflow(
   context: FuturePurchaseSimulationContext,
   input: FuturePurchaseSimulationInput,
-): number {
-  const normalizedInput: FuturePurchaseSimulationInput = {
-    ...input,
-    valorTotal: Math.max(0, round2(Number(input.valorTotal) || 0)),
-    parcelas: Math.max(1, Math.trunc(Number(input.parcelas) || 1)),
-    reservaMinima: Math.max(0, round2(Number(input.reservaMinima) || 0)),
-  };
+): FuturePurchaseSimulationMonth[] {
+  const preparedBase = prepareFuturePurchaseProjectionBase(context, input);
+  return projectFuturePurchaseCashflowFromPreparedBase(preparedBase);
+}
 
-  const baselineMonths = projectFuturePurchaseCashflow(context, {
-    ...normalizedInput,
+function calculateSafePurchaseAmountFromPreparedBase(
+  preparedBase: PreparedFuturePurchaseProjectionBase,
+): number {
+  const { normalizedInput } = preparedBase;
+  const baselineThreshold = Math.max(0, normalizedInput.reservaMinima);
+  const baselineMonths = projectFuturePurchaseCashflowFromPreparedBase(preparedBase, {
     valorTotal: 0,
   });
 
-  const baselineThreshold = Math.max(0, normalizedInput.reservaMinima);
   if (baselineMonths.some((month) => month.endingBalance < baselineThreshold)) {
     return 0;
   }
 
   const fits = (candidateAmount: number): boolean => {
-    const candidateMonths = projectFuturePurchaseCashflow(context, {
-      ...normalizedInput,
+    const candidateMonths = projectFuturePurchaseCashflowFromPreparedBase(preparedBase, {
       valorTotal: candidateAmount,
     });
 
@@ -391,21 +489,28 @@ export function calculateSafePurchaseAmount(
   return round2(low / 100);
 }
 
-function calculateRecommendedInstallmentCount(
+export function calculateSafePurchaseAmount(
   context: FuturePurchaseSimulationContext,
   input: FuturePurchaseSimulationInput,
+): number {
+  const preparedBase = prepareFuturePurchaseProjectionBase(context, input);
+  return calculateSafePurchaseAmountFromPreparedBase(preparedBase);
+}
+
+function calculateRecommendedInstallmentCountFromPreparedBase(
+  preparedBase: PreparedFuturePurchaseProjectionBase,
 ): number | null {
-  const maxInstallments = Math.max(24, Math.max(1, Math.trunc(Number(input.parcelas) || 1)));
+  const { normalizedInput } = preparedBase;
+  const maxInstallments = Math.max(24, normalizedInput.parcelas);
   const evaluated = Array.from({ length: maxInstallments }, (_, index) => {
     const installmentCount = index + 1;
-    const months = projectFuturePurchaseCashflow(context, {
-      ...input,
+    const months = projectFuturePurchaseCashflowFromPreparedBase(preparedBase, {
       parcelas: installmentCount,
     });
 
     return {
       installmentCount,
-      status: getStatus(months, Math.max(0, Number(input.reservaMinima) || 0)),
+      status: getStatus(months, normalizedInput.reservaMinima),
       lowestBalance: getLowestBalance(months),
     };
   });
@@ -477,14 +582,13 @@ export function buildFuturePurchaseSimulation(
   context: FuturePurchaseSimulationContext,
   input: FuturePurchaseSimulationInput,
 ): FuturePurchaseSimulationResult {
-  const normalizedInput: FuturePurchaseSimulationInput = {
-    ...input,
-    valorTotal: Math.max(0, round2(Number(input.valorTotal) || 0)),
-    parcelas: Math.max(1, Math.trunc(Number(input.parcelas) || 1)),
-    reservaMinima: Math.max(0, round2(Number(input.reservaMinima) || 0)),
-  };
-
-  const months = projectFuturePurchaseCashflow(context, normalizedInput);
+  const preparedBase = prepareFuturePurchaseProjectionBase(
+    context,
+    input,
+    Math.max(24, Math.max(1, Math.trunc(Number(input.parcelas) || 1))),
+  );
+  const { normalizedInput } = preparedBase;
+  const months = projectFuturePurchaseCashflowFromPreparedBase(preparedBase);
   const status = getStatus(months, normalizedInput.reservaMinima);
   const worstMonth = findWorstMonth(months);
   const lowestBalance = round2(getLowestBalance(months));
@@ -495,10 +599,10 @@ export function buildFuturePurchaseSimulation(
       ? Math.max(0, -lowestBalance)
       : Math.max(0, normalizedInput.reservaMinima - lowestBalance),
   );
-  const safePurchaseAmount = calculateSafePurchaseAmount(context, normalizedInput);
-  const recommendedInstallmentCount = calculateRecommendedInstallmentCount(context, normalizedInput);
+  const safePurchaseAmount = calculateSafePurchaseAmountFromPreparedBase(preparedBase);
+  const recommendedInstallmentCount = calculateRecommendedInstallmentCountFromPreparedBase(preparedBase);
   const installmentAmount = resolveInstallmentAmount(normalizedInput.valorTotal, normalizedInput.parcelas);
-  const initialAvailableBalance = getLiquidBalance(context.patrimonios);
+  const initialAvailableBalance = preparedBase.initialAvailableBalance;
   const suggestions = buildSuggestions({
     status,
     monthsBelowReserveCount,

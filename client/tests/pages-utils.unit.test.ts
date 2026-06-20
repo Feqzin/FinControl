@@ -131,6 +131,7 @@ import {
 import { calculateSimuladorBaseServicos } from "../src/pages/simulador/simulador-page-container";
 import {
   buildFuturePurchaseSimulation,
+  canBuildFuturePurchaseSimulationInput,
   calculateSafePurchaseAmount,
   projectFuturePurchaseCashflow,
   type FuturePurchaseSimulationInput,
@@ -5585,6 +5586,36 @@ function buildFuturePurchaseContextFixture(overrides: Partial<{
     patrimonios: overrides.patrimonios ?? [buildSimuladorPatrimonioFixture()],
   };
 }
+
+test("simulador compra futura: só fica apto a calcular quando os campos essenciais estão preenchidos", () => {
+  assert.equal(canBuildFuturePurchaseSimulationInput({
+    valorTotal: 0,
+    parcelas: 10,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-06",
+  }), false);
+
+  assert.equal(canBuildFuturePurchaseSimulationInput({
+    valorTotal: 2000,
+    parcelas: 10,
+    cartaoId: "",
+    mesPrimeiraParcela: "2026-06",
+  }), false);
+
+  assert.equal(canBuildFuturePurchaseSimulationInput({
+    valorTotal: 2000,
+    parcelas: 10,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "junho/2026",
+  }), false);
+
+  assert.equal(canBuildFuturePurchaseSimulationInput({
+    valorTotal: 2000,
+    parcelas: 10,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-06",
+  }), true);
+});
 
 test("simulador compra futura: compra cabe no orçamento", () => {
   const context = buildFuturePurchaseContextFixture({
