@@ -30,10 +30,13 @@ type InMemoryPack = {
   name: string;
   description: string | null;
   category: string | null;
+  coverIconId: string | null;
   coverImageUrl: string | null;
   sourceType: "official" | "community";
   ownerUserId: string | null;
   isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 type InMemoryUserIcon = {
@@ -45,6 +48,20 @@ type InMemoryUserIcon = {
   imageUrl: string;
   category: string | null;
   tags: string[];
+};
+
+type InMemoryPackInstall = {
+  userId: string;
+  packId: string;
+  createdAt: Date;
+};
+
+type InMemoryPackRating = {
+  userId: string;
+  packId: string;
+  rating: number;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 const COMMUNITY_PREFIX = "community:";
@@ -125,10 +142,13 @@ function createInMemoryServiceFixture() {
       name: "Bancos BR",
       description: "Ícones oficiais de bancos",
       category: "bancos",
+      coverIconId: null,
       coverImageUrl: null,
       sourceType: "official",
       ownerUserId: null,
       isActive: true,
+      createdAt: new Date("2026-05-01T10:00:00.000Z"),
+      updatedAt: new Date("2026-05-01T10:00:00.000Z"),
     },
   ];
 
@@ -187,6 +207,8 @@ function createInMemoryServiceFixture() {
   ];
 
   const rules: Array<{ userId: string; iconId: string; term: string }> = [];
+  const packInstalls: InMemoryPackInstall[] = [];
+  const packRatings: InMemoryPackRating[] = [];
   let userIconSeq = 1;
   let officialSeq = 1;
 
@@ -306,6 +328,46 @@ function createInMemoryServiceFixture() {
     };
   };
 
+  const sortPackViews = (
+    list: Array<{
+      name: string;
+      createdAt: Date;
+      installCount: number;
+      ratingAverage: number | null;
+      ratingCount: number;
+    } & Record<string, unknown>>,
+    sort: "recent" | "downloads" | "most-rated" | "top-rated" | "name-asc" = "recent",
+  ) => [...list].sort((a, b) => {
+    switch (sort) {
+      case "downloads": {
+        const diff = b.installCount - a.installCount;
+        if (diff !== 0) return diff;
+        break;
+      }
+      case "most-rated": {
+        const diff = b.ratingCount - a.ratingCount;
+        if (diff !== 0) return diff;
+        break;
+      }
+      case "top-rated": {
+        const diff = (b.ratingAverage ?? 0) - (a.ratingAverage ?? 0);
+        if (diff !== 0) return diff;
+        const tieBreak = b.ratingCount - a.ratingCount;
+        if (tieBreak !== 0) return tieBreak;
+        break;
+      }
+      case "name-asc":
+        return a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" });
+      case "recent":
+      default: {
+        const diff = b.createdAt.getTime() - a.createdAt.getTime();
+        if (diff !== 0) return diff;
+        break;
+      }
+    }
+    return a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" });
+  });
+
   const service = {
     async listOfficialIcons(
       userId: string,
@@ -391,11 +453,19 @@ function createInMemoryServiceFixture() {
     ) {
       return service.listOfficialIcons(userId, { ...query, origin: "community" });
     },
-    async listOfficialPacks(userId: string, query?: { origin?: "all" | "official" | "community"; category?: string; search?: string }) {
+    async listOfficialPacks(
+      userId: string,
+      query?: {
+        origin?: "all" | "official" | "community";
+        category?: string;
+        search?: string;
+        sort?: "recent" | "downloads" | "most-rated" | "top-rated" | "name-asc";
+      },
+    ) {
       const origin = query?.origin ?? "all";
       const normalizedCategory = String(query?.category ?? "").trim().toLowerCase();
       const normalizedSearch = String(query?.search ?? "").trim().toLowerCase();
-      return packs
+      const filtered = packs
         .filter((pack) => pack.isActive)
         .filter((pack) => (origin === "all" ? true : pack.sourceType === origin))
         .filter((pack) => (!normalizedCategory ? true : String(pack.category ?? "").toLowerCase() === normalizedCategory))
@@ -410,6 +480,12 @@ function createInMemoryServiceFixture() {
             && icon.packId === pack.id
             && Boolean(findExistingUserIconForOfficial(userId, icon))).length;
           const missingIconsCount = Math.max(0, totalIcons - addedIconsCount);
+          const ratings = packRatings.filter((entry) => entry.packId === pack.id);
+          const ratingCount = ratings.length;
+          const ratingAverage = ratingCount > 0
+            ? Number((ratings.reduce((sum, entry) => sum + entry.rating, 0) / ratingCount).toFixed(1))
+            : null;
+          const userRating = packRatings.find((entry) => entry.packId === pack.id && entry.userId === userId)?.rating ?? null;
           const libraryStatus = addedIconsCount <= 0
             ? "none"
             : addedIconsCount >= totalIcons
@@ -420,15 +496,21 @@ function createInMemoryServiceFixture() {
             ownerUserId: null,
             ownerLabel: pack.sourceType === "community" ? resolvePublicOwnerLabel(pack.ownerUserId) : null,
             ownerPublicCode: pack.sourceType === "community" && pack.ownerUserId ? `USR-${pack.ownerUserId.toUpperCase()}` : null,
+            coverImageUrl: pack.coverImageUrl ?? officialIcons.find((icon) => icon.isActive && icon.packId === pack.id)?.imageUrl ?? null,
             isPublished: pack.isActive,
             iconsCount: totalIcons,
             addedIconsCount,
             missingIconsCount,
             libraryStatus,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            installCount: packInstalls.filter((entry) => entry.packId === pack.id).length,
+            ratingAverage,
+            ratingCount,
+            userRating,
+            createdAt: pack.createdAt,
+            updatedAt: pack.updatedAt,
           };
         });
+      return sortPackViews(filtered, query?.sort ?? "recent");
     },
     async addOfficialIconToLibrary(userId: string, officialIconId: string) {
       return addToLibrary(userId, officialIconId, "official");
@@ -551,16 +633,20 @@ function createInMemoryServiceFixture() {
       const packId = `community_pack:${userId}:${packs.length + 1}`;
       const ownerPublicCode = `USR-${userId.toUpperCase()}`;
       const packPublicCode = buildPackPublicCode(ownerPublicCode, packs.filter((item) => item.ownerUserId === userId).length + 1);
+      const now = new Date();
       packs.push({
         id: packId,
         publicCode: packPublicCode,
         name: payload.name,
         description: payload.description ?? null,
         category: payload.category ?? null,
+        coverIconId: null,
         coverImageUrl: selectedIcons[0]?.imageUrl ?? null,
         sourceType: "community",
         ownerUserId: userId,
         isActive: publish,
+        createdAt: now,
+        updatedAt: now,
       });
 
       for (const [index, source] of selectedIcons.entries()) {
@@ -598,6 +684,9 @@ function createInMemoryServiceFixture() {
         if (result.alreadyInLibrary) alreadyInLibraryCount += 1;
         else addedCount += 1;
         createdMatchRules += result.createdMatchRules;
+      }
+      if (!packInstalls.some((entry) => entry.userId === userId && entry.packId === packId)) {
+        packInstalls.push({ userId, packId, createdAt: new Date() });
       }
       return {
         packId,
@@ -694,6 +783,9 @@ function createInMemoryServiceFixture() {
         else addedCount += 1;
         createdMatchRules += result.createdMatchRules;
       }
+      if (!packInstalls.some((entry) => entry.userId === userId && entry.packId === packId)) {
+        packInstalls.push({ userId, packId, createdAt: new Date() });
+      }
       return {
         packId,
         packPublicCode: pack.publicCode ?? null,
@@ -705,19 +797,52 @@ function createInMemoryServiceFixture() {
         createdMatchRules,
       };
     },
+    async rateOfficialPack(userId: string, packId: string, rating: number) {
+      const pack = packs.find((item) => item.id === packId && item.isActive);
+      if (!pack) {
+        const error = new Error("Pack não encontrado.");
+        error.name = "OfficialIconPackNotFoundError";
+        throw error;
+      }
+
+      const normalizedRating = Math.max(1, Math.min(5, Math.trunc(Number(rating) || 0)));
+      const existing = packRatings.find((entry) => entry.userId === userId && entry.packId === packId) ?? null;
+      if (existing) {
+        existing.rating = normalizedRating;
+        existing.updatedAt = new Date();
+      } else {
+        packRatings.push({
+          userId,
+          packId,
+          rating: normalizedRating,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+
+      const ratings = packRatings.filter((entry) => entry.packId === packId);
+      return {
+        ratingAverage: Number((ratings.reduce((sum, entry) => sum + entry.rating, 0) / ratings.length).toFixed(1)),
+        ratingCount: ratings.length,
+        userRating: normalizedRating,
+        updated: Boolean(existing),
+      };
+    },
     async createOfficialPack(_adminUserId: string, payload: { name: string }) {
+      const now = new Date();
       const pack = {
         id: `pack_${packs.length + 1}`,
         publicCode: buildPackPublicCode("USR-ADMIN_USER", packs.length + 1),
         name: payload.name,
         description: null,
         category: null,
+        coverIconId: null,
         coverImageUrl: null,
         sourceType: "official",
         ownerUserId: null,
         isActive: true,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: now,
+        updatedAt: now,
       };
       packs.push(pack);
       return pack;
@@ -730,10 +855,11 @@ function createInMemoryServiceFixture() {
         throw error;
       }
       if (payload.name) pack.name = payload.name;
+      pack.updatedAt = new Date();
       return {
         ...pack,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: pack.createdAt,
+        updatedAt: pack.updatedAt,
       };
     },
     async createOfficialIcon(_adminUserId: string, payload: { iconKey: string; name: string; imageUrl?: string | null }) {
@@ -797,7 +923,7 @@ function createInMemoryServiceFixture() {
     },
   };
 
-  return { service, userIcons, rules, officialIcons };
+  return { service, packs, userIcons, rules, officialIcons, packInstalls, packRatings };
 }
 
 async function withTestServer(
@@ -846,6 +972,7 @@ function createOfficialIconsRouteApp() {
   app.patch("/api/icons/community/packs/:id/unpublish", requireAuth, controller.unpublishCommunityPack);
   app.patch("/api/icons/community/:id/unpublish", requireAuth, controller.unpublishCommunityIcon);
   app.post("/api/icons/official/:id/add-to-library", requireAuth, controller.addOfficialIconToLibrary);
+  app.post("/api/icons/packs/:id/rating", requireAuth, controller.rateOfficialPack);
   app.post("/api/icons/packs/:id/add-to-library", requireAuth, controller.addOfficialPackToLibrary);
   app.post("/api/admin/icons/packs", requireAuth, controller.adminCreatePack);
   app.patch("/api/admin/icons/packs/:id", requireAuth, controller.adminUpdatePack);
@@ -874,6 +1001,7 @@ test("rotas /api/icons/* e /api/admin/icons/* em serverless exigem requireAuth",
     /app\.patch\(\s*"\/api\/icons\/community\/:id\/unpublish"\s*,\s*requireAuth\s*,\s*officialIconsController\.unpublishCommunityIcon\s*\)/m,
     /app\.get\(\s*"\/api\/icons\/packs"\s*,\s*requireAuth\s*,\s*officialIconsController\.listPacks\s*\)/m,
     /app\.post\(\s*"\/api\/icons\/official\/:id\/add-to-library"\s*,\s*requireAuth\s*,\s*officialIconsController\.addOfficialIconToLibrary\s*\)/m,
+    /app\.post\(\s*"\/api\/icons\/packs\/:id\/rating"\s*,\s*requireAuth\s*,\s*officialIconsController\.rateOfficialPack\s*\)/m,
     /app\.post\(\s*"\/api\/icons\/packs\/:id\/add-to-library"\s*,\s*requireAuth\s*,\s*officialIconsController\.addOfficialPackToLibrary\s*\)/m,
     /app\.post\(\s*"\/api\/admin\/icons\/official"\s*,\s*requireAuth\s*,\s*officialIconsController\.adminCreateOfficialIcon\s*\)/m,
     /app\.post\(\s*"\/api\/admin\/icons\/packs"\s*,\s*requireAuth\s*,\s*officialIconsController\.adminCreatePack\s*\)/m,
@@ -930,6 +1058,223 @@ test("official icons: adicionar à biblioteca respeita ownership e evita duplica
     const userBIcons = fixture.userIcons.filter((icon) => icon.userId === "user_b" && icon.officialIconId === "official-kabum");
     assert.equal(userAIcons.length, 1);
     assert.equal(userBIcons.length, 0);
+  });
+});
+
+test("official packs: rating exige autenticação e atualiza sem duplicar avaliação do usuário", async () => {
+  const { app, fixture } = createOfficialIconsRouteApp();
+  await withTestServer(app, async (baseUrl) => {
+    const unauthenticated = await fetch(`${baseUrl}/api/icons/packs/pack-bancos/rating`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ rating: 5 }),
+    });
+    assert.equal(unauthenticated.status, 401);
+
+    const firstRating = await fetch(`${baseUrl}/api/icons/packs/pack-bancos/rating`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ rating: 1 }),
+    });
+    assert.equal(firstRating.status, 200);
+    const firstBody = await firstRating.json();
+    assert.equal(firstBody.userRating, 1);
+    assert.equal(firstBody.ratingAverage, 1);
+    assert.equal(firstBody.ratingCount, 1);
+    assert.equal(firstBody.updated, false);
+
+    const secondRating = await fetch(`${baseUrl}/api/icons/packs/pack-bancos/rating`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ rating: 5 }),
+    });
+    assert.equal(secondRating.status, 200);
+    const secondBody = await secondRating.json();
+    assert.equal(secondBody.userRating, 5);
+    assert.equal(secondBody.ratingAverage, 5);
+    assert.equal(secondBody.ratingCount, 1);
+    assert.equal(secondBody.updated, true);
+    assert.equal(fixture.packRatings.length, 1);
+  });
+});
+
+test("official packs: downloads e ordenações de avaliação usam métricas agregadas do pack", async () => {
+  const { app, fixture } = createOfficialIconsRouteApp();
+  fixture.packs.push(
+    {
+      id: "pack-servicos",
+      publicCode: "USR-ADMIN_USER-P002",
+      name: "Serviços Essenciais",
+      description: "Pack de serviços do dia a dia",
+      category: "servico",
+      coverIconId: null,
+      coverImageUrl: null,
+      sourceType: "official",
+      ownerUserId: null,
+      isActive: true,
+      createdAt: new Date("2026-05-15T10:00:00.000Z"),
+      updatedAt: new Date("2026-05-15T10:00:00.000Z"),
+    },
+    {
+      id: "pack-wallets",
+      publicCode: "USR-ADMIN_USER-P003",
+      name: "Carteiras",
+      description: "Pack de carteiras digitais",
+      category: "carteira",
+      coverIconId: null,
+      coverImageUrl: null,
+      sourceType: "official",
+      ownerUserId: null,
+      isActive: true,
+      createdAt: new Date("2026-06-10T10:00:00.000Z"),
+      updatedAt: new Date("2026-06-10T10:00:00.000Z"),
+    },
+  );
+  fixture.officialIcons.push(
+    {
+      id: "official-google-one",
+      iconKey: "official-google-one",
+      packItemPublicCode: "USR-ADMIN_USER-P002-I001",
+      name: "Google One",
+      imageUrl: "data:image/png;base64,google-one",
+      category: "servico",
+      tags: ["google one"],
+      aliases: ["google"],
+      packId: "pack-servicos",
+      packName: "Serviços Essenciais",
+      isActive: true,
+      createdBy: "admin_user",
+    },
+    {
+      id: "official-mercado-pago",
+      iconKey: "official-mercado-pago",
+      packItemPublicCode: "USR-ADMIN_USER-P003-I001",
+      name: "Mercado Pago",
+      imageUrl: "data:image/png;base64,mercado-pago",
+      category: "carteira",
+      tags: ["mercado pago"],
+      aliases: ["mp"],
+      packId: "pack-wallets",
+      packName: "Carteiras",
+      isActive: true,
+      createdBy: "admin_user",
+    },
+  );
+  fixture.packInstalls.push(
+    { userId: "user_a", packId: "pack-servicos", createdAt: new Date("2026-06-01T00:00:00.000Z") },
+    { userId: "user_b", packId: "pack-servicos", createdAt: new Date("2026-06-02T00:00:00.000Z") },
+    { userId: "user_a", packId: "pack-wallets", createdAt: new Date("2026-06-03T00:00:00.000Z") },
+  );
+  fixture.packRatings.push(
+    {
+      userId: "user_a",
+      packId: "pack-servicos",
+      rating: 4,
+      createdAt: new Date("2026-06-05T00:00:00.000Z"),
+      updatedAt: new Date("2026-06-05T00:00:00.000Z"),
+    },
+    {
+      userId: "user_b",
+      packId: "pack-servicos",
+      rating: 5,
+      createdAt: new Date("2026-06-06T00:00:00.000Z"),
+      updatedAt: new Date("2026-06-06T00:00:00.000Z"),
+    },
+    {
+      userId: "user_a",
+      packId: "pack-wallets",
+      rating: 5,
+      createdAt: new Date("2026-06-07T00:00:00.000Z"),
+      updatedAt: new Date("2026-06-07T00:00:00.000Z"),
+    },
+  );
+
+  await withTestServer(app, async (baseUrl) => {
+    const downloadsResponse = await fetch(`${baseUrl}/api/icons/packs?sort=downloads`, {
+      headers: { "x-test-auth": "user_a" },
+    });
+    assert.equal(downloadsResponse.status, 200);
+    const downloadsBody = await downloadsResponse.json();
+    assert.deepEqual(downloadsBody.packs.slice(0, 3).map((pack: { id: string }) => pack.id), [
+      "pack-servicos",
+      "pack-wallets",
+      "pack-bancos",
+    ]);
+
+    const mostRatedResponse = await fetch(`${baseUrl}/api/icons/packs?sort=most-rated`, {
+      headers: { "x-test-auth": "user_a" },
+    });
+    const mostRatedBody = await mostRatedResponse.json();
+    assert.deepEqual(mostRatedBody.packs.slice(0, 3).map((pack: { id: string }) => pack.id), [
+      "pack-servicos",
+      "pack-wallets",
+      "pack-bancos",
+    ]);
+
+    const topRatedResponse = await fetch(`${baseUrl}/api/icons/packs?sort=top-rated`, {
+      headers: { "x-test-auth": "user_a" },
+    });
+    const topRatedBody = await topRatedResponse.json();
+    assert.deepEqual(topRatedBody.packs.slice(0, 3).map((pack: { id: string }) => pack.id), [
+      "pack-wallets",
+      "pack-servicos",
+      "pack-bancos",
+    ]);
+
+    const recentResponse = await fetch(`${baseUrl}/api/icons/packs?sort=recent`, {
+      headers: { "x-test-auth": "user_a" },
+    });
+    const recentBody = await recentResponse.json();
+    assert.deepEqual(recentBody.packs.slice(0, 3).map((pack: { id: string }) => pack.id), [
+      "pack-wallets",
+      "pack-servicos",
+      "pack-bancos",
+    ]);
+
+    const alphabeticalResponse = await fetch(`${baseUrl}/api/icons/packs?sort=name-asc`, {
+      headers: { "x-test-auth": "user_a" },
+    });
+    const alphabeticalBody = await alphabeticalResponse.json();
+    assert.deepEqual(alphabeticalBody.packs.slice(0, 3).map((pack: { id: string }) => pack.id), [
+      "pack-bancos",
+      "pack-wallets",
+      "pack-servicos",
+    ]);
+  });
+});
+
+test("official packs: reinstalar o mesmo pack não duplica download do usuário", async () => {
+  const { app, fixture } = createOfficialIconsRouteApp();
+  await withTestServer(app, async (baseUrl) => {
+    const firstInstall = await fetch(`${baseUrl}/api/icons/packs/pack-bancos/add-to-library`, {
+      method: "POST",
+      headers: { "x-test-auth": "user_a" },
+    });
+    assert.equal(firstInstall.status, 201);
+
+    const secondInstall = await fetch(`${baseUrl}/api/icons/packs/pack-bancos/add-to-library`, {
+      method: "POST",
+      headers: { "x-test-auth": "user_a" },
+    });
+    assert.equal(secondInstall.status, 201);
+
+    assert.equal(fixture.packInstalls.filter((entry) => entry.userId === "user_a" && entry.packId === "pack-bancos").length, 1);
+
+    const packsResponse = await fetch(`${baseUrl}/api/icons/packs?sort=downloads`, {
+      headers: { "x-test-auth": "user_a" },
+    });
+    assert.equal(packsResponse.status, 200);
+    const packsBody = await packsResponse.json();
+    const pack = packsBody.packs.find((entry: { id: string }) => entry.id === "pack-bancos");
+    assert.equal(pack?.installCount, 1);
   });
 });
 

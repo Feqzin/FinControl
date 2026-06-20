@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, boolean, index, date, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, boolean, index, uniqueIndex, date, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -242,6 +242,7 @@ export const officialIconPacks = pgTable("official_icon_packs", {
   name: text("name").notNull(),
   description: text("description"),
   category: text("category"),
+  coverIconId: varchar("cover_icon_id"),
   coverImageUrl: text("cover_image_url"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -249,6 +250,7 @@ export const officialIconPacks = pgTable("official_icon_packs", {
 }, (table) => ({
   officialIconPacksActiveIdx: index("idx_official_icon_packs_is_active").on(table.isActive),
   officialIconPacksCreatedAtIdx: index("idx_official_icon_packs_created_at").on(table.createdAt),
+  officialIconPacksCoverIconIdx: index("idx_official_icon_packs_cover_icon_id").on(table.coverIconId),
 }));
 
 export const insertOfficialIconPackSchema = createInsertSchema(officialIconPacks).omit({
@@ -288,6 +290,49 @@ export const insertOfficialIconLibrarySchema = createInsertSchema(officialIconLi
 });
 export type InsertOfficialIconLibrary = z.infer<typeof insertOfficialIconLibrarySchema>;
 export type OfficialIconLibraryItem = typeof officialIconLibrary.$inferSelect;
+
+export const iconPackInstalls = pgTable("icon_pack_installs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  packId: varchar("pack_id").notNull().references(() => officialIconPacks.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  iconPackInstallsUserIdx: index("idx_icon_pack_installs_user_id").on(table.userId),
+  iconPackInstallsPackIdx: index("idx_icon_pack_installs_pack_id").on(table.packId),
+  iconPackInstallsCreatedAtIdx: index("idx_icon_pack_installs_created_at").on(table.createdAt),
+  iconPackInstallsUserPackUniqueIdx: uniqueIndex("idx_icon_pack_installs_user_pack_unique").on(table.userId, table.packId),
+}));
+
+export const insertIconPackInstallSchema = createInsertSchema(iconPackInstalls).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertIconPackInstall = z.infer<typeof insertIconPackInstallSchema>;
+export type IconPackInstall = typeof iconPackInstalls.$inferSelect;
+
+export const iconPackRatings = pgTable("icon_pack_ratings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  packId: varchar("pack_id").notNull().references(() => officialIconPacks.id, { onDelete: "cascade" }),
+  rating: integer("rating").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  iconPackRatingsUserIdx: index("idx_icon_pack_ratings_user_id").on(table.userId),
+  iconPackRatingsPackIdx: index("idx_icon_pack_ratings_pack_id").on(table.packId),
+  iconPackRatingsCreatedAtIdx: index("idx_icon_pack_ratings_created_at").on(table.createdAt),
+  iconPackRatingsUserPackUniqueIdx: uniqueIndex("idx_icon_pack_ratings_user_pack_unique").on(table.userId, table.packId),
+}));
+
+export const insertIconPackRatingSchema = createInsertSchema(iconPackRatings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertIconPackRating = z.infer<typeof insertIconPackRatingSchema>;
+export type IconPackRating = typeof iconPackRatings.$inferSelect;
 
 export const servicos = pgTable("servicos", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

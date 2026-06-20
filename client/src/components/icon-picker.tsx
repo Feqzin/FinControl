@@ -14,6 +14,7 @@ import { IconPickerManagePersonalCoreActions } from "@/components/icon-picker-ma
 import { IconPickerManagePersonalPublicationActions } from "@/components/icon-picker-manage-personal-publication-actions";
 import { IconPickerPackDetailIconCard } from "@/components/icon-picker-pack-detail-icon-card";
 import { IconPickerPackCard } from "@/components/icon-picker-pack-card";
+import { IconPickerPackRating } from "@/components/icon-picker-pack-rating";
 import { IconPickerPackSelectIconCard } from "@/components/icon-picker-pack-select-icon-card";
 import { IconPickerPersonalIconCard } from "@/components/icon-picker-personal-icon-card";
 import { IconPickerSectionHeader } from "@/components/icon-picker-section-header";
@@ -48,9 +49,11 @@ import {
   fetchCommunityIcons,
   fetchOfficialIcons,
   publishCommunityIcon,
+  rateOfficialPack,
   unpublishCommunityIconPack,
   type OfficialIconApiModel,
   type OfficialIconPackApiModel,
+  type OfficialIconPackSortOrder,
   unpublishCommunityIcon,
 } from "@/services/api/official-icons";
 import {
@@ -115,7 +118,10 @@ import {
   getExploreIconPackOriginLabel,
   getItemTerms,
   getPackAddActionLabel,
+  getPackInstallCountLabel,
   getPackLibraryStatusBadge,
+  getPackRatingLabel,
+  getPackRatingSummaryLabel,
   getPackLibrarySummaryLabel,
   resolvePackProgress,
   resolveUserIconCategory,
@@ -176,6 +182,7 @@ export function IconPicker({
   const [exploreCategory, setExploreCategory] = useState("all");
   const [exploreOrigin, setExploreOrigin] = useState<"all" | "official" | "community">("all");
   const [exploreType, setExploreType] = useState<"all" | "icons" | "packs">("packs");
+  const [explorePackSort, setExplorePackSort] = useState<OfficialIconPackSortOrder>("recent");
   const [explorePacksPage, setExplorePacksPage] = useState(1);
   const [exploreIconsPage, setExploreIconsPage] = useState(1);
   const [manageActionTarget, setManageActionTarget] = useState<ManageActionTarget | null>(null);
@@ -187,6 +194,7 @@ export function IconPicker({
   const [newPackSelectedIconIds, setNewPackSelectedIconIds] = useState<string[]>([]);
   const [packDetailsOpen, setPackDetailsOpen] = useState(false);
   const [packDetailsTarget, setPackDetailsTarget] = useState<OfficialIconPackApiModel | null>(null);
+  const [packRatingHover, setPackRatingHover] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const hasExploreSearch = hasExploreSearchTerm(exploreSearch);
@@ -202,11 +210,12 @@ export function IconPicker({
   });
 
   const { data: explorePacks = [], isLoading: isLoadingExplorePacks } = useQuery<OfficialIconPackApiModel[]>({
-    queryKey: ["/api/icons/packs", "explore", exploreCategory, exploreOrigin],
+    queryKey: ["/api/icons/packs", "explore", exploreCategory, exploreOrigin, explorePackSort],
     queryFn: () =>
       fetchIconPacks({
         category: exploreCategory !== "all" ? exploreCategory : undefined,
         origin: exploreOrigin,
+        sort: explorePackSort,
       }),
     enabled: open,
     staleTime: 60_000,
@@ -709,6 +718,39 @@ export function IconPicker({
       const message = error instanceof Error ? error.message : "Não foi possível adicionar o pack.";
       toast({
         title: "Erro ao adicionar pack",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const ratePackMutation = useMutation({
+    mutationFn: async (payload: { packId: string; rating: number }) =>
+      rateOfficialPack(payload.packId, payload.rating),
+    onSuccess: (result, variables) => {
+      setPackRatingHover(null);
+      setPackDetailsTarget((current) => (
+        current && current.id === variables.packId
+          ? {
+            ...current,
+            ratingAverage: result.ratingAverage,
+            ratingCount: result.ratingCount,
+            userRating: result.userRating,
+          }
+          : current
+      ));
+      toast({
+        title: result.updated ? "Avaliação atualizada" : "Avaliação registrada",
+        description: getPackRatingLabel(result.userRating),
+      });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/community/packs"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/icons/packs/details"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Não foi possível registrar a avaliação do pack.";
+      toast({
+        title: "Erro ao avaliar pack",
         description: message,
         variant: "destructive",
       });
@@ -1329,6 +1371,7 @@ export function IconPicker({
   };
 
   const openPackDetails = (pack: OfficialIconPackApiModel) => {
+    setPackRatingHover(null);
     setPackDetailsTarget(pack);
     setPackDetailsOpen(true);
   };
@@ -1377,7 +1420,7 @@ export function IconPicker({
   };
 
   const iconsPerPage = isMobile ? 24 : 40;
-  const packsPerPage = 12;
+  const packsPerPage = 6;
 
   const filteredPersonalIcons = useMemo(
     () => filterAndSortPersonalIcons(activePersonalIcons, {
@@ -1410,6 +1453,27 @@ export function IconPicker({
     () => new Map(explorePacks.map((pack) => [pack.id, pack])),
     [explorePacks],
   );
+
+  useEffect(() => {
+    const currentPackId = packDetailsTarget?.id;
+    if (!currentPackId) return;
+    const refreshedPack = explorePacksById.get(currentPackId);
+    if (!refreshedPack) return;
+    setPackDetailsTarget((current) => (
+      current && current.id === refreshedPack.id && (
+        current.ratingAverage !== refreshedPack.ratingAverage
+        || current.ratingCount !== refreshedPack.ratingCount
+        || current.userRating !== refreshedPack.userRating
+        || current.installCount !== refreshedPack.installCount
+        || current.addedIconsCount !== refreshedPack.addedIconsCount
+        || current.missingIconsCount !== refreshedPack.missingIconsCount
+        || current.libraryStatus !== refreshedPack.libraryStatus
+        || current.coverImageUrl !== refreshedPack.coverImageUrl
+      )
+        ? { ...current, ...refreshedPack }
+        : current
+    ));
+  }, [explorePacksById, packDetailsTarget?.id]);
 
   const resolveExplorePackForIcon = (icon: OfficialIconApiModel): OfficialIconPackApiModel | null => {
     const packId = String(icon.packId ?? "").trim();
@@ -1483,6 +1547,10 @@ export function IconPicker({
       setExploreIconsPage(1);
     }
   }, [exploreIconsPage, paginatedExploreIcons.totalPages]);
+
+  useEffect(() => {
+    setExplorePacksPage(1);
+  }, [exploreSearch, exploreCategory, exploreOrigin, explorePackSort, exploreType]);
 
   return (
     <>
@@ -1763,13 +1831,13 @@ export function IconPicker({
 
             <TabsContent value="explore" className="mt-0 min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6">
               <div className="rounded-xl border border-border/60 bg-muted/20 p-3 sm:p-4">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
                   <Input
                     value={exploreSearch}
                     onChange={(event) => setExploreSearch(event.target.value)}
                     placeholder="Buscar pack ou ícone"
                     aria-label="Buscar pack ou ícone"
-                    className="sm:col-span-2 lg:col-span-1"
+                    className="sm:col-span-2 xl:col-span-1"
                   />
                   <Select value={exploreType} onValueChange={(value) => setExploreType(value as "all" | "icons" | "packs")}>
                     <SelectTrigger aria-label="Filtrar tipo de conteúdo">
@@ -1804,6 +1872,18 @@ export function IconPicker({
                       ))}
                     </SelectContent>
                   </Select>
+                  <Select value={explorePackSort} onValueChange={(value) => setExplorePackSort(value as OfficialIconPackSortOrder)}>
+                    <SelectTrigger aria-label="Ordenar packs disponíveis">
+                      <SelectValue placeholder="Ordenar packs" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[90]">
+                      <SelectItem value="recent">Mais recentes</SelectItem>
+                      <SelectItem value="downloads">Mais baixados</SelectItem>
+                      <SelectItem value="most-rated">Mais avaliados</SelectItem>
+                      <SelectItem value="top-rated">Melhor avaliação</SelectItem>
+                      <SelectItem value="name-asc">Nome A-Z</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -1824,7 +1904,7 @@ export function IconPicker({
                     <p className="text-xs text-muted-foreground">Nenhum pack encontrado para esse filtro.</p>
                   ) : (
                     <>
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2 xl:grid-cols-3">
                         {paginatedExplorePacks.items.map((pack) => {
                           const progress = resolvePackProgress(pack);
                           const isFull = progress.status === "full";
@@ -1832,7 +1912,7 @@ export function IconPicker({
                           const matchHint = hasExploreSearch
                             ? (formatPackMatchHint(packMatchSummaryByPackId.get(pack.id)) ?? "Match pelo nome/descrição do pack")
                             : null;
-                          const categorySummary = `${pack.category ? getIconCategoryLabel(pack.category) : "Sem categoria"} · ${pack.iconsCount} ícone(s)`;
+                          const categoryLabel = pack.category ? getIconCategoryLabel(pack.category) : "Sem categoria";
                           const authorLabel = pack.sourceType === "community"
                             ? `Publicado por: ${formatCommunityAuthorLabel(pack.ownerLabel)}`
                             : "Catálogo oficial";
@@ -1841,11 +1921,16 @@ export function IconPicker({
                               key={pack.id}
                               name={pack.name}
                               matchHint={matchHint}
-                              categorySummary={categorySummary}
+                              coverImageUrl={pack.coverImageUrl}
+                              categoryLabel={categoryLabel}
+                              iconsCountLabel={`${pack.iconsCount} ${pack.iconsCount === 1 ? "ícone" : "ícones"}`}
                               authorLabel={authorLabel}
-                              publicCode={pack.publicCode}
                               statusLabel={packStatusBadge.label}
                               statusVariant={packStatusBadge.variant}
+                              ratingAverage={pack.ratingAverage ?? null}
+                              ratingCount={pack.ratingCount ?? 0}
+                              ratingSummaryLabel={getPackRatingSummaryLabel(pack)}
+                              installCountLabel={getPackInstallCountLabel(pack)}
                               addActionLabel={getPackAddActionLabel(pack)}
                               addButtonVariant={isFull ? "outline" : "default"}
                               addDisabled={isFull || addPackToLibraryMutation.isPending}
@@ -2383,6 +2468,7 @@ export function IconPicker({
         open={packDetailsOpen}
         onOpenChange={(nextOpen) => {
           setPackDetailsOpen(nextOpen);
+          setPackRatingHover(null);
           if (!nextOpen) {
             setPackDetailsTarget(null);
           }
@@ -2448,6 +2534,43 @@ export function IconPicker({
                             ID do pack: {packDetailsTarget.publicCode}
                           </p>
                         ) : null}
+                        <div className="rounded-2xl border border-border/60 bg-background/80 p-3">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <IconPickerPackRating
+                                  averageRating={packDetailsTarget.ratingAverage ?? null}
+                                  ratingCount={packDetailsTarget.ratingCount ?? 0}
+                                  size="md"
+                                />
+                                <p className="text-sm font-medium text-foreground">
+                                  {getPackRatingSummaryLabel(packDetailsTarget)}
+                                </p>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {getPackInstallCountLabel(packDetailsTarget)}
+                              </p>
+                            </div>
+                            <div className="space-y-1">
+                              <IconPickerPackRating
+                                interactive
+                                size="md"
+                                disabled={ratePackMutation.isPending}
+                                userRating={packDetailsTarget.userRating ?? null}
+                                hoveredRating={packRatingHover}
+                                onHoverChange={setPackRatingHover}
+                                onRate={(rating) => ratePackMutation.mutate({ packId: packDetailsTarget.id, rating })}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                {packRatingHover
+                                  ? `${packRatingHover} ${packRatingHover === 1 ? "estrela" : "estrelas"} · ${getPackRatingLabel(packRatingHover)}`
+                                  : packDetailsTarget.userRating
+                                    ? `Sua nota: ${packDetailsTarget.userRating} ${packDetailsTarget.userRating === 1 ? "estrela" : "estrelas"} · ${getPackRatingLabel(packDetailsTarget.userRating)}`
+                                    : "Avalie este pack"}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
                         <p className="text-sm text-muted-foreground">
                           {packDetailsTarget.description || "Sem descrição"}
                         </p>

@@ -11,6 +11,8 @@ import {
 import { db } from "../db.js";
 import {
   iconMatchRules,
+  iconPackInstalls,
+  iconPackRatings,
   officialIconLibrary,
   officialIconPacks,
   users,
@@ -75,6 +77,7 @@ export type OfficialIconListItemView = {
 };
 
 export type PackLibraryStatus = "none" | "partial" | "full";
+export type OfficialIconPackSortOrder = "recent" | "downloads" | "most-rated" | "top-rated" | "name-asc";
 
 export type OfficialIconPackView = {
   id: string;
@@ -82,6 +85,7 @@ export type OfficialIconPackView = {
   name: string;
   description: string | null;
   category: string | null;
+  coverIconId: string | null;
   coverImageUrl: string | null;
   sourceType: "official" | "community";
   ownerUserId: string | null;
@@ -92,6 +96,10 @@ export type OfficialIconPackView = {
   addedIconsCount: number;
   missingIconsCount: number;
   libraryStatus: PackLibraryStatus;
+  installCount: number;
+  ratingAverage: number | null;
+  ratingCount: number;
+  userRating: number | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -549,6 +557,141 @@ export class OfficialIconLibraryService {
     return { missingIconsCount: missing, libraryStatus: "partial" };
   }
 
+  private resolvePackSortOrder(sort: OfficialIconPacksListQueryInput["sort"]): OfficialIconPackSortOrder {
+    switch (sort) {
+      case "downloads":
+      case "most-rated":
+      case "top-rated":
+      case "name-asc":
+        return sort;
+      case "recent":
+      default:
+        return "recent";
+    }
+  }
+
+  private comparePackNames(a: OfficialIconPackView, b: OfficialIconPackView): number {
+    return a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" });
+  }
+
+  private sortPackViews(
+    list: OfficialIconPackView[],
+    sort: OfficialIconPacksListQueryInput["sort"],
+  ): OfficialIconPackView[] {
+    const resolvedSort = this.resolvePackSortOrder(sort);
+    return [...list].sort((a, b) => {
+      switch (resolvedSort) {
+        case "downloads": {
+          const diff = (b.installCount ?? 0) - (a.installCount ?? 0);
+          if (diff !== 0) return diff;
+          const ratingDiff = (b.ratingCount ?? 0) - (a.ratingCount ?? 0);
+          if (ratingDiff !== 0) return ratingDiff;
+          return this.comparePackNames(a, b);
+        }
+        case "most-rated": {
+          const diff = (b.ratingCount ?? 0) - (a.ratingCount ?? 0);
+          if (diff !== 0) return diff;
+          const avgDiff = (b.ratingAverage ?? 0) - (a.ratingAverage ?? 0);
+          if (avgDiff !== 0) return avgDiff;
+          return this.comparePackNames(a, b);
+        }
+        case "top-rated": {
+          const avgDiff = (b.ratingAverage ?? 0) - (a.ratingAverage ?? 0);
+          if (avgDiff !== 0) return avgDiff;
+          const countDiff = (b.ratingCount ?? 0) - (a.ratingCount ?? 0);
+          if (countDiff !== 0) return countDiff;
+          return this.comparePackNames(a, b);
+        }
+        case "name-asc":
+          return this.comparePackNames(a, b);
+        case "recent":
+        default: {
+          const updatedDiff = b.createdAt.getTime() - a.createdAt.getTime();
+          if (updatedDiff !== 0) return updatedDiff;
+          return this.comparePackNames(a, b);
+        }
+      }
+    });
+  }
+
+  private async loadVisiblePack(packId: string): Promise<Pick<OfficialIconPack, "id" | "publicCode" | "isActive">> {
+    const [pack] = await db
+      .select({
+        id: officialIconPacks.id,
+        publicCode: officialIconPacks.publicCode,
+        isActive: officialIconPacks.isActive,
+      })
+      .from(officialIconPacks)
+      .where(and(
+        eq(officialIconPacks.id, packId),
+        eq(officialIconPacks.isActive, true),
+      ))
+      .limit(1);
+
+    if (!pack) {
+      throw new OfficialIconPackNotFoundError("Pack não encontrado.");
+    }
+
+    return pack;
+  }
+
+  private async trackPackInstall(userId: string, packId: string): Promise<void> {
+    const [existingInstall] = await db
+      .select({ id: iconPackInstalls.id })
+      .from(iconPackInstalls)
+      .where(and(
+        eq(iconPackInstalls.userId, userId),
+        eq(iconPackInstalls.packId, packId),
+      ))
+      .limit(1);
+
+    if (existingInstall) {
+      return;
+    }
+
+    const now = new Date();
+    await db.insert(iconPackInstalls).values({
+      userId,
+      packId,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  private async buildPackRatingSummary(
+    userId: string,
+    packId: string,
+  ): Promise<{
+    ratingAverage: number | null;
+    ratingCount: number;
+    userRating: number | null;
+  }> {
+    const [aggregate] = await db
+      .select({
+        ratingAverage: sql<number>`round(avg(${iconPackRatings.rating})::numeric, 1)`,
+        ratingCount: sql<number>`count(*)`,
+      })
+      .from(iconPackRatings)
+      .where(eq(iconPackRatings.packId, packId));
+
+    const [userRatingRow] = await db
+      .select({
+        rating: iconPackRatings.rating,
+      })
+      .from(iconPackRatings)
+      .where(and(
+        eq(iconPackRatings.userId, userId),
+        eq(iconPackRatings.packId, packId),
+      ))
+      .limit(1);
+
+    return {
+      ratingAverage: aggregate ? Number(aggregate.ratingAverage) || null : null,
+      ratingCount: aggregate ? Number(aggregate.ratingCount) || 0 : 0,
+      userRating: userRatingRow ? Number(userRatingRow.rating) || null : null,
+    };
+  }
+
   private async loadUserIconLookup(userId: string): Promise<UserIconLookup> {
     const rows = await db
       .select()
@@ -947,6 +1090,36 @@ export class OfficialIconLibraryService {
     if (packs.length === 0) return [];
 
     const packIds = packs.map((pack) => pack.id);
+    const installCounts = await db
+      .select({
+        packId: iconPackInstalls.packId,
+        count: sql<number>`count(*)`,
+      })
+      .from(iconPackInstalls)
+      .where(inArray(iconPackInstalls.packId, packIds))
+      .groupBy(iconPackInstalls.packId);
+
+    const ratingAggregates = await db
+      .select({
+        packId: iconPackRatings.packId,
+        ratingAverage: sql<number>`round(avg(${iconPackRatings.rating})::numeric, 1)`,
+        ratingCount: sql<number>`count(*)`,
+      })
+      .from(iconPackRatings)
+      .where(inArray(iconPackRatings.packId, packIds))
+      .groupBy(iconPackRatings.packId);
+
+    const userRatings = await db
+      .select({
+        packId: iconPackRatings.packId,
+        rating: iconPackRatings.rating,
+      })
+      .from(iconPackRatings)
+      .where(and(
+        eq(iconPackRatings.userId, userId),
+        inArray(iconPackRatings.packId, packIds),
+      ));
+
     const iconCounts = await db
       .select({
         packId: officialIconLibrary.packId,
@@ -985,7 +1158,8 @@ export class OfficialIconLibraryService {
       .where(and(
         eq(officialIconLibrary.isActive, true),
         inArray(officialIconLibrary.packId, packIds),
-      ));
+      ))
+      .orderBy(asc(officialIconLibrary.createdAt), asc(officialIconLibrary.name));
 
     const iconCountByPackId = new Map<string, number>();
     for (const row of iconCounts) {
@@ -993,11 +1167,34 @@ export class OfficialIconLibraryService {
       iconCountByPackId.set(row.packId, Number(row.count) || 0);
     }
 
+    const installCountByPackId = new Map<string, number>();
+    for (const row of installCounts) {
+      installCountByPackId.set(row.packId, Number(row.count) || 0);
+    }
+
+    const ratingAverageByPackId = new Map<string, number | null>();
+    const ratingCountByPackId = new Map<string, number>();
+    for (const row of ratingAggregates) {
+      ratingAverageByPackId.set(row.packId, Number(row.ratingAverage) || null);
+      ratingCountByPackId.set(row.packId, Number(row.ratingCount) || 0);
+    }
+
+    const userRatingByPackId = new Map<string, number>();
+    for (const row of userRatings) {
+      userRatingByPackId.set(row.packId, Number(row.rating) || 0);
+    }
+
     const userIconLookup = await this.loadUserIconLookup(userId);
     const addedCountByPackId = new Map<string, number>();
+    const coverIconByPackId = new Map<string, { id: string; imageUrl: string }>();
+    const coverImageByIconId = new Map<string, string>();
     for (const icon of packIcons) {
       const packId = icon.packId ?? "";
       if (!packId) continue;
+      if (!coverIconByPackId.has(packId)) {
+        coverIconByPackId.set(packId, { id: icon.id, imageUrl: icon.imageUrl });
+      }
+      coverImageByIconId.set(icon.id, icon.imageUrl);
       const exists = this.findExistingUserIconForPublishedIcon(userId, {
         id: icon.id,
         iconKey: icon.iconKey,
@@ -1047,6 +1244,16 @@ export class OfficialIconLibraryService {
       const iconsCount = iconCountByPackId.get(pack.id) ?? 0;
       const addedIconsCount = addedCountByPackId.get(pack.id) ?? 0;
       const library = this.resolvePackLibraryStatus(iconsCount, addedIconsCount);
+      const resolvedCoverFromIcon = pack.coverIconId
+        ? (coverImageByIconId.get(pack.coverIconId) ?? null)
+        : null;
+      const resolvedCoverImageUrl = resolvedCoverFromIcon
+        ?? pack.coverImageUrl
+        ?? coverIconByPackId.get(pack.id)?.imageUrl
+        ?? null;
+      const ratingAverage = ratingAverageByPackId.get(pack.id) ?? null;
+      const ratingCount = ratingCountByPackId.get(pack.id) ?? 0;
+      const userRating = userRatingByPackId.get(pack.id) ?? null;
 
       return {
         id: pack.id,
@@ -1054,7 +1261,8 @@ export class OfficialIconLibraryService {
         name: pack.name,
         description: pack.description ?? null,
         category: pack.category ?? null,
-        coverImageUrl: pack.coverImageUrl ?? null,
+        coverIconId: pack.coverIconId ?? null,
+        coverImageUrl: resolvedCoverImageUrl,
         sourceType,
         ownerUserId: null,
         ownerLabel,
@@ -1064,6 +1272,10 @@ export class OfficialIconLibraryService {
         addedIconsCount,
         missingIconsCount: library.missingIconsCount,
         libraryStatus: library.libraryStatus,
+        installCount: installCountByPackId.get(pack.id) ?? 0,
+        ratingAverage,
+        ratingCount,
+        userRating,
         createdAt: pack.createdAt,
         updatedAt: pack.updatedAt,
       } satisfies OfficialIconPackView;
@@ -1090,7 +1302,7 @@ export class OfficialIconLibraryService {
       ].join(" ")).includes(normalizedSearch));
     }
 
-    return list;
+    return this.sortPackViews(list, query.sort);
   }
 
   private async addOfficialLibraryIconToUserLibrary(
@@ -1523,6 +1735,7 @@ export class OfficialIconLibraryService {
         name: createdPack.name,
         description: createdPack.description ?? null,
         category: createdPack.category ?? null,
+        coverIconId: createdPack.coverIconId ?? null,
         coverImageUrl: createdPack.coverImageUrl ?? null,
         sourceType: "community",
         ownerUserId: null,
@@ -1533,6 +1746,10 @@ export class OfficialIconLibraryService {
         addedIconsCount: 0,
         missingIconsCount: snapshots.length,
         libraryStatus: snapshots.length > 0 ? "none" : "full",
+        installCount: 0,
+        ratingAverage: null,
+        ratingCount: 0,
+        userRating: null,
         createdAt: createdPack.createdAt,
         updatedAt: createdPack.updatedAt,
       };
@@ -1676,22 +1893,7 @@ export class OfficialIconLibraryService {
     libraryStatus: PackLibraryStatus;
     createdMatchRules: number;
   }> {
-    const [pack] = await db
-      .select({
-        id: officialIconPacks.id,
-        publicCode: officialIconPacks.publicCode,
-        isActive: officialIconPacks.isActive,
-      })
-      .from(officialIconPacks)
-      .where(and(
-        eq(officialIconPacks.id, packId),
-        eq(officialIconPacks.isActive, true),
-      ))
-      .limit(1);
-
-    if (!pack) {
-      throw new OfficialIconPackNotFoundError("Pack não encontrado.");
-    }
+    const pack = await this.loadVisiblePack(packId);
 
     const icons = await db
       .select({
@@ -1730,6 +1932,7 @@ export class OfficialIconLibraryService {
     }
 
     const library = this.resolvePackLibraryStatus(icons.length, icons.length);
+    await this.trackPackInstall(userId, pack.id);
 
     return {
       packId: pack.id,
@@ -1740,6 +1943,60 @@ export class OfficialIconLibraryService {
       missingIconsCount: library.missingIconsCount,
       libraryStatus: library.libraryStatus,
       createdMatchRules,
+    };
+  }
+
+  async rateOfficialPack(
+    userId: string,
+    packId: string,
+    rating: number,
+  ): Promise<{
+    ratingAverage: number | null;
+    ratingCount: number;
+    userRating: number | null;
+    updated: boolean;
+  }> {
+    await this.loadVisiblePack(packId);
+
+    const normalizedRating = Math.max(1, Math.min(5, Math.trunc(Number(rating) || 0)));
+    if (normalizedRating < 1 || normalizedRating > 5) {
+      throw new Error("A avaliação deve estar entre 1 e 5 estrelas.");
+    }
+
+    const [existingRating] = await db
+      .select({
+        id: iconPackRatings.id,
+      })
+      .from(iconPackRatings)
+      .where(and(
+        eq(iconPackRatings.userId, userId),
+        eq(iconPackRatings.packId, packId),
+      ))
+      .limit(1);
+
+    const now = new Date();
+    if (existingRating) {
+      await db
+        .update(iconPackRatings)
+        .set({
+          rating: normalizedRating,
+          updatedAt: now,
+        })
+        .where(eq(iconPackRatings.id, existingRating.id));
+    } else {
+      await db.insert(iconPackRatings).values({
+        userId,
+        packId,
+        rating: normalizedRating,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    const summary = await this.buildPackRatingSummary(userId, packId);
+    return {
+      ...summary,
+      updated: Boolean(existingRating),
     };
   }
 

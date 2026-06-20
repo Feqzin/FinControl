@@ -13,6 +13,9 @@ const optionalCategoryField = queryStringField
 const optionalOriginField = queryStringField
   .pipe(z.enum(["all", "official", "community"]).optional());
 
+const optionalPackSortField = queryStringField
+  .pipe(z.enum(["recent", "downloads", "most-rated", "top-rated", "name-asc"]).optional());
+
 const optionalBooleanField = queryStringField
   .transform((value) => {
     if (value === undefined) return undefined;
@@ -44,6 +47,7 @@ export const officialIconPacksListQuerySchema = z.object({
   search: optionalTrimmedField,
   category: optionalCategoryField,
   origin: optionalOriginField,
+  sort: optionalPackSortField,
 });
 
 export const addOfficialIconParamsSchema = z.object({
@@ -60,6 +64,10 @@ export const addCommunityPackItemParamsSchema = z.object({
 
 export const publishCommunityIconBodySchema = z.object({
   userIconId: nonEmptyTrimmed.max(128),
+});
+
+export const rateOfficialPackBodySchema = z.object({
+  rating: z.coerce.number().int().min(1).max(5),
 });
 
 export const communityIconParamsSchema = z.object({
@@ -130,6 +138,7 @@ export type AddOfficialIconParamsInput = z.infer<typeof addOfficialIconParamsSch
 export type AddOfficialPackParamsInput = z.infer<typeof addOfficialPackParamsSchema>;
 export type AddCommunityPackItemParamsInput = z.infer<typeof addCommunityPackItemParamsSchema>;
 export type PublishCommunityIconBodyInput = z.infer<typeof publishCommunityIconBodySchema>;
+export type RateOfficialPackBodyInput = z.infer<typeof rateOfficialPackBodySchema>;
 export type CommunityIconParamsInput = z.infer<typeof communityIconParamsSchema>;
 export type CreateCommunityPackBodyInput = z.infer<typeof createCommunityPackBodySchema>;
 export type UpdateCommunityPackBodyInput = z.infer<typeof updateCommunityPackBodySchema>;

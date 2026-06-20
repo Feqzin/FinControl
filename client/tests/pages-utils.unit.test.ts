@@ -186,6 +186,11 @@ import {
   resolveExploreIconsForView,
   resolveExplorePacksForView,
 } from "../src/components/icon-picker-explore-search.utils";
+import {
+  getPackInstallCountLabel,
+  getPackRatingLabel,
+  getPackRatingSummaryLabel,
+} from "../src/components/icon-picker.utils";
 
 test("formatters: moeda e data em pt-BR", () => {
   assert.equal(formatCurrencyBRL(1234.56), "R$\u00a01.234,56");
@@ -5158,6 +5163,48 @@ test("icon picker explore search: mantém ícones de packs diferentes e individu
     "icon-pack-itau-b",
     "icon-individual-outro",
   ]);
+});
+
+test("icon picker packs: labels de rating e downloads ficam amigáveis", () => {
+  const pack = {
+    id: "pack-bancos",
+    name: "Bancos",
+    description: "Pack com bancos",
+    category: "banco",
+    coverImageUrl: null,
+    sourceType: "community",
+    ownerUserId: null,
+    ownerLabel: "Fernando",
+    ownerPublicCode: "USR-AAAA1111",
+    isPublished: true,
+    iconsCount: 5,
+    addedIconsCount: 0,
+    missingIconsCount: 5,
+    libraryStatus: "none",
+    installCount: 38,
+    ratingAverage: 4.8,
+    ratingCount: 12,
+    userRating: 5,
+    createdAt: "2026-05-01T00:00:00.000Z",
+    updatedAt: "2026-05-01T00:00:00.000Z",
+  };
+
+  assert.equal(getPackRatingSummaryLabel(pack as any), "4,8 · 12 avaliações");
+  assert.equal(getPackInstallCountLabel(pack as any), "38 downloads");
+  assert.equal(getPackRatingLabel(1), "Ruim");
+  assert.equal(getPackRatingLabel(5), "Excelente");
+});
+
+test("icon picker packs: pack sem rating mostra texto neutro", () => {
+  const pack = {
+    ratingAverage: null,
+    ratingCount: 0,
+    installCount: 1,
+  };
+
+  assert.equal(getPackRatingSummaryLabel(pack as any), "Sem avaliações");
+  assert.equal(getPackInstallCountLabel(pack as any), "1 download");
+  assert.equal(getPackRatingLabel(null), "Sem avaliações");
 });
 
 test("icon batch upload utils: sugere nome amigável a partir do arquivo", () => {

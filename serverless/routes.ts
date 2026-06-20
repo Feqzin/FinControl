@@ -332,10 +332,11 @@ export function registerRoutes(app: Express): void {
   app.post("/api/icons/community/pack-items/:itemPublicCode/add-to-library", requireAuth, officialIconsController.addCommunityPackItemToLibrary);
   app.post("/api/icons/community/packs/:id/add-to-library", requireAuth, officialIconsController.addCommunityPackToLibrary);
   app.patch("/api/icons/community/packs/:id", requireAuth, officialIconsController.updateCommunityPack);
-  app.patch("/api/icons/community/packs/:id/unpublish", requireAuth, officialIconsController.unpublishCommunityPack);
-  app.patch("/api/icons/community/:id/unpublish", requireAuth, officialIconsController.unpublishCommunityIcon);
-  app.post("/api/icons/official/:id/add-to-library", requireAuth, officialIconsController.addOfficialIconToLibrary);
-  app.post("/api/icons/packs/:id/add-to-library", requireAuth, officialIconsController.addOfficialPackToLibrary);
+    app.patch("/api/icons/community/packs/:id/unpublish", requireAuth, officialIconsController.unpublishCommunityPack);
+    app.patch("/api/icons/community/:id/unpublish", requireAuth, officialIconsController.unpublishCommunityIcon);
+    app.post("/api/icons/official/:id/add-to-library", requireAuth, officialIconsController.addOfficialIconToLibrary);
+    app.post("/api/icons/packs/:id/rating", requireAuth, officialIconsController.rateOfficialPack);
+    app.post("/api/icons/packs/:id/add-to-library", requireAuth, officialIconsController.addOfficialPackToLibrary);
   app.post("/api/admin/icons/packs", requireAuth, officialIconsController.adminCreatePack);
   app.patch("/api/admin/icons/packs/:id", requireAuth, officialIconsController.adminUpdatePack);
   app.post("/api/admin/icons/official", requireAuth, officialIconsController.adminCreateOfficialIcon);

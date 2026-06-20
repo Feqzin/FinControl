@@ -25,6 +25,7 @@ import {
   officialIconPacksListQuerySchema,
   officialIconsListQuerySchema,
   publishCommunityIconBodySchema,
+  rateOfficialPackBodySchema,
   updateCommunityPackBodySchema,
 } from "../validators/official-icons.validators.js";
 import { getUserId, sendBadRequest } from "./controller-utils.js";
@@ -175,6 +176,24 @@ export function createOfficialIconsController(service: OfficialIconLibraryServic
         return res.status(201).json(result);
       } catch (error) {
         return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao adicionar pack." });
+      }
+    },
+
+    rateOfficialPack: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const params = addOfficialPackParamsSchema.safeParse(req.params);
+      if (!params.success) {
+        return sendBadRequest(res, params.error.message);
+      }
+      const parsed = rateOfficialPackBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return sendBadRequest(res, parsed.error.message);
+      }
+      try {
+        const result = await service.rateOfficialPack(userId, params.data.id, parsed.data.rating);
+        return res.json(result);
+      } catch (error) {
+        return mapServiceErrorToResponse(res, error) ?? res.status(500).json({ message: "Erro interno ao avaliar pack." });
       }
     },
 

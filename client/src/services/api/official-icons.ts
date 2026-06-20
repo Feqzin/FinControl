@@ -32,6 +32,7 @@ export type OfficialIconPackApiModel = {
   name: string;
   description: string | null;
   category: string | null;
+  coverIconId?: string | null;
   coverImageUrl: string | null;
   sourceType: "official" | "community";
   ownerUserId: string | null;
@@ -42,9 +43,15 @@ export type OfficialIconPackApiModel = {
   addedIconsCount: number;
   missingIconsCount?: number;
   libraryStatus?: "none" | "partial" | "full";
+  installCount?: number;
+  ratingAverage?: number | null;
+  ratingCount?: number;
+  userRating?: number | null;
   createdAt: string;
   updatedAt: string;
 };
+
+export type OfficialIconPackSortOrder = "recent" | "downloads" | "most-rated" | "top-rated" | "name-asc";
 
 export type AddOfficialIconToLibraryResult = {
   icon: {
@@ -96,6 +103,14 @@ export type FetchOfficialIconPacksQuery = {
   search?: string;
   category?: string;
   origin?: "all" | "official" | "community";
+  sort?: OfficialIconPackSortOrder;
+};
+
+export type RateOfficialPackResult = {
+  ratingAverage: number | null;
+  ratingCount: number;
+  userRating: number | null;
+  updated: boolean;
 };
 
 export type CreateCommunityIconPackPayload = {
@@ -129,6 +144,16 @@ function toQueryString(query: FetchOfficialIconsQuery): string {
   return serialized ? `?${serialized}` : "";
 }
 
+function toPackQueryString(query: FetchOfficialIconPacksQuery): string {
+  const params = new URLSearchParams();
+  if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.category?.trim()) params.set("category", query.category.trim());
+  if (query.origin?.trim()) params.set("origin", query.origin.trim());
+  if (query.sort?.trim()) params.set("sort", query.sort.trim());
+  const serialized = params.toString();
+  return serialized ? `?${serialized}` : "";
+}
+
 export async function fetchOfficialIcons(query: FetchOfficialIconsQuery = {}): Promise<OfficialIconApiModel[]> {
   const response = await apiRequest("GET", `/api/icons/official${toQueryString(query)}`);
   const body = await response.json();
@@ -142,9 +167,16 @@ export async function fetchOfficialIconPacks(): Promise<OfficialIconPackApiModel
 }
 
 export async function fetchIconPacks(query: FetchOfficialIconPacksQuery = {}): Promise<OfficialIconPackApiModel[]> {
-  const response = await apiRequest("GET", `/api/icons/packs${toQueryString(query)}`);
+  const response = await apiRequest("GET", `/api/icons/packs${toPackQueryString(query)}`);
   const body = await response.json();
   return Array.isArray(body?.packs) ? body.packs : [];
+}
+
+export async function rateOfficialPack(packId: string, rating: number): Promise<RateOfficialPackResult> {
+  const response = await apiRequest("POST", `/api/icons/packs/${packId}/rating`, {
+    rating,
+  });
+  return response.json();
 }
 
 export async function addOfficialIconToLibrary(iconId: string): Promise<AddOfficialIconToLibraryResult> {
@@ -191,7 +223,7 @@ export async function createCommunityIconPack(payload: CreateCommunityIconPackPa
 }
 
 export async function fetchCommunityIconPacks(query: FetchOfficialIconPacksQuery = {}): Promise<OfficialIconPackApiModel[]> {
-  const response = await apiRequest("GET", `/api/icons/community/packs${toQueryString(query)}`);
+  const response = await apiRequest("GET", `/api/icons/community/packs${toPackQueryString(query)}`);
   const body = await response.json();
   return Array.isArray(body?.packs) ? body.packs : [];
 }
