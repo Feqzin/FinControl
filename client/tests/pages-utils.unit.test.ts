@@ -122,6 +122,12 @@ import {
 } from "../src/components/cartoes/invoice-month-selector.utils";
 import { buildRelatoriosServicosMetrics } from "../src/pages/relatorios/relatorios-servicos-metrics.utils";
 import { resolveDashboardServicosMetrics } from "../src/pages/dashboard/dashboard-servicos-metrics.utils";
+import {
+  DASHBOARD_UPCOMING_WINDOW_DAYS,
+  filterDashboardUpcomingVencimentos,
+  isDashboardUpcomingDateInWindow,
+  type VencimentoItem,
+} from "../src/hooks/useDashboard";
 import { calculateSimuladorBaseServicos } from "../src/pages/simulador/simulador-page-container";
 import {
   buildFuturePurchaseSimulation,
@@ -6438,4 +6444,89 @@ test("calendário financeiro: serviço pago na competência vira evento informat
   assert.equal(serviceEvent?.direction, "info");
   assert.equal(serviceEvent?.statusLabel, "Serviço pago");
   assert.equal(serviceEvent?.amount, 99.9);
+});
+
+test("dashboard próximos vencimentos: remove parcelas individuais de cartão e mantém apenas a fatura agregada", () => {
+  const items: VencimentoItem[] = [
+    {
+      id: "cartao-fatura-1",
+      tipo: "cartao",
+      kind: "cartao_fatura",
+      nome: "Fatura Nubank Mastercard · Junho de 2026",
+      subtitulo: "Vence em 4 dias",
+      valor: 2484.75,
+      dataVenc: "2026-06-23",
+      actionLabel: "Pagar fatura",
+      cartaoId: "card-1",
+      monthReference: "2026-06",
+    },
+    {
+      id: "cartao-parcela-1",
+      tipo: "cartao",
+      kind: "cartao_parcela",
+      nome: "Fisia Nfs2094 NIKE",
+      subtitulo: "Parcela vence em 4 dias",
+      valor: 214.99,
+      dataVenc: "2026-06-23",
+      actionLabel: "Marcar parcela paga",
+      cartaoId: "card-1",
+      compraCartaoId: "compra-1",
+      parcelaCompraId: "parcela-1",
+    },
+  ];
+
+  const filtered = filterDashboardUpcomingVencimentos(items, "2026-06-19");
+
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0]?.kind, "cartao_fatura");
+  assert.equal(filtered[0]?.nome, "Fatura Nubank Mastercard · Junho de 2026");
+  assert.equal(filtered[0]?.actionLabel, "Pagar fatura");
+});
+
+test("dashboard próximos vencimentos: aplica janela de 30 dias para futuros e vencidos recentes", () => {
+  assert.equal(isDashboardUpcomingDateInWindow("2026-07-17", "2026-06-19"), true);
+  assert.equal(isDashboardUpcomingDateInWindow("2026-07-20", "2026-06-19"), false);
+  assert.equal(isDashboardUpcomingDateInWindow("2026-05-20", "2026-06-19"), true);
+  assert.equal(isDashboardUpcomingDateInWindow("2026-05-19", "2026-06-19"), false);
+  assert.equal(DASHBOARD_UPCOMING_WINDOW_DAYS, 30);
+
+  const items: VencimentoItem[] = [
+    {
+      id: "receber-recente",
+      tipo: "divida",
+      kind: "divida_receber",
+      nome: "Marmita · André",
+      subtitulo: "Venceu há 9d",
+      valor: 18,
+      dataVenc: "2026-06-10",
+      actionLabel: "Marcar recebido",
+      dividaId: "divida-1",
+    },
+    {
+      id: "receber-distante",
+      tipo: "divida",
+      kind: "divida_receber",
+      nome: "Recebível distante",
+      subtitulo: "Vence em 67 dias",
+      valor: 90,
+      dataVenc: "2026-08-25",
+      actionLabel: "Marcar recebido",
+      dividaId: "divida-2",
+    },
+    {
+      id: "pagar-antigo",
+      tipo: "divida",
+      kind: "divida_pagar",
+      nome: "Conta antiga",
+      subtitulo: "Venceu há 31d",
+      valor: 55,
+      dataVenc: "2026-05-19",
+      actionLabel: "Marcar pago",
+      dividaId: "divida-3",
+    },
+  ];
+
+  const filtered = filterDashboardUpcomingVencimentos(items, "2026-06-19");
+
+  assert.deepEqual(filtered.map((item) => item.id), ["receber-recente"]);
 });

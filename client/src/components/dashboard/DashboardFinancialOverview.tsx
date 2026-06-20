@@ -122,31 +122,33 @@ export function DashboardFinancialOverview({
                       <TipoIcon className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                        <p className="min-w-0 break-words pr-1 text-sm font-semibold text-foreground/95">
-                          {item.nome}
-                        </p>
-                        <span className="w-full text-left text-sm font-semibold tracking-tight text-foreground/95 sm:w-auto sm:flex-shrink-0 sm:text-right [overflow-wrap:anywhere]">
-                          {formatMoney(item.valor)}
-                        </span>
-                      </div>
-                      <div className="mt-1.5 flex items-center gap-2">
-                        <div className={`h-2 w-2 flex-shrink-0 rounded-full shadow-[0_0_0_3px] shadow-background ${dotColor}`} />
-                        <p className={`text-xs leading-relaxed ${isPast || isToday ? "font-medium text-red-600" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
-                          {item.subtitulo}
-                        </p>
-                      </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={item.kind === "cartao_fatura" ? "outline" : "secondary"}
-                          className="h-8 rounded-full px-3 text-xs font-medium"
-                          onClick={() => onTriggerAction(item)}
-                          disabled={pendingActionId === item.id}
-                        >
-                          {pendingActionId === item.id ? "Processando..." : item.actionLabel}
-                        </Button>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <p className="min-w-0 break-words pr-1 text-sm font-semibold text-foreground/95">
+                            {item.nome}
+                          </p>
+                          <div className="mt-1.5 flex items-start gap-2">
+                            <div className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full shadow-[0_0_0_3px] shadow-background ${dotColor}`} />
+                            <p className={`text-xs leading-relaxed ${isPast || isToday ? "font-medium text-red-600" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
+                              {item.subtitulo}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2 sm:w-auto sm:min-w-[146px] sm:flex-col sm:items-end">
+                          <span className="text-sm font-semibold tracking-tight text-foreground/95 sm:text-right [overflow-wrap:anywhere]">
+                            {formatMoney(item.valor)}
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 min-h-7 rounded-full border-border/70 bg-background/80 px-2.5 text-[11px] font-medium shadow-none hover:bg-background sm:h-8 sm:min-h-8 sm:px-3"
+                            onClick={() => onTriggerAction(item)}
+                            disabled={pendingActionId === item.id}
+                          >
+                            {pendingActionId === item.id ? "Processando..." : item.actionLabel}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>

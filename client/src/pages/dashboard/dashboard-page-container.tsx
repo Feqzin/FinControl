@@ -1308,21 +1308,21 @@ export default function Dashboard() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium break-words">{item.nome}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5">
+                        <div className="mt-0.5 flex items-start gap-1.5">
                           <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
                           <p className={`text-xs break-words ${isPast || isToday ? "text-red-600 font-medium" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
                             {item.subtitulo}
                           </p>
                         </div>
-                        <span className="mt-2 block text-sm font-semibold [overflow-wrap:anywhere]">
-                          {maskValue(formatCurrencyBRL(item.valor), visible)}
-                        </span>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-sm font-semibold [overflow-wrap:anywhere]">
+                            {maskValue(formatCurrencyBRL(item.valor), visible)}
+                          </span>
                           <Button
                             type="button"
                             size="sm"
-                            variant={item.kind === "cartao_fatura" ? "outline" : "secondary"}
-                            className="h-8 rounded-full px-3 text-xs"
+                            variant="outline"
+                            className="h-7 min-h-7 rounded-full border-border/70 bg-background/80 px-2.5 text-[11px] font-medium shadow-none hover:bg-background"
                             onClick={() => {
                               void handleTriggerVencimentoAction(item);
                             }}

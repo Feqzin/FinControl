@@ -26,10 +26,8 @@ import {
 } from "@shared/servico-periodicidade";
 import {
   calculateCardUsedLimit,
-  getInvoiceCompetency,
   getNextOutstandingCardInvoiceSnapshot,
   groupParcelasCompraByCompraId,
-  isParcelaComprometendoLimite,
 } from "@/lib/card-limit-usage";
 import {
   fetchCartaoFaturaPagamentos,
@@ -71,6 +69,28 @@ export interface PagarSemanaItem {
   dateStr: string;
   amount: number;
   type: "divida" | "cartao" | "servico";
+}
+
+export const DASHBOARD_UPCOMING_WINDOW_DAYS = 30;
+
+export function isDashboardUpcomingDateInWindow(
+  dateValue: string,
+  today: string,
+  maxWindowDays = DASHBOARD_UPCOMING_WINDOW_DAYS,
+): boolean {
+  const dayDistance = differenceInDays(parseISO(dateValue), parseISO(today));
+  return dayDistance >= -maxWindowDays && dayDistance <= maxWindowDays;
+}
+
+export function filterDashboardUpcomingVencimentos(
+  items: VencimentoItem[],
+  today: string,
+  maxWindowDays = DASHBOARD_UPCOMING_WINDOW_DAYS,
+): VencimentoItem[] {
+  return items
+    .filter((item) => item.kind !== "cartao_parcela")
+    .filter((item) => isDashboardUpcomingDateInWindow(item.dataVenc, today, maxWindowDays))
+    .sort((a, b) => a.dataVenc.localeCompare(b.dataVenc));
 }
 
 type QueryState = {
@@ -395,7 +415,6 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const todayDate = new Date();
   const today = format(todayDate, "yyyy-MM-dd");
   const todayReferenceDate = parseISO(today);
-  const todayMonthReference = format(todayDate, "yyyy-MM");
   const in5Days = format(new Date(todayDate.getTime() + 5 * 86400000), "yyyy-MM-dd");
   const in7Days = format(addDays(todayDate, 7), "yyyy-MM-dd");
 
@@ -438,10 +457,6 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     () => new Map(pessoas.map((pessoa) => [pessoa.id, pessoa] as const)),
     [pessoas],
   );
-  const cartoesById = useMemo(
-    () => new Map(cartoes.map((cartao) => [cartao.id, cartao] as const)),
-    [cartoes],
-  );
   const parcelasByDividaId = useMemo(() => {
     const grouped = new Map<string, Parcela[]>();
     for (const parcela of parcelas) {
@@ -459,7 +474,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const proximosVencimentos: VencimentoItem[] = useMemo(() => {
     const items: VencimentoItem[] = [];
     const buildUrgencyLabel = (dateValue: string, options?: { todayLabel?: string; futureVerb?: string; pastVerb?: string }) => {
-      const daysUntil = differenceInDays(parseISO(dateValue), new Date());
+      const daysUntil = differenceInDays(parseISO(dateValue), todayReferenceDate);
       if (daysUntil === 0) return options?.todayLabel ?? "Vence hoje";
       if (daysUntil < 0) return `${options?.pastVerb ?? "Venceu"} há ${Math.abs(daysUntil)}d`;
       return `${options?.futureVerb ?? "Vence em"} ${daysUntil} dia${daysUntil === 1 ? "" : "s"}`;
@@ -477,53 +492,18 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       const dataVenc = proximaFatura.dueDate ?? getNextDueDate(c.diaVencimento);
       if (!dataVenc) return;
       const invoiceMonthLabel = formatInvoiceMonthLabel(proximaFatura.monthReference);
-      const futureInvoiceLabel = proximaFatura.monthReference !== todayMonthReference ? " · Próxima fatura" : "";
       items.push({
         id: `cartao-${c.id}-${proximaFatura.monthReference}`,
         tipo: "cartao",
         kind: "cartao_fatura",
         nome: `Fatura ${c.nome} · ${invoiceMonthLabel}`,
-        subtitulo: `${buildUrgencyLabel(dataVenc)}${futureInvoiceLabel}`,
+        subtitulo: buildUrgencyLabel(dataVenc),
         valor: proximaFatura.total,
         dataVenc,
         actionLabel: "Pagar fatura",
         cartaoId: c.id,
         monthReference: proximaFatura.monthReference,
       });
-    });
-
-    compras.forEach((compra) => {
-      const cartao = cartoesById.get(compra.cartaoId);
-      const parcelasDaCompra = parcelasCompraByCompraId.get(compra.id) ?? [];
-      parcelasDaCompra
-        .filter((parcela) =>
-          isParcelaComprometendoLimite(parcela.statusCartao)
-          && Boolean(parcela.dataVencimento)
-          && (parcela.dataVencimento! <= in7Days || parcela.dataVencimento! < today),
-        )
-        .forEach((parcela) => {
-          const invoiceMonth = getInvoiceCompetency(parcela.dataVencimento);
-          const urgencyLabel = buildUrgencyLabel(parcela.dataVencimento!, {
-            todayLabel: "Parcela vence hoje",
-            futureVerb: "Parcela vence em",
-            pastVerb: "Parcela venceu",
-          });
-
-          items.push({
-            id: `cartao-parcela-${parcela.id}`,
-            tipo: "cartao",
-            kind: "cartao_parcela",
-            nome: compra.descricao,
-            subtitulo: `${cartao?.nome ?? "Cartão"} · Parcela ${parcela.numero}/${compra.parcelas} · já incluída na fatura · ${urgencyLabel}`,
-            valor: toMoneyNumber(parcela.valor),
-            dataVenc: parcela.dataVencimento!,
-            actionLabel: "Marcar parcela paga",
-            cartaoId: compra.cartaoId,
-            compraCartaoId: compra.id,
-            parcelaCompraId: parcela.id,
-            monthReference: invoiceMonth ?? undefined,
-          });
-        });
     });
 
     dividas.forEach((d) => {
@@ -594,21 +574,17 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
         });
       });
 
-    return items.sort((a, b) => a.dataVenc.localeCompare(b.dataVenc));
+    return filterDashboardUpcomingVencimentos(items, today);
   }, [
     cartaoFaturaPagamentos,
     cartoes,
-    cartoesById,
-    compras,
     dividas,
-    in7Days,
     parcelasByDividaId,
     parcelasCompraByCompraId,
     pessoasById,
     servicoCobrancaPagamentos,
     servicos,
     today,
-    todayMonthReference,
     todayReferenceDate,
   ]);
 
@@ -627,7 +603,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       );
       if (parcelasDaDivida.length > 0) {
         parcelasDaDivida
-          .filter((parcela) => parcela.dataVencimento! <= in7Days)
+          .filter((parcela) => parcela.dataVencimento! >= today && parcela.dataVencimento! <= in7Days)
           .forEach((parcela) => {
             items.push({
               id: `div-parcela-${parcela.id}`,
@@ -640,7 +616,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
         return;
       }
 
-      if (d.status === "pendente" && d.dataVencimento && d.dataVencimento <= in7Days) {
+      if (d.status === "pendente" && d.dataVencimento && d.dataVencimento >= today && d.dataVencimento <= in7Days) {
         items.push({
           id: `div-${d.id}`,
           title: d.descricao || pessoasById.get(d.pessoaId)?.nome || "Pagamento",
