@@ -269,3 +269,258 @@ testDividasIntegration("edicao direta de divida parcelada e reconciliada pelos f
     await db.delete(users).where(eq(users.id, user.id));
   }
 });
+
+testDividasIntegration("abatimento parcial com saldo positivo reduz pendencia sem erro 500", async () => {
+  const { db } = await import("../db");
+  const { PessoasService } = await import("../services/pessoas.service");
+  const { storage } = await import("../storage");
+  const { users, pessoas, dividas, pessoaSaldoMovimentacoes } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new PessoasService(storage);
+  const username = `it_pessoas_abate_parcial_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Pessoas Abate Parcial IT",
+  }).returning();
+
+  const [pessoa] = await db.insert(pessoas).values({
+    userId: user.id,
+    nome: "Pessoa Saldo Parcial",
+    tipo: "me_deve",
+    telefone: null,
+    observacao: null,
+  }).returning();
+
+  const [divida] = await db.insert(dividas).values({
+    userId: user.id,
+    pessoaId: pessoa.id,
+    tipo: "receber",
+    valor: "1000.00",
+    dataVencimento: "2026-06-19",
+    status: "pendente",
+    dataPagamento: null,
+    formaPagamento: null,
+    descricao: "Monitor Pichau",
+    totalParcelas: null,
+    valorTotal: null,
+  }).returning();
+
+  await db.insert(pessoaSaldoMovimentacoes).values({
+    userId: user.id,
+    pessoaId: pessoa.id,
+    tipo: "credito",
+    valor: "1000.00",
+    data: "2026-06-18",
+    origem: "manual",
+    categoria: "ajuste",
+    observacao: "Credito inicial",
+    comprovanteReferencia: null,
+    dividaId: null,
+    compraCartaoId: null,
+    parcelaCompraId: null,
+    servicoPessoaId: null,
+  });
+
+  try {
+    const result = await service.abaterSaldoEmDivida(pessoa.id, divida.id, user.id, {
+      valor: "250.00",
+      data: "2026-06-19",
+      observacao: "Abatimento parcial IT",
+    });
+
+    if ("error" in result) {
+      assert.fail(`Nao deveria retornar erro: ${result.error}`);
+    }
+
+    assert.equal(result.aplicado.quitada, false);
+    assert.equal(result.aplicado.valorAbatido, 250);
+    assert.equal(result.aplicado.valorPendenteAtual, 750);
+    assert.equal(result.aplicado.saldoAtual, 750);
+    assert.equal(result.aplicado.divida.status, "pendente");
+    assert.equal(result.aplicado.divida.formaPagamento, null);
+
+    const [persistedDivida] = await db.select().from(dividas).where(and(
+      eq(dividas.userId, user.id),
+      eq(dividas.id, divida.id),
+    ));
+    assert.ok(persistedDivida);
+    assert.equal(persistedDivida.valor, "750.00");
+    assert.equal(persistedDivida.status, "pendente");
+    assert.equal(persistedDivida.formaPagamento, null);
+
+    const saldoRows = await db.select().from(pessoaSaldoMovimentacoes).where(and(
+      eq(pessoaSaldoMovimentacoes.userId, user.id),
+      eq(pessoaSaldoMovimentacoes.pessoaId, pessoa.id),
+    ));
+    assert.equal(saldoRows.length, 2);
+    const abatimento = saldoRows.find((row) => row.origem === "abatimento_divida");
+    assert.ok(abatimento);
+    assert.equal(abatimento?.tipo, "debito");
+    assert.equal(abatimento?.valor, "250.00");
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testDividasIntegration("abatimento total com saldo positivo quita divida sem gravar forma_pagamento invalida", async () => {
+  const { db } = await import("../db");
+  const { PessoasService } = await import("../services/pessoas.service");
+  const { storage } = await import("../storage");
+  const { users, pessoas, dividas, pessoaSaldoMovimentacoes } = await import("@shared/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const service = new PessoasService(storage);
+  const username = `it_pessoas_abate_total_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Pessoas Abate Total IT",
+  }).returning();
+
+  const [pessoa] = await db.insert(pessoas).values({
+    userId: user.id,
+    nome: "Pessoa Saldo Total",
+    tipo: "me_deve",
+    telefone: null,
+    observacao: null,
+  }).returning();
+
+  const [divida] = await db.insert(dividas).values({
+    userId: user.id,
+    pessoaId: pessoa.id,
+    tipo: "receber",
+    valor: "1000.00",
+    dataVencimento: "2026-06-19",
+    status: "pendente",
+    dataPagamento: null,
+    formaPagamento: null,
+    descricao: "Monitor Pichau",
+    totalParcelas: null,
+    valorTotal: null,
+  }).returning();
+
+  await db.insert(pessoaSaldoMovimentacoes).values({
+    userId: user.id,
+    pessoaId: pessoa.id,
+    tipo: "credito",
+    valor: "1000.00",
+    data: "2026-06-18",
+    origem: "manual",
+    categoria: "ajuste",
+    observacao: "Credito inicial",
+    comprovanteReferencia: null,
+    dividaId: null,
+    compraCartaoId: null,
+    parcelaCompraId: null,
+    servicoPessoaId: null,
+  });
+
+  try {
+    const result = await service.abaterSaldoEmDivida(pessoa.id, divida.id, user.id, {
+      valor: "1000.00",
+      data: "2026-06-19",
+      observacao: "Abatimento total IT",
+    });
+
+    if ("error" in result) {
+      assert.fail(`Nao deveria retornar erro: ${result.error}`);
+    }
+
+    assert.equal(result.aplicado.quitada, true);
+    assert.equal(result.aplicado.valorPendenteAtual, 0);
+    assert.equal(result.aplicado.saldoAtual, 0);
+    assert.equal(result.aplicado.divida.status, "pago");
+    assert.equal(result.aplicado.divida.dataPagamento, "2026-06-19");
+    assert.equal(result.aplicado.divida.formaPagamento, null);
+
+    const [persistedDivida] = await db.select().from(dividas).where(and(
+      eq(dividas.userId, user.id),
+      eq(dividas.id, divida.id),
+    ));
+    assert.ok(persistedDivida);
+    assert.equal(persistedDivida.status, "pago");
+    assert.equal(persistedDivida.dataPagamento, "2026-06-19");
+    assert.equal(persistedDivida.formaPagamento, null);
+
+    const saldoRows = await db.select().from(pessoaSaldoMovimentacoes).where(and(
+      eq(pessoaSaldoMovimentacoes.userId, user.id),
+      eq(pessoaSaldoMovimentacoes.pessoaId, pessoa.id),
+    ));
+    assert.equal(saldoRows.length, 2);
+    const abatimento = saldoRows.find((row) => row.origem === "abatimento_divida");
+    assert.ok(abatimento);
+    assert.equal(abatimento?.valor, "1000.00");
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});
+
+testDividasIntegration("abatimento acima do saldo retorna validacao clara", async () => {
+  const { db } = await import("../db");
+  const { PessoasService } = await import("../services/pessoas.service");
+  const { storage } = await import("../storage");
+  const { users, pessoas, dividas, pessoaSaldoMovimentacoes } = await import("@shared/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const service = new PessoasService(storage);
+  const username = `it_pessoas_abate_invalido_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  const [user] = await db.insert(users).values({
+    username,
+    password: "hash_fake",
+    nomeCompleto: "Pessoas Abate Invalido IT",
+  }).returning();
+
+  const [pessoa] = await db.insert(pessoas).values({
+    userId: user.id,
+    nome: "Pessoa Saldo Insuficiente",
+    tipo: "me_deve",
+    telefone: null,
+    observacao: null,
+  }).returning();
+
+  const [divida] = await db.insert(dividas).values({
+    userId: user.id,
+    pessoaId: pessoa.id,
+    tipo: "receber",
+    valor: "1000.00",
+    dataVencimento: "2026-06-19",
+    status: "pendente",
+    dataPagamento: null,
+    formaPagamento: null,
+    descricao: "Monitor Pichau",
+    totalParcelas: null,
+    valorTotal: null,
+  }).returning();
+
+  await db.insert(pessoaSaldoMovimentacoes).values({
+    userId: user.id,
+    pessoaId: pessoa.id,
+    tipo: "credito",
+    valor: "100.00",
+    data: "2026-06-18",
+    origem: "manual",
+    categoria: "ajuste",
+    observacao: "Credito inicial",
+    comprovanteReferencia: null,
+    dividaId: null,
+    compraCartaoId: null,
+    parcelaCompraId: null,
+    servicoPessoaId: null,
+  });
+
+  try {
+    const result = await service.abaterSaldoEmDivida(pessoa.id, divida.id, user.id, {
+      valor: "150.00",
+      data: "2026-06-19",
+    });
+
+    assert.deepEqual(result, { error: "VALOR_MAIOR_QUE_SALDO" });
+  } finally {
+    await db.delete(users).where(eq(users.id, user.id));
+  }
+});

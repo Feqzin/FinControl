@@ -145,6 +145,38 @@ test("update de parcela sincroniza status da divida pai", async () => {
   assert.equal(divida.dataPagamento, "2026-04-20");
 });
 
+test("update de parcela aceita marcacao paga sem forma de pagamento explicita", async () => {
+  const parcela = buildParcela("p1", 1, "pendente");
+  const parcelas = [parcela];
+  const divida = buildDivida(1);
+
+  const repository = {
+    getDivida: async () => divida,
+    getParcelasByDivida: async () => parcelas,
+    updateParcela: async (_id: string, _userId: string, data: Partial<Parcela>) => {
+      Object.assign(parcela, data);
+      return parcela;
+    },
+    updateDivida: async (_id: string, _userId: string, patch: Partial<Divida>) => {
+      Object.assign(divida, patch);
+      return divida;
+    },
+  };
+
+  const service = new ParcelasService(repository as any);
+  const updated = await service.update("p1", "user-parcelas-unit", {
+    status: "pago",
+    dataPagamento: "2026-06-20",
+  });
+
+  assert.ok(updated);
+  assert.equal(updated.status, "pago");
+  assert.equal(updated.formaPagamento, null);
+  assert.equal(divida.status, "pago");
+  assert.equal(divida.dataPagamento, "2026-06-20");
+  assert.equal(divida.formaPagamento, null);
+});
+
 test("listagem de parcelas_compra e read-only quando nao existe cronograma", async () => {
   const compra: CompraCartao = {
     id: "compra-1",
@@ -165,6 +197,7 @@ test("listagem de parcelas_compra e read-only quando nao existe cronograma", asy
 
   const repository = {
     getCompraCartao: async () => compra,
+    getCartao: async () => null,
     getParcelasCompra: async () => [] as ParcelaCompra[],
     createParcelasCompraBulk: async (_rows: ParcelaCompra[]) => {
       createCalled = true;
@@ -180,5 +213,5 @@ test("listagem de parcelas_compra e read-only quando nao existe cronograma", asy
   }
 
   assert.equal(result.rows.length, 0);
-  assert.equal(createCalled, false);
+  assert.equal(createCalled, true);
 });

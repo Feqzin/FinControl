@@ -193,3 +193,38 @@ test("recalcular redistribui somente parcelas pendentes apos pagamento parcial",
     formaPagamento: null,
   });
 });
+
+test("update aceita quitar divida simples sem forma de pagamento explicita", async () => {
+  const divida = {
+    ...buildDividaBase(),
+    totalParcelas: null,
+    valorTotal: null,
+  };
+  const updatePayloads: Array<Partial<Divida>> = [];
+
+  const repository = {
+    updateDivida: async (_id: string, _userId: string, patch: Partial<Divida>) => {
+      updatePayloads.push(patch);
+      Object.assign(divida, patch);
+      return divida as Divida;
+    },
+    getDivida: async () => divida as Divida,
+    getParcelasByDivida: async () => [] as Parcela[],
+  };
+
+  const service = new DividasService(repository as any);
+  const updated = await service.update(divida.id, divida.userId, {
+    status: "pago",
+    dataPagamento: "2026-06-20",
+  });
+
+  assert.ok(updated);
+  assert.equal(updated?.status, "pago");
+  assert.equal(updated?.dataPagamento, "2026-06-20");
+  assert.equal(updated?.formaPagamento, null);
+  assert.equal(updatePayloads.length, 1);
+  assert.deepEqual(updatePayloads[0], {
+    status: "pago",
+    dataPagamento: "2026-06-20",
+  });
+});

@@ -17,7 +17,7 @@ import {
   type ParcelaCompra, type InsertParcelaCompra,
   type CartaoFaturaPagamento, type InsertCartaoFaturaPagamento,
   type CartaoFaturaPagamentoAlocacao, type InsertCartaoFaturaPagamentoAlocacao,
-  type PessoaSaldoMovimentacao,
+  type PessoaSaldoMovimentacao, type InsertPessoaSaldoMovimentacao,
   type Renda, type InsertRenda,
   type Patrimonio, type InsertPatrimonio,
   type CompraAlias, type InsertCompraAlias,
@@ -41,6 +41,7 @@ export interface IStorage {
   deletePessoaPermanent(id: string, userId: string): Promise<boolean>;
   getPessoaSaldoMovimentacoes(userId: string): Promise<PessoaSaldoMovimentacao[]>;
   getPessoaSaldoMovimentacoesByPessoa(pessoaId: string, userId: string): Promise<PessoaSaldoMovimentacao[]>;
+  createPessoaSaldoMovimentacao(movimentacao: InsertPessoaSaldoMovimentacao): Promise<PessoaSaldoMovimentacao>;
 
   getDividas(userId: string): Promise<Divida[]>;
   getDividasByStatus(userId: string, status: "active" | "removed" | "all"): Promise<Divida[]>;
@@ -85,6 +86,7 @@ export interface IStorage {
   deleteServico(id: string, userId: string): Promise<boolean>;
 
   getServicoPessoas(userId: string): Promise<ServicoPessoa[]>;
+  getServicoPessoa(id: string, userId: string): Promise<ServicoPessoa | undefined>;
   getServicoPessoasByServico(servicoId: string, userId: string): Promise<ServicoPessoa[]>;
   getServicoPessoasByPessoa(pessoaId: string, userId: string): Promise<ServicoPessoa[]>;
   createServicoPessoa(sp: InsertServicoPessoa): Promise<ServicoPessoa>;
@@ -400,6 +402,10 @@ export class DatabaseStorage implements IStorage {
       .from(pessoaSaldoMovimentacoes)
       .where(and(eq(pessoaSaldoMovimentacoes.pessoaId, pessoaId), eq(pessoaSaldoMovimentacoes.userId, userId)));
   }
+  async createPessoaSaldoMovimentacao(movimentacao: InsertPessoaSaldoMovimentacao) {
+    const [item] = await this.database.insert(pessoaSaldoMovimentacoes).values(movimentacao).returning();
+    return item;
+  }
 
   async getDividas(userId: string) {
     return this.database
@@ -579,6 +585,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getServicoPessoas(userId: string) { return this.database.select().from(servicoPessoas).where(eq(servicoPessoas.userId, userId)); }
+  async getServicoPessoa(id: string, userId: string) {
+    const [row] = await this.database.select().from(servicoPessoas).where(
+      and(eq(servicoPessoas.id, id), eq(servicoPessoas.userId, userId)),
+    );
+    return row;
+  }
   async getServicoPessoasByServico(servicoId: string, userId: string) {
     return this.database.select().from(servicoPessoas).where(and(eq(servicoPessoas.servicoId, servicoId), eq(servicoPessoas.userId, userId)));
   }

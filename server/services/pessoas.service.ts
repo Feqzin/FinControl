@@ -1,10 +1,18 @@
 import { addMonths, format, parseISO } from "date-fns";
 import type { CompraCartao, Divida, ParcelaCompra, Pessoa, PessoaSaldoMovimentacao, ServicoPagamento, ServicoPessoa } from "@shared/schema";
 import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
-import type { IStorage } from "../storage";
+import { parseMoney } from "../../utils/money";
+import { db } from "../db";
+import { DatabaseStorage, type IStorage } from "../storage";
+import { createFinancialRepository } from "../repositories/financial.repository";
+import { recomputeCardPurchaseAggregate } from "./financial-aggregate-consistency";
 import type {
+  PessoaAbaterSaldoParcelaBodyInput,
+  PessoaAbaterSaldoDividaBodyInput,
+  PessoaAbaterSaldoServicoBodyInput,
   PessoaBodyInput,
   PessoaRecoverOrphanLinksBodyInput,
+  PessoaSaldoMovimentacaoBodyInput,
   PessoaUpdateBodyInput,
 } from "../validators/core-domain.validators";
 
@@ -47,6 +55,92 @@ export type DeletePessoaPermanentResult =
   | { error: "PESSOA_ATIVA" }
   | { error: "PESSOA_COM_VINCULOS" }
   | { ok: true };
+
+type CreatePessoaSaldoMovimentacaoResult =
+  | { error: "PESSOA_NOT_FOUND" }
+  | { error: "VALOR_INVALIDO" }
+  | { error: "DIVIDA_NOT_FOUND" }
+  | { error: "DIVIDA_NOT_LINKED_TO_PESSOA" }
+  | { error: "COMPRA_NOT_FOUND" }
+  | { error: "COMPRA_NOT_LINKED_TO_PESSOA" }
+  | { error: "PARCELA_COMPRA_NOT_FOUND" }
+  | { error: "PARCELA_COMPRA_NOT_LINKED_TO_PESSOA" }
+  | { error: "SERVICO_PESSOA_NOT_FOUND" }
+  | { error: "SERVICO_PESSOA_NOT_LINKED_TO_PESSOA" }
+  | { created: PessoaSaldoMovimentacao };
+
+type AbaterSaldoDividaResult =
+  | { error: "PESSOA_NOT_FOUND" }
+  | { error: "DIVIDA_NOT_FOUND" }
+  | { error: "DIVIDA_NOT_LINKED_TO_PESSOA" }
+  | { error: "DIVIDA_TIPO_INVALIDO" }
+  | { error: "DIVIDA_PARCELADA_NAO_SUPORTADA" }
+  | { error: "DIVIDA_JA_PAGA" }
+  | { error: "DIVIDA_SEM_PENDENCIA" }
+  | { error: "VALOR_INVALIDO" }
+  | { error: "SALDO_INSUFICIENTE" }
+  | { error: "VALOR_MAIOR_QUE_SALDO" }
+  | { error: "VALOR_MAIOR_QUE_PENDENTE" }
+  | {
+    aplicado: {
+      divida: Divida;
+      movimentacao: PessoaSaldoMovimentacao;
+      valorAbatido: number;
+      valorPendenteAnterior: number;
+      valorPendenteAtual: number;
+      saldoAnterior: number;
+      saldoAtual: number;
+      quitada: boolean;
+    };
+  };
+
+type AbaterSaldoServicoResult =
+  | { error: "PESSOA_NOT_FOUND" }
+  | { error: "SERVICO_PESSOA_NOT_FOUND" }
+  | { error: "SERVICO_PESSOA_NOT_LINKED_TO_PESSOA" }
+  | { error: "VALOR_INVALIDO" }
+  | { error: "SALDO_INSUFICIENTE" }
+  | { error: "VALOR_MAIOR_QUE_SALDO" }
+  | { error: "SERVICO_MES_SEM_PENDENCIA" }
+  | { error: "VALOR_MAIOR_QUE_PENDENTE" }
+  | {
+    aplicado: {
+      movimentacao: PessoaSaldoMovimentacao;
+      mes: string;
+      valorAbatido: number;
+      valorPendenteAnterior: number;
+      valorPendenteAtual: number;
+      saldoAnterior: number;
+      saldoAtual: number;
+      quitado: boolean;
+      pagamentoStatus: "parcial" | "pago";
+    };
+  };
+
+type AbaterSaldoParcelaCompraResult =
+  | { error: "PESSOA_NOT_FOUND" }
+  | { error: "PARCELA_COMPRA_NOT_FOUND" }
+  | { error: "PARCELA_COMPRA_NOT_LINKED_TO_PESSOA" }
+  | { error: "PARCELA_COMPRA_SEM_PENDENCIA" }
+  | { error: "VALOR_INVALIDO" }
+  | { error: "SALDO_INSUFICIENTE" }
+  | { error: "VALOR_MAIOR_QUE_SALDO" }
+  | { error: "VALOR_MAIOR_QUE_PENDENTE" }
+  | {
+    aplicado: {
+      movimentacao: PessoaSaldoMovimentacao;
+      compraCartaoId: string;
+      parcelaCompraId: string;
+      valorAbatido: number;
+      valorPendenteAnterior: number;
+      valorPendenteAtual: number;
+      saldoAnterior: number;
+      saldoAtual: number;
+      quitada: boolean;
+      statusParcelaCartao: "parcial" | "pago";
+      statusParcelaPessoa: "parcial" | "pago";
+    };
+  };
 
 type MoneyValue = string | number | null | undefined;
 
@@ -151,6 +245,23 @@ function parseOrphanGroupKey(orphanGroupKey: string): string | null {
   if (!orphanGroupKey.startsWith(ORPHAN_GROUP_KEY_PREFIX)) return null;
   const sourcePessoaId = orphanGroupKey.slice(ORPHAN_GROUP_KEY_PREFIX.length).trim();
   return sourcePessoaId.length > 0 ? sourcePessoaId : null;
+}
+
+function formatMoneyBRL(value: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value);
+}
+
+function appendObservacaoPagamento(current: string | null | undefined, nextLine: string): string {
+  const base = normalizeOptionalText(current);
+  if (!base) return nextLine;
+  return `${base}\n${nextLine}`;
+}
+
+function buildServicoMesCategoria(mes: string): string {
+  return `servico_mes:${mes}`;
 }
 
 function normalizeStatus(status: string | null | undefined): string {
@@ -648,6 +759,355 @@ export class PessoasService {
       resumo: buildPessoaSaldoResumo(rows),
       movimentacoes: buildPessoaSaldoMovimentacoes(rows),
     };
+  }
+
+  async createSaldoMovimentacao(
+    pessoaId: string,
+    userId: string,
+    data: PessoaSaldoMovimentacaoBodyInput,
+  ): Promise<CreatePessoaSaldoMovimentacaoResult> {
+    const pessoa = await this.storage.getPessoa(pessoaId, userId);
+    if (!pessoa) return { error: "PESSOA_NOT_FOUND" };
+
+    const valorNumber = parseMoney(data.valor);
+    if (valorNumber == null || valorNumber <= 0) {
+      return { error: "VALOR_INVALIDO" };
+    }
+
+    const dividaId = normalizeOptionalText(data.dividaId);
+    if (dividaId) {
+      const divida = await this.storage.getDivida(dividaId, userId);
+      if (!divida) return { error: "DIVIDA_NOT_FOUND" };
+      if (divida.pessoaId !== pessoaId) return { error: "DIVIDA_NOT_LINKED_TO_PESSOA" };
+    }
+
+    const compraCartaoId = normalizeOptionalText(data.compraCartaoId);
+    if (compraCartaoId) {
+      const compra = await this.storage.getCompraCartao(compraCartaoId, userId);
+      if (!compra) return { error: "COMPRA_NOT_FOUND" };
+      if (compra.pessoaId !== pessoaId) return { error: "COMPRA_NOT_LINKED_TO_PESSOA" };
+    }
+
+    const parcelaCompraId = normalizeOptionalText(data.parcelaCompraId);
+    if (parcelaCompraId) {
+      const parcela = await this.storage.getParcelaCompraById(parcelaCompraId, userId);
+      if (!parcela) return { error: "PARCELA_COMPRA_NOT_FOUND" };
+
+      const compraParcela = await this.storage.getCompraCartao(parcela.compraCartaoId, userId);
+      if (!compraParcela || compraParcela.pessoaId !== pessoaId) {
+        return { error: "PARCELA_COMPRA_NOT_LINKED_TO_PESSOA" };
+      }
+    }
+
+    const servicoPessoaId = normalizeOptionalText(data.servicoPessoaId);
+    if (servicoPessoaId) {
+      const servicoPessoa = await this.storage.getServicoPessoa(servicoPessoaId, userId);
+      if (!servicoPessoa) return { error: "SERVICO_PESSOA_NOT_FOUND" };
+      if (servicoPessoa.pessoaId !== pessoaId) return { error: "SERVICO_PESSOA_NOT_LINKED_TO_PESSOA" };
+    }
+
+    const created = await this.storage.createPessoaSaldoMovimentacao({
+      userId,
+      pessoaId,
+      tipo: data.tipo,
+      valor: round2(valorNumber).toFixed(2),
+      data: data.data ?? format(new Date(), "yyyy-MM-dd"),
+      origem: normalizeOptionalText(data.origem) ?? "manual",
+      categoria: normalizeOptionalText(data.categoria),
+      observacao: normalizeOptionalText(data.observacao),
+      comprovanteReferencia: normalizeOptionalText(data.comprovanteReferencia),
+      dividaId,
+      compraCartaoId,
+      parcelaCompraId,
+      servicoPessoaId,
+    });
+
+    return { created };
+  }
+
+  async abaterSaldoEmDivida(
+    pessoaId: string,
+    dividaId: string,
+    userId: string,
+    data: PessoaAbaterSaldoDividaBodyInput,
+  ): Promise<AbaterSaldoDividaResult> {
+    const valorAbatimento = parseMoney(data.valor);
+    if (valorAbatimento == null || valorAbatimento <= 0) {
+      return { error: "VALOR_INVALIDO" };
+    }
+
+    return db.transaction(async (tx) => {
+      const txStorage = new DatabaseStorage(tx);
+      const pessoa = await txStorage.getPessoa(pessoaId, userId);
+      if (!pessoa) return { error: "PESSOA_NOT_FOUND" } as const;
+
+      const divida = await txStorage.getDivida(dividaId, userId);
+      if (!divida) return { error: "DIVIDA_NOT_FOUND" } as const;
+      if (divida.pessoaId !== pessoaId) return { error: "DIVIDA_NOT_LINKED_TO_PESSOA" } as const;
+      if (divida.tipo !== "receber") return { error: "DIVIDA_TIPO_INVALIDO" } as const;
+      if ((divida.totalParcelas ?? 1) > 1) return { error: "DIVIDA_PARCELADA_NAO_SUPORTADA" } as const;
+      if (isPaid(divida.status)) return { error: "DIVIDA_JA_PAGA" } as const;
+
+      const valorPendenteAnterior = toMoneyNumber(divida.valor);
+      if (valorPendenteAnterior <= 0) return { error: "DIVIDA_SEM_PENDENCIA" } as const;
+
+      const saldoRows = await txStorage.getPessoaSaldoMovimentacoesByPessoa(pessoaId, userId);
+      const saldoAnterior = buildPessoaSaldoResumo(saldoRows).saldoAtual;
+      if (saldoAnterior <= 0) return { error: "SALDO_INSUFICIENTE" } as const;
+      if (valorAbatimento > saldoAnterior) return { error: "VALOR_MAIOR_QUE_SALDO" } as const;
+      if (valorAbatimento > valorPendenteAnterior) return { error: "VALOR_MAIOR_QUE_PENDENTE" } as const;
+
+      const dataEfetiva = data.data ?? format(new Date(), "yyyy-MM-dd");
+      const valorAbatidoRound = round2(valorAbatimento);
+      const valorPendenteAtual = round2(valorPendenteAnterior - valorAbatidoRound);
+      const quitada = valorPendenteAtual <= 0;
+      const observacaoCustom = normalizeOptionalText(data.observacao);
+      const observacaoPadrao = `Abatimento via saldo da pessoa em ${dataEfetiva}: ${formatMoneyBRL(valorAbatidoRound)}.`;
+      const observacaoAplicada = observacaoCustom ?? observacaoPadrao;
+      const observacaoPagamento = appendObservacaoPagamento(divida.observacaoPagamento, observacaoAplicada);
+
+      const dividaPatch: Partial<Divida> = quitada
+        ? {
+          status: "pago",
+          dataPagamento: dataEfetiva,
+          formaPagamento: null,
+          observacaoPagamento,
+        }
+        : {
+          valor: valorPendenteAtual.toFixed(2),
+          status: "pendente",
+          dataPagamento: null,
+          formaPagamento: null,
+          observacaoPagamento,
+        };
+
+      const dividaAtualizada = await txStorage.updateDivida(dividaId, userId, dividaPatch);
+      if (!dividaAtualizada) return { error: "DIVIDA_NOT_FOUND" } as const;
+
+      const movimentacao = await txStorage.createPessoaSaldoMovimentacao({
+        userId,
+        pessoaId,
+        tipo: "debito",
+        valor: valorAbatidoRound.toFixed(2),
+        data: dataEfetiva,
+        origem: "abatimento_divida",
+        categoria: "divida",
+        observacao: observacaoAplicada,
+        comprovanteReferencia: null,
+        dividaId,
+        compraCartaoId: null,
+        parcelaCompraId: null,
+        servicoPessoaId: null,
+      });
+
+      return {
+        aplicado: {
+          divida: dividaAtualizada,
+          movimentacao,
+          valorAbatido: valorAbatidoRound,
+          valorPendenteAnterior: round2(valorPendenteAnterior),
+          valorPendenteAtual: quitada ? 0 : valorPendenteAtual,
+          saldoAnterior: round2(saldoAnterior),
+          saldoAtual: round2(saldoAnterior - valorAbatidoRound),
+          quitada,
+        },
+      } as const;
+    });
+  }
+
+  async abaterSaldoEmServico(
+    pessoaId: string,
+    servicoPessoaId: string,
+    userId: string,
+    data: PessoaAbaterSaldoServicoBodyInput,
+  ): Promise<AbaterSaldoServicoResult> {
+    const valorAbatimento = parseMoney(data.valor);
+    if (valorAbatimento == null || valorAbatimento <= 0) {
+      return { error: "VALOR_INVALIDO" };
+    }
+
+    return db.transaction(async (tx) => {
+      const txStorage = new DatabaseStorage(tx);
+      const pessoa = await txStorage.getPessoa(pessoaId, userId);
+      if (!pessoa) return { error: "PESSOA_NOT_FOUND" } as const;
+
+      const servicoPessoa = await txStorage.getServicoPessoa(servicoPessoaId, userId);
+      if (!servicoPessoa) return { error: "SERVICO_PESSOA_NOT_FOUND" } as const;
+      if (servicoPessoa.pessoaId !== pessoaId) return { error: "SERVICO_PESSOA_NOT_LINKED_TO_PESSOA" } as const;
+
+      const valorDevidoMes = toMoneyNumber(servicoPessoa.valorDevido);
+      if (valorDevidoMes <= 0) return { error: "SERVICO_MES_SEM_PENDENCIA" } as const;
+
+      const mes = data.mes;
+      const saldoRows = await txStorage.getPessoaSaldoMovimentacoesByPessoa(pessoaId, userId);
+      const saldoAnterior = buildPessoaSaldoResumo(saldoRows).saldoAtual;
+      if (saldoAnterior <= 0) return { error: "SALDO_INSUFICIENTE" } as const;
+      if (valorAbatimento > saldoAnterior) return { error: "VALOR_MAIOR_QUE_SALDO" } as const;
+
+      const pagamentosDoServico = await txStorage.getServicoPagamentosByServicoPessoa(servicoPessoaId, userId);
+      const pagamentoMesContexto = getPagamentoServicoMesContexto(pagamentosDoServico, mes);
+      const servicoMesJaPago = pagamentoMesContexto && normalizeStatus(pagamentoMesContexto.status) === "pago";
+      if (servicoMesJaPago) return { error: "SERVICO_MES_SEM_PENDENCIA" } as const;
+
+      const saldoAbatidoMesAnterior = getServicoMesSaldoAbatido(saldoRows, servicoPessoaId, mes);
+      const valorPendenteAnterior = round2(Math.max(0, valorDevidoMes - saldoAbatidoMesAnterior));
+      if (valorPendenteAnterior <= 0) return { error: "SERVICO_MES_SEM_PENDENCIA" } as const;
+      if (valorAbatimento > valorPendenteAnterior) return { error: "VALOR_MAIOR_QUE_PENDENTE" } as const;
+
+      const dataEfetiva = data.data ?? format(new Date(), "yyyy-MM-dd");
+      const valorAbatidoRound = round2(valorAbatimento);
+      const saldoAbatidoMesAtual = round2(saldoAbatidoMesAnterior + valorAbatidoRound);
+      const valorPendenteAtual = round2(Math.max(0, valorDevidoMes - saldoAbatidoMesAtual));
+      const quitado = valorPendenteAtual <= 0;
+      const pagamentoStatus: "parcial" | "pago" = quitado ? "pago" : "parcial";
+
+      const observacaoCustom = normalizeOptionalText(data.observacao);
+      const observacaoPadrao = `Abatimento via saldo em serviço (${mes}) em ${dataEfetiva}: ${formatMoneyBRL(valorAbatidoRound)}.`;
+      const observacaoAplicada = observacaoCustom ?? observacaoPadrao;
+
+      const movimentacao = await txStorage.createPessoaSaldoMovimentacao({
+        userId,
+        pessoaId,
+        tipo: "debito",
+        valor: valorAbatidoRound.toFixed(2),
+        data: dataEfetiva,
+        origem: "abatimento_servico",
+        categoria: buildServicoMesCategoria(mes),
+        observacao: observacaoAplicada,
+        comprovanteReferencia: null,
+        dividaId: null,
+        compraCartaoId: null,
+        parcelaCompraId: null,
+        servicoPessoaId,
+      });
+
+      const pagamentosMes = pagamentosDoServico.filter((item: ServicoPagamento) => item.mes === mes);
+      for (const pagamento of pagamentosMes) {
+        await txStorage.deleteServicoPagamento(pagamento.id, userId);
+      }
+
+      await txStorage.createServicoPagamento({
+        userId,
+        servicoPessoaId,
+        mes,
+        status: pagamentoStatus,
+        dataPagamento: dataEfetiva,
+      });
+
+      return {
+        aplicado: {
+          movimentacao,
+          mes,
+          valorAbatido: valorAbatidoRound,
+          valorPendenteAnterior,
+          valorPendenteAtual,
+          saldoAnterior: round2(saldoAnterior),
+          saldoAtual: round2(saldoAnterior - valorAbatidoRound),
+          quitado,
+          pagamentoStatus,
+        },
+      } as const;
+    });
+  }
+
+  async abaterSaldoEmParcelaCompra(
+    pessoaId: string,
+    parcelaCompraId: string,
+    userId: string,
+    data: PessoaAbaterSaldoParcelaBodyInput,
+  ): Promise<AbaterSaldoParcelaCompraResult> {
+    const valorAbatimento = parseMoney(data.valor);
+    if (valorAbatimento == null || valorAbatimento <= 0) {
+      return { error: "VALOR_INVALIDO" };
+    }
+
+    return db.transaction(async (tx) => {
+      const txStorage = new DatabaseStorage(tx);
+      const txRepository = createFinancialRepository(txStorage);
+      const pessoa = await txStorage.getPessoa(pessoaId, userId);
+      if (!pessoa) return { error: "PESSOA_NOT_FOUND" } as const;
+
+      const parcelaCompra = await txStorage.getParcelaCompraById(parcelaCompraId, userId);
+      if (!parcelaCompra) return { error: "PARCELA_COMPRA_NOT_FOUND" } as const;
+
+      const compra = await txStorage.getCompraCartao(parcelaCompra.compraCartaoId, userId);
+      if (!compra || compra.pessoaId !== pessoaId) {
+        return { error: "PARCELA_COMPRA_NOT_LINKED_TO_PESSOA" } as const;
+      }
+
+      if (isCanceled(parcelaCompra.statusCartao) || isPaid(parcelaCompra.statusCartao)) {
+        return { error: "PARCELA_COMPRA_SEM_PENDENCIA" } as const;
+      }
+
+      const valorParcela = toMoneyNumber(parcelaCompra.valor);
+      if (valorParcela <= 0) {
+        return { error: "PARCELA_COMPRA_SEM_PENDENCIA" } as const;
+      }
+
+      const saldoRows = await txStorage.getPessoaSaldoMovimentacoesByPessoa(pessoaId, userId);
+      const saldoAnterior = buildPessoaSaldoResumo(saldoRows).saldoAtual;
+      if (saldoAnterior <= 0) return { error: "SALDO_INSUFICIENTE" } as const;
+      if (valorAbatimento > saldoAnterior) return { error: "VALOR_MAIOR_QUE_SALDO" } as const;
+
+      const valorJaAbatido = getParcelaCompraSaldoAbatido(saldoRows, parcelaCompraId);
+      const valorPendenteAnterior = round2(Math.max(0, valorParcela - valorJaAbatido));
+      if (valorPendenteAnterior <= 0) return { error: "PARCELA_COMPRA_SEM_PENDENCIA" } as const;
+      if (valorAbatimento > valorPendenteAnterior) return { error: "VALOR_MAIOR_QUE_PENDENTE" } as const;
+
+      const dataEfetiva = data.data ?? format(new Date(), "yyyy-MM-dd");
+      const valorAbatidoRound = round2(valorAbatimento);
+      const valorPendenteAtual = round2(Math.max(0, valorPendenteAnterior - valorAbatidoRound));
+      const quitada = valorPendenteAtual <= 0;
+      const statusParcelaCartao: "parcial" | "pago" = quitada ? "pago" : "parcial";
+      const statusParcelaPessoa: "parcial" | "pago" = quitada ? "pago" : "parcial";
+
+      const observacaoCustom = normalizeOptionalText(data.observacao);
+      const observacaoPadrao = `Abatimento via saldo da pessoa em ${dataEfetiva}: ${formatMoneyBRL(valorAbatidoRound)} (parcela ${parcelaCompra.numero}).`;
+      const observacaoAplicada = observacaoCustom ?? observacaoPadrao;
+
+      const movimentacao = await txStorage.createPessoaSaldoMovimentacao({
+        userId,
+        pessoaId,
+        tipo: "debito",
+        valor: valorAbatidoRound.toFixed(2),
+        data: dataEfetiva,
+        origem: "abatimento_parcela_cartao",
+        categoria: "parcela_cartao",
+        observacao: observacaoAplicada,
+        comprovanteReferencia: null,
+        dividaId: null,
+        compraCartaoId: compra.id,
+        parcelaCompraId,
+        servicoPessoaId: null,
+      });
+
+      const parcelaAtualizada = await txStorage.updateParcelaCompra(parcelaCompraId, userId, {
+        statusCartao: statusParcelaCartao,
+        dataPagamentoCartao: dataEfetiva,
+        statusPessoa: statusParcelaPessoa,
+        dataPagamentoPessoa: dataEfetiva,
+      });
+
+      if (!parcelaAtualizada) return { error: "PARCELA_COMPRA_NOT_FOUND" } as const;
+
+      await recomputeCardPurchaseAggregate(txRepository, compra.id, userId);
+
+      return {
+        aplicado: {
+          movimentacao,
+          compraCartaoId: compra.id,
+          parcelaCompraId,
+          valorAbatido: valorAbatidoRound,
+          valorPendenteAnterior,
+          valorPendenteAtual,
+          saldoAnterior: round2(saldoAnterior),
+          saldoAtual: round2(saldoAnterior - valorAbatidoRound),
+          quitada,
+          statusParcelaCartao,
+          statusParcelaPessoa,
+        },
+      } as const;
+    });
   }
 
   async getResumo(pessoaId: string, userId: string): Promise<PessoaResumo | null> {

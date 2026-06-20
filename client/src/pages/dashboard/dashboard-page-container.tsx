@@ -526,12 +526,10 @@ export default function Dashboard() {
           await updateParcela(item.parcelaId, {
             status: "pago",
             dataPagamento: todayIso,
-            formaPagamento: "dashboard",
           });
         } else if (item.dividaId) {
           await marcarDividaPessoaComoPaga({
             id: item.dividaId,
-            formaPagamento: "dashboard",
             dataPagamento: todayIso,
           });
         }

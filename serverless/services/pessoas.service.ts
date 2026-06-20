@@ -1181,7 +1181,7 @@ export class PessoasService {
         ? {
           status: "pago",
           dataPagamento: dataEfetiva,
-          formaPagamento: "saldo_pessoa",
+          formaPagamento: null,
           observacaoPagamento,
         }
         : {

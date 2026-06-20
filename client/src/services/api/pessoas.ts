@@ -303,7 +303,7 @@ export async function createDividaPessoa(payload: DividaPessoaPayload): Promise<
 
 export async function marcarDividaPessoaComoPaga(params: {
   id: string;
-  formaPagamento: string;
+  formaPagamento?: string | null;
   dataPagamento?: string;
 }): Promise<void> {
   await apiRequest("PATCH", `/api/dividas/${params.id}`, {

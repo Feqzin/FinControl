@@ -4,6 +4,7 @@ import { resolveServicoCategoryValue } from "@shared/service-categories";
 
 const nonEmptyUpdateMessage = "Informe ao menos um campo para atualizar";
 const moneyField = z.string().or(z.number()).transform(String);
+const isoDateField = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Data invalida. Use o formato yyyy-MM-dd");
 const servicoPeriodicidadeField = z.enum(["mensal", "anual", "semestral", "trimestral", "bimestral", "semanal"]);
 const optionalNullableRelationIdField = z.preprocess((value) => {
   if (value === null || value === undefined) return null;
@@ -44,6 +45,39 @@ export const pessoaRecoverOrphanLinksBody = z.object({
   orphanGroupKey: z.string().trim().min(1),
   nome: z.string().trim().min(1).optional().nullable(),
   pessoaIdExistente: z.string().trim().min(1).optional().nullable(),
+});
+
+export const pessoaSaldoMovimentacaoBody = z.object({
+  tipo: z.enum(["credito", "debito"]),
+  valor: moneyField,
+  data: isoDateField.optional().nullable(),
+  origem: z.string().trim().min(1).optional().default("manual"),
+  categoria: z.string().trim().optional().nullable(),
+  observacao: z.string().trim().optional().nullable(),
+  comprovanteReferencia: z.string().trim().optional().nullable(),
+  dividaId: z.string().trim().optional().nullable(),
+  compraCartaoId: z.string().trim().optional().nullable(),
+  parcelaCompraId: z.string().trim().optional().nullable(),
+  servicoPessoaId: z.string().trim().optional().nullable(),
+});
+
+export const pessoaAbaterSaldoDividaBody = z.object({
+  valor: moneyField,
+  data: isoDateField.optional().nullable(),
+  observacao: z.string().trim().optional().nullable(),
+});
+
+export const pessoaAbaterSaldoServicoBody = z.object({
+  mes: z.string().trim().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Mes invalido. Use o formato yyyy-MM"),
+  valor: moneyField,
+  data: isoDateField.optional().nullable(),
+  observacao: z.string().trim().optional().nullable(),
+});
+
+export const pessoaAbaterSaldoParcelaBody = z.object({
+  valor: moneyField,
+  data: isoDateField.optional().nullable(),
+  observacao: z.string().trim().optional().nullable(),
 });
 
 export const servicoBody = z.object({
@@ -149,6 +183,10 @@ export const patrimonioUpdateBody = insertPatrimonioSchema
 export type PessoaBodyInput = z.infer<typeof pessoaBody>;
 export type PessoaUpdateBodyInput = z.infer<typeof pessoaUpdateBody>;
 export type PessoaRecoverOrphanLinksBodyInput = z.infer<typeof pessoaRecoverOrphanLinksBody>;
+export type PessoaSaldoMovimentacaoBodyInput = z.infer<typeof pessoaSaldoMovimentacaoBody>;
+export type PessoaAbaterSaldoDividaBodyInput = z.infer<typeof pessoaAbaterSaldoDividaBody>;
+export type PessoaAbaterSaldoServicoBodyInput = z.infer<typeof pessoaAbaterSaldoServicoBody>;
+export type PessoaAbaterSaldoParcelaBodyInput = z.infer<typeof pessoaAbaterSaldoParcelaBody>;
 export type ServicoBodyInput = z.infer<typeof servicoBody>;
 export type ServicoUpdateBodyInput = z.infer<typeof servicoUpdateBody>;
 export type ServicoPessoaBodyInput = z.infer<typeof servicoPessoaBody>;
