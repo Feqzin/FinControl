@@ -52,6 +52,16 @@ export type CloudBackupRestoreRequest = {
   modules?: BackupJsonModulesSelection;
 };
 
+export type CloudBackupDeleteRequest = {
+  confirmationText?: string | null;
+};
+
+export type CloudBackupDeleteResult = {
+  success: true;
+  backupId: string;
+  fileName: string;
+};
+
 type CloudBackupDownloadResult = {
   backup: CloudBackupListItem;
   fileName: string;
@@ -166,6 +176,23 @@ function mapDownloadErrorToUserMessage(error: { message: string; statusCode?: nu
   return {
     status: 503,
     message: "Falha temporaria ao baixar backup na nuvem.",
+  };
+}
+
+function mapDeleteErrorToUserMessage(error: { message: string; statusCode?: number }): {
+  status: number;
+  message: string;
+} {
+  if (error.statusCode === 401 || error.statusCode === 403 || isAuthStorageError(error.message)) {
+    return {
+      status: 503,
+      message: "Nao foi possivel autenticar no storage para excluir o backup.",
+    };
+  }
+
+  return {
+    status: 503,
+    message: "Falha temporaria ao excluir backup na nuvem.",
   };
 }
 
@@ -383,6 +410,84 @@ export class CloudBackupsService {
       backup: toListItem(backupRow),
       fileName: backupRow.fileName,
       content: downloadResult.data,
+    };
+  }
+
+  async deleteById(
+    userId: string,
+    backupId: string,
+    request: CloudBackupDeleteRequest,
+  ): Promise<CloudBackupDeleteResult> {
+    const backupRow = await this.getBackupRow(userId, backupId);
+    const confirmationText = typeof request.confirmationText === "string"
+      ? request.confirmationText.trim()
+      : "";
+
+    if (confirmationText !== backupRow.fileName) {
+      throw new CloudBackupsServiceError(
+        400,
+        "Digite o nome exato do arquivo para confirmar a exclusão do backup.",
+      );
+    }
+
+    const storageClient = this.resolveStorageClient();
+    let removeResult;
+    try {
+      removeResult = await storageClient.removeObject(backupRow.filePath);
+    } catch (error) {
+      writeTechnicalLog({
+        event: "cloud_backup.delete.exception",
+        source: "cloud-backups.service",
+        level: "error",
+        data: {
+          userId,
+          backupId,
+          bucket: storageClient.getBucket(),
+          filePath: backupRow.filePath,
+          error: toErrorLog(error),
+        },
+      });
+      throw new CloudBackupsServiceError(503, "Falha temporaria ao excluir backup na nuvem.");
+    }
+    if (removeResult.error) {
+      writeTechnicalLog({
+        event: "cloud_backup.delete.failed",
+        source: "cloud-backups.service",
+        level: "error",
+        data: {
+          userId,
+          backupId,
+          bucket: storageClient.getBucket(),
+          filePath: backupRow.filePath,
+          statusCode: removeResult.error.statusCode ?? null,
+          providerMessage: removeResult.error.message,
+        },
+      });
+
+      const mapped = mapDeleteErrorToUserMessage(removeResult.error);
+      throw new CloudBackupsServiceError(mapped.status, mapped.message);
+    }
+
+    await db.delete(userCloudBackups).where(and(
+      eq(userCloudBackups.userId, userId),
+      eq(userCloudBackups.id, backupId),
+    ));
+
+    writeTechnicalLog({
+      event: "cloud_backup.delete.applied",
+      source: "cloud-backups.service",
+      level: "info",
+      data: {
+        userId,
+        backupId,
+        fileName: backupRow.fileName,
+      },
+    });
+
+    return {
+      success: true,
+      backupId,
+      fileName: backupRow.fileName,
     };
   }
 

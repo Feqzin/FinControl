@@ -204,6 +204,49 @@ export function createCloudBackupsController(service: CloudBackupsService) {
       }
     },
 
+    deleteById: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const backupId = getParam(req, "id");
+      const confirmationText = (req.body as { confirmationText?: unknown } | undefined)?.confirmationText;
+      try {
+        const result = await service.deleteById(userId, backupId, {
+          confirmationText: typeof confirmationText === "string" ? confirmationText : null,
+        });
+        auditRequest(req, {
+          action: "delete",
+          status: "success",
+          domain: "cloud_backup.delete",
+          userId,
+          targetId: backupId,
+          details: {
+            fileName: result.fileName,
+          },
+        });
+        return res.status(200).json(result);
+      } catch (error) {
+        if (error instanceof CloudBackupsServiceError) {
+          auditRequest(req, {
+            action: "delete",
+            status: "failure",
+            domain: "cloud_backup.delete",
+            userId,
+            targetId: backupId,
+            details: { message: error.message },
+          });
+          return res.status(error.status).json({ message: error.message });
+        }
+
+        writeTechnicalLog({
+          event: "cloud_backup.delete.unexpected_error",
+          source: "cloud-backups.controller",
+          level: "error",
+          requestId: req.requestId,
+          data: { userId, backupId, error: toErrorLog(error) },
+        });
+        return res.status(500).json({ message: "Falha ao excluir backup na nuvem." });
+      }
+    },
+
     restoreById: async (req: Request, res: Response) => {
       const userId = getUserId(req);
       const backupId = getParam(req, "id");

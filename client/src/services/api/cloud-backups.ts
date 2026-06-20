@@ -57,6 +57,12 @@ export type CloudBackupRestoreResult = {
   metasImportadas: number;
 };
 
+export type CloudBackupDeleteResult = {
+  success: true;
+  backupId: string;
+  fileName: string;
+};
+
 export async function createCloudBackup(): Promise<CloudBackupItem> {
   const res = await apiRequest("POST", "/api/backups/cloud");
   const payload = await res.json() as { backup: CloudBackupItem };
@@ -98,4 +104,14 @@ export async function downloadCloudBackup(backupId: string): Promise<Blob> {
   }
 
   return res.blob();
+}
+
+export async function deleteCloudBackup(
+  backupId: string,
+  confirmationText: string,
+): Promise<CloudBackupDeleteResult> {
+  const res = await apiRequest("POST", `/api/backups/cloud/${backupId}/delete`, {
+    confirmationText,
+  });
+  return res.json() as Promise<CloudBackupDeleteResult>;
 }

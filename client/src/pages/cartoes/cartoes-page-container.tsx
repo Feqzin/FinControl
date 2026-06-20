@@ -1501,6 +1501,7 @@ export default function CartoesPage() {
       applyRule: applyEditCompraIconRule,
       iconDirty: editCompraIconDirty,
       editedIconId: editCompraIcone,
+      editedPersistableIconId: resolvedPersistableIcon.ok ? (resolvedPersistableIcon.value ?? null) : null,
       persistedIconId: editingCompra.iconeId ?? null,
     });
     const updateIconPatch = buildEditCompraIconUpdatePatch({

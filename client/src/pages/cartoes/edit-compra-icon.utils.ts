@@ -66,13 +66,14 @@ export function resolveEditCompraIconRuleTarget(
     applyRule: boolean;
     iconDirty: boolean;
     editedIconId: string | null;
+    editedPersistableIconId?: string | null;
     persistedIconId: string | null;
   },
 ): string | null {
   if (!input.applyRule) return null;
 
   const manualIconId = input.iconDirty
-    ? (input.editedIconId ?? null)
+    ? (input.editedPersistableIconId ?? input.editedIconId ?? null)
     : (input.persistedIconId ?? null);
 
   if (!manualIconId) return null;

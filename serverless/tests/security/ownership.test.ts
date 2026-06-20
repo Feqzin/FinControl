@@ -262,6 +262,50 @@ test("cloud backup preview usa userId da sessao (nao confia em input externo)", 
   }
 });
 
+test("cloud backup delete usa userId da sessao e confirmationText do body", async () => {
+  const testUser = await createSecurityTestUser("ownership_cloud_backup_delete");
+  let capturedUserId: string | null = null;
+  let capturedBackupId: string | null = null;
+  let capturedConfirmationText: string | null = null;
+
+  const controller = createCloudBackupsController({
+    deleteById: async (userId: string, backupId: string, payload: { confirmationText?: string | null }) => {
+      capturedUserId = userId;
+      capturedBackupId = backupId;
+      capturedConfirmationText = payload.confirmationText ?? null;
+      return {
+        success: true,
+        backupId,
+        fileName: "backup.json",
+      };
+    },
+  } as any);
+
+  try {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).user = { id: testUser.id };
+      next();
+    });
+    app.post("/api/backups/cloud/:id/delete", controller.deleteById);
+
+    await withTestServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/backups/cloud/backup_user_b/delete`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirmationText: "backup.json" }),
+      });
+      assert.equal(response.status, 200);
+      assert.equal(capturedUserId, testUser.id);
+      assert.equal(capturedBackupId, "backup_user_b");
+      assert.equal(capturedConfirmationText, "backup.json");
+    });
+  } finally {
+    await testUser.cleanup();
+  }
+});
+
 test("download de comprovante usa userId autenticado para checagem de ownership", async () => {
   const testUser = await createSecurityTestUser("ownership_comprovante_divida_download");
   let capturedUserId: string | null = null;
@@ -587,6 +631,34 @@ testOwnershipIntegration("IDOR integração: usuário A não lista nem baixa bac
         return true;
       },
     );
+  } finally {
+    await cleanupOwnershipFixture(fixture);
+  }
+});
+
+testOwnershipIntegration("IDOR integração: usuário A não exclui backup do usuário B", async () => {
+  const fixture = await createOwnershipFixture();
+
+  try {
+    await assert.rejects(
+      fixture.cloudBackupsService.deleteById(fixture.userA.id, fixture.backupB.id, {
+        confirmationText: "idor-backup.json",
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof fixture.CloudBackupsServiceError);
+        assert.equal((error as { status: number }).status, 404);
+        assert.equal((error as { message: string }).message, "Backup na nuvem nao encontrado.");
+        return true;
+      },
+    );
+
+    const [stillOwnedByB] = await fixture.db.select().from(fixture.tables.userCloudBackups).where(
+      fixture.and(
+        fixture.eq(fixture.tables.userCloudBackups.id, fixture.backupB.id),
+        fixture.eq(fixture.tables.userCloudBackups.userId, fixture.userB.id),
+      ),
+    );
+    assert.ok(stillOwnedByB);
   } finally {
     await cleanupOwnershipFixture(fixture);
   }

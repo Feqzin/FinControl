@@ -4057,9 +4057,10 @@ test("editar compra ícone: regra para compras parecidas usa somente ícone manu
     applyRule: true,
     iconDirty: true,
     editedIconId: "data:image/png;base64,club-ifood",
+    editedPersistableIconId: "user-icon-club-ifood",
     persistedIconId: null,
   });
-  assert.equal(fromChanged, "data:image/png;base64,club-ifood");
+  assert.equal(fromChanged, "user-icon-club-ifood");
 
   const fromAutoOnly = resolveEditCompraIconRuleTarget({
     applyRule: true,

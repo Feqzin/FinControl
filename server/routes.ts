@@ -202,6 +202,7 @@ export function registerRoutes(app: Express): void {
   app.get("/api/backups/cloud", requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.listByUser);
   app.get("/api/backups/cloud/:id/download", importRateLimit, requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.downloadById);
   app.post("/api/backups/cloud/:id/preview", importRateLimit, requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.previewById);
+  app.post("/api/backups/cloud/:id/delete", importRateLimit, requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.deleteById);
   app.post("/api/backups/cloud/:id/restore", importRateLimit, requireAuth, requirePremiumFeature("cloudBackup"), cloudBackupsController.restoreById);
   app.post("/api/import/preview", importRateLimit, requireAuth, async (req, res) => {
     const currentUserId = (req.user as { id?: unknown } | undefined)?.id;

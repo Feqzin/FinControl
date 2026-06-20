@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -17,6 +17,7 @@ import {
 import { useSubscriptionUsage } from "@/hooks/useSubscriptionUsage";
 import {
   createCloudBackup,
+  deleteCloudBackup,
   listCloudBackups,
   previewCloudBackup,
   restoreCloudBackup,
@@ -311,6 +312,8 @@ export default function PerfilPage() {
   const [restoreReviewApplyPending, setRestoreReviewApplyPending] = useState(false);
   const [restoreReviewConfirmText, setRestoreReviewConfirmText] = useState("");
   const [restoreLocalBackupPayload, setRestoreLocalBackupPayload] = useState<unknown | null>(null);
+  const [deleteCloudBackupTarget, setDeleteCloudBackupTarget] = useState<CloudBackupItem | null>(null);
+  const [deleteCloudBackupConfirmText, setDeleteCloudBackupConfirmText] = useState("");
   const [perfilTab, setPerfilTab] = useState<"conta" | "planos" | "backup" | "ajuda">("planos");
   const inputImportacaoRef = useRef<HTMLInputElement | null>(null);
   const resolvedPublicUsername = resolvePublicUsernameForResponse(user?.username);
@@ -428,6 +431,34 @@ export default function PerfilPage() {
       toast({
         title: "Erro ao salvar backup na nuvem",
         description: parseApiErrorMessage(error, "Falha ao salvar backup na nuvem."),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteCloudBackupMutation = useMutation({
+    mutationFn: async ({
+      backupId,
+      confirmationText,
+    }: {
+      backupId: string;
+      confirmationText: string;
+    }) => deleteCloudBackup(backupId, confirmationText),
+    onSuccess: (result) => {
+      queryClient.setQueryData<CloudBackupItem[] | undefined>(["/api/backups/cloud"], (current) =>
+        (current ?? []).filter((item) => item.id !== result.backupId),
+      );
+      setDeleteCloudBackupTarget(null);
+      setDeleteCloudBackupConfirmText("");
+      toast({
+        title: "Backup excluído com sucesso",
+        description: result.fileName,
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro ao excluir backup da nuvem",
+        description: parseApiErrorMessage(error, "Falha ao excluir backup da nuvem."),
         variant: "destructive",
       });
     },
@@ -805,6 +836,25 @@ export default function PerfilPage() {
     void restaurarBackupNuvem(backupPreferencial, "replace");
   };
 
+  const abrirExclusaoCloudBackup = (backup: CloudBackupItem) => {
+    setDeleteCloudBackupTarget(backup);
+    setDeleteCloudBackupConfirmText("");
+  };
+
+  const fecharExclusaoCloudBackup = () => {
+    if (deleteCloudBackupMutation.isPending) return;
+    setDeleteCloudBackupTarget(null);
+    setDeleteCloudBackupConfirmText("");
+  };
+
+  const confirmarExclusaoCloudBackup = () => {
+    if (!deleteCloudBackupTarget || deleteCloudBackupMutation.isPending) return;
+    deleteCloudBackupMutation.mutate({
+      backupId: deleteCloudBackupTarget.id,
+      confirmationText: deleteCloudBackupConfirmText,
+    });
+  };
+
   const aplicarRestauracaoRevisada = () => {
     if (!restoreReviewSource || !restorePreviewData) {
       return;
@@ -938,6 +988,12 @@ export default function PerfilPage() {
           : "Substituir",
     restoreDisabled:
       restoreCloudBackupMutation.isPending || restoreReviewApplyPending || restoreReviewLoading,
+    deleteLabel:
+      deleteCloudBackupMutation.isPending && deleteCloudBackupTarget?.id === backup.id
+        ? "Excluindo..."
+        : "Excluir",
+    deleteDisabled:
+      deleteCloudBackupMutation.isPending || restoreCloudBackupMutation.isPending || restoreReviewApplyPending,
   }));
   const cloudBackupsState =
     cloudBackupsQuery.isLoading
@@ -1092,6 +1148,7 @@ export default function PerfilPage() {
             onCreateBackup={() => createCloudBackupMutation.mutate()}
             onRestoreLatest={abrirRestauracaoCloud}
             onRestoreBackup={(backup) => restaurarBackupNuvem(backup, "replace")}
+            onDeleteBackup={abrirExclusaoCloudBackup}
           />
 
           <PerfilBackupImportCard
@@ -1114,6 +1171,67 @@ export default function PerfilPage() {
           />
         </CardContent>
       </Card>
+
+      <Dialog
+        open={Boolean(deleteCloudBackupTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            fecharExclusaoCloudBackup();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Excluir backup da nuvem?</DialogTitle>
+            <DialogDescription className="sr-only">
+              Confirme a exclusão permanente do backup selecionado digitando o nome exato do arquivo.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Essa ação removerá permanentemente este backup da nuvem. Você não poderá restaurá-lo depois.
+            </p>
+            <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground">{deleteCloudBackupTarget?.fileName ?? "-"}</p>
+              <p className="mt-1">
+                Digite exatamente o nome do arquivo para confirmar a exclusão.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="delete-cloud-backup-confirmation">Confirmação</Label>
+              <Input
+                id="delete-cloud-backup-confirmation"
+                value={deleteCloudBackupConfirmText}
+                onChange={(event) => setDeleteCloudBackupConfirmText(event.target.value)}
+                disabled={deleteCloudBackupMutation.isPending}
+                placeholder={deleteCloudBackupTarget?.fileName ?? "nome-do-backup.json"}
+              />
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={fecharExclusaoCloudBackup}
+                disabled={deleteCloudBackupMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={confirmarExclusaoCloudBackup}
+                disabled={
+                  deleteCloudBackupMutation.isPending
+                  || !deleteCloudBackupTarget
+                  || deleteCloudBackupConfirmText.trim() !== deleteCloudBackupTarget.fileName
+                }
+              >
+                {deleteCloudBackupMutation.isPending ? "Excluindo..." : "Excluir backup"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={restoreReviewOpen}

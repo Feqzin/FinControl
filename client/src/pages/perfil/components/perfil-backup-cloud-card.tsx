@@ -11,6 +11,8 @@ type CloudBackupCardItem = {
   statusVariant: "default" | "destructive";
   restoreLabel: string;
   restoreDisabled: boolean;
+  deleteLabel: string;
+  deleteDisabled: boolean;
 };
 
 type PerfilBackupCloudCardProps = {
@@ -27,6 +29,7 @@ type PerfilBackupCloudCardProps = {
   onCreateBackup: () => void;
   onRestoreLatest: () => void;
   onRestoreBackup: (backup: CloudBackupItem) => void;
+  onDeleteBackup: (backup: CloudBackupItem) => void;
 };
 
 export function PerfilBackupCloudCard({
@@ -43,6 +46,7 @@ export function PerfilBackupCloudCard({
   onCreateBackup,
   onRestoreLatest,
   onRestoreBackup,
+  onDeleteBackup,
 }: PerfilBackupCloudCardProps) {
   return (
     <div className="rounded-lg border bg-background p-4">
@@ -106,10 +110,20 @@ export function PerfilBackupCloudCard({
                       {item.metaLabel}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <div className="flex flex-wrap items-center justify-end gap-2 self-end sm:self-auto">
                     <Badge variant={item.statusVariant}>
                       {item.backup.status}
                     </Badge>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onDeleteBackup(item.backup)}
+                      disabled={item.deleteDisabled}
+                      data-testid={`button-cloud-delete-${item.backup.id}`}
+                    >
+                      {item.deleteLabel}
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"
