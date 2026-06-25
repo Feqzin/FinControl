@@ -6,6 +6,15 @@ const nonEmptyUpdateMessage = "Informe ao menos um campo para atualizar";
 const moneyField = z.string().or(z.number()).transform(String);
 const isoDateField = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Data invalida. Use o formato yyyy-MM-dd");
 const servicoPeriodicidadeField = z.enum(["mensal", "anual", "semestral", "trimestral", "bimestral", "semanal"]);
+
+const optionalNullableRelationIdField = z.preprocess((value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") return value;
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}, z.string().trim().min(1).nullable());
+
 const servicoDataCobrancaField = z.preprocess((value) => {
   if (value === null || value === undefined) return null;
   if (typeof value === "string" && value.trim() === "") return null;
