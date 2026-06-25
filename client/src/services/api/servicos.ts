@@ -11,6 +11,8 @@ export type ServicoPayload = {
   dataCobranca: string | number | null;
   mesCobranca?: string | number | null;
   formaPagamento: string;
+  cartaoId?: string | null;
+  projetarNaFaturaCartao?: boolean;
   compraCartaoId?: string | null;
   status?: string;
   iconeId?: string | null;
@@ -62,6 +64,8 @@ export async function createServico(payload: ServicoPayload): Promise<void> {
     periodicidadeCobranca: payload.periodicidadeCobranca ?? "mensal",
     dataCobranca: dataCobranca ?? null,
     mesCobranca: payload.periodicidadeCobranca === "anual" ? (mesCobranca ?? null) : null,
+    cartaoId: payload.cartaoId ?? null,
+    projetarNaFaturaCartao: payload.projetarNaFaturaCartao === true,
     compraCartaoId: payload.compraCartaoId ?? null,
     status: payload.status || "ativo",
     iconeId: payload.iconeId ?? null,
@@ -73,11 +77,15 @@ export async function updateServico(id: string, payload: Partial<ServicoPayload>
   const dataCobranca = hasDataCobranca ? serializeServicoDataCobranca(payload.dataCobranca) : undefined;
   const hasMesCobranca = Object.prototype.hasOwnProperty.call(payload, "mesCobranca");
   const mesCobranca = hasMesCobranca ? serializeServicoMesCobranca(payload.mesCobranca) : undefined;
+  const hasCartaoId = Object.prototype.hasOwnProperty.call(payload, "cartaoId");
+  const hasProjectionFlag = Object.prototype.hasOwnProperty.call(payload, "projetarNaFaturaCartao");
   await apiRequest("PATCH", `/api/servicos/${id}`, {
     ...payload,
     ...(payload.periodicidadeCobranca !== undefined ? { periodicidadeCobranca: payload.periodicidadeCobranca } : {}),
     ...(hasDataCobranca ? { dataCobranca: dataCobranca ?? null } : {}),
     ...(hasMesCobranca ? { mesCobranca: mesCobranca ?? null } : {}),
+    ...(hasCartaoId ? { cartaoId: payload.cartaoId ?? null } : {}),
+    ...(hasProjectionFlag ? { projetarNaFaturaCartao: payload.projetarNaFaturaCartao === true } : {}),
   });
 }
 

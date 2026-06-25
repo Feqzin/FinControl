@@ -181,6 +181,7 @@ export function transformBackupForPersistence(
     const row = asRow(item, `servicos[${index}]`);
     const oldId = readRequiredString(row, "id", `servicos[${index}]`);
     const rawCompraCartaoId = row.compraCartaoId;
+    const rawCartaoId = row.cartaoId;
     const newId = randomUUID();
     oldServicoIdToNewServicoId[oldId] = newId;
 
@@ -195,9 +196,21 @@ export function transformBackupForPersistence(
       }
     }
 
+    let newCartaoId: string | null = null;
+    if (rawCartaoId != null && rawCartaoId !== "") {
+      if (typeof rawCartaoId !== "string" || rawCartaoId.trim() === "") {
+        throw new Error(`Campo invalido: servicos[${index}].cartaoId`);
+      }
+      newCartaoId = oldCartaoIdToNewCartaoId[rawCartaoId] ?? null;
+      if (!newCartaoId) {
+        throw new Error(`Relacionamento invalido: servicos[${index}].cartaoId`);
+      }
+    }
+
     return {
       ...withCurrentUser(row, currentUserId),
       id: newId,
+      cartaoId: newCartaoId,
       compraCartaoId: newCompraCartaoId,
     };
   });

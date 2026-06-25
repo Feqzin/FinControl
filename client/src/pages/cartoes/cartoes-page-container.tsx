@@ -342,6 +342,7 @@ export default function CartoesPage() {
     cartaoFaturaPagamentos,
     compras,
     servicos,
+    servicoCobrancaPagamentos,
     servicoPessoas,
     pessoas,
     pessoaSaldoMovimentacoes,
@@ -804,12 +805,17 @@ export default function CartoesPage() {
         cartaoId,
         compras,
         parcelasCompraByCompraId,
+        {
+          servicos,
+          servicoCobrancaPagamentos,
+          monthReferences: [monthReference],
+        },
       ),
       payments: getInvoicePaymentsForCompetency(cartaoId, monthReference),
       getDueDayForCard: () => cartao.diaVencimento,
       referenceDate: format(new Date(), "yyyy-MM-dd"),
     });
-  }, [cartoesById, compras, getInvoicePaymentsForCompetency, parcelasCompraByCompraId]);
+  }, [cartoesById, compras, getInvoicePaymentsForCompetency, parcelasCompraByCompraId, servicoCobrancaPagamentos, servicos]);
   const selectedInvoiceSnapshotsByCardId = useMemo(
     () => new Map(
       cartoes.map((cartao) => [cartao.id, getInvoiceSnapshotForCompetency(cartao.id, selectedInvoiceMonth)]),
@@ -825,6 +831,8 @@ export default function CartoesPage() {
     compras,
     parcelasCompraByUser,
     parcelasCompraByCompraId,
+    servicos,
+    servicoCobrancaPagamentos,
     selectedInvoiceMonth,
     setSelectedInvoiceMonth,
     currentInvoiceMonthReference,
@@ -837,7 +845,10 @@ export default function CartoesPage() {
   const canOpenInvoicePaymentDialog = (cartaoId: string) => {
     const snapshot = selectedInvoiceSnapshotsByCardId.get(cartaoId);
     const payments = getInvoicePaymentsForCompetency(cartaoId, selectedInvoiceMonth);
-    return Boolean((snapshot && snapshot.originalTotal > 0) || payments.length > 0);
+    const hasRealInstallments = getFilteredCardFaturaCompras(cartaoId).some((compra) =>
+      getCompraParcelas(compra.id).some((parcela) => getInvoiceCompetency(parcela.dataVencimento) === selectedInvoiceMonth),
+    );
+    return Boolean((snapshot && snapshot.originalTotal > 0 && hasRealInstallments) || payments.length > 0);
   };
   const getInvoicePaymentActionLabel = (cartaoId: string) => {
     const snapshot = selectedInvoiceSnapshotsByCardId.get(cartaoId);

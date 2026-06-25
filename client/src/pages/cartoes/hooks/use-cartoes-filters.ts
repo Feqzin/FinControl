@@ -1,7 +1,11 @@
 import { useEffect, useMemo } from "react";
 import { addMonths, format, parseISO } from "date-fns";
-import type { Cartao, CompraCartao, ParcelaCompra } from "@shared/schema";
-import { compraHasInstallmentInCompetency, getInvoiceCompetency } from "@/lib/card-limit-usage";
+import type { Cartao, CompraCartao, ParcelaCompra, Servico, ServicoCobrancaPagamento } from "@shared/schema";
+import {
+  buildProjectedServiceInstallmentsForCard,
+  compraHasInstallmentInCompetency,
+  getInvoiceCompetency,
+} from "@/lib/card-limit-usage";
 import type { InvoiceMonthOption } from "@/pages/cartoes/types";
 
 type UseCartoesFiltersParams = {
@@ -9,6 +13,8 @@ type UseCartoesFiltersParams = {
   compras: CompraCartao[];
   parcelasCompraByUser: ParcelaCompra[];
   parcelasCompraByCompraId: Map<string, ParcelaCompra[]>;
+  servicos: Servico[];
+  servicoCobrancaPagamentos: ServicoCobrancaPagamento[];
   selectedInvoiceMonth: string;
   setSelectedInvoiceMonth: (next: string) => void;
   currentInvoiceMonthReference: string;
@@ -22,6 +28,8 @@ export function useCartoesFilters({
   compras,
   parcelasCompraByUser,
   parcelasCompraByCompraId,
+  servicos,
+  servicoCobrancaPagamentos,
   selectedInvoiceMonth,
   setSelectedInvoiceMonth,
   currentInvoiceMonthReference,
@@ -69,11 +77,30 @@ export function useCartoesFilters({
       }
     }
 
+    const projectedMonthReferences = Array.from({ length: 24 }, (_, index) =>
+      format(addMonths(new Date(`${currentInvoiceMonthReference}-01`), index - 12), "yyyy-MM"),
+    );
+    for (const cartao of cartoes) {
+      for (const projected of buildProjectedServiceInstallmentsForCard(
+        cartao.id,
+        compras,
+        parcelasCompraByCompraId,
+        {
+          servicos,
+          servicoCobrancaPagamentos,
+          monthReferences: projectedMonthReferences,
+        },
+      )) {
+        const competency = getInvoiceCompetency(projected.dataVencimento);
+        if (competency) monthSet.add(competency);
+      }
+    }
+
     return Array.from(monthSet)
       .filter((month) => /^\d{4}-\d{2}$/.test(month))
       .sort((a, b) => b.localeCompare(a))
       .map((month) => ({ value: month, label: formatInvoiceCompetencyLabel(month) }));
-  }, [compras, formatInvoiceCompetencyLabel, parcelasCompraByCompraId, parcelasCompraByUser]);
+  }, [cartoes, compras, currentInvoiceMonthReference, formatInvoiceCompetencyLabel, parcelasCompraByCompraId, parcelasCompraByUser, servicoCobrancaPagamentos, servicos]);
 
   const selectedInvoiceMonthLabel = useMemo(() => {
     const selectedOption = invoiceMonthOptions.find((option) => option.value === selectedInvoiceMonth);

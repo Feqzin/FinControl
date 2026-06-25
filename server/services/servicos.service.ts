@@ -21,6 +21,25 @@ type UpdateServicoPessoaResult =
   | { error: "PESSOA_NOT_FOUND" }
   | { updated: Awaited<ReturnType<IStorage["updateServicoPessoa"]>> };
 
+type CreateServicoResult =
+  | { error: "COMPRA_NOT_FOUND" }
+  | { error: "CARTAO_NOT_FOUND" }
+  | { created: Awaited<ReturnType<IStorage["createServico"]>> };
+
+type UpdateServicoResult =
+  | { error: "COMPRA_NOT_FOUND" }
+  | { error: "CARTAO_NOT_FOUND" }
+  | { updated: Awaited<ReturnType<IStorage["updateServico"]>> };
+
+type ServicoCardFieldsResult =
+  | { error: "COMPRA_NOT_FOUND" }
+  | { error: "CARTAO_NOT_FOUND" }
+  | {
+    compraCartaoId: string | null;
+    cartaoId: string | null;
+    projetarNaFaturaCartao: boolean;
+  };
+
 type CreateServicoPessoaResult =
   | { error: "SERVICO_NOT_FOUND" }
   | { error: "PESSOA_NOT_FOUND" }
@@ -55,6 +74,20 @@ function parseMonthReferenceParts(monthReference: string): { competenciaAno: num
 export class ServicosService {
   constructor(private readonly storage: IStorage) {}
 
+  private async validateCompraCartaoOwnership(compraCartaoId: string | null | undefined, userId: string) {
+    if (!compraCartaoId) return { ok: true as const };
+    const compra = await this.storage.getCompraCartao(compraCartaoId, userId);
+    if (!compra) return { ok: false as const };
+    return { ok: true as const, compra };
+  }
+
+  private async validateCartaoOwnership(cartaoId: string | null | undefined, userId: string) {
+    if (!cartaoId) return { ok: true as const };
+    const cartao = await this.storage.getCartao(cartaoId, userId);
+    if (!cartao) return { ok: false as const };
+    return { ok: true as const, cartao };
+  }
+
   private shouldNormalizeServicoBilling(data: Partial<ServicoBodyInput> | Partial<ServicoUpdateBodyInput>): boolean {
     return Object.prototype.hasOwnProperty.call(data, "valorMensal")
       || Object.prototype.hasOwnProperty.call(data, "valorCobranca")
@@ -62,38 +95,92 @@ export class ServicosService {
       || Object.prototype.hasOwnProperty.call(data, "mesCobranca");
   }
 
+  private async resolveServicoCardFields(
+    userId: string,
+    data: Partial<ServicoBodyInput> | Partial<ServicoUpdateBodyInput>,
+    current?: { formaPagamento?: string | null; cartaoId?: string | null; compraCartaoId?: string | null; projetarNaFaturaCartao?: boolean | null },
+  ): Promise<ServicoCardFieldsResult> {
+    const compraCartaoId = Object.prototype.hasOwnProperty.call(data, "compraCartaoId")
+      ? (data.compraCartaoId ?? null)
+      : (current?.compraCartaoId ?? null);
+    const compraValidation = await this.validateCompraCartaoOwnership(compraCartaoId, userId);
+    if (!compraValidation.ok) return { error: "COMPRA_NOT_FOUND" as const };
+
+    const requestedCartaoId = Object.prototype.hasOwnProperty.call(data, "cartaoId")
+      ? (data.cartaoId ?? null)
+      : (current?.cartaoId ?? null);
+    const resolvedCartaoId = compraValidation.compra?.cartaoId ?? requestedCartaoId ?? null;
+    const cartaoValidation = await this.validateCartaoOwnership(resolvedCartaoId, userId);
+    if (!cartaoValidation.ok) return { error: "CARTAO_NOT_FOUND" as const };
+
+    const formaPagamento = String(
+      Object.prototype.hasOwnProperty.call(data, "formaPagamento")
+        ? (data.formaPagamento ?? "")
+        : (current?.formaPagamento ?? ""),
+    ).trim().toLowerCase();
+    const projectFlag = Object.prototype.hasOwnProperty.call(data, "projetarNaFaturaCartao")
+      ? (data.projetarNaFaturaCartao === true)
+      : (current?.projetarNaFaturaCartao === true);
+
+    return {
+      compraCartaoId,
+      cartaoId: resolvedCartaoId,
+      projetarNaFaturaCartao: formaPagamento === "cartao" && projectFlag && Boolean(resolvedCartaoId),
+    };
+  }
+
   async listServicos(userId: string) {
     return this.storage.getServicos(userId);
   }
 
-  async createServico(userId: string, data: ServicoBodyInput) {
+  async createServico(userId: string, data: ServicoBodyInput): Promise<CreateServicoResult> {
+    const cardFields = await this.resolveServicoCardFields(userId, data);
+    if ("error" in cardFields) return cardFields;
+
     const billing = resolveServicoBillingFields(data);
-    return this.storage.createServico({
+    const created = await this.storage.createServico({
       ...data,
       userId,
       valorMensal: billing.valorMensal,
       valorCobranca: billing.valorCobranca,
       periodicidadeCobranca: billing.periodicidadeCobranca,
       mesCobranca: billing.mesCobranca,
+      compraCartaoId: cardFields.compraCartaoId,
+      cartaoId: cardFields.cartaoId,
+      projetarNaFaturaCartao: cardFields.projetarNaFaturaCartao,
     });
+    return { created };
   }
 
-  async updateServico(id: string, userId: string, data: ServicoUpdateBodyInput) {
+  async updateServico(id: string, userId: string, data: ServicoUpdateBodyInput): Promise<UpdateServicoResult> {
     const current = await this.storage.getServico(id, userId);
-    if (!current) return undefined;
+    if (!current) return { updated: undefined };
+
+    const cardFields = await this.resolveServicoCardFields(userId, data, current);
+    if ("error" in cardFields) return cardFields;
 
     if (!this.shouldNormalizeServicoBilling(data)) {
-      return this.storage.updateServico(id, userId, data);
+      const updated = await this.storage.updateServico(id, userId, {
+        ...data,
+        compraCartaoId: cardFields.compraCartaoId,
+        cartaoId: cardFields.cartaoId,
+        projetarNaFaturaCartao: cardFields.projetarNaFaturaCartao,
+      });
+      return { updated };
     }
 
     const billing = resolveServicoBillingFields(data, current);
-    return this.storage.updateServico(id, userId, {
+    const updated = await this.storage.updateServico(id, userId, {
       ...data,
       valorMensal: billing.valorMensal,
       valorCobranca: billing.valorCobranca,
       periodicidadeCobranca: billing.periodicidadeCobranca,
       mesCobranca: billing.mesCobranca,
+      compraCartaoId: cardFields.compraCartaoId,
+      cartaoId: cardFields.cartaoId,
+      projetarNaFaturaCartao: cardFields.projetarNaFaturaCartao,
     });
+    return { updated };
   }
 
   async deleteServico(id: string, userId: string) {

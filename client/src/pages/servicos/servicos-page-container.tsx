@@ -149,6 +149,26 @@ function formatServicoBillingScheduleLabel(servico: Pick<Servico, "periodicidade
   return `${monthLabel} · dia ${Math.trunc(Number(servico.dataCobranca))}`;
 }
 
+function buildServicoCardProjectionPreview(
+  periodicidade: ServicoPeriodicidade,
+  billingMonthValue: string,
+): string {
+  if (periodicidade === "anual") {
+    const monthLabel = formatServicoBillingMonthLabel(billingMonthValue) ?? "o mês configurado";
+    return `Este serviço entrará na fatura apenas em ${monthLabel} de cada ano.`;
+  }
+
+  if (periodicidade === "semanal") {
+    return "Este serviço entrará como previsão mensal na fatura do cartão usando a regra de 4 semanas por mês.";
+  }
+
+  if (periodicidade === "mensal") {
+    return "Este serviço entrará como previsão na fatura do cartão todo mês.";
+  }
+
+  return "Este serviço entrará nas faturas futuras do cartão conforme a periodicidade configurada.";
+}
+
 export default function ServicosPage() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -164,6 +184,8 @@ export default function ServicosPage() {
     dataCobranca: "",
     mesCobranca: CURRENT_BILLING_MONTH_VALUE,
     formaPagamento: "cartao",
+    cartaoId: "",
+    projetarNaFaturaCartao: false,
     compraCartaoId: COMPRA_NONE_VALUE,
   });
   const [createSemDataFixa, setCreateSemDataFixa] = useState(false);
@@ -182,6 +204,8 @@ export default function ServicosPage() {
     dataCobranca: "",
     mesCobranca: CURRENT_BILLING_MONTH_VALUE,
     formaPagamento: "cartao",
+    cartaoId: "",
+    projetarNaFaturaCartao: false,
     compraCartaoId: COMPRA_NONE_VALUE,
   });
   const [editSemDataFixa, setEditSemDataFixa] = useState(false);
@@ -294,6 +318,10 @@ export default function ServicosPage() {
 
   const isCreateAnnualBilling = form.periodicidadeCobranca === "anual";
   const isEditAnnualBilling = editForm.periodicidadeCobranca === "anual";
+  const isCreateCardPayment = form.formaPagamento === "cartao";
+  const isEditCardPayment = editForm.formaPagamento === "cartao";
+  const createProjectionPreview = buildServicoCardProjectionPreview(form.periodicidadeCobranca, form.mesCobranca);
+  const editProjectionPreview = buildServicoCardProjectionPreview(editForm.periodicidadeCobranca, editForm.mesCobranca);
 
   const toggleDivisao = (id: string) => {
     setExpandedDivisao((prev) => {
@@ -335,6 +363,8 @@ export default function ServicosPage() {
   type ServicoFormState = {
     compraCartaoId: string;
     formaPagamento: string;
+    cartaoId: string;
+    projetarNaFaturaCartao: boolean;
     valorCobranca: string;
     periodicidadeCobranca: ServicoPeriodicidade;
   };
@@ -353,6 +383,7 @@ export default function ServicosPage() {
         ...currentForm,
         compraCartaoId: compraId,
         formaPagamento: "cartao",
+        projetarNaFaturaCartao: false,
       };
     }
 
@@ -380,6 +411,7 @@ export default function ServicosPage() {
       ...currentForm,
       compraCartaoId: compraId,
       formaPagamento: "cartao",
+      cartaoId: compraSelecionada.cartaoId,
       valorCobranca: nextValorCobranca,
     };
   };
@@ -622,6 +654,8 @@ export default function ServicosPage() {
                     periodicidadeCobranca: createBilling.periodicidadeCobranca,
                     mesCobranca: isCreateAnnualBilling ? createBilling.mesCobranca : null,
                     dataCobranca: createSemDataFixa ? null : form.dataCobranca,
+                    cartaoId: form.cartaoId || null,
+                    projetarNaFaturaCartao: isCreateCardPayment && form.projetarNaFaturaCartao,
                     compraCartaoId: form.compraCartaoId === COMPRA_NONE_VALUE ? null : form.compraCartaoId,
                     iconeId: resolveEntityIconIdForSave({
                       isManualSelection: newServicoIconManualSelection,
@@ -641,6 +675,8 @@ export default function ServicosPage() {
                         dataCobranca: "",
                         mesCobranca: CURRENT_BILLING_MONTH_VALUE,
                         formaPagamento: "cartao",
+                        cartaoId: "",
+                        projetarNaFaturaCartao: false,
                         compraCartaoId: COMPRA_NONE_VALUE,
                       });
                       setCreateSemDataFixa(false);
@@ -832,7 +868,14 @@ export default function ServicosPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Forma de pagamento</Label>
-                  <Select value={form.formaPagamento} onValueChange={(v) => setForm({ ...form, formaPagamento: v })}>
+                  <Select
+                    value={form.formaPagamento}
+                    onValueChange={(v) => setForm({
+                      ...form,
+                      formaPagamento: v,
+                      projetarNaFaturaCartao: v === "cartao" ? form.projetarNaFaturaCartao : false,
+                    })}
+                  >
                     <SelectTrigger data-testid="select-servico-pagamento">
                       <SelectValue />
                     </SelectTrigger>
@@ -845,6 +888,57 @@ export default function ServicosPage() {
                   </Select>
                 </div>
               </div>
+              {isCreateCardPayment && (
+                <div className="space-y-3 rounded-xl border border-border/60 bg-muted/15 p-3">
+                  <div className="space-y-2">
+                    <Label>Cartão da cobrança</Label>
+                    <Select
+                      value={form.cartaoId || ""}
+                      onValueChange={(value) => setForm({ ...form, cartaoId: value })}
+                      disabled={form.compraCartaoId !== COMPRA_NONE_VALUE}
+                    >
+                      <SelectTrigger data-testid="select-servico-cartao">
+                        <SelectValue placeholder="Selecione o cartão" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cartoes.map((cartao) => (
+                          <SelectItem key={cartao.id} value={cartao.id}>
+                            {cartao.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Escolha o cartão que deve receber esta projeção futura.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="flex items-start gap-3 rounded-lg border border-dashed border-border/60 bg-background/80 p-3">
+                      <Checkbox
+                        checked={form.projetarNaFaturaCartao}
+                        onCheckedChange={(checked) =>
+                          setForm({ ...form, projetarNaFaturaCartao: checked === true })
+                        }
+                        disabled={!form.cartaoId}
+                      />
+                      <div className="space-y-1">
+                        <span className="text-sm font-medium">Projetar este serviço na fatura do cartão</span>
+                        <p className="text-xs text-muted-foreground">
+                          Quando ativo, este serviço será considerado nas faturas futuras do cartão conforme a periodicidade configurada. Isso não cria uma compra real automaticamente.
+                        </p>
+                      </div>
+                    </label>
+                    {form.projetarNaFaturaCartao ? (
+                      <p className="text-xs text-blue-700 dark:text-blue-300">{createProjectionPreview}</p>
+                    ) : null}
+                    {form.compraCartaoId !== COMPRA_NONE_VALUE ? (
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        Este serviço já está vinculado a uma compra real do cartão. A projeção não será duplicada.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Compra de cartão vinculada (opcional)</Label>
                 <CompraCartaoSearchPicker
@@ -1127,6 +1221,8 @@ export default function ServicosPage() {
                                     dataCobranca: servicoHasFixedBillingDay ? String(s.dataCobranca) : "",
                                     mesCobranca: s.mesCobranca != null ? String(s.mesCobranca) : CURRENT_BILLING_MONTH_VALUE,
                                     formaPagamento: s.formaPagamento,
+                                    cartaoId: s.cartaoId ?? "",
+                                    projetarNaFaturaCartao: s.projetarNaFaturaCartao === true,
                                     compraCartaoId: s.compraCartaoId ?? COMPRA_NONE_VALUE,
                                   });
                                 }}
@@ -1254,6 +1350,8 @@ export default function ServicosPage() {
                   periodicidadeCobranca: editBilling.periodicidadeCobranca,
                   mesCobranca: isEditAnnualBilling ? editBilling.mesCobranca : null,
                   dataCobranca: editSemDataFixa ? null : editForm.dataCobranca,
+                  cartaoId: editForm.cartaoId || null,
+                  projetarNaFaturaCartao: isEditCardPayment && editForm.projetarNaFaturaCartao,
                   compraCartaoId: editForm.compraCartaoId === COMPRA_NONE_VALUE ? null : editForm.compraCartaoId,
                   iconeId: resolveEntityIconIdForSave({
                     isManualSelection: editIconManualSelection,
@@ -1439,21 +1537,79 @@ export default function ServicosPage() {
                   </Label>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Forma de pagamento</Label>
-                <Select value={editForm.formaPagamento} onValueChange={(v) => setEditForm({ ...editForm, formaPagamento: v })}>
-                  <SelectTrigger data-testid="select-edit-servico-pagamento">
-                    <SelectValue />
-                  </SelectTrigger>
+                <div className="space-y-2">
+                  <Label>Forma de pagamento</Label>
+                  <Select
+                    value={editForm.formaPagamento}
+                    onValueChange={(v) => setEditForm({
+                      ...editForm,
+                      formaPagamento: v,
+                      projetarNaFaturaCartao: v === "cartao" ? editForm.projetarNaFaturaCartao : false,
+                    })}
+                  >
+                    <SelectTrigger data-testid="select-edit-servico-pagamento">
+                      <SelectValue />
+                    </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="cartao">Cartão</SelectItem>
                     <SelectItem value="debito">Débito automático</SelectItem>
                     <SelectItem value="boleto">Boleto</SelectItem>
                     <SelectItem value="pix">Pix</SelectItem>
                   </SelectContent>
-                </Select>
+                  </Select>
+                </div>
               </div>
-            </div>
+            {isEditCardPayment && (
+              <div className="space-y-3 rounded-xl border border-border/60 bg-muted/15 p-3">
+                <div className="space-y-2">
+                  <Label>Cartão da cobrança</Label>
+                  <Select
+                    value={editForm.cartaoId || ""}
+                    onValueChange={(value) => setEditForm({ ...editForm, cartaoId: value })}
+                    disabled={editForm.compraCartaoId !== COMPRA_NONE_VALUE}
+                  >
+                    <SelectTrigger data-testid="select-edit-servico-cartao">
+                      <SelectValue placeholder="Selecione o cartão" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cartoes.map((cartao) => (
+                        <SelectItem key={cartao.id} value={cartao.id}>
+                          {cartao.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Escolha o cartão que deve receber esta projeção futura.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="flex items-start gap-3 rounded-lg border border-dashed border-border/60 bg-background/80 p-3">
+                    <Checkbox
+                      checked={editForm.projetarNaFaturaCartao}
+                      onCheckedChange={(checked) =>
+                        setEditForm({ ...editForm, projetarNaFaturaCartao: checked === true })
+                      }
+                      disabled={!editForm.cartaoId}
+                    />
+                    <div className="space-y-1">
+                      <span className="text-sm font-medium">Projetar este serviço na fatura do cartão</span>
+                      <p className="text-xs text-muted-foreground">
+                        Quando ativo, este serviço será considerado nas faturas futuras do cartão conforme a periodicidade configurada. Isso não cria uma compra real automaticamente.
+                      </p>
+                    </div>
+                  </label>
+                  {editForm.projetarNaFaturaCartao ? (
+                    <p className="text-xs text-blue-700 dark:text-blue-300">{editProjectionPreview}</p>
+                  ) : null}
+                  {editForm.compraCartaoId !== COMPRA_NONE_VALUE ? (
+                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                      Este serviço já está vinculado a uma compra real do cartão. A projeção não será duplicada.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Compra de cartão vinculada (opcional)</Label>
               <CompraCartaoSearchPicker

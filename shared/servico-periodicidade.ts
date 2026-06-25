@@ -1,3 +1,5 @@
+import { resolveDueDateFromCompetencia } from "./parcelas-compra-competency.js";
+
 export const SERVICO_PERIODICIDADE_VALUES = [
   "mensal",
   "anual",
@@ -21,6 +23,9 @@ export type ServicoPeriodicidadeComputationLike = ServicoBillingLike & {
   compraCartaoId?: string | null;
   cartaoId?: string | null;
   formaPagamento?: string | null;
+  nome?: string | null;
+  status?: string | null;
+  projetarNaFaturaCartao?: boolean | null;
   dataCobranca?: number | string | null;
   competenciaCobrancaBase?: string | null;
   competenciaBase?: string | null;
@@ -50,6 +55,27 @@ export type ServicoCompetencyPaymentLike = {
   competenciaAno?: number | string | null;
   valorPago?: string | number | null;
   canceladoEm?: string | Date | null;
+};
+
+export type ServicoCardProjectionInstallment = {
+  id: string;
+  servicoId: string;
+  cartaoId: string;
+  nome: string;
+  monthReference: string;
+  valorOriginal: number;
+  valorPendente: number;
+  dataVencimento: string | null;
+  billingDay: number | null;
+  semDataFixa: boolean;
+  linkedToRealPurchase: boolean;
+};
+
+export type BuildServicoCardProjectionInstallmentsParams = {
+  servicos: ServicoPeriodicidadeComputationLike[];
+  monthReferences: string[];
+  payments?: ServicoCompetencyPaymentLike[];
+  realPurchaseMonthsByCompraId?: ReadonlyMap<string, ReadonlySet<string> | readonly string[]>;
 };
 
 const PERIODICIDADE_EQUIVALENTE_MENSAL_FACTOR: Record<ServicoPeriodicidade, { numerator: number; denominator: number }> = {
@@ -94,6 +120,23 @@ function normalizeServicoBillingMonth(value: unknown): number | null {
   }
 
   return null;
+}
+
+function normalizeNonEmptyText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function realPurchaseMonthsInclude(
+  months: ReadonlySet<string> | readonly string[] | null | undefined,
+  monthReference: string,
+): boolean {
+  if (!months) return false;
+  if (typeof (months as ReadonlySet<string>).has === "function") {
+    return (months as ReadonlySet<string>).has(monthReference);
+  }
+  return Array.from(months).includes(monthReference);
 }
 
 function normalizeMoneyRaw(input: string | number | null | undefined): string {
@@ -186,6 +229,19 @@ function parseCompetenciaMonth(value: string | null | undefined): CompetenciaMon
   if (month < 1 || month > 12) return null;
 
   return { year, month };
+}
+
+function buildCompetenciaDate(competencia: string, billingDay?: number | null): string | null {
+  const parsed = parseCompetenciaMonth(competencia);
+  if (!parsed) return null;
+
+  const day = Number.isInteger(billingDay) && (billingDay ?? 0) >= 1
+    ? Math.max(1, Math.trunc(billingDay ?? 1))
+    : 1;
+  const lastDay = new Date(parsed.year, parsed.month, 0).getDate();
+  const clampedDay = Math.min(day, lastDay);
+
+  return `${String(parsed.year).padStart(4, "0")}-${String(parsed.month).padStart(2, "0")}-${String(clampedDay).padStart(2, "0")}`;
 }
 
 function parseDateToCompetenciaMonth(value: string | Date | null | undefined): CompetenciaMonth | null {
@@ -523,14 +579,89 @@ export function isServicoChargeSettledForCompetency(
   return calculateServicoOutstandingChargeForCompetency(servico, competencia, payments) <= 0;
 }
 
+export function hasServicoRealCardPurchaseLink(servico: ServicoPeriodicidadeComputationLike): boolean {
+  return normalizeNonEmptyText(servico.compraCartaoId) != null;
+}
+
+export function resolveServicoTargetCardId(
+  servico: ServicoPeriodicidadeComputationLike,
+): string | null {
+  return normalizeNonEmptyText(servico.cartaoId);
+}
+
+export function isServicoProjectedToCardInvoice(
+  servico: ServicoPeriodicidadeComputationLike,
+): boolean {
+  const targetCardId = resolveServicoTargetCardId(servico);
+  if (!targetCardId) return false;
+
+  const formaPagamento = String(servico.formaPagamento ?? "").trim().toLowerCase();
+  if (formaPagamento !== "cartao") return false;
+
+  return servico.projetarNaFaturaCartao === true;
+}
+
 export function isServicoLinkedToCardCharge(servico: ServicoPeriodicidadeComputationLike): boolean {
-  const compraCartaoId = typeof servico.compraCartaoId === "string" ? servico.compraCartaoId.trim() : "";
-  if (compraCartaoId.length > 0) return true;
+  return hasServicoRealCardPurchaseLink(servico) || isServicoProjectedToCardInvoice(servico);
+}
 
-  const cartaoId = typeof servico.cartaoId === "string" ? servico.cartaoId.trim() : "";
-  if (cartaoId.length > 0) return true;
+export function buildServicoCardProjectionInstallments(
+  params: BuildServicoCardProjectionInstallmentsParams,
+): ServicoCardProjectionInstallment[] {
+  const payments = params.payments ?? [];
+  const monthReferences = Array.from(new Set(params.monthReferences.filter((month) => /^\d{4}-\d{2}$/.test(month))));
+  if (monthReferences.length === 0) return [];
 
-  return false;
+  const rows: ServicoCardProjectionInstallment[] = [];
+
+  for (const servico of params.servicos) {
+    if (String(servico.status ?? "").trim().toLowerCase() !== "ativo") continue;
+    if (!isServicoProjectedToCardInvoice(servico)) continue;
+
+    const servicoId = normalizeNonEmptyText(servico.id);
+    const cartaoId = resolveServicoTargetCardId(servico);
+    if (!servicoId || !cartaoId) continue;
+
+    const compraCartaoId = normalizeNonEmptyText(servico.compraCartaoId);
+    const realPurchaseMonths = compraCartaoId
+      ? params.realPurchaseMonthsByCompraId?.get(compraCartaoId)
+      : null;
+    const billingDay = normalizeCompetenciaNumber(servico.dataCobranca, 31);
+    const semDataFixa = billingDay == null || billingDay < 1;
+
+    for (const monthReference of monthReferences) {
+      const realCharge = calculateServicoRealChargeForCompetency(servico, monthReference);
+      if (realCharge <= 0) continue;
+
+      const hasRealPurchaseCharge = realPurchaseMonthsInclude(realPurchaseMonths, monthReference);
+      if (hasRealPurchaseCharge) continue;
+
+      const paidAmount = calculateServicoChargePaidAmountForCompetency(servicoId, monthReference, payments);
+      const remainingAmount = Math.max(0, Math.round((realCharge - paidAmount) * 100) / 100);
+      if (remainingAmount <= 0) continue;
+
+      rows.push({
+        id: `servico-projecao:${servicoId}:${monthReference}`,
+        servicoId,
+        cartaoId,
+        nome: normalizeNonEmptyText(servico.nome) ?? "Serviço previsto",
+        monthReference,
+        valorOriginal: realCharge,
+        valorPendente: remainingAmount,
+        dataVencimento: buildCompetenciaDate(monthReference, billingDay),
+        billingDay,
+        semDataFixa,
+        linkedToRealPurchase: compraCartaoId != null,
+      });
+    }
+  }
+
+  return rows.sort((left, right) => (
+    left.monthReference.localeCompare(right.monthReference)
+    || left.cartaoId.localeCompare(right.cartaoId)
+    || left.nome.localeCompare(right.nome)
+    || left.id.localeCompare(right.id)
+  ));
 }
 
 export function getServicoBillingDisplayInfo(

@@ -71,6 +71,7 @@ import {
   isCompraReembolsoOutstanding,
 } from "../src/lib/cartao-reembolso-status";
 import {
+  buildProjectedServiceInstallmentsForCard,
   calculateCardLimitSummary,
   calculateCardInvoiceForCompetency,
   calculateCardCurrentInvoiceTotal,
@@ -678,6 +679,8 @@ function buildServicoFixture(overrides: Partial<Servico> = {}): Servico {
     dataCobranca: hasDataCobrancaOverride ? (overrides.dataCobranca ?? null) : 10,
     mesCobranca: overrides.mesCobranca ?? null,
     formaPagamento: overrides.formaPagamento ?? "cartao",
+    cartaoId: overrides.cartaoId ?? null,
+    projetarNaFaturaCartao: overrides.projetarNaFaturaCartao ?? false,
     compraCartaoId: overrides.compraCartaoId ?? null,
     status: overrides.status ?? "ativo",
     iconeId: overrides.iconeId ?? null,
@@ -2078,6 +2081,190 @@ test("card limit usage: próxima fatura futura não infla a fatura atual do mesm
       total: 1087,
       installmentCount: 1,
     },
+  );
+});
+
+test("card limit usage: serviço mensal no cartão com projeção ativa entra na fatura do mês e nas futuras", () => {
+  const servico = buildServicoFixture({
+    id: "servico-spotify-projecao",
+    nome: "Spotify",
+    periodicidadeCobranca: "mensal",
+    valorCobranca: "12.90",
+    valorMensal: "12.90",
+    dataCobranca: 19,
+    formaPagamento: "cartao",
+    cartaoId: "card-spotify",
+    projetarNaFaturaCartao: true,
+    compraCartaoId: null,
+  });
+  const parcelasByCompraId = groupParcelasCompraByCompraId([]);
+
+  const projected = buildProjectedServiceInstallmentsForCard(
+    "card-spotify",
+    [],
+    parcelasByCompraId,
+    {
+      servicos: [servico],
+      servicoCobrancaPagamentos: [],
+      monthReferences: ["2026-06", "2026-07"],
+    },
+  );
+
+  assert.equal(projected.length, 2);
+  assert.deepEqual(projected.map((item) => item.dataVencimento), ["2026-06-19", "2026-07-19"]);
+  assert.deepEqual(projected.map((item) => item.valor), [12.9, 12.9]);
+  assert.equal(
+    calculateCardInvoiceForCompetency("card-spotify", [], parcelasByCompraId, "2026-06", [], {
+      servicos: [servico],
+      servicoCobrancaPagamentos: [],
+    }),
+    12.9,
+  );
+  assert.equal(
+    calculateCardInvoiceForCompetency("card-spotify", [], parcelasByCompraId, "2026-07", [], {
+      servicos: [servico],
+      servicoCobrancaPagamentos: [],
+    }),
+    12.9,
+  );
+});
+
+test("card limit usage: serviço mensal com projeção desativada não entra na fatura do cartão", () => {
+  const servico = buildServicoFixture({
+    id: "servico-sem-projecao",
+    nome: "Spotify",
+    periodicidadeCobranca: "mensal",
+    valorCobranca: "12.90",
+    valorMensal: "12.90",
+    dataCobranca: 19,
+    formaPagamento: "cartao",
+    cartaoId: "card-spotify",
+    projetarNaFaturaCartao: false,
+    compraCartaoId: null,
+  });
+
+  assert.equal(
+    calculateCardInvoiceForCompetency("card-spotify", [], groupParcelasCompraByCompraId([]), "2026-06", [], {
+      servicos: [servico],
+      servicoCobrancaPagamentos: [],
+    }),
+    0,
+  );
+});
+
+test("card limit usage: serviço anual no cartão entra só no mês configurado e pagamento da competência zera a projeção pendente", () => {
+  const servico = buildServicoFixture({
+    id: "servico-distrokid-projecao",
+    nome: "DistroKid",
+    periodicidadeCobranca: "anual",
+    valorCobranca: "99.90",
+    valorMensal: "8.33",
+    dataCobranca: 10,
+    mesCobranca: 6,
+    formaPagamento: "cartao",
+    cartaoId: "card-anual",
+    projetarNaFaturaCartao: true,
+    compraCartaoId: null,
+  });
+  const parcelasByCompraId = groupParcelasCompraByCompraId([]);
+
+  const unpaidProjected = buildProjectedServiceInstallmentsForCard(
+    "card-anual",
+    [],
+    parcelasByCompraId,
+    {
+      servicos: [servico],
+      servicoCobrancaPagamentos: [],
+      monthReferences: ["2026-05", "2026-06", "2026-07"],
+    },
+  );
+
+  assert.equal(unpaidProjected.length, 1);
+  assert.equal(unpaidProjected[0]?.dataVencimento, "2026-06-10");
+  assert.equal(unpaidProjected[0]?.valor, 99.9);
+
+  const pagamentos: ServicoCobrancaPagamento[] = [
+    {
+      id: "pagamento-servico-anual",
+      userId: "user-1",
+      servicoId: "servico-distrokid-projecao",
+      competenciaMes: 6,
+      competenciaAno: 2026,
+      valorPago: "99.90",
+      dataPagamento: "2026-06-10",
+      observacao: null,
+      canceladoEm: null,
+      motivoCancelamento: null,
+      createdAt: new Date("2026-06-10T12:00:00.000Z"),
+      updatedAt: new Date("2026-06-10T12:00:00.000Z"),
+    },
+  ];
+
+  const paidProjected = buildProjectedServiceInstallmentsForCard(
+    "card-anual",
+    [],
+    parcelasByCompraId,
+    {
+      servicos: [servico],
+      servicoCobrancaPagamentos: pagamentos,
+      monthReferences: ["2026-05", "2026-06", "2026-07"],
+    },
+  );
+
+  assert.equal(paidProjected.length, 0);
+});
+
+test("card limit usage: serviço vinculado a compra real do cartão não duplica a fatura projetada", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-spotify-real",
+    cartaoId: "card-dup",
+    descricao: "Spotify real",
+    valorTotal: "12.90",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "12.90",
+    dataCompra: "2026-06-01",
+  });
+  const parcela = buildParcelaCompraViewFixture({
+    id: "parcela-spotify-real",
+    compraCartaoId: "compra-spotify-real",
+    numero: 1,
+    valor: "12.90",
+    dataVencimento: "2026-06-19",
+    statusCartao: "pendente",
+  });
+  const servico = buildServicoFixture({
+    id: "servico-spotify-real",
+    nome: "Spotify",
+    periodicidadeCobranca: "mensal",
+    valorCobranca: "12.90",
+    valorMensal: "12.90",
+    dataCobranca: 19,
+    formaPagamento: "cartao",
+    cartaoId: "card-dup",
+    projetarNaFaturaCartao: true,
+    compraCartaoId: "compra-spotify-real",
+  });
+  const parcelasByCompraId = groupParcelasCompraByCompraId([parcela]);
+
+  const projected = buildProjectedServiceInstallmentsForCard(
+    "card-dup",
+    [compra],
+    parcelasByCompraId,
+    {
+      servicos: [servico],
+      servicoCobrancaPagamentos: [],
+      monthReferences: ["2026-06"],
+    },
+  );
+
+  assert.equal(projected.length, 0);
+  assert.equal(
+    calculateCardInvoiceForCompetency("card-dup", [compra], parcelasByCompraId, "2026-06", [], {
+      servicos: [servico],
+      servicoCobrancaPagamentos: [],
+    }),
+    12.9,
   );
 });
 
@@ -6111,6 +6298,49 @@ test("calendário financeiro: inclui fatura e parcela do cartão sem duplicar se
   assert.equal(linkedServiceEvent, undefined);
   assert.ok(mensalServiceEvent);
   assert.equal(mensalServiceEvent?.amount, 39.9);
+});
+
+test("calendário financeiro: serviço projetado no cartão impacta apenas a fatura e não cria saída separada de serviço", () => {
+  const cartao = buildCartaoViewFixture({
+    id: "card-projecao-calendario",
+    nome: "Nubank",
+    diaVencimento: 25,
+  });
+  const servico = buildServicoFixture({
+    id: "servico-spotify-calendario",
+    nome: "Spotify",
+    periodicidadeCobranca: "mensal",
+    valorCobranca: "12.90",
+    valorMensal: "12.90",
+    dataCobranca: 19,
+    formaPagamento: "cartao",
+    cartaoId: "card-projecao-calendario",
+    projetarNaFaturaCartao: true,
+    compraCartaoId: null,
+  });
+
+  const events = buildFinancialCalendarEvents({
+    monthReference: "2026-06",
+    cartoes: [cartao],
+    compras: [],
+    parcelasCompra: [],
+    cartaoFaturaPagamentos: [],
+    dividas: [],
+    parcelas: [],
+    pessoas: [],
+    servicos: [servico],
+    servicoCobrancaPagamentos: [],
+    rendas: [],
+    metas: [],
+    referenceDate: "2026-06-01",
+  });
+
+  const invoiceEvent = events.find((event) => event.source === "fatura_cartao" && event.entityId === "card-projecao-calendario");
+  const serviceEvent = events.find((event) => event.source === "servico" && event.entityId === "servico-spotify-calendario");
+
+  assert.ok(invoiceEvent);
+  assert.equal(invoiceEvent?.amount, 12.9);
+  assert.equal(serviceEvent, undefined);
 });
 
 test("calendário financeiro: serviço semanal usa 4 semanas e deixa anualização só como hint secundário", () => {

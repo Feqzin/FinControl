@@ -1694,6 +1694,172 @@ test("getCardSummaries usa competencia do vencimento para fatura atual e parcela
   assert.equal(summary?.quantidadeParcelasPendentes, 3);
 });
 
+test("resumo financeiro: serviço mensal projetado no cartão entra na fatura da competência sem virar gasto fixo real", async () => {
+  const userId = "user-financial-card-projection-monthly";
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [],
+    cartaoFaturaPagamentos: [],
+    servicos: [
+      buildServicoFixture({
+        id: "svc-projecao-spotify",
+        userId,
+        nome: "Spotify",
+        periodicidadeCobranca: "mensal",
+        valorCobranca: "12.90",
+        valorMensal: "12.90",
+        dataCobranca: 19,
+        formaPagamento: "cartao",
+        cartaoId: "card-1",
+        projetarNaFaturaCartao: true,
+        compraCartaoId: null,
+      }),
+    ],
+    cartoes: [
+      {
+        id: "card-1",
+        userId,
+        nome: "Cartão Principal",
+        limite: "500.00",
+        melhorDiaCompra: 5,
+        diaVencimento: 25,
+        iconeId: null,
+      },
+    ],
+    compras: [],
+    rendas: [],
+  };
+
+  const service = createService(fixture);
+  const junho = await service.getSummary(userId, "2026-06");
+  const julho = await service.getSummary(userId, "2026-07");
+
+  assert.equal(junho.totalServicos, 0);
+  assert.equal(junho.totalCartoesMes, 12.9);
+  assert.equal(junho.totalSaidas, 12.9);
+  assert.equal(julho.totalServicos, 0);
+  assert.equal(julho.totalCartoesMes, 12.9);
+
+  await withFakeNow("2026-06-05T12:00:00.000Z", async () => {
+    const cardSummary = (await service.getCardSummaries(userId)).find((item) => item.cartaoId === "card-1");
+    assert.equal(cardSummary?.faturaAtual, 12.9);
+    assert.equal(cardSummary?.limiteComprometido, 12.9);
+    assert.equal(cardSummary?.limiteDisponivel, 487.1);
+  });
+});
+
+test("resumo financeiro: serviço com projeção desativada não entra na fatura do cartão", async () => {
+  const userId = "user-financial-card-projection-off";
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [],
+    cartaoFaturaPagamentos: [],
+    servicos: [
+      buildServicoFixture({
+        id: "svc-projecao-off",
+        userId,
+        nome: "Spotify",
+        periodicidadeCobranca: "mensal",
+        valorCobranca: "12.90",
+        valorMensal: "12.90",
+        dataCobranca: 19,
+        formaPagamento: "cartao",
+        cartaoId: "card-1",
+        projetarNaFaturaCartao: false,
+        compraCartaoId: null,
+      }),
+    ],
+    cartoes: [
+      {
+        id: "card-1",
+        userId,
+        nome: "Cartão Principal",
+        limite: "500.00",
+        melhorDiaCompra: 5,
+        diaVencimento: 25,
+        iconeId: null,
+      },
+    ],
+    compras: [],
+    rendas: [],
+  };
+
+  const summary = await createService(fixture).getSummary(userId, "2026-06");
+  assert.equal(summary.totalCartoesMes, 0);
+});
+
+test("resumo financeiro: compra real vinculada vence sobre a projeção virtual do serviço", async () => {
+  const userId = "user-financial-card-projection-real-link";
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [
+      {
+        id: "pc-spotify-real",
+        userId,
+        compraCartaoId: "cc-spotify-real",
+        numero: 1,
+        valor: "12.90",
+        dataVencimento: "2026-06-19",
+        statusCartao: "pendente",
+        dataPagamentoCartao: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+    ],
+    cartaoFaturaPagamentos: [],
+    servicos: [
+      buildServicoFixture({
+        id: "svc-spotify-real",
+        userId,
+        nome: "Spotify",
+        periodicidadeCobranca: "mensal",
+        valorCobranca: "12.90",
+        valorMensal: "12.90",
+        dataCobranca: 19,
+        formaPagamento: "cartao",
+        cartaoId: "card-1",
+        projetarNaFaturaCartao: true,
+        compraCartaoId: "cc-spotify-real",
+      }),
+    ],
+    cartoes: [
+      {
+        id: "card-1",
+        userId,
+        nome: "Cartão Principal",
+        limite: "500.00",
+        melhorDiaCompra: 5,
+        diaVencimento: 25,
+        iconeId: null,
+      },
+    ],
+    compras: [
+      {
+        id: "cc-spotify-real",
+        userId,
+        cartaoId: "card-1",
+        descricao: "Spotify real",
+        valorTotal: "12.90",
+        parcelas: 1,
+        parcelaAtual: 1,
+        valorParcela: "12.90",
+        dataCompra: "2026-06-01",
+        pessoaId: null,
+        statusPessoa: null,
+        dataPagamentoPessoa: null,
+      },
+    ],
+    rendas: [],
+  };
+
+  const summary = await createService(fixture).getSummary(userId, "2026-06");
+  assert.equal(summary.totalCartoesMes, 12.9);
+  assert.equal(summary.totalSaidas, 12.9);
+});
+
 test("pagamento parcial de fatura reduz fatura atual e comprometido sem mexer nas futuras", async () => {
   const userId = "user-financial-card-partial-payment";
   const now = new Date();
@@ -2031,6 +2197,63 @@ test("relatórios usam pagamentos de fatura para evitar dupla contagem no perío
 
   assert.equal(overview.summary.expenseTotal, 180);
   assert.equal(overview.summary.cartoesFaturaAtualTotal, 180);
+});
+
+test("relatórios: serviço projetado no cartão entra no total de cartões do período e não em gastos fixos", async () => {
+  const userId = "user-reports-card-projection";
+  const fixture: FinancialFixture = {
+    dividas: [],
+    parcelas: [],
+    parcelasCompra: [],
+    cartaoFaturaPagamentos: [],
+    servicos: [
+      buildServicoFixture({
+        id: "svc-report-spotify",
+        userId,
+        nome: "Spotify",
+        periodicidadeCobranca: "mensal",
+        valorCobranca: "12.90",
+        valorMensal: "12.90",
+        dataCobranca: 19,
+        formaPagamento: "cartao",
+        cartaoId: "card-report",
+        projetarNaFaturaCartao: true,
+        compraCartaoId: null,
+      }),
+    ],
+    cartoes: [
+      {
+        id: "card-report",
+        userId,
+        nome: "Cartão Relatório",
+        limite: "500.00",
+        melhorDiaCompra: 5,
+        diaVencimento: 25,
+        iconeId: null,
+      },
+    ],
+    compras: [],
+    rendas: [],
+    pessoas: [],
+    patrimonios: [],
+  };
+
+  await withFakeNow("2026-06-05T12:00:00.000Z", async () => {
+    const serverOverview = await createReportsService(fixture).getOverview(userId, {
+      startDate: "2026-06-01",
+      endDate: "2026-06-30",
+    });
+    const serverlessOverview = await createServerlessReportsService(fixture).getOverview(userId, {
+      startDate: "2026-06-01",
+      endDate: "2026-06-30",
+    });
+
+    assert.equal(serverOverview.summary.gastosFixos, 0);
+    assert.equal(serverOverview.summary.expenseTotal, 12.9);
+    assert.equal(serverOverview.summary.servicosAtivosTotal, 0);
+    assert.equal(serverOverview.summary.servicosVinculadosCartaoCobrancaRealPeriodoTotal, 12.9);
+    assert.deepEqual(serverlessOverview.summary, serverOverview.summary);
+  });
 });
 
 test("pagamento de fatura cancelado é ignorado por resumo, cartões e relatórios em server e serverless", async () => {

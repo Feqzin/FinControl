@@ -89,7 +89,11 @@ export const servicoBody = z.object({
   dataCobranca: servicoDataCobrancaField,
   mesCobranca: servicoMesCobrancaField.optional(),
   formaPagamento: z.string().min(1),
+  cartaoId: optionalNullableRelationIdField.optional(),
+  projetarNaFaturaCartao: z.coerce.boolean().optional().default(false),
+  compraCartaoId: optionalNullableRelationIdField.optional(),
   status: z.string().optional().default("ativo"),
+  iconeId: z.string().optional().nullable(),
 }).refine((data) => data.valorMensal !== undefined || data.valorCobranca !== undefined, {
   message: "Informe o valor da cobranca",
 }).superRefine((data, ctx) => {
@@ -111,6 +115,8 @@ export const servicoUpdateBody = z.object({
   dataCobranca: servicoDataCobrancaField.optional(),
   mesCobranca: servicoMesCobrancaField.optional(),
   formaPagamento: z.string().min(1).optional(),
+  cartaoId: optionalNullableRelationIdField.optional(),
+  projetarNaFaturaCartao: z.coerce.boolean().optional(),
   compraCartaoId: optionalNullableRelationIdField.optional(),
   status: z.string().min(1).optional(),
   iconeId: z.string().optional().nullable(),

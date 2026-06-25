@@ -165,6 +165,7 @@ export default function Dashboard() {
     compras,
     parcelasCompra,
     cartaoFaturaPagamentos,
+    servicoCobrancaPagamentos,
     totalRenda,
     totalPatrimonio,
     totalServicos,
@@ -280,6 +281,11 @@ export default function Dashboard() {
         cartaoId,
         compras,
         dashboardParcelasCompraByCompraId,
+        {
+          servicos,
+          servicoCobrancaPagamentos,
+          monthReferences: [monthReference],
+        },
       ),
       payments: getInvoicePaymentsForCompetency(cartaoId, monthReference),
       getDueDayForCard: () => cartao.diaVencimento,
@@ -329,6 +335,18 @@ export default function Dashboard() {
           })
       ));
   }, [compras, dashboardParcelasCompraByCompraId, invoicePaymentTarget, selectedInvoicePaymentHistory]);
+  const canOpenInvoicePaymentDialog = (cartaoId: string, monthReference: string) => {
+    const payments = getInvoicePaymentsForCompetency(cartaoId, monthReference);
+    const hasRealInstallments = compras
+      .filter((compra) => compra.cartaoId === cartaoId)
+      .some((compra) => (
+        (dashboardParcelasCompraByCompraId.get(compra.id) ?? [])
+          .some((parcela) => getInvoiceCompetency(parcela.dataVencimento) === monthReference)
+      ));
+
+    const snapshot = getInvoiceSnapshotForCompetency(cartaoId, monthReference);
+    return Boolean((snapshot && snapshot.originalTotal > 0 && hasRealInstallments) || payments.length > 0);
+  };
 
   const registerInvoicePaymentMutation = useMutation({
     mutationFn: ({
@@ -439,6 +457,7 @@ export default function Dashboard() {
   const handleTriggerVencimentoAction = async (item: VencimentoItem) => {
     if (item.kind === "cartao_fatura") {
       if (!item.cartaoId || !item.monthReference) return;
+      if (!canOpenInvoicePaymentDialog(item.cartaoId, item.monthReference)) return;
       setInvoicePaymentTarget({
         cartaoId: item.cartaoId,
         monthReference: item.monthReference,

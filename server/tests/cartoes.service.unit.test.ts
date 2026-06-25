@@ -3,6 +3,33 @@ import assert from "node:assert/strict";
 import { getInstallmentInvoicePaymentStatus } from "@shared/card-invoice-payments";
 import { CartoesService } from "../services/cartoes.service";
 
+async function withFakeNow<T>(isoDate: string, run: () => Promise<T> | T): Promise<T> {
+  const RealDate = Date;
+  const fixedTime = new RealDate(isoDate).getTime();
+
+  class FakeDate extends RealDate {
+    constructor(value?: string | number | Date) {
+      if (arguments.length === 0) {
+        super(fixedTime);
+        return;
+      }
+      super(value as string | number | Date);
+    }
+
+    static now() {
+      return fixedTime;
+    }
+  }
+
+  // @ts-expect-error test-only Date override
+  globalThis.Date = FakeDate;
+  try {
+    return await run();
+  } finally {
+    globalThis.Date = RealDate;
+  }
+}
+
 test("CartoesService.create inclui userId e preserva payload de cartao", async () => {
   let createPayload: Record<string, unknown> | null = null;
 
@@ -154,11 +181,11 @@ test("CartoesService.registerInvoicePayment registra pagamento parcial sem quita
   } as any;
 
   const service = new CartoesService(repository);
-  const result = await service.registerInvoicePayment(userId, cartao.id, currentMonth, {
+  const result = await withFakeNow("2026-06-05T12:00:00.000Z", () => service.registerInvoicePayment(userId, cartao.id, currentMonth, {
     valorPago: "80.00",
     dataPagamento: "2026-06-15",
     observacao: "Pagamento parcial",
-  });
+  }));
 
   assert.equal(result.valorAplicado, 80);
   assert.equal(result.saldoAnterior, 200);
@@ -761,7 +788,9 @@ test("CartoesService.cancelInvoicePayment cancela pagamento parcial, reabre a fa
   } as any;
 
   const service = new CartoesService(repository);
-  const result = await service.cancelInvoicePayment(userId, cartao.id, currentMonth, "payment-partial-active");
+  const result = await withFakeNow("2026-06-05T12:00:00.000Z", () => (
+    service.cancelInvoicePayment(userId, cartao.id, currentMonth, "payment-partial-active")
+  ));
 
   if ("error" in result) {
     assert.fail(`Cancelamento deveria funcionar, mas retornou ${result.error}`);
@@ -983,7 +1012,9 @@ test("CartoesService.cancelInvoicePayment desfaz quitação total, mantém parce
   } as any;
 
   const service = new CartoesService(repository);
-  const result = await service.cancelInvoicePayment(userId, cartao.id, currentMonth, "payment-full-active");
+  const result = await withFakeNow("2026-06-05T12:00:00.000Z", () => (
+    service.cancelInvoicePayment(userId, cartao.id, currentMonth, "payment-full-active")
+  ));
 
   if ("error" in result) {
     assert.fail(`Cancelamento da quitação total deveria funcionar, mas retornou ${result.error}`);

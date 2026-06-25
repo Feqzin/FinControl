@@ -13,7 +13,7 @@ import type {
   ServicoCobrancaPagamento,
 } from "@shared/schema";
 import type { DashboardOverviewResponse, FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
-import { addDays, differenceInDays, format, parseISO } from "date-fns";
+import { addDays, addMonths, differenceInDays, format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AlertTriangle, Bell, CheckCircle, CreditCard, TrendingDown } from "lucide-react";
 import { maskValue } from "@/context/values-visibility";
@@ -487,6 +487,11 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
         parcelasCompraByCompraId,
         c.diaVencimento,
         cartaoFaturaPagamentos,
+        {
+          servicos,
+          servicoCobrancaPagamentos,
+          monthReferences: Array.from({ length: 12 }, (_, index) => format(addMonths(todayReferenceDate, index), "yyyy-MM")),
+        },
       );
       if (!proximaFatura || proximaFatura.total <= 0) return;
       const dataVenc = proximaFatura.dueDate ?? getNextDueDate(c.diaVencimento);
@@ -589,7 +594,10 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   ]);
 
   const getCardUsedLimit = (cartaoId: string) =>
-    calculateCardUsedLimit(cartaoId, compras, parcelasCompraByCompraId, cartaoFaturaPagamentos);
+    calculateCardUsedLimit(cartaoId, compras, parcelasCompraByCompraId, cartaoFaturaPagamentos, {
+      servicos,
+      servicoCobrancaPagamentos,
+    });
 
   const getPessoaNome = (id: string) => pessoas.find((p) => p.id === id)?.nome || "Desconhecido";
 

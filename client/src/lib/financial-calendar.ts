@@ -258,6 +258,11 @@ function buildCardInvoiceEvents(input: BuildFinancialCalendarEventsInput): Finan
         cartao.id,
         input.compras,
         parcelasByCompraId,
+        {
+          servicos: input.servicos,
+          servicoCobrancaPagamentos: input.servicoCobrancaPagamentos,
+          monthReferences: [input.monthReference],
+        },
       ),
       payments: (input.cartaoFaturaPagamentos ?? []).filter((payment) => payment.cartaoId === cartao.id),
       getDueDayForCard: () => cartao.diaVencimento,

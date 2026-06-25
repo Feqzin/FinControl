@@ -169,5 +169,104 @@ test("ServicosService.updateServico propaga compraCartaoId quando enviado pela t
   assert.deepEqual(payload, {
     nome: "Servico atualizado",
     compraCartaoId: null,
+    cartaoId: null,
+    projetarNaFaturaCartao: false,
   });
+});
+
+test("ServicosService.createServico persiste cartaoId e projeção quando forma de pagamento é cartão", async () => {
+  let payload: Record<string, unknown> | null = null;
+
+  const storage = {
+    getCartao: async (id: string) => (id === "card-1" ? { id: "card-1" } : undefined),
+    createServico: async (nextPayload: Record<string, unknown>) => {
+      payload = nextPayload;
+      return { id: "serv-1", ...nextPayload };
+    },
+  } as any;
+
+  const service = new ServicosService(storage);
+  const result = await service.createServico("user-1", {
+    nome: "Spotify",
+    categoria: "streaming",
+    valorMensal: "12.90",
+    valorCobranca: "12.90",
+    periodicidadeCobranca: "mensal",
+    dataCobranca: 19,
+    formaPagamento: "cartao",
+    cartaoId: "card-1",
+    projetarNaFaturaCartao: true,
+    compraCartaoId: null,
+    status: "ativo",
+    iconeId: null,
+  });
+
+  assert.ok("created" in result);
+  assert.equal(payload?.cartaoId, "card-1");
+  assert.equal(payload?.projetarNaFaturaCartao, true);
+});
+
+test("ServicosService.createServico usa o cartão da compra vinculada e evita divergência no payload", async () => {
+  let payload: Record<string, unknown> | null = null;
+
+  const storage = {
+    getCompraCartao: async (id: string) => (
+      id === "compra-1"
+        ? { id: "compra-1", cartaoId: "card-linked" }
+        : undefined
+    ),
+    getCartao: async (id: string) => (id === "card-linked" ? { id: "card-linked" } : undefined),
+    createServico: async (nextPayload: Record<string, unknown>) => {
+      payload = nextPayload;
+      return { id: "serv-1", ...nextPayload };
+    },
+  } as any;
+
+  const service = new ServicosService(storage);
+  const result = await service.createServico("user-1", {
+    nome: "Spotify",
+    categoria: "streaming",
+    valorMensal: "12.90",
+    valorCobranca: "12.90",
+    periodicidadeCobranca: "mensal",
+    dataCobranca: 19,
+    formaPagamento: "cartao",
+    cartaoId: "card-manual-diferente",
+    projetarNaFaturaCartao: true,
+    compraCartaoId: "compra-1",
+    status: "ativo",
+    iconeId: null,
+  });
+
+  assert.ok("created" in result);
+  assert.equal(payload?.compraCartaoId, "compra-1");
+  assert.equal(payload?.cartaoId, "card-linked");
+  assert.equal(payload?.projetarNaFaturaCartao, true);
+});
+
+test("ServicosService.createServico retorna CARTAO_NOT_FOUND quando o cartão informado não pertence ao usuário", async () => {
+  const storage = {
+    getCartao: async () => undefined,
+    createServico: async () => {
+      throw new Error("não deveria criar");
+    },
+  } as any;
+
+  const service = new ServicosService(storage);
+  const result = await service.createServico("user-1", {
+    nome: "Spotify",
+    categoria: "streaming",
+    valorMensal: "12.90",
+    valorCobranca: "12.90",
+    periodicidadeCobranca: "mensal",
+    dataCobranca: 19,
+    formaPagamento: "cartao",
+    cartaoId: "card-inexistente",
+    projetarNaFaturaCartao: true,
+    compraCartaoId: null,
+    status: "ativo",
+    iconeId: null,
+  });
+
+  assert.deepEqual(result, { error: "CARTAO_NOT_FOUND" });
 });

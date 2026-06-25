@@ -17,11 +17,21 @@ import {
   FintechLoadingSurface,
 } from "@/components/layout/fintech-loading-shell";
 import { ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown, Wallet } from "lucide-react";
-import type { Divida, Renda, Servico, ServicoCobrancaPagamento } from "@shared/schema";
+import type {
+  Cartao,
+  CartaoFaturaPagamento,
+  CompraCartao,
+  Divida,
+  ParcelaCompra,
+  Renda,
+  Servico,
+  ServicoCobrancaPagamento,
+} from "@shared/schema";
 import { calculateServicoOutstandingChargeForCompetency } from "@shared/servico-periodicidade";
 import { format, getDaysInMonth } from "date-fns";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { fetchServicoCobrancaPagamentos } from "@/services/api/servicos";
+import { buildFinancialCalendarEvents } from "@/lib/financial-calendar";
 
 const PrevisaoSaldoChart = lazy(
   () => import("@/components/charts/previsao-saldo-chart"),
@@ -45,7 +55,13 @@ export default function PrevisaoPage() {
     queryKey: ["/api/servicos/cobranca-pagamentos"],
     queryFn: fetchServicoCobrancaPagamentos,
   });
-  const isLoading = l1 || l2 || l3 || l4;
+  const { data: cartoes = [], isLoading: l5 } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
+  const { data: compras = [], isLoading: l6 } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
+  const { data: parcelasCompra = [], isLoading: l7 } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"] });
+  const { data: cartaoFaturaPagamentos = [], isLoading: l8 } = useQuery<CartaoFaturaPagamento[]>({
+    queryKey: ["/api/cartoes/fatura-pagamentos"],
+  });
+  const isLoading = l1 || l2 || l3 || l4 || l5 || l6 || l7 || l8;
 
   const mask = (v: string) => maskValue(v, visible);
 
@@ -56,6 +72,21 @@ export default function PrevisaoPage() {
 
   const rendasAtivas = rendas.filter((r) => r.ativo);
   const servicosAtivos = servicos.filter((s) => s.status === "ativo");
+  const monthlyEvents = buildFinancialCalendarEvents({
+    monthReference: currentMonth,
+    cartoes,
+    compras,
+    parcelasCompra,
+    cartaoFaturaPagamentos,
+    dividas,
+    parcelas: [],
+    pessoas: [],
+    servicos,
+    servicoCobrancaPagamentos,
+    rendas,
+    metas: [],
+    referenceDate: format(now, "yyyy-MM-dd"),
+  });
   const servicosSaidaMes = servicosAtivos
     .map((servico) => ({
       servico,
@@ -75,8 +106,11 @@ export default function PrevisaoPage() {
     .reduce((s, d) => s + Number(d.valor), 0);
 
   const servicosMes = servicosSaidaMes.reduce((sum, item) => sum + item.valor, 0);
+  const cartoesMes = monthlyEvents
+    .filter((event) => event.source === "fatura_cartao" && event.direction === "saida")
+    .reduce((sum, event) => sum + (event.amount ?? 0), 0);
 
-  const totalSaida = pagarDividas + servicosMes;
+  const totalSaida = pagarDividas + servicosMes + cartoesMes;
   const saldoPrevisto = totalEntradas - totalSaida;
   const pctComprometido = totalEntradas > 0 ? Math.round((totalSaida / totalEntradas) * 100) : null;
 
@@ -91,27 +125,13 @@ export default function PrevisaoPage() {
   const chartData = Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
     const dayStr = `${currentMonth}-${String(day).padStart(2, "0")}`;
-    let entradas = 0;
-    let saidas = 0;
-
-    for (const r of rendasAtivas) {
-      if (Number(r.diaRecebimento) === day) {
-        entradas += Number(r.valor);
-      }
-    }
-
-    for (const d of dividas) {
-      if (d.status === "pendente" && d.dataVencimento === dayStr) {
-        if (d.tipo === "receber") entradas += Number(d.valor);
-        else saidas += Number(d.valor);
-      }
-    }
-
-    for (const { servico, valor } of servicosSaidaMes) {
-      if (Number(servico.dataCobranca) === day) {
-        saidas += valor;
-      }
-    }
+    const eventsOfDay = monthlyEvents.filter((event) => event.date === dayStr);
+    const entradas = eventsOfDay
+      .filter((event) => event.direction === "entrada")
+      .reduce((sum, event) => sum + (event.amount ?? 0), 0);
+    const saidas = eventsOfDay
+      .filter((event) => event.direction === "saida")
+      .reduce((sum, event) => sum + (event.amount ?? 0), 0);
 
     return { dia: day, entradas, saidas };
   });
@@ -246,6 +266,11 @@ export default function PrevisaoPage() {
               {servicosMes > 0 && (
                 <p className="text-xs text-muted-foreground flex justify-between gap-3">
                   <span>Serviços</span><span className="font-medium">{mask(formatCurrency(servicosMes))}</span>
+                </p>
+              )}
+              {cartoesMes > 0 && (
+                <p className="text-xs text-muted-foreground flex justify-between gap-3">
+                  <span>Faturas</span><span className="font-medium">{mask(formatCurrency(cartoesMes))}</span>
                 </p>
               )}
             </FintechSurfaceInset>

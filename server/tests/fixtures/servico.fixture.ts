@@ -12,6 +12,8 @@ export function buildServicoFixture(overrides: Partial<Servico> = {}): Servico {
     dataCobranca: 10,
     mesCobranca: null,
     formaPagamento: "debito",
+    cartaoId: null,
+    projetarNaFaturaCartao: false,
     compraCartaoId: null,
     status: "ativo",
     iconeId: null,

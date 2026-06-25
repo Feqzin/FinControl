@@ -51,7 +51,12 @@ export function createServicosController(service: ServicosService) {
 
       const result = await service.createServico(userId, parsed.data);
       if ("error" in result) {
-        return sendBadRequest(res, "Compra de cartao nao encontrada para vinculo");
+        return sendBadRequest(
+          res,
+          result.error === "CARTAO_NOT_FOUND"
+            ? "Cartao nao encontrado para projecao"
+            : "Compra de cartao nao encontrada para vinculo",
+        );
       }
       return res.json(result.created);
     },
@@ -65,7 +70,12 @@ export function createServicosController(service: ServicosService) {
       }
       const result = await service.updateServico(servicoId, userId, parsed.data);
       if ("error" in result) {
-        return sendBadRequest(res, "Compra de cartao nao encontrada para vinculo");
+        return sendBadRequest(
+          res,
+          result.error === "CARTAO_NOT_FOUND"
+            ? "Cartao nao encontrado para projecao"
+            : "Compra de cartao nao encontrada para vinculo",
+        );
       }
       if (!result.updated) {
         return sendNotFound(res);

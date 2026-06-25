@@ -1,6 +1,6 @@
 import { useMemo, useRef } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Cartao, CompraCartao, ParcelaCompra, Pessoa, PessoaSaldoMovimentacao, Servico, ServicoPessoa } from "@shared/schema";
+import type { Cartao, CompraCartao, ParcelaCompra, Pessoa, PessoaSaldoMovimentacao, Servico, ServicoCobrancaPagamento, ServicoPessoa } from "@shared/schema";
 import { format } from "date-fns";
 import { toMoneyNumber } from "@/lib/money";
 import {
@@ -12,6 +12,7 @@ import { getCompraReembolsoVisualStatus } from "@/lib/cartao-reembolso-status";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
 import { queryClient } from "@/lib/queryClient";
 import { abaterSaldoParcelaPessoa } from "@/services/api/pessoas";
+import { fetchServicoCobrancaPagamentos } from "@/services/api/servicos";
 import {
   fetchCartaoFaturaPagamentos,
   fetchCartoesResumo,
@@ -52,6 +53,10 @@ export function useCartoes(viewingCompraId?: string) {
   const { data: cartoes = [], isLoading } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
   const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
+  const { data: servicoCobrancaPagamentos = [] } = useQuery<ServicoCobrancaPagamento[]>({
+    queryKey: ["/api/servicos/cobranca-pagamentos"],
+    queryFn: fetchServicoCobrancaPagamentos,
+  });
   const { data: servicoPessoas = [] } = useQuery<ServicoPessoa[]>({ queryKey: ["/api/servico-pessoas"] });
   const { data: cartaoFaturaPagamentos = [] } = useQuery<CartaoFaturaPagamentoApiModel[]>({
     queryKey: ["/api/cartoes/fatura-pagamentos"],
@@ -401,10 +406,14 @@ export function useCartoes(viewingCompraId?: string) {
           monthReference,
           cartao.limite,
           cartaoFaturaPagamentos,
+          {
+            servicos,
+            servicoCobrancaPagamentos,
+          },
         ),
       ])),
     );
-  }, [cartaoFaturaPagamentos, cartoes, compras, parcelasCompraByCompraId]);
+  }, [cartaoFaturaPagamentos, cartoes, compras, parcelasCompraByCompraId, servicoCobrancaPagamentos, servicos]);
 
   // FALLBACK TRANSITORIO:
   // Mantem compatibilidade enquanto a tela migra para a fonte de verdade
@@ -417,6 +426,10 @@ export function useCartoes(viewingCompraId?: string) {
       parcelasCompraByCompraId,
       format(new Date(), "yyyy-MM"),
       cartaoFaturaPagamentos,
+      {
+        servicos,
+        servicoCobrancaPagamentos,
+      },
     );
   const getCardUsedLimitFallback = (cartaoId: string) =>
     fallbackCardSummariesById.get(cartaoId)?.limiteComprometido ?? 0;
@@ -493,6 +506,7 @@ export function useCartoes(viewingCompraId?: string) {
     cartaoFaturaPagamentos,
     compras,
     servicos,
+    servicoCobrancaPagamentos,
     servicoPessoas,
     pessoas,
     pessoaSaldoMovimentacoes,

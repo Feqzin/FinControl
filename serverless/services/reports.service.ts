@@ -8,8 +8,10 @@ import {
   parseISO,
   startOfMonth,
 } from "date-fns";
+import type { CompraCartao, ParcelaCompra } from "../../shared/schema.js";
 import type { ReportsOverviewResponse } from "../../shared/reports.js";
 import {
+  buildServicoCardProjectionInstallments,
   calculateServicoEquivalentMonthlyAmount,
   calculateServicoRealChargeForCompetency,
   isServicoLinkedToCardCharge,
@@ -51,6 +53,25 @@ function listCompetenciesInPeriod(startDateIso: string, endDateIso: string): str
   } catch {
     return [];
   }
+}
+
+function buildRealPurchaseMonthsByCompraId(
+  compras: CompraCartao[],
+  parcelasCompra: ParcelaCompra[],
+): Map<string, Set<string>> {
+  const obligations = getCardObligations({ compras, parcelasCompra });
+  const byCompraId = new Map<string, Set<string>>();
+
+  for (const obligation of obligations) {
+    if (String(obligation.statusCartao ?? "").trim().toLowerCase() === "cancelado") continue;
+    const monthReference = String(obligation.dataVencimento ?? "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(monthReference)) continue;
+    const rows = byCompraId.get(obligation.compraId) ?? new Set<string>();
+    rows.add(monthReference);
+    byCompraId.set(obligation.compraId, rows);
+  }
+
+  return byCompraId;
 }
 
 function resolveReportPeriod(query: ReportsOverviewQueryInput): IsoPeriod {
@@ -109,7 +130,7 @@ export class ReportsService {
     const period = resolveReportPeriod(query);
     assertPeriodRules(period);
 
-    const [rendas, patrimonios, comprasCartao, cartoes, parcelasCompra, cartaoFaturaPagamentos, servicos, dividas, pessoas, cardSummaries] =
+    const [rendas, patrimonios, comprasCartao, cartoes, parcelasCompra, cartaoFaturaPagamentos, servicos, servicoCobrancaPagamentos, dividas, pessoas, cardSummaries] =
       await Promise.all([
         this.repository.getRendas(userId),
         this.repository.getPatrimonios(userId),
@@ -118,6 +139,7 @@ export class ReportsService {
         this.repository.getParcelasCompraByUser(userId),
         loadInvoicePaymentsWithAllocations(this.repository, userId),
         this.repository.getServicos(userId),
+        this.repository.getServicoCobrancaPagamentos(userId),
         this.repository.getDividas(userId),
         this.repository.getPessoas(userId),
         this.financialService.getCardSummaries(userId),
@@ -146,14 +168,29 @@ export class ReportsService {
 
     const incomeTotal = activeRendas.reduce((sum, item) => sum + toMoneyNumber(item.valor), 0) * monthsInPeriod;
     const dueDayByCardId = new Map(cartoes.map((cartao) => [cartao.id, cartao.diaVencimento]));
+    const projectedCardInstallments = buildServicoCardProjectionInstallments({
+      servicos: activeServicos,
+      monthReferences: competencies,
+      payments: servicoCobrancaPagamentos,
+      realPurchaseMonthsByCompraId: buildRealPurchaseMonthsByCompraId(comprasCartao, parcelasCompra),
+    }).map((projection) => ({
+      id: projection.id,
+      cartaoId: projection.cartaoId,
+      valor: projection.valorPendente,
+      statusCartao: "pendente",
+      dataVencimento: projection.dataVencimento,
+    }));
     const cardSnapshots = buildCardInvoiceSnapshots({
-      installments: getCardObligations({ compras: comprasCartao, parcelasCompra }).map((obligation) => ({
-        id: obligation.parcelaCompraId,
-        cartaoId: obligation.cartaoId,
-        valor: obligation.valor,
-        statusCartao: obligation.statusCartao,
-        dataVencimento: obligation.dataVencimento,
-      })),
+      installments: [
+        ...getCardObligations({ compras: comprasCartao, parcelasCompra }).map((obligation) => ({
+          id: obligation.parcelaCompraId,
+          cartaoId: obligation.cartaoId,
+          valor: obligation.valor,
+          statusCartao: obligation.statusCartao,
+          dataVencimento: obligation.dataVencimento,
+        })),
+        ...projectedCardInstallments,
+      ],
       payments: cartaoFaturaPagamentos,
       getDueDayForCard: (cartaoId) => dueDayByCardId.get(cartaoId) ?? null,
     });
