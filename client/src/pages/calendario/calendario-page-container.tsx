@@ -18,6 +18,7 @@ import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import {
   buildFinancialCalendarDayMap,
   buildFinancialCalendarEvents,
+  getFinancialCalendarEventImpactAmount,
   type FinancialCalendarEvent,
   type FinancialCalendarEventGroup,
 } from "@/lib/financial-calendar";
@@ -68,7 +69,7 @@ const EVENT_VISUALS: Record<FinancialCalendarEventGroup, EventVisual> = {
 function getDirectionTotals(events: FinancialCalendarEvent[]) {
   return events.reduce(
     (acc, event) => {
-      const amount = event.amount ?? 0;
+      const amount = getFinancialCalendarEventImpactAmount(event);
       if (event.direction === "entrada") acc.entrada += amount;
       if (event.direction === "saida") acc.saida += amount;
       return acc;
@@ -151,6 +152,11 @@ function EventRow({ event, formatAmount }: { event: FinancialCalendarEvent; form
             <Badge variant="outline" className={cn("rounded-full px-2.5 text-[10px]", visual.badgeClassName)}>
               {visual.label}
             </Badge>
+            {event.includedInInvoice ? (
+              <Badge variant="secondary" className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 text-[10px] text-sky-700 dark:text-sky-300">
+                Incluída na fatura
+              </Badge>
+            ) : null}
             {event.statusLabel ? (
               <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-2.5 text-[10px]">
                 {event.statusLabel}

@@ -31,7 +31,7 @@ import { calculateServicoOutstandingChargeForCompetency } from "@shared/servico-
 import { format, getDaysInMonth } from "date-fns";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { fetchServicoCobrancaPagamentos } from "@/services/api/servicos";
-import { buildFinancialCalendarEvents } from "@/lib/financial-calendar";
+import { buildFinancialCalendarEvents, getFinancialCalendarEventImpactAmount } from "@/lib/financial-calendar";
 
 const PrevisaoSaldoChart = lazy(
   () => import("@/components/charts/previsao-saldo-chart"),
@@ -108,7 +108,7 @@ export default function PrevisaoPage() {
   const servicosMes = servicosSaidaMes.reduce((sum, item) => sum + item.valor, 0);
   const cartoesMes = monthlyEvents
     .filter((event) => event.source === "fatura_cartao" && event.direction === "saida")
-    .reduce((sum, event) => sum + (event.amount ?? 0), 0);
+    .reduce((sum, event) => sum + getFinancialCalendarEventImpactAmount(event), 0);
 
   const totalSaida = pagarDividas + servicosMes + cartoesMes;
   const saldoPrevisto = totalEntradas - totalSaida;
@@ -128,10 +128,10 @@ export default function PrevisaoPage() {
     const eventsOfDay = monthlyEvents.filter((event) => event.date === dayStr);
     const entradas = eventsOfDay
       .filter((event) => event.direction === "entrada")
-      .reduce((sum, event) => sum + (event.amount ?? 0), 0);
+      .reduce((sum, event) => sum + getFinancialCalendarEventImpactAmount(event), 0);
     const saidas = eventsOfDay
       .filter((event) => event.direction === "saida")
-      .reduce((sum, event) => sum + (event.amount ?? 0), 0);
+      .reduce((sum, event) => sum + getFinancialCalendarEventImpactAmount(event), 0);
 
     return { dia: day, entradas, saidas };
   });

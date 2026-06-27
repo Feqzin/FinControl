@@ -83,7 +83,10 @@ import {
   getInvoiceCompetency,
   groupParcelasCompraByCompraId,
 } from "../src/lib/card-limit-usage";
-import { buildFinancialCalendarEvents } from "../src/lib/financial-calendar";
+import {
+  buildFinancialCalendarEvents,
+  getFinancialCalendarEventImpactAmount,
+} from "../src/lib/financial-calendar";
 import {
   buildTimelineLayout,
   findSelectedTimelineEvent,
@@ -6294,6 +6297,9 @@ test("calendário financeiro: inclui fatura e parcela do cartão sem duplicar se
   assert.ok(installmentEvent);
   assert.equal(installmentEvent?.statusLabel, "Cartão pendente");
   assert.equal(installmentEvent?.secondaryStatusLabel, "Ag. reembolso");
+  assert.equal(installmentEvent?.includedInInvoice, true);
+  assert.equal(installmentEvent?.affectsTotal, false);
+  assert.equal(getFinancialCalendarEventImpactAmount(installmentEvent!), 0);
 
   assert.equal(linkedServiceEvent, undefined);
   assert.ok(mensalServiceEvent);
@@ -6341,6 +6347,201 @@ test("calendário financeiro: serviço projetado no cartão impacta apenas a fat
   assert.ok(invoiceEvent);
   assert.equal(invoiceEvent?.amount, 12.9);
   assert.equal(serviceEvent, undefined);
+});
+
+test("calendário financeiro: não duplica fatura e parcelas do mesmo cartão no total do dia", () => {
+  const cartao = buildCartaoViewFixture({
+    id: "card-itau-calendario",
+    nome: "Itaú Uniclass Visa",
+    diaVencimento: 23,
+  });
+  const compras = [
+    buildCompraCartaoViewFixture({
+      id: "compra-placa-video",
+      cartaoId: "card-itau-calendario",
+      descricao: "Placa de Video",
+      valorTotal: "910.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "910.00",
+      dataCompra: "2026-08-02",
+      pessoaId: null,
+      statusPessoa: null,
+    }),
+    buildCompraCartaoViewFixture({
+      id: "compra-tv-lg",
+      cartaoId: "card-itau-calendario",
+      descricao: "TV LG OLED C5 42 POLEGADAS",
+      valorTotal: "410.67",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "410.67",
+      dataCompra: "2026-08-04",
+      pessoaId: null,
+      statusPessoa: null,
+    }),
+    buildCompraCartaoViewFixture({
+      id: "compra-airpods",
+      cartaoId: "card-itau-calendario",
+      descricao: "Airpods Pro 3 - Shopee",
+      valorTotal: "148.50",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "148.50",
+      dataCompra: "2026-08-07",
+      pessoaId: null,
+      statusPessoa: null,
+    }),
+  ];
+  const parcelasCompra = [
+    buildParcelaCompraViewFixture({
+      id: "parcela-placa-video",
+      compraCartaoId: "compra-placa-video",
+      numero: 1,
+      valor: "910.00",
+      dataVencimento: "2026-08-23",
+      statusCartao: "pendente",
+      statusPessoa: null,
+    }),
+    buildParcelaCompraViewFixture({
+      id: "parcela-tv-lg",
+      compraCartaoId: "compra-tv-lg",
+      numero: 1,
+      valor: "410.67",
+      dataVencimento: "2026-08-23",
+      statusCartao: "pendente",
+      statusPessoa: null,
+    }),
+    buildParcelaCompraViewFixture({
+      id: "parcela-airpods",
+      compraCartaoId: "compra-airpods",
+      numero: 1,
+      valor: "148.50",
+      dataVencimento: "2026-08-23",
+      statusCartao: "pendente",
+      statusPessoa: null,
+    }),
+  ];
+
+  const events = buildFinancialCalendarEvents({
+    monthReference: "2026-08",
+    cartoes: [cartao],
+    compras,
+    parcelasCompra,
+    cartaoFaturaPagamentos: [],
+    dividas: [],
+    parcelas: [],
+    pessoas: [],
+    servicos: [],
+    servicoCobrancaPagamentos: [],
+    rendas: [],
+    metas: [],
+    referenceDate: "2026-08-01",
+  });
+
+  const invoiceEvent = events.find((event) => event.source === "fatura_cartao" && event.entityId === "card-itau-calendario");
+  const installmentEvents = events.filter((event) => event.source === "parcela_compra" && event.date === "2026-08-23");
+  const displayInstallmentsTotal = installmentEvents.reduce((sum, event) => sum + (event.amount ?? 0), 0);
+  const impactDayTotal = events
+    .filter((event) => event.date === "2026-08-23" && event.direction === "saida")
+    .reduce((sum, event) => sum + getFinancialCalendarEventImpactAmount(event), 0);
+
+  assert.ok(invoiceEvent);
+  assert.equal(invoiceEvent?.amount, 1469.17);
+  assert.equal(Number(displayInstallmentsTotal.toFixed(2)), 1469.17);
+  assert.equal(installmentEvents.length, 3);
+  assert.equal(installmentEvents.every((event) => event.includedInInvoice === true), true);
+  assert.equal(installmentEvents.every((event) => event.affectsTotal === false), true);
+  assert.equal(Number(impactDayTotal.toFixed(2)), 1469.17);
+});
+
+test("calendário financeiro: não duplica parcelas quando há mais de um cartão com fatura agregada", () => {
+  const cartoes = [
+    buildCartaoViewFixture({
+      id: "card-itau-multi",
+      nome: "Itaú",
+      diaVencimento: 23,
+    }),
+    buildCartaoViewFixture({
+      id: "card-nubank-multi",
+      nome: "Nubank",
+      diaVencimento: 23,
+    }),
+  ];
+  const compras = [
+    buildCompraCartaoViewFixture({
+      id: "compra-itau-multi",
+      cartaoId: "card-itau-multi",
+      descricao: "Notebook",
+      valorTotal: "500.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "500.00",
+      dataCompra: "2026-08-02",
+      pessoaId: null,
+      statusPessoa: null,
+    }),
+    buildCompraCartaoViewFixture({
+      id: "compra-nubank-multi",
+      cartaoId: "card-nubank-multi",
+      descricao: "Celular",
+      valorTotal: "300.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "300.00",
+      dataCompra: "2026-08-04",
+      pessoaId: null,
+      statusPessoa: null,
+    }),
+  ];
+  const parcelasCompra = [
+    buildParcelaCompraViewFixture({
+      id: "parcela-itau-multi",
+      compraCartaoId: "compra-itau-multi",
+      numero: 1,
+      valor: "500.00",
+      dataVencimento: "2026-08-23",
+      statusCartao: "pendente",
+      statusPessoa: null,
+    }),
+    buildParcelaCompraViewFixture({
+      id: "parcela-nubank-multi",
+      compraCartaoId: "compra-nubank-multi",
+      numero: 1,
+      valor: "300.00",
+      dataVencimento: "2026-08-23",
+      statusCartao: "pendente",
+      statusPessoa: null,
+    }),
+  ];
+
+  const events = buildFinancialCalendarEvents({
+    monthReference: "2026-08",
+    cartoes,
+    compras,
+    parcelasCompra,
+    cartaoFaturaPagamentos: [],
+    dividas: [],
+    parcelas: [],
+    pessoas: [],
+    servicos: [],
+    servicoCobrancaPagamentos: [],
+    rendas: [],
+    metas: [],
+    referenceDate: "2026-08-01",
+  });
+
+  const impactDayTotal = events
+    .filter((event) => event.date === "2026-08-23" && event.direction === "saida")
+    .reduce((sum, event) => sum + getFinancialCalendarEventImpactAmount(event), 0);
+
+  assert.equal(Number(impactDayTotal.toFixed(2)), 800);
+  assert.equal(
+    events
+      .filter((event) => event.source === "parcela_compra")
+      .every((event) => event.includedInInvoice === true && event.affectsTotal === false),
+    true,
+  );
 });
 
 test("calendário financeiro: serviço semanal usa 4 semanas e deixa anualização só como hint secundário", () => {
@@ -6430,10 +6631,18 @@ test("calendário financeiro: pagamento parcial reduz o valor da fatura e atuali
   });
 
   const invoiceEvent = events.find((event) => event.source === "fatura_cartao" && event.entityId === "card-partial-calendar");
+  const installmentEvent = events.find((event) => event.source === "parcela_compra" && event.entityId === "compra-partial-calendar");
+  const impactTotal = events
+    .filter((event) => event.date === "2026-06-10" && event.direction === "saida")
+    .reduce((sum, event) => sum + getFinancialCalendarEventImpactAmount(event), 0);
 
   assert.ok(invoiceEvent);
   assert.equal(invoiceEvent?.amount, 120);
   assert.equal(invoiceEvent?.statusLabel, "Fatura parcialmente paga");
+  assert.ok(installmentEvent);
+  assert.equal(installmentEvent?.includedInInvoice, true);
+  assert.equal(installmentEvent?.affectsTotal, false);
+  assert.equal(Number(impactTotal.toFixed(2)), 120);
 });
 
 test("calendário financeiro: pagamento cancelado não reduz a fatura nem reaproveita alocação cancelada", () => {
@@ -6498,6 +6707,73 @@ test("calendário financeiro: pagamento cancelado não reduz a fatura nem reapro
   assert.ok(invoiceEvent);
   assert.equal(invoiceEvent?.amount, 200);
   assert.equal(invoiceEvent?.statusLabel, "Fatura aberta");
+});
+
+test("calendário financeiro: fatura totalmente paga não volta a somar parcelas individuais", () => {
+  const currentMonth = "2026-06";
+  const cartao = buildCartaoViewFixture({
+    id: "card-paid-calendar",
+    nome: "Mercado Pago Visa",
+    diaVencimento: 10,
+  });
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-paid-calendar",
+    cartaoId: "card-paid-calendar",
+    descricao: "Compra quitada",
+    valorTotal: "200.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "200.00",
+    dataCompra: "2026-06-02",
+    pessoaId: null,
+    statusPessoa: null,
+  });
+  const parcelaCompra = buildParcelaCompraViewFixture({
+    id: "parcela-paid-calendar",
+    compraCartaoId: "compra-paid-calendar",
+    numero: 1,
+    valor: "200.00",
+    dataVencimento: "2026-06-10",
+    statusCartao: "pendente",
+    statusPessoa: null,
+  });
+  const pagamento = buildCartaoFaturaPagamentoFixture({
+    id: "pagamento-paid-calendar",
+    cartaoId: "card-paid-calendar",
+    competenciaAno: 2026,
+    competenciaMes: 6,
+    valorPago: "200.00",
+    dataPagamento: "2026-06-09",
+    tipoPagamento: "total",
+    considerarNoSaldoCompetencia: true,
+  });
+
+  const events = buildFinancialCalendarEvents({
+    monthReference: currentMonth,
+    cartoes: [cartao],
+    compras: [compra],
+    parcelasCompra: [parcelaCompra],
+    cartaoFaturaPagamentos: [pagamento],
+    dividas: [],
+    parcelas: [],
+    pessoas: [],
+    servicos: [],
+    rendas: [],
+    metas: [],
+    referenceDate: "2026-06-01",
+  });
+
+  const invoiceEvent = events.find((event) => event.source === "fatura_cartao" && event.entityId === "card-paid-calendar");
+  const installmentEvent = events.find((event) => event.source === "parcela_compra" && event.entityId === "compra-paid-calendar");
+  const impactTotal = events
+    .filter((event) => event.date === "2026-06-10" && event.direction === "saida")
+    .reduce((sum, event) => sum + getFinancialCalendarEventImpactAmount(event), 0);
+
+  assert.equal(invoiceEvent, undefined);
+  assert.ok(installmentEvent);
+  assert.equal(installmentEvent?.includedInInvoice, true);
+  assert.equal(installmentEvent?.affectsTotal, false);
+  assert.equal(Number(impactTotal.toFixed(2)), 0);
 });
 
 test("calendário financeiro: respeita mês de cobrança anual e agrega renda, dívida parcelada e meta no mês correto", () => {
@@ -6628,11 +6904,6 @@ test("calendário financeiro: respeita mês de cobrança anual e agrega renda, d
 });
 
 test("calendário financeiro: usa fallback legado para parcela futura sem materialização", () => {
-  const cartao = buildCartaoViewFixture({
-    id: "card-fallback",
-    nome: "Cartão legado",
-    diaVencimento: 12,
-  });
   const compra = {
     ...buildCompraCartaoViewFixture({
       id: "compra-legada",
@@ -6642,7 +6913,7 @@ test("calendário financeiro: usa fallback legado para parcela futura sem materi
       parcelas: 3,
       parcelaAtual: 2,
       valorParcela: "400.00",
-      dataCompra: "2026-04-08",
+      dataCompra: "2026-04-12",
     }),
     pessoaId: null,
     statusPessoa: null,
@@ -6650,7 +6921,7 @@ test("calendário financeiro: usa fallback legado para parcela futura sem materi
 
   const events = buildFinancialCalendarEvents({
     monthReference: "2026-05",
-    cartoes: [cartao],
+    cartoes: [],
     compras: [compra],
     parcelasCompra: [],
     dividas: [],
@@ -6668,6 +6939,8 @@ test("calendário financeiro: usa fallback legado para parcela futura sem materi
   assert.equal(installmentEvent?.date, "2026-05-12");
   assert.equal(installmentEvent?.amount, 400);
   assert.equal(installmentEvent?.secondaryStatusLabel, undefined);
+  assert.equal(installmentEvent?.includedInInvoice, false);
+  assert.equal(getFinancialCalendarEventImpactAmount(installmentEvent!), 400);
 });
 
 test("serviços: cobrança pendente na competência considera apenas o restante após pagamento", () => {

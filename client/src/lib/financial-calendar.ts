@@ -6,13 +6,13 @@ import type {
   Divida,
   Meta,
   Parcela,
-    ParcelaCompra,
-    Pessoa,
-    Renda,
-    Servico,
-    ServicoCobrancaPagamento,
+  ParcelaCompra,
+  Pessoa,
+  Renda,
+  Servico,
+  ServicoCobrancaPagamento,
 } from "@shared/schema";
-import { buildCardInvoiceSnapshots } from "@shared/card-invoice-payments";
+import { buildCardInvoiceSnapshots, type CardInvoiceSnapshot } from "@shared/card-invoice-payments";
 import { resolveDueDateFromCompetencia } from "@shared/parcelas-compra-competency";
 import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
 import {
@@ -56,6 +56,9 @@ export type FinancialCalendarEvent = {
   title: string;
   subtitle?: string;
   amount?: number;
+  financialImpactAmount?: number;
+  affectsTotal?: boolean;
+  includedInInvoice?: boolean;
   statusLabel?: string;
   secondaryStatusLabel?: string;
   entityId?: string;
@@ -159,6 +162,45 @@ function buildCartoesMap(cartoes: Cartao[]): Map<string, Cartao> {
   return new Map(cartoes.map((cartao) => [cartao.id, cartao]));
 }
 
+function buildCardInvoiceSnapshotKey(cartaoId: string, monthReference: string): string {
+  return `${cartaoId}:${monthReference}`;
+}
+
+function buildCardInvoiceSnapshotsByKey(
+  input: BuildFinancialCalendarEventsInput,
+  parcelasByCompraId: ReturnType<typeof groupParcelasCompraByCompraId>,
+): Map<string, CardInvoiceSnapshot> {
+  const snapshotsByKey = new Map<string, CardInvoiceSnapshot>();
+
+  for (const cartao of input.cartoes) {
+    const snapshots = buildCardInvoiceSnapshots({
+      installments: buildInvoiceTrackingInstallmentsForCard(
+        cartao.id,
+        input.compras,
+        parcelasByCompraId,
+        {
+          servicos: input.servicos,
+          servicoCobrancaPagamentos: input.servicoCobrancaPagamentos,
+          monthReferences: [input.monthReference],
+        },
+      ),
+      payments: (input.cartaoFaturaPagamentos ?? []).filter((payment) => payment.cartaoId === cartao.id),
+      getDueDayForCard: () => cartao.diaVencimento,
+      referenceDate: input.referenceDate,
+    });
+
+    for (const snapshot of snapshots) {
+      if (snapshot.monthReference !== input.monthReference) continue;
+      snapshotsByKey.set(
+        buildCardInvoiceSnapshotKey(cartao.id, snapshot.monthReference),
+        snapshot,
+      );
+    }
+  }
+
+  return snapshotsByKey;
+}
+
 function formatCardInstallmentStatusLabel(
   statusCartao: string | null | undefined,
   date: string | null | undefined,
@@ -248,26 +290,14 @@ function buildDebtEvents(input: BuildFinancialCalendarEventsInput): FinancialCal
   return events;
 }
 
-function buildCardInvoiceEvents(input: BuildFinancialCalendarEventsInput): FinancialCalendarEvent[] {
-  const parcelasByCompraId = groupParcelasCompraByCompraId(input.parcelasCompra);
+function buildCardInvoiceEvents(
+  input: BuildFinancialCalendarEventsInput,
+  snapshotsByKey: Map<string, CardInvoiceSnapshot>,
+): FinancialCalendarEvent[] {
   const events: FinancialCalendarEvent[] = [];
 
   for (const cartao of input.cartoes) {
-    const snapshot = buildCardInvoiceSnapshots({
-      installments: buildInvoiceTrackingInstallmentsForCard(
-        cartao.id,
-        input.compras,
-        parcelasByCompraId,
-        {
-          servicos: input.servicos,
-          servicoCobrancaPagamentos: input.servicoCobrancaPagamentos,
-          monthReferences: [input.monthReference],
-        },
-      ),
-      payments: (input.cartaoFaturaPagamentos ?? []).filter((payment) => payment.cartaoId === cartao.id),
-      getDueDayForCard: () => cartao.diaVencimento,
-      referenceDate: input.referenceDate,
-    }).find((item) => item.monthReference === input.monthReference);
+    const snapshot = snapshotsByKey.get(buildCardInvoiceSnapshotKey(cartao.id, input.monthReference));
 
     if (!snapshot?.dueDate || snapshot.remainingAmount <= 0) continue;
 
@@ -289,6 +319,8 @@ function buildCardInvoiceEvents(input: BuildFinancialCalendarEventsInput): Finan
       title: `Fatura ${cartao.nome}`,
       subtitle: `${snapshot.openInstallmentsCount} ${snapshot.openInstallmentsCount === 1 ? "lançamento em aberto" : "lançamentos em aberto"}`,
       amount: snapshot.remainingAmount,
+      financialImpactAmount: snapshot.remainingAmount,
+      affectsTotal: true,
       statusLabel,
       entityId: cartao.id,
     });
@@ -297,14 +329,21 @@ function buildCardInvoiceEvents(input: BuildFinancialCalendarEventsInput): Finan
   return events;
 }
 
-function buildCardInstallmentEvents(input: BuildFinancialCalendarEventsInput): FinancialCalendarEvent[] {
+function buildCardInstallmentEvents(
+  input: BuildFinancialCalendarEventsInput,
+  snapshotsByKey: Map<string, CardInvoiceSnapshot>,
+  parcelasByCompraId: ReturnType<typeof groupParcelasCompraByCompraId>,
+): FinancialCalendarEvent[] {
   const cartoesById = buildCartoesMap(input.cartoes);
-  const parcelasByCompraId = groupParcelasCompraByCompraId(input.parcelasCompra);
   const events: FinancialCalendarEvent[] = [];
 
   for (const compra of input.compras) {
     const cartao = cartoesById.get(compra.cartaoId);
     const materializedInstallments = parcelasByCompraId.get(compra.id) ?? [];
+    const coveringInvoiceSnapshot = snapshotsByKey.get(
+      buildCardInvoiceSnapshotKey(compra.cartaoId, input.monthReference),
+    );
+    const includedInInvoice = (coveringInvoiceSnapshot?.originalTotal ?? 0) > 0;
 
     if (materializedInstallments.length > 0) {
       for (const parcela of materializedInstallments) {
@@ -322,6 +361,9 @@ function buildCardInstallmentEvents(input: BuildFinancialCalendarEventsInput): F
           title: compra.descricao,
           subtitle: cartao ? `${cartao.nome} · Parcela ${parcela.numero}/${formatInstallmentCount(compra.parcelas)}` : `Parcela ${parcela.numero}/${formatInstallmentCount(compra.parcelas)}`,
           amount: toMoneyNumber(parcela.valor),
+          financialImpactAmount: includedInInvoice ? 0 : toMoneyNumber(parcela.valor),
+          affectsTotal: !includedInInvoice,
+          includedInInvoice,
           statusLabel: formatCardInstallmentStatusLabel(parcela.statusCartao, parcela.dataVencimento, input.referenceDate!),
           secondaryStatusLabel: formatReembolsoStatusLabel(compra, parcela.numero, parcela.statusPessoa, parcela.dataVencimento, input.referenceDate!),
           entityId: compra.id,
@@ -354,6 +396,9 @@ function buildCardInstallmentEvents(input: BuildFinancialCalendarEventsInput): F
         title: compra.descricao,
         subtitle: cartao ? `${cartao.nome} · Parcela ${installmentNumber}/${totalInstallments}` : `Parcela ${installmentNumber}/${totalInstallments}`,
         amount: toMoneyNumber(compra.valorParcela),
+        financialImpactAmount: includedInInvoice ? 0 : toMoneyNumber(compra.valorParcela),
+        affectsTotal: !includedInInvoice,
+        includedInInvoice,
         statusLabel: formatCardInstallmentStatusLabel("pendente", dueDate, input.referenceDate!),
         secondaryStatusLabel: formatReembolsoStatusLabel(compra, installmentNumber, compra.statusPessoa, dueDate, input.referenceDate!),
         entityId: compra.id,
@@ -476,14 +521,16 @@ export function buildFinancialCalendarEvents(rawInput: BuildFinancialCalendarEve
     metas: rawInput.metas ?? [],
     referenceDate: rawInput.referenceDate ?? format(new Date(), "yyyy-MM-dd"),
   };
+  const parcelasByCompraId = groupParcelasCompraByCompraId(input.parcelasCompra);
+  const cardInvoiceSnapshotsByKey = buildCardInvoiceSnapshotsByKey(input, parcelasByCompraId);
 
   const events = [
     ...buildIncomeEvents(input),
     ...buildDebtEvents(input),
     ...buildMetaEvents(input),
     ...buildServiceEvents(input),
-    ...buildCardInvoiceEvents(input),
-    ...buildCardInstallmentEvents(input),
+    ...buildCardInvoiceEvents(input, cardInvoiceSnapshotsByKey),
+    ...buildCardInstallmentEvents(input, cardInvoiceSnapshotsByKey, parcelasByCompraId),
   ];
 
   return events.sort((left, right) => {
@@ -511,4 +558,10 @@ export function buildFinancialCalendarDayMap(events: FinancialCalendarEvent[]): 
   }
 
   return grouped;
+}
+
+export function getFinancialCalendarEventImpactAmount(event: FinancialCalendarEvent): number {
+  if (event.affectsTotal === false) return 0;
+  if (typeof event.financialImpactAmount === "number") return event.financialImpactAmount;
+  return event.amount ?? 0;
 }

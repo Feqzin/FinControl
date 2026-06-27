@@ -13,7 +13,7 @@ import type {
   ServicoCobrancaPagamento,
 } from "@shared/schema";
 import { resolveDueDateFromCompetencia } from "@shared/parcelas-compra-competency";
-import { buildFinancialCalendarEvents } from "@/lib/financial-calendar";
+import { buildFinancialCalendarEvents, getFinancialCalendarEventImpactAmount } from "@/lib/financial-calendar";
 import { divide, formatMoneyFixed, toMoneyNumber, toCents } from "@/lib/money";
 
 export type FuturePurchaseSimulationStatus = "Pode comprar" | "Atenção" | "Não recomendado";
@@ -278,12 +278,12 @@ function buildStaticCashflowByMonthReference(
     const actualIncome = round2(
       events
         .filter((event) => event.direction === "entrada")
-        .reduce((sum, event) => sum + (event.amount ?? 0), 0),
+        .reduce((sum, event) => sum + getFinancialCalendarEventImpactAmount(event), 0),
     );
     const actualExpenses = round2(
       events
         .filter((event) => event.direction === "saida")
-        .reduce((sum, event) => sum + (event.amount ?? 0), 0),
+        .reduce((sum, event) => sum + getFinancialCalendarEventImpactAmount(event), 0),
     );
 
     return [monthReference, {
