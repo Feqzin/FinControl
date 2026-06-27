@@ -155,18 +155,18 @@ function buildServicoCardProjectionPreview(
 ): string {
   if (periodicidade === "anual") {
     const monthLabel = formatServicoBillingMonthLabel(billingMonthValue) ?? "o mês configurado";
-    return `Este serviço entrará na fatura apenas em ${monthLabel} de cada ano.`;
+    return `Previsão anual em ${monthLabel}. Não cria compra real.`;
   }
 
   if (periodicidade === "semanal") {
-    return "Este serviço entrará como previsão mensal na fatura do cartão usando a regra de 4 semanas por mês.";
+    return "Previsão mensal usando a regra de 4 semanas por mês.";
   }
 
   if (periodicidade === "mensal") {
-    return "Este serviço entrará como previsão na fatura do cartão todo mês.";
+    return "Previsão mensal nas faturas futuras. Não cria compra real.";
   }
 
-  return "Este serviço entrará nas faturas futuras do cartão conforme a periodicidade configurada.";
+  return "Previsão futura conforme a periodicidade configurada. Não cria compra real.";
 }
 
 export default function ServicosPage() {
@@ -320,6 +320,9 @@ export default function ServicosPage() {
   const isEditAnnualBilling = editForm.periodicidadeCobranca === "anual";
   const isCreateCardPayment = form.formaPagamento === "cartao";
   const isEditCardPayment = editForm.formaPagamento === "cartao";
+  const hasAvailableCards = cartoes.length > 0;
+  const showCreateCardOptions = isCreateCardPayment && hasAvailableCards;
+  const showEditCardOptions = isEditCardPayment && hasAvailableCards;
   const createProjectionPreview = buildServicoCardProjectionPreview(form.periodicidadeCobranca, form.mesCobranca);
   const editProjectionPreview = buildServicoCardProjectionPreview(editForm.periodicidadeCobranca, editForm.mesCobranca);
 
@@ -620,8 +623,8 @@ export default function ServicosPage() {
                 <Plus className="mr-2 h-4 w-4" /> Novo serviço
               </Button>
             </DialogTrigger>
-            <DialogContent>
-            <DialogHeader>
+            <DialogContent className="w-[min(720px,calc(100vw-1.5rem))] max-w-[720px] gap-0 overflow-hidden p-0">
+            <DialogHeader className="border-b border-border/60 px-4 py-4 pr-12 sm:px-6 sm:py-5">
               <DialogTitle>Novo Serviço</DialogTitle>
               <DialogDescription className="sr-only">
                 Cadastre um serviço informando nome, categoria, valor, periodicidade, forma de pagamento e vínculo opcional com compra de cartão.
@@ -701,8 +704,9 @@ export default function ServicosPage() {
                   },
                 );
               }}
-              className="space-y-4"
+              className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden"
             >
+              <div className="min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
               <div className="space-y-2">
                 <Label>Ícone</Label>
                 <Suspense fallback={<Skeleton className="h-14 w-full" />}>
@@ -811,12 +815,12 @@ export default function ServicosPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <div className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+                <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                   <p>{createBillingResumo.primary}</p>
                   {createBillingResumo.secondary ? <p>{createBillingResumo.secondary}</p> : null}
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {isCreateAnnualBilling ? (
                   <div className="space-y-2">
                     <Label>Mês de cobrança</Label>
@@ -866,7 +870,7 @@ export default function ServicosPage() {
                     </Label>
                   </div>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 sm:col-span-2">
                   <Label>Forma de pagamento</Label>
                   <Select
                     value={form.formaPagamento}
@@ -888,9 +892,10 @@ export default function ServicosPage() {
                   </Select>
                 </div>
               </div>
-              {isCreateCardPayment && (
+              {isCreateCardPayment ? (
                 <div className="space-y-3 rounded-xl border border-border/60 bg-muted/15 p-3">
-                  <div className="space-y-2">
+                  {showCreateCardOptions ? (
+                    <div className="space-y-2">
                     <Label>Cartão da cobrança</Label>
                     <Select
                       value={form.cartaoId || ""}
@@ -908,12 +913,18 @@ export default function ServicosPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-muted-foreground">
-                      Escolha o cartão que deve receber esta projeção futura.
+                    <p className="text-[11px] text-muted-foreground">
+                      Escolha o cartão que deve receber esta previsão futura.
                     </p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="flex items-start gap-3 rounded-lg border border-dashed border-border/60 bg-background/80 p-3">
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-border/60 bg-background/70 px-3 py-2 text-xs text-muted-foreground">
+                      Cadastre um cartão para vincular ou projetar esta cobrança.
+                    </div>
+                  )}
+                  {showCreateCardOptions ? (
+                    <div className="space-y-2">
+                    <label className="flex items-start gap-3 rounded-lg border border-dashed border-border/60 bg-background/80 px-3 py-2.5">
                       <Checkbox
                         checked={form.projetarNaFaturaCartao}
                         onCheckedChange={(checked) =>
@@ -923,22 +934,26 @@ export default function ServicosPage() {
                       />
                       <div className="space-y-1">
                         <span className="text-sm font-medium">Projetar este serviço na fatura do cartão</span>
-                        <p className="text-xs text-muted-foreground">
-                          Quando ativo, este serviço será considerado nas faturas futuras do cartão conforme a periodicidade configurada. Isso não cria uma compra real automaticamente.
+                        <p className="text-[11px] text-muted-foreground">
+                          Entra como previsão nas faturas futuras. Não cria compra real.
                         </p>
                       </div>
                     </label>
                     {form.projetarNaFaturaCartao ? (
-                      <p className="text-xs text-blue-700 dark:text-blue-300">{createProjectionPreview}</p>
+                      <div className="rounded-md border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
+                        {createProjectionPreview}
+                      </div>
                     ) : null}
-                    {form.compraCartaoId !== COMPRA_NONE_VALUE ? (
-                      <p className="text-xs text-amber-700 dark:text-amber-300">
-                        Este serviço já está vinculado a uma compra real do cartão. A projeção não será duplicada.
-                      </p>
-                    ) : null}
-                  </div>
+                    </div>
+                  ) : null}
+                  {form.compraCartaoId !== COMPRA_NONE_VALUE ? (
+                    <div className="rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                      Este serviço já está vinculado a uma compra real do cartão. A projeção não será duplicada.
+                    </div>
+                  ) : null}
                 </div>
-              )}
+              ) : null}
+              {isCreateCardPayment ? (
               <div className="space-y-2">
                 <Label>Compra de cartão vinculada (opcional)</Label>
                 <CompraCartaoSearchPicker
@@ -955,9 +970,13 @@ export default function ServicosPage() {
                   testId="select-servico-compra-vinculada"
                 />
               </div>
+              ) : null}
+              </div>
+              <div className="border-t border-border/60 bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
               <Button type="submit" className="w-full" data-testid="button-save-servico" disabled={createMutation.isPending}>
                 {createMutation.isPending ? "Salvando..." : "Salvar"}
               </Button>
+              </div>
             </form>
             </DialogContent>
           </Dialog>
@@ -1314,8 +1333,8 @@ export default function ServicosPage() {
           }
         }}
       >
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="w-[min(720px,calc(100vw-1.5rem))] max-w-[720px] gap-0 overflow-hidden p-0">
+          <DialogHeader className="border-b border-border/60 px-4 py-4 pr-12 sm:px-6 sm:py-5">
             <DialogTitle>Editar Serviço</DialogTitle>
             <DialogDescription className="sr-only">
               Atualize os dados do serviço selecionado, incluindo cobrança, periodicidade, forma de pagamento e vínculo com compra de cartão.
@@ -1374,8 +1393,9 @@ export default function ServicosPage() {
                 },
               );
             }}
-            className="space-y-4"
+            className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden"
           >
+            <div className="min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
             <div className="space-y-2">
               <Label>Ícone</Label>
               <Suspense fallback={<Skeleton className="h-14 w-full" />}>
@@ -1482,12 +1502,12 @@ export default function ServicosPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <div className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+              <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                 <p>{editBillingResumo.primary}</p>
                 {editBillingResumo.secondary ? <p>{editBillingResumo.secondary}</p> : null}
               </div>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {isEditAnnualBilling && (
                 <div className="space-y-2">
                   <Label>Mês de cobrança</Label>
@@ -1537,7 +1557,7 @@ export default function ServicosPage() {
                   </Label>
                 </div>
               </div>
-                <div className="space-y-2">
+                <div className="space-y-2 sm:col-span-2">
                   <Label>Forma de pagamento</Label>
                   <Select
                     value={editForm.formaPagamento}
@@ -1559,8 +1579,9 @@ export default function ServicosPage() {
                   </Select>
                 </div>
               </div>
-            {isEditCardPayment && (
+            {isEditCardPayment ? (
               <div className="space-y-3 rounded-xl border border-border/60 bg-muted/15 p-3">
+                {showEditCardOptions ? (
                 <div className="space-y-2">
                   <Label>Cartão da cobrança</Label>
                   <Select
@@ -1579,12 +1600,18 @@ export default function ServicosPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Escolha o cartão que deve receber esta projeção futura.
+                  <p className="text-[11px] text-muted-foreground">
+                    Escolha o cartão que deve receber esta previsão futura.
                   </p>
                 </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border/60 bg-background/70 px-3 py-2 text-xs text-muted-foreground">
+                    Cadastre um cartão para vincular ou projetar esta cobrança.
+                  </div>
+                )}
+                {showEditCardOptions ? (
                 <div className="space-y-2">
-                  <label className="flex items-start gap-3 rounded-lg border border-dashed border-border/60 bg-background/80 p-3">
+                  <label className="flex items-start gap-3 rounded-lg border border-dashed border-border/60 bg-background/80 px-3 py-2.5">
                     <Checkbox
                       checked={editForm.projetarNaFaturaCartao}
                       onCheckedChange={(checked) =>
@@ -1594,22 +1621,26 @@ export default function ServicosPage() {
                     />
                     <div className="space-y-1">
                       <span className="text-sm font-medium">Projetar este serviço na fatura do cartão</span>
-                      <p className="text-xs text-muted-foreground">
-                        Quando ativo, este serviço será considerado nas faturas futuras do cartão conforme a periodicidade configurada. Isso não cria uma compra real automaticamente.
+                      <p className="text-[11px] text-muted-foreground">
+                        Entra como previsão nas faturas futuras. Não cria compra real.
                       </p>
                     </div>
                   </label>
                   {editForm.projetarNaFaturaCartao ? (
-                    <p className="text-xs text-blue-700 dark:text-blue-300">{editProjectionPreview}</p>
-                  ) : null}
-                  {editForm.compraCartaoId !== COMPRA_NONE_VALUE ? (
-                    <p className="text-xs text-amber-700 dark:text-amber-300">
-                      Este serviço já está vinculado a uma compra real do cartão. A projeção não será duplicada.
-                    </p>
+                    <div className="rounded-md border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
+                      {editProjectionPreview}
+                    </div>
                   ) : null}
                 </div>
+                ) : null}
+                {editForm.compraCartaoId !== COMPRA_NONE_VALUE ? (
+                  <div className="rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                    Este serviço já está vinculado a uma compra real do cartão. A projeção não será duplicada.
+                  </div>
+                ) : null}
               </div>
-            )}
+            ) : null}
+            {isEditCardPayment ? (
             <div className="space-y-2">
               <Label>Compra de cartão vinculada (opcional)</Label>
               <CompraCartaoSearchPicker
@@ -1626,9 +1657,13 @@ export default function ServicosPage() {
                 testId="select-edit-servico-compra-vinculada"
               />
             </div>
+            ) : null}
+            </div>
+            <div className="border-t border-border/60 bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
             <Button type="submit" className="w-full" data-testid="button-save-edit-servico" disabled={updateMutation.isPending}>
               {updateMutation.isPending ? "Salvando..." : "Salvar alterações"}
             </Button>
+            </div>
           </form>
         </DialogContent>
       </Dialog>

@@ -154,13 +154,13 @@ export function AppSidebar() {
               <span>Personalizar</span>
             </Button>
           </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
+          <DialogContent className="w-[min(680px,calc(100vw-1.5rem))] max-w-[680px] gap-0 overflow-hidden p-0">
+            <DialogHeader className="border-b border-border/60 px-4 py-4 pr-12 sm:px-6 sm:py-5">
               <DialogTitle>Personalizar</DialogTitle>
               <DialogDescription>Ajuste rapidamente seu modo de uso, a biblioteca de ícones e o menu lateral.</DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-2">
+            <div className="min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
               <div className="fintech-surface-subtle space-y-3 rounded-xl border p-4">
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Modo de uso</p>
@@ -199,37 +199,52 @@ export function AppSidebar() {
                 />
               </Suspense>
 
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full justify-start"
-                onClick={() => setShowManagePages((current) => !current)}
-                data-testid="button-toggle-manage-pages"
-              >
-                {showManagePages ? "Ocultar gestão de telas" : "Gerenciar telas do menu"}
-              </Button>
-            </div>
+              <div className="space-y-3 rounded-xl border border-border/60 bg-card/70 p-3 sm:p-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-between gap-3 text-left"
+                  onClick={() => setShowManagePages((current) => !current)}
+                  data-testid="button-toggle-manage-pages"
+                >
+                  <span>{showManagePages ? "Ocultar gestão de telas" : "Mostrar gestão de telas"}</span>
+                  <span className="text-xs text-muted-foreground">{allManageablePages.length} telas</span>
+                </Button>
 
-            {showManagePages ? (
-              <div className="space-y-1 max-h-[50vh] overflow-y-auto pr-2">
-                {allManageablePages.map((page) => (
-                  <div key={page.url} className="flex items-center justify-between p-2 hover:bg-muted/50 rounded-lg transition-colors">
-                    <span className="text-sm font-medium">{page.title}</span>
-                    <Switch
-                      checked={!prefs.hiddenPages.includes(page.url)}
-                      onCheckedChange={() => togglePage(page.url)}
-                    />
+                {showManagePages ? (
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-border/60 bg-background/80">
+                      <div className="border-b border-border/60 px-3 py-2.5 sm:px-4">
+                        <p className="text-sm font-medium">Telas do menu</p>
+                        <p className="text-xs text-muted-foreground">Mostre apenas o que você usa no dia a dia.</p>
+                      </div>
+
+                      <div className="max-h-[min(42dvh,320px)] overflow-y-auto p-2 sm:p-3">
+                        <div className="space-y-1">
+                          {allManageablePages.map((page) => (
+                            <div
+                              key={page.url}
+                              className="flex min-w-0 items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/40"
+                            >
+                              <span className="min-w-0 flex-1 text-sm font-medium">{page.title}</span>
+                              <Switch
+                                checked={!prefs.hiddenPages.includes(page.url)}
+                                onCheckedChange={() => togglePage(page.url)}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-amber-700 dark:text-amber-300">
+                      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                      <p className="text-xs font-medium">Ocultar uma tela não exclui seus dados.</p>
+                    </div>
                   </div>
-                ))}
+                ) : null}
               </div>
-            ) : null}
-
-            {showManagePages ? (
-              <div className="flex items-center gap-2 p-3 mt-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <p className="text-xs font-medium">Ocultar uma tela não exclui seus dados.</p>
-              </div>
-            ) : null}
+            </div>
           </DialogContent>
         </Dialog>
 
