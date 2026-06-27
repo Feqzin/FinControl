@@ -623,7 +623,7 @@ export default function ServicosPage() {
                 <Plus className="mr-2 h-4 w-4" /> Novo serviço
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-[min(720px,calc(100vw-1.5rem))] max-w-[720px] gap-0 overflow-hidden p-0">
+            <DialogContent className="w-[calc(100vw-1rem)] max-w-[720px] max-h-[calc(100dvh-1rem)] gap-0 overflow-hidden p-0 sm:w-[calc(100vw-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)]">
             <DialogHeader className="border-b border-border/60 px-4 py-4 pr-12 sm:px-6 sm:py-5">
               <DialogTitle>Novo Serviço</DialogTitle>
               <DialogDescription className="sr-only">
@@ -704,9 +704,9 @@ export default function ServicosPage() {
                   },
                 );
               }}
-              className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
             >
-              <div className="min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6 sm:py-5">
               <div className="space-y-2">
                 <Label>Ícone</Label>
                 <Suspense fallback={<Skeleton className="h-14 w-full" />}>
@@ -972,7 +972,7 @@ export default function ServicosPage() {
               </div>
               ) : null}
               </div>
-              <div className="border-t border-border/60 bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
+              <div className="shrink-0 border-t border-border/60 bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
               <Button type="submit" className="w-full" data-testid="button-save-servico" disabled={createMutation.isPending}>
                 {createMutation.isPending ? "Salvando..." : "Salvar"}
               </Button>
@@ -1333,7 +1333,7 @@ export default function ServicosPage() {
           }
         }}
       >
-        <DialogContent className="w-[min(720px,calc(100vw-1.5rem))] max-w-[720px] gap-0 overflow-hidden p-0">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-[720px] max-h-[calc(100dvh-1rem)] gap-0 overflow-hidden p-0 sm:w-[calc(100vw-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)]">
           <DialogHeader className="border-b border-border/60 px-4 py-4 pr-12 sm:px-6 sm:py-5">
             <DialogTitle>Editar Serviço</DialogTitle>
             <DialogDescription className="sr-only">
@@ -1393,9 +1393,9 @@ export default function ServicosPage() {
                 },
               );
             }}
-            className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden"
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
           >
-            <div className="min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6 sm:py-5">
             <div className="space-y-2">
               <Label>Ícone</Label>
               <Suspense fallback={<Skeleton className="h-14 w-full" />}>
@@ -1659,7 +1659,7 @@ export default function ServicosPage() {
             </div>
             ) : null}
             </div>
-            <div className="border-t border-border/60 bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
+            <div className="shrink-0 border-t border-border/60 bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
             <Button type="submit" className="w-full" data-testid="button-save-edit-servico" disabled={updateMutation.isPending}>
               {updateMutation.isPending ? "Salvando..." : "Salvar alterações"}
             </Button>

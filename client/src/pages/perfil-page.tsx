@@ -1246,8 +1246,8 @@ export default function PerfilPage() {
           setRestoreReviewOpen(open);
         }}
       >
-        <DialogContent className="h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[90vh] sm:w-[min(95vw,980px)] sm:max-w-[980px] sm:rounded-lg">
-          <div className="flex h-full flex-col">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-[980px] max-h-[calc(100dvh-1rem)] gap-0 overflow-hidden p-0 sm:w-[min(95vw,980px)] sm:max-h-[calc(100dvh-1.5rem)]">
+          <div className="flex min-h-0 flex-1 flex-col">
             <DialogHeader className="shrink-0 border-b bg-background px-4 py-3 sm:px-6">
               <DialogTitle>Revisar restauração</DialogTitle>
               <p className="text-sm text-muted-foreground">
@@ -1255,7 +1255,7 @@ export default function PerfilPage() {
               </p>
             </DialogHeader>
 
-            <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6">
               <div className="space-y-4">
                 {restorePreviewData ? (
                   <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">

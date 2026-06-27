@@ -181,14 +181,15 @@ export function CartaoFaturaPaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[calc(100vw-1rem)] max-w-3xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
-        <DialogHeader>
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-3xl max-h-[calc(100dvh-1rem)] gap-0 overflow-hidden p-0 sm:w-[calc(100vw-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)]">
+        <DialogHeader className="border-b border-border/60 px-4 py-4 pr-12 sm:px-6 sm:py-5">
           <DialogTitle>Pagamento de fatura</DialogTitle>
           <DialogDescription className="sr-only">
             Registre pagamento total ou parcial da fatura selecionada, defina como o valor será aplicado nas parcelas da competência e consulte o histórico dos pagamentos já lançados.
           </DialogDescription>
         </DialogHeader>
 
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6 sm:py-5">
         {!cartao || !snapshot ? (
           <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
             Nenhuma fatura selecionada para pagamento.
@@ -551,8 +552,9 @@ export function CartaoFaturaPaymentDialog({
             </div>
           </div>
         )}
+        </div>
 
-        <DialogFooter>
+        <DialogFooter className="border-t border-border/60 bg-background/95 px-4 py-3 backdrop-blur sm:px-6">
           <Button
             type="button"
             variant="ghost"

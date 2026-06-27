@@ -154,13 +154,13 @@ export function AppSidebar() {
               <span>Personalizar</span>
             </Button>
           </DialogTrigger>
-          <DialogContent className="w-[min(680px,calc(100vw-1.5rem))] max-w-[680px] gap-0 overflow-hidden p-0">
+          <DialogContent className="w-[calc(100vw-1rem)] max-w-[680px] max-h-[calc(100dvh-1rem)] gap-0 overflow-hidden p-0 sm:w-[calc(100vw-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)]">
             <DialogHeader className="border-b border-border/60 px-4 py-4 pr-12 sm:px-6 sm:py-5">
               <DialogTitle>Personalizar</DialogTitle>
               <DialogDescription>Ajuste rapidamente seu modo de uso, a biblioteca de ícones e o menu lateral.</DialogDescription>
             </DialogHeader>
 
-            <div className="min-h-0 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6 sm:py-5">
               <div className="fintech-surface-subtle space-y-3 rounded-xl border p-4">
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Modo de uso</p>
@@ -219,7 +219,7 @@ export function AppSidebar() {
                         <p className="text-xs text-muted-foreground">Mostre apenas o que você usa no dia a dia.</p>
                       </div>
 
-                      <div className="max-h-[min(42dvh,320px)] overflow-y-auto p-2 sm:p-3">
+                      <div className="p-2 sm:p-3">
                         <div className="space-y-1">
                           {allManageablePages.map((page) => (
                             <div
