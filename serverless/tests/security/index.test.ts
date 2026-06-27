@@ -9,6 +9,7 @@ import "./user-icon-library-route.test";
 import "./official-icons-route.test";
 import "./imports-reconcile-route.test";
 import "./parcelas-compra-competencia-route.test";
+import "./future-purchase-simulations-route.test";
 import "./comprovante-upload.test";
 import "./ownership.test";
 import "./pessoas-orphan-recovery.test";

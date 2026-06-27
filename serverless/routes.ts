@@ -34,6 +34,7 @@ import { createCompraAliasesController } from "./controllers/compra-aliases.cont
 import { createIconMatchRulesController } from "./controllers/icon-match-rules.controller.js";
 import { createUserIconLibraryController } from "./controllers/user-icon-library.controller.js";
 import { createOfficialIconsController } from "./controllers/official-icons.controller.js";
+import { createFuturePurchaseSimulationsController } from "./controllers/future-purchase-simulations.controller.js";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.js";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
 import { registerDebugDbPingRoute } from "./routes/debug-db-ping.route.js";
@@ -66,6 +67,7 @@ import { CompraAliasesService } from "./services/compra-aliases.service.js";
 import { IconMatchRulesService } from "./services/icon-match-rules.service.js";
 import { UserIconLibraryService } from "./services/user-icon-library.service.js";
 import { OfficialIconLibraryService } from "./services/official-icons.service.js";
+import { FuturePurchaseSimulationsService } from "./services/future-purchase-simulations.service.js";
 
 function auditRoute(
   req: Request,
@@ -117,6 +119,7 @@ export function registerRoutes(app: Express): void {
   const iconMatchRulesController = createIconMatchRulesController(new IconMatchRulesService());
   const userIconLibraryController = createUserIconLibraryController(new UserIconLibraryService());
   const officialIconsController = createOfficialIconsController(new OfficialIconLibraryService());
+  const futurePurchaseSimulationsController = createFuturePurchaseSimulationsController(new FuturePurchaseSimulationsService(storage));
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -135,6 +138,11 @@ export function registerRoutes(app: Express): void {
   });
 
   app.get("/api/reports/overview", requireAuth, reportsController.overview);
+  app.get("/api/simulador/compra-futura/simulacoes", requireAuth, futurePurchaseSimulationsController.list);
+  app.post("/api/simulador/compra-futura/simulacoes", requireAuth, futurePurchaseSimulationsController.create);
+  app.get("/api/simulador/compra-futura/simulacoes/:id", requireAuth, futurePurchaseSimulationsController.get);
+  app.patch("/api/simulador/compra-futura/simulacoes/:id", requireAuth, futurePurchaseSimulationsController.update);
+  app.delete("/api/simulador/compra-futura/simulacoes/:id", requireAuth, futurePurchaseSimulationsController.remove);
 
   registerDebugDbPingRoute(app);
 

@@ -518,6 +518,90 @@ export const insertCartaoFaturaPagamentoAlocacaoSchema = createInsertSchema(cart
 export type InsertCartaoFaturaPagamentoAlocacao = z.infer<typeof insertCartaoFaturaPagamentoAlocacaoSchema>;
 export type CartaoFaturaPagamentoAlocacao = typeof cartaoFaturaPagamentoAlocacoes.$inferSelect;
 
+export type FuturePurchaseSimulationStoredExtraIncome = {
+  id: string;
+  descricao: string;
+  valor: number;
+  data: string;
+  recorrente: boolean;
+};
+
+export type FuturePurchaseSimulationStoredBreakdownItem = {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  source: string;
+  amount: number;
+  impactAmount: number;
+  date: string;
+  includedInInvoice?: boolean;
+};
+
+export type FuturePurchaseSimulationStoredHighlight = {
+  label: string;
+  amount: number;
+  source: string;
+  subtitle?: string | null;
+};
+
+export type FuturePurchaseSimulationStoredTimelineSnapshot = {
+  monthReference: string;
+  label: string;
+  startingBalance: number;
+  actualIncome: number;
+  simulatedExtraIncome: number;
+  actualExpenses: number;
+  actualNonCardExpenses: number;
+  actualCardExpenses: number;
+  simulatedInstallment: number;
+  endingBalance: number;
+  belowZero: boolean;
+  belowReserve: boolean;
+  actualIncomeBreakdown: FuturePurchaseSimulationStoredBreakdownItem[];
+  actualExpenseBreakdown: FuturePurchaseSimulationStoredBreakdownItem[];
+  extraIncomeEntries: FuturePurchaseSimulationStoredExtraIncome[];
+  heaviestItems: FuturePurchaseSimulationStoredHighlight[];
+};
+
+export const futurePurchaseSimulations = pgTable("future_purchase_simulations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  nome: text("nome").notNull(),
+  purchaseName: text("purchase_name"),
+  totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull(),
+  installmentCount: integer("installment_count").notNull(),
+  cardId: varchar("card_id").references(() => cartoes.id, { onDelete: "set null" }),
+  firstInstallmentMonth: text("first_installment_month").notNull(),
+  minimumReserve: decimal("minimum_reserve", { precision: 12, scale: 2 }).notNull().default("0"),
+  extraIncomes: jsonb("extra_incomes")
+    .$type<FuturePurchaseSimulationStoredExtraIncome[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  resultStatus: text("result_status"),
+  worstMonth: text("worst_month"),
+  lowestBalance: decimal("lowest_balance", { precision: 12, scale: 2 }),
+  safePurchaseAmount: decimal("safe_purchase_amount", { precision: 12, scale: 2 }),
+  recommendedInstallments: integer("recommended_installments"),
+  monthlyTimelineSnapshot: jsonb("monthly_timeline_snapshot")
+    .$type<FuturePurchaseSimulationStoredTimelineSnapshot[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  futurePurchaseSimulationsUserIdIdx: index("idx_future_purchase_simulations_user_id").on(table.userId),
+  futurePurchaseSimulationsCardIdIdx: index("idx_future_purchase_simulations_card_id").on(table.cardId),
+  futurePurchaseSimulationsCreatedAtIdx: index("idx_future_purchase_simulations_created_at").on(table.createdAt),
+}));
+
+export const insertFuturePurchaseSimulationSchema = createInsertSchema(futurePurchaseSimulations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertFuturePurchaseSimulation = z.infer<typeof insertFuturePurchaseSimulationSchema>;
+export type FuturePurchaseSimulation = typeof futurePurchaseSimulations.$inferSelect;
+
 export const pessoaSaldoMovimentacoes = pgTable("pessoa_saldo_movimentacoes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),

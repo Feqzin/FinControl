@@ -13,7 +13,9 @@ import type {
   ServicoCobrancaPagamento,
 } from "@shared/schema";
 import { resolveDueDateFromCompetencia } from "@shared/parcelas-compra-competency";
+import type { FinancialCalendarEvent, FinancialCalendarEventSource } from "@/lib/financial-calendar";
 import { buildFinancialCalendarEvents, getFinancialCalendarEventImpactAmount } from "@/lib/financial-calendar";
+import { calculateCardLimitSummary, groupParcelasCompraByCompraId } from "@/lib/card-limit-usage";
 import { divide, formatMoneyFixed, toMoneyNumber, toCents } from "@/lib/money";
 
 export type FuturePurchaseSimulationStatus = "Pode comprar" | "Atenção" | "Não recomendado";
@@ -50,6 +52,24 @@ export type FuturePurchaseSimulationInput = {
   entradasExtras: FuturePurchaseExtraReceivable[];
 };
 
+export type FuturePurchaseSimulationBreakdownItem = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  source: FinancialCalendarEventSource;
+  amount: number;
+  impactAmount: number;
+  date: string;
+  includedInInvoice: boolean;
+};
+
+export type FuturePurchaseSimulationHighlight = {
+  label: string;
+  amount: number;
+  source: string;
+  subtitle?: string;
+};
+
 export type FuturePurchaseSimulationMonth = {
   monthReference: string;
   label: string;
@@ -57,54 +77,54 @@ export type FuturePurchaseSimulationMonth = {
   actualIncome: number;
   simulatedExtraIncome: number;
   actualExpenses: number;
+  actualNonCardExpenses: number;
+  actualCardExpenses: number;
   simulatedInstallment: number;
   endingBalance: number;
   belowZero: boolean;
   belowReserve: boolean;
+  actualIncomeBreakdown: FuturePurchaseSimulationBreakdownItem[];
+  actualExpenseBreakdown: FuturePurchaseSimulationBreakdownItem[];
+  extraIncomeEntries: FuturePurchaseExtraReceivable[];
+  heaviestItems: FuturePurchaseSimulationHighlight[];
 };
 
 export type FuturePurchaseSimulationSuggestion = {
-  kind: "fit" | "reserve" | "negative" | "extra_income" | "installments";
+  kind: "fit" | "reserve" | "negative" | "extra_income" | "installments" | "card_limit" | "timing";
   text: string;
+};
+
+export type FuturePurchaseCardLimitAssessment = {
+  applicable: boolean;
+  fits: boolean;
+  limitTotal: number;
+  committedBeforePurchase: number;
+  availableBeforePurchase: number;
+  committedAfterPurchase: number;
+  availableAfterPurchase: number;
+  shortfall: number;
 };
 
 export type FuturePurchaseSimulationResult = {
   status: FuturePurchaseSimulationStatus;
+  cashflowStatus: FuturePurchaseSimulationStatus;
   months: FuturePurchaseSimulationMonth[];
   worstMonth: FuturePurchaseSimulationMonth | null;
   lowestBalance: number;
   safePurchaseAmount: number;
+  safePurchaseAmountLimitedBy: "fluxo_caixa" | "limite_cartao" | "ambos";
   recommendedInstallmentCount: number | null;
   extraAmountNeeded: number;
+  cardLimitShortfall: number;
   monthsBelowReserveCount: number;
   monthsNegativeCount: number;
   installmentAmount: number;
   initialAvailableBalance: number;
+  totalSimulatedExtraIncome: number;
+  primaryReason: string | null;
+  lateExtraIncomeWarning: string | null;
+  cardLimitAssessment: FuturePurchaseCardLimitAssessment;
   suggestions: FuturePurchaseSimulationSuggestion[];
-};
-
-type BaseCashflowMonth = {
-  monthReference: string;
-  label: string;
-  actualIncome: number;
-  simulatedExtraIncome: number;
-  actualExpenses: number;
-};
-
-type StaticCashflowMonth = {
-  monthReference: string;
-  label: string;
-  actualIncome: number;
-  actualExpenses: number;
-};
-
-type PreparedFuturePurchaseProjectionBase = {
-  currentMonthReference: string;
-  normalizedInput: FuturePurchaseSimulationInput;
-  initialAvailableBalance: number;
-  monthReferences: string[];
-  staticCashflowByMonthReference: Map<string, StaticCashflowMonth>;
-  simulatedExtraIncomeByMonthReference: Map<string, number>;
 };
 
 type TemporaryReceivableEntry = {
@@ -113,6 +133,40 @@ type TemporaryReceivableEntry = {
   valor: number;
   data: string;
   monthReference: string;
+  recorrente: boolean;
+};
+
+type StaticCashflowMonth = {
+  monthReference: string;
+  label: string;
+  actualIncome: number;
+  actualExpenses: number;
+  actualCardExpenses: number;
+  actualNonCardExpenses: number;
+  actualIncomeBreakdown: FuturePurchaseSimulationBreakdownItem[];
+  actualExpenseBreakdown: FuturePurchaseSimulationBreakdownItem[];
+};
+
+type BaseCashflowMonth = StaticCashflowMonth & {
+  simulatedExtraIncome: number;
+  extraIncomeEntries: TemporaryReceivableEntry[];
+};
+
+type PreparedCardLimitBase = {
+  selectedCard: Cartao;
+  limitTotal: number;
+  committedBeforePurchase: number;
+  availableBeforePurchase: number;
+};
+
+type PreparedFuturePurchaseProjectionBase = {
+  currentMonthReference: string;
+  normalizedInput: FuturePurchaseSimulationInput;
+  initialAvailableBalance: number;
+  monthReferences: string[];
+  staticCashflowByMonthReference: Map<string, StaticCashflowMonth>;
+  simulatedExtraIncomeEntriesByMonthReference: Map<string, TemporaryReceivableEntry[]>;
+  cardLimitBase: PreparedCardLimitBase | null;
 };
 
 const CASHFLOW_SOURCES = new Set([
@@ -121,6 +175,7 @@ const CASHFLOW_SOURCES = new Set([
   "divida_pagar",
   "servico",
   "fatura_cartao",
+  "parcela_compra",
 ]);
 
 const LIQUID_PATRIMONIO_TYPES = new Set(["conta_bancaria", "dinheiro", "poupanca"]);
@@ -129,12 +184,27 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
 function isMonthReference(value: string): boolean {
   return /^\d{4}-\d{2}$/.test(value);
 }
 
+function formatMonthLabel(monthReference: string): string {
+  return format(parseISO(`${monthReference}-01`), "MMM 'de' yyyy", { locale: ptBR });
+}
+
 function normalizeMonthReference(value: string, fallback: string): string {
   return isMonthReference(value) ? value : fallback;
+}
+
+function getCurrentMonthReference(referenceDate?: string): string {
+  if (typeof referenceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) {
+    return referenceDate.slice(0, 7);
+  }
+  return format(new Date(), "yyyy-MM");
 }
 
 function normalizeFuturePurchaseSimulationInput(
@@ -143,11 +213,19 @@ function normalizeFuturePurchaseSimulationInput(
 ): FuturePurchaseSimulationInput {
   return {
     ...input,
+    nomeCompra: String(input.nomeCompra ?? "").trim(),
     valorTotal: Math.max(0, round2(Number(input.valorTotal) || 0)),
     parcelas: Math.max(1, Math.trunc(Number(input.parcelas) || 1)),
     cartaoId: String(input.cartaoId ?? ""),
     mesPrimeiraParcela: normalizeMonthReference(input.mesPrimeiraParcela, currentMonthReference),
     reservaMinima: Math.max(0, round2(Number(input.reservaMinima) || 0)),
+    entradasExtras: (input.entradasExtras ?? []).map((entry) => ({
+      id: String(entry.id ?? ""),
+      descricao: String(entry.descricao ?? "").trim(),
+      valor: Math.max(0, round2(Number(entry.valor) || 0)),
+      data: String(entry.data ?? "").trim(),
+      recorrente: Boolean(entry.recorrente),
+    })),
   };
 }
 
@@ -234,6 +312,7 @@ export function includeTemporaryReceivables(
       valor: round2(amount),
       data: resolvedDate,
       monthReference,
+      recorrente: receivable.recorrente,
     }];
   });
 }
@@ -252,6 +331,19 @@ function resolveProjectionMonthReferences(
   const totalMonths = Math.max(installmentCount, monthOffsetUntilFirstInstallment + installmentCount);
 
   return listMonthReferences(currentMonthReference, totalMonths);
+}
+
+function toBreakdownItem(event: FinancialCalendarEvent): FuturePurchaseSimulationBreakdownItem {
+  return {
+    id: event.id,
+    title: event.title,
+    subtitle: event.subtitle,
+    source: event.source,
+    amount: round2(event.amount ?? 0),
+    impactAmount: round2(getFinancialCalendarEventImpactAmount(event)),
+    date: event.date,
+    includedInInvoice: event.includedInInvoice === true,
+  };
 }
 
 function buildStaticCashflowByMonthReference(
@@ -275,40 +367,79 @@ function buildStaticCashflowByMonthReference(
       referenceDate: context.referenceDate,
     }).filter((event) => CASHFLOW_SOURCES.has(event.source));
 
+    const actualIncomeBreakdown = events
+      .filter((event) => event.direction === "entrada" && getFinancialCalendarEventImpactAmount(event) > 0)
+      .map(toBreakdownItem);
+    const actualExpenseBreakdown = events
+      .filter((event) => event.direction === "saida" && getFinancialCalendarEventImpactAmount(event) > 0)
+      .map(toBreakdownItem);
+
     const actualIncome = round2(
-      events
-        .filter((event) => event.direction === "entrada")
-        .reduce((sum, event) => sum + getFinancialCalendarEventImpactAmount(event), 0),
+      actualIncomeBreakdown.reduce((sum, item) => sum + item.impactAmount, 0),
     );
     const actualExpenses = round2(
-      events
-        .filter((event) => event.direction === "saida")
-        .reduce((sum, event) => sum + getFinancialCalendarEventImpactAmount(event), 0),
+      actualExpenseBreakdown.reduce((sum, item) => sum + item.impactAmount, 0),
     );
+    const actualCardExpenses = round2(
+      actualExpenseBreakdown
+        .filter((item) => item.source === "fatura_cartao" || item.source === "parcela_compra")
+        .reduce((sum, item) => sum + item.impactAmount, 0),
+    );
+    const actualNonCardExpenses = round2(Math.max(0, actualExpenses - actualCardExpenses));
 
     return [monthReference, {
       monthReference,
-      label: format(parseISO(`${monthReference}-01`), "MMM 'de' yyyy", { locale: ptBR }),
+      label: formatMonthLabel(monthReference),
       actualIncome,
       actualExpenses,
+      actualCardExpenses,
+      actualNonCardExpenses,
+      actualIncomeBreakdown,
+      actualExpenseBreakdown,
     }];
   }));
 }
 
-function buildSimulatedExtraIncomeByMonthReference(
+function buildSimulatedExtraIncomeEntriesByMonthReference(
   monthReferences: string[],
   receivables: FuturePurchaseExtraReceivable[],
-): Map<string, number> {
+): Map<string, TemporaryReceivableEntry[]> {
   return new Map(
-    monthReferences.map((monthReference) => {
-      const temporaryReceivables = includeTemporaryReceivables(monthReference, receivables);
-      const simulatedExtraIncome = round2(
-        temporaryReceivables.reduce((sum, receivable) => sum + receivable.valor, 0),
-      );
-
-      return [monthReference, simulatedExtraIncome];
-    }),
+    monthReferences.map((monthReference) => [
+      monthReference,
+      includeTemporaryReceivables(monthReference, receivables),
+    ]),
   );
+}
+
+function buildCardLimitBase(
+  context: FuturePurchaseSimulationContext,
+  currentMonthReference: string,
+  cartaoId: string,
+): PreparedCardLimitBase | null {
+  const selectedCard = context.cartoes.find((card) => card.id === cartaoId);
+  if (!selectedCard) return null;
+
+  const groupedInstallments = groupParcelasCompraByCompraId(context.parcelasCompra);
+  const summary = calculateCardLimitSummary(
+    selectedCard.id,
+    context.compras,
+    groupedInstallments,
+    currentMonthReference,
+    selectedCard.limite,
+    context.cartaoFaturaPagamentos,
+    {
+      servicos: context.servicos,
+      servicoCobrancaPagamentos: context.servicoCobrancaPagamentos,
+    },
+  );
+
+  return {
+    selectedCard,
+    limitTotal: round2(toMoneyNumber(selectedCard.limite)),
+    committedBeforePurchase: round2(summary.limiteComprometido),
+    availableBeforePurchase: round2(summary.limiteDisponivel),
+  };
 }
 
 function prepareFuturePurchaseProjectionBase(
@@ -316,7 +447,7 @@ function prepareFuturePurchaseProjectionBase(
   input: FuturePurchaseSimulationInput,
   maxInstallmentCount = Math.max(1, Math.trunc(Number(input.parcelas) || 1)),
 ): PreparedFuturePurchaseProjectionBase {
-  const currentMonthReference = format(new Date(), "yyyy-MM");
+  const currentMonthReference = getCurrentMonthReference(context.referenceDate);
   const normalizedInput = normalizeFuturePurchaseSimulationInput(input, currentMonthReference);
   const monthReferences = resolveProjectionMonthReferences(
     currentMonthReference,
@@ -330,10 +461,11 @@ function prepareFuturePurchaseProjectionBase(
     initialAvailableBalance: getLiquidBalance(context.patrimonios),
     monthReferences,
     staticCashflowByMonthReference: buildStaticCashflowByMonthReference(context, monthReferences),
-    simulatedExtraIncomeByMonthReference: buildSimulatedExtraIncomeByMonthReference(
+    simulatedExtraIncomeEntriesByMonthReference: buildSimulatedExtraIncomeEntriesByMonthReference(
       monthReferences,
       normalizedInput.entradasExtras,
     ),
+    cardLimitBase: buildCardLimitBase(context, currentMonthReference, normalizedInput.cartaoId),
   };
 }
 
@@ -349,15 +481,47 @@ function buildBaseCashflowMonthsFromPreparedBase(
 
   return monthReferences.map((monthReference) => {
     const staticCashflow = preparedBase.staticCashflowByMonthReference.get(monthReference);
+    const extraIncomeEntries = preparedBase.simulatedExtraIncomeEntriesByMonthReference.get(monthReference) ?? [];
 
     return {
       monthReference,
-      label: staticCashflow?.label ?? format(parseISO(`${monthReference}-01`), "MMM 'de' yyyy", { locale: ptBR }),
+      label: staticCashflow?.label ?? formatMonthLabel(monthReference),
       actualIncome: staticCashflow?.actualIncome ?? 0,
-      simulatedExtraIncome: preparedBase.simulatedExtraIncomeByMonthReference.get(monthReference) ?? 0,
       actualExpenses: staticCashflow?.actualExpenses ?? 0,
+      actualCardExpenses: staticCashflow?.actualCardExpenses ?? 0,
+      actualNonCardExpenses: staticCashflow?.actualNonCardExpenses ?? 0,
+      actualIncomeBreakdown: staticCashflow?.actualIncomeBreakdown ?? [],
+      actualExpenseBreakdown: staticCashflow?.actualExpenseBreakdown ?? [],
+      simulatedExtraIncome: round2(extraIncomeEntries.reduce((sum, receivable) => sum + receivable.valor, 0)),
+      extraIncomeEntries,
     };
   });
+}
+
+function buildHeaviestItems(
+  actualExpenseBreakdown: FuturePurchaseSimulationBreakdownItem[],
+  simulatedInstallment: number,
+): FuturePurchaseSimulationHighlight[] {
+  const items: FuturePurchaseSimulationHighlight[] = actualExpenseBreakdown.map((item) => ({
+    label: item.title,
+    amount: item.impactAmount,
+    source: item.source,
+    subtitle: item.subtitle,
+  }));
+
+  if (simulatedInstallment > 0) {
+    items.push({
+      label: "Parcela simulada",
+      amount: simulatedInstallment,
+      source: "parcela_simulada",
+      subtitle: "Compra futura em análise",
+    });
+  }
+
+  return items
+    .filter((item) => item.amount > 0)
+    .sort((left, right) => right.amount - left.amount)
+    .slice(0, 3);
 }
 
 function applyInstallmentsToBaseMonths(
@@ -384,15 +548,30 @@ function applyInstallmentsToBaseMonths(
       actualIncome: month.actualIncome,
       simulatedExtraIncome: month.simulatedExtraIncome,
       actualExpenses: month.actualExpenses,
+      actualNonCardExpenses: month.actualNonCardExpenses,
+      actualCardExpenses: month.actualCardExpenses,
       simulatedInstallment,
       endingBalance,
       belowZero: endingBalance < 0,
       belowReserve: endingBalance < minimumReserve,
+      actualIncomeBreakdown: month.actualIncomeBreakdown,
+      actualExpenseBreakdown: month.actualExpenseBreakdown,
+      extraIncomeEntries: month.extraIncomeEntries.map((entry) => ({
+        id: entry.id,
+        descricao: entry.descricao,
+        valor: entry.valor,
+        data: entry.data,
+        recorrente: entry.recorrente,
+      })),
+      heaviestItems: buildHeaviestItems(month.actualExpenseBreakdown, simulatedInstallment),
     };
   });
 }
 
-function getStatus(months: FuturePurchaseSimulationMonth[], minimumReserve: number): FuturePurchaseSimulationStatus {
+function getCashflowStatus(
+  months: FuturePurchaseSimulationMonth[],
+  minimumReserve: number,
+): FuturePurchaseSimulationStatus {
   if (months.some((month) => month.endingBalance < 0)) {
     return "Não recomendado";
   }
@@ -412,6 +591,40 @@ function getLowestBalance(months: FuturePurchaseSimulationMonth[]): number {
 function findWorstMonth(months: FuturePurchaseSimulationMonth[]): FuturePurchaseSimulationMonth | null {
   if (months.length === 0) return null;
   return months.reduce((worst, month) => (month.endingBalance < worst.endingBalance ? month : worst), months[0]);
+}
+
+function evaluateCardLimitForAmount(
+  preparedBase: PreparedFuturePurchaseProjectionBase,
+  totalAmount: number,
+): FuturePurchaseCardLimitAssessment {
+  const base = preparedBase.cardLimitBase;
+  if (!base) {
+    return {
+      applicable: false,
+      fits: true,
+      limitTotal: 0,
+      committedBeforePurchase: 0,
+      availableBeforePurchase: 0,
+      committedAfterPurchase: 0,
+      availableAfterPurchase: 0,
+      shortfall: 0,
+    };
+  }
+
+  const committedAfterPurchase = round2(base.committedBeforePurchase + Math.max(0, totalAmount));
+  const availableAfterPurchase = round2(base.limitTotal - committedAfterPurchase);
+  const shortfall = round2(Math.max(0, -availableAfterPurchase));
+
+  return {
+    applicable: true,
+    fits: availableAfterPurchase >= 0,
+    limitTotal: base.limitTotal,
+    committedBeforePurchase: base.committedBeforePurchase,
+    availableBeforePurchase: base.availableBeforePurchase,
+    committedAfterPurchase,
+    availableAfterPurchase,
+    shortfall,
+  };
 }
 
 function projectFuturePurchaseCashflowFromPreparedBase(
@@ -450,18 +663,28 @@ export function projectFuturePurchaseCashflow(
 
 function calculateSafePurchaseAmountFromPreparedBase(
   preparedBase: PreparedFuturePurchaseProjectionBase,
-): number {
+): {
+  amount: number;
+  limitedBy: "fluxo_caixa" | "limite_cartao" | "ambos";
+} {
   const { normalizedInput } = preparedBase;
   const baselineThreshold = Math.max(0, normalizedInput.reservaMinima);
   const baselineMonths = projectFuturePurchaseCashflowFromPreparedBase(preparedBase, {
     valorTotal: 0,
   });
 
-  if (baselineMonths.some((month) => month.endingBalance < baselineThreshold)) {
-    return 0;
+  const baseCardAssessment = evaluateCardLimitForAmount(preparedBase, 0);
+  const baselineCashflowBroken = baselineMonths.some((month) => month.endingBalance < baselineThreshold);
+  const baselineLimitBroken = baseCardAssessment.applicable && baseCardAssessment.availableBeforePurchase < 0;
+
+  if (baselineCashflowBroken || baselineLimitBroken) {
+    return {
+      amount: 0,
+      limitedBy: baselineCashflowBroken && baselineLimitBroken ? "ambos" : baselineLimitBroken ? "limite_cartao" : "fluxo_caixa",
+    };
   }
 
-  const fits = (candidateAmount: number): boolean => {
+  const fitsCashflow = (candidateAmount: number): boolean => {
     const candidateMonths = projectFuturePurchaseCashflowFromPreparedBase(preparedBase, {
       valorTotal: candidateAmount,
     });
@@ -472,21 +695,41 @@ function calculateSafePurchaseAmountFromPreparedBase(
   let low = 0;
   let high = Math.max(toCents(normalizedInput.valorTotal) ?? 0, 10_000);
 
-  while (fits(high / 100) && high < 100_000_000) {
+  while (fitsCashflow(high / 100) && high < 100_000_000) {
     low = high;
     high *= 2;
   }
 
   while (high - low > 1) {
     const mid = Math.floor((low + high) / 2);
-    if (fits(mid / 100)) {
+    if (fitsCashflow(mid / 100)) {
       low = mid;
     } else {
       high = mid;
     }
   }
 
-  return round2(low / 100);
+  const cashflowSafeAmount = round2(low / 100);
+  const cardLimitSafeAmount = preparedBase.cardLimitBase
+    ? round2(Math.max(0, preparedBase.cardLimitBase.availableBeforePurchase))
+    : cashflowSafeAmount;
+  const amount = round2(Math.min(cashflowSafeAmount, cardLimitSafeAmount));
+
+  let limitedBy: "fluxo_caixa" | "limite_cartao" | "ambos" = "fluxo_caixa";
+  if (preparedBase.cardLimitBase) {
+    const cashflowLimited = amount === cashflowSafeAmount;
+    const limitLimited = amount === cardLimitSafeAmount;
+    limitedBy = cashflowLimited && limitLimited
+      ? "ambos"
+      : limitLimited
+        ? "limite_cartao"
+        : "fluxo_caixa";
+  }
+
+  return {
+    amount,
+    limitedBy,
+  };
 }
 
 export function calculateSafePurchaseAmount(
@@ -494,13 +737,18 @@ export function calculateSafePurchaseAmount(
   input: FuturePurchaseSimulationInput,
 ): number {
   const preparedBase = prepareFuturePurchaseProjectionBase(context, input);
-  return calculateSafePurchaseAmountFromPreparedBase(preparedBase);
+  return calculateSafePurchaseAmountFromPreparedBase(preparedBase).amount;
 }
 
 function calculateRecommendedInstallmentCountFromPreparedBase(
   preparedBase: PreparedFuturePurchaseProjectionBase,
 ): number | null {
   const { normalizedInput } = preparedBase;
+  const currentLimitAssessment = evaluateCardLimitForAmount(preparedBase, normalizedInput.valorTotal);
+  if (currentLimitAssessment.applicable && !currentLimitAssessment.fits) {
+    return null;
+  }
+
   const maxInstallments = Math.max(24, normalizedInput.parcelas);
   const evaluated = Array.from({ length: maxInstallments }, (_, index) => {
     const installmentCount = index + 1;
@@ -510,8 +758,7 @@ function calculateRecommendedInstallmentCountFromPreparedBase(
 
     return {
       installmentCount,
-      status: getStatus(months, normalizedInput.reservaMinima),
-      lowestBalance: getLowestBalance(months),
+      status: getCashflowStatus(months, normalizedInput.reservaMinima),
     };
   });
 
@@ -521,9 +768,51 @@ function calculateRecommendedInstallmentCountFromPreparedBase(
   const attentionOption = evaluated.find((option) => option.status === "Atenção");
   if (attentionOption) return attentionOption.installmentCount;
 
-  return evaluated.reduce((best, option) => (
-    option.lowestBalance > best.lowestBalance ? option : best
-  ), evaluated[0]).installmentCount;
+  return null;
+}
+
+function buildLateExtraIncomeWarning(
+  receivables: FuturePurchaseExtraReceivable[],
+  worstMonth: FuturePurchaseSimulationMonth | null,
+): string | null {
+  if (!worstMonth) return null;
+
+  const futureEntry = receivables
+    .map((receivable) => String(receivable.data ?? "").trim().slice(0, 7))
+    .filter((monthReference) => isMonthReference(monthReference) && compareMonthReference(monthReference, worstMonth.monthReference) > 0)
+    .sort(compareMonthReference)[0];
+
+  if (!futureEntry) return null;
+
+  const monthLabel = formatMonthLabel(futureEntry);
+  if (worstMonth.belowZero) {
+    return `Esta entrada ajuda a partir de ${monthLabel}, mas não evita saldo negativo antes disso.`;
+  }
+
+  return `Esta entrada ajuda a partir de ${monthLabel}, mas não evita a pressão sobre a reserva antes disso.`;
+}
+
+function buildPrimaryReason(params: {
+  status: FuturePurchaseSimulationStatus;
+  worstMonth: FuturePurchaseSimulationMonth | null;
+  reserveFloor: number;
+  cardLimitAssessment: FuturePurchaseCardLimitAssessment;
+}): string | null {
+  if (params.status === "Pode comprar") return null;
+
+  if (params.cardLimitAssessment.applicable && !params.cardLimitAssessment.fits) {
+    return `A compra não cabe no limite do cartão. Faltariam ${formatCurrency(params.cardLimitAssessment.shortfall)} de limite.`;
+  }
+
+  if (params.worstMonth?.belowZero) {
+    return `${params.worstMonth.label} fica negativo em ${formatCurrency(Math.abs(params.worstMonth.endingBalance))}.`;
+  }
+
+  if (params.reserveFloor > 0 && params.worstMonth) {
+    return `A reserva mínima de ${formatCurrency(params.reserveFloor)} fica comprometida em ${params.worstMonth.label}.`;
+  }
+
+  return null;
 }
 
 function buildSuggestions(params: {
@@ -533,8 +822,24 @@ function buildSuggestions(params: {
   extraAmountNeeded: number;
   recommendedInstallmentCount: number | null;
   selectedInstallmentCount: number;
+  lateExtraIncomeWarning: string | null;
+  cardLimitAssessment: FuturePurchaseCardLimitAssessment;
 }): FuturePurchaseSimulationSuggestion[] {
   const suggestions: FuturePurchaseSimulationSuggestion[] = [];
+
+  if (!params.cardLimitAssessment.fits) {
+    suggestions.push({
+      kind: "card_limit",
+      text: `A compra não cabe no limite do cartão. Após a compra, faltariam ${formatCurrency(params.cardLimitAssessment.shortfall)} para zerar o estouro.`,
+    });
+  }
+
+  if (params.lateExtraIncomeWarning) {
+    suggestions.push({
+      kind: "timing",
+      text: params.lateExtraIncomeWarning,
+    });
+  }
 
   if (params.status === "Pode comprar") {
     suggestions.push({
@@ -557,10 +862,10 @@ function buildSuggestions(params: {
     });
   }
 
-  if (params.extraAmountNeeded > 0) {
+  if (params.cardLimitAssessment.fits && params.extraAmountNeeded > 0) {
     suggestions.push({
       kind: "extra_income",
-      text: `Você precisaria receber mais ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(params.extraAmountNeeded)} para manter o cenário no nível desejado.`,
+      text: `Você precisaria receber mais ${formatCurrency(params.extraAmountNeeded)} para manter todo o período no piso desejado.`,
     });
   }
 
@@ -572,6 +877,15 @@ function buildSuggestions(params: {
     suggestions.push({
       kind: "installments",
       text: `Parcelar em ${params.recommendedInstallmentCount}x é mais seguro para este cenário.`,
+    });
+  } else if (
+    params.recommendedInstallmentCount == null
+    && params.cardLimitAssessment.fits
+    && params.status !== "Pode comprar"
+  ) {
+    suggestions.push({
+      kind: "installments",
+      text: "Nenhuma opção de parcelamento fica segura com a reserva informada.",
     });
   }
 
@@ -589,20 +903,34 @@ export function buildFuturePurchaseSimulation(
   );
   const { normalizedInput } = preparedBase;
   const months = projectFuturePurchaseCashflowFromPreparedBase(preparedBase);
-  const status = getStatus(months, normalizedInput.reservaMinima);
+  const cashflowStatus = getCashflowStatus(months, normalizedInput.reservaMinima);
   const worstMonth = findWorstMonth(months);
   const lowestBalance = round2(getLowestBalance(months));
   const monthsBelowReserveCount = months.filter((month) => month.endingBalance < normalizedInput.reservaMinima).length;
   const monthsNegativeCount = months.filter((month) => month.endingBalance < 0).length;
-  const extraAmountNeeded = round2(
-    status === "Não recomendado"
-      ? Math.max(0, -lowestBalance)
-      : Math.max(0, normalizedInput.reservaMinima - lowestBalance),
-  );
-  const safePurchaseAmount = calculateSafePurchaseAmountFromPreparedBase(preparedBase);
+  const reserveFloor = Math.max(0, normalizedInput.reservaMinima);
+  const extraAmountNeeded = round2(Math.max(0, reserveFloor - lowestBalance));
+  const safePurchaseAmountData = calculateSafePurchaseAmountFromPreparedBase(preparedBase);
+  const cardLimitAssessment = evaluateCardLimitForAmount(preparedBase, normalizedInput.valorTotal);
   const recommendedInstallmentCount = calculateRecommendedInstallmentCountFromPreparedBase(preparedBase);
   const installmentAmount = resolveInstallmentAmount(normalizedInput.valorTotal, normalizedInput.parcelas);
   const initialAvailableBalance = preparedBase.initialAvailableBalance;
+  const totalSimulatedExtraIncome = round2(
+    months.reduce((sum, month) => sum + month.simulatedExtraIncome, 0),
+  );
+  const lateExtraIncomeWarning = buildLateExtraIncomeWarning(
+    normalizedInput.entradasExtras,
+    worstMonth,
+  );
+  const status: FuturePurchaseSimulationStatus = cardLimitAssessment.applicable && !cardLimitAssessment.fits
+    ? "Não recomendado"
+    : cashflowStatus;
+  const primaryReason = buildPrimaryReason({
+    status,
+    worstMonth,
+    reserveFloor,
+    cardLimitAssessment,
+  });
   const suggestions = buildSuggestions({
     status,
     monthsBelowReserveCount,
@@ -610,20 +938,29 @@ export function buildFuturePurchaseSimulation(
     extraAmountNeeded,
     recommendedInstallmentCount,
     selectedInstallmentCount: normalizedInput.parcelas,
+    lateExtraIncomeWarning,
+    cardLimitAssessment,
   });
 
   return {
     status,
+    cashflowStatus,
     months,
     worstMonth,
     lowestBalance,
-    safePurchaseAmount,
+    safePurchaseAmount: safePurchaseAmountData.amount,
+    safePurchaseAmountLimitedBy: safePurchaseAmountData.limitedBy,
     recommendedInstallmentCount,
     extraAmountNeeded,
+    cardLimitShortfall: cardLimitAssessment.shortfall,
     monthsBelowReserveCount,
     monthsNegativeCount,
     installmentAmount,
     initialAvailableBalance,
+    totalSimulatedExtraIncome,
+    primaryReason,
+    lateExtraIncomeWarning,
+    cardLimitAssessment,
     suggestions,
   };
 }

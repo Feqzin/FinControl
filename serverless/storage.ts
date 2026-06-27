@@ -3,7 +3,7 @@ import { db } from "./db.js";
 import { writeTechnicalLog } from "./logger.js";
 import {
   users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos,
-  servicoPessoas, servicoPagamentos, servicoCobrancaPagamentos, metas, parcelasCompra, cartaoFaturaPagamentos, cartaoFaturaPagamentoAlocacoes, pessoaSaldoMovimentacoes, rendas, patrimonios, compraAliases,
+  servicoPessoas, servicoPagamentos, servicoCobrancaPagamentos, metas, parcelasCompra, cartaoFaturaPagamentos, cartaoFaturaPagamentoAlocacoes, futurePurchaseSimulations, pessoaSaldoMovimentacoes, rendas, patrimonios, compraAliases,
   type User, type InsertUser,
   type Pessoa, type InsertPessoa,
   type PessoaSaldoMovimentacao, type InsertPessoaSaldoMovimentacao,
@@ -19,6 +19,7 @@ import {
   type ParcelaCompra, type InsertParcelaCompra,
   type CartaoFaturaPagamento, type InsertCartaoFaturaPagamento,
   type CartaoFaturaPagamentoAlocacao, type InsertCartaoFaturaPagamentoAlocacao,
+  type FuturePurchaseSimulation, type InsertFuturePurchaseSimulation,
   type Renda, type InsertRenda,
   type Patrimonio, type InsertPatrimonio,
   type CompraAlias, type InsertCompraAlias,
@@ -405,6 +406,16 @@ export interface IStorage {
   createPatrimonio(data: InsertPatrimonio): Promise<Patrimonio>;
   updatePatrimonio(id: string, userId: string, data: Partial<InsertPatrimonio>): Promise<Patrimonio | undefined>;
   deletePatrimonio(id: string, userId: string): Promise<boolean>;
+
+  getFuturePurchaseSimulations(userId: string): Promise<FuturePurchaseSimulation[]>;
+  getFuturePurchaseSimulation(id: string, userId: string): Promise<FuturePurchaseSimulation | undefined>;
+  createFuturePurchaseSimulation(data: InsertFuturePurchaseSimulation): Promise<FuturePurchaseSimulation>;
+  updateFuturePurchaseSimulation(
+    id: string,
+    userId: string,
+    data: Partial<InsertFuturePurchaseSimulation>,
+  ): Promise<FuturePurchaseSimulation | undefined>;
+  deleteFuturePurchaseSimulation(id: string, userId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1160,6 +1171,46 @@ export class DatabaseStorage implements IStorage {
   }
   async deletePatrimonio(id: string, userId: string) {
     const result = await this.database.delete(patrimonios).where(and(eq(patrimonios.id, id), eq(patrimonios.userId, userId))).returning();
+    return result.length > 0;
+  }
+
+  async getFuturePurchaseSimulations(userId: string) {
+    return this.database
+      .select()
+      .from(futurePurchaseSimulations)
+      .where(eq(futurePurchaseSimulations.userId, userId));
+  }
+  async getFuturePurchaseSimulation(id: string, userId: string) {
+    const [row] = await this.database
+      .select()
+      .from(futurePurchaseSimulations)
+      .where(and(eq(futurePurchaseSimulations.id, id), eq(futurePurchaseSimulations.userId, userId)));
+    return row;
+  }
+  async createFuturePurchaseSimulation(data: InsertFuturePurchaseSimulation) {
+    const [row] = await this.database
+      .insert(futurePurchaseSimulations)
+      .values(data)
+      .returning();
+    return row;
+  }
+  async updateFuturePurchaseSimulation(
+    id: string,
+    userId: string,
+    data: Partial<InsertFuturePurchaseSimulation>,
+  ) {
+    const [row] = await this.database
+      .update(futurePurchaseSimulations)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(futurePurchaseSimulations.id, id), eq(futurePurchaseSimulations.userId, userId)))
+      .returning();
+    return row;
+  }
+  async deleteFuturePurchaseSimulation(id: string, userId: string) {
+    const result = await this.database
+      .delete(futurePurchaseSimulations)
+      .where(and(eq(futurePurchaseSimulations.id, id), eq(futurePurchaseSimulations.userId, userId)))
+      .returning();
     return result.length > 0;
   }
 }

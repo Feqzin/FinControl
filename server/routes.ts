@@ -32,6 +32,7 @@ import { createCompraAliasesController } from "./controllers/compra-aliases.cont
 import { createIconMatchRulesController } from "./controllers/icon-match-rules.controller";
 import { createUserIconLibraryController } from "./controllers/user-icon-library.controller";
 import { createOfficialIconsController } from "./controllers/official-icons.controller";
+import { createFuturePurchaseSimulationsController } from "./controllers/future-purchase-simulations.controller";
 import { getUserId } from "./controllers/controller-utils";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes";
@@ -42,6 +43,7 @@ import { CompraAliasesService } from "./services/compra-aliases.service";
 import { IconMatchRulesService } from "./services/icon-match-rules.service";
 import { UserIconLibraryService } from "./services/user-icon-library.service";
 import { OfficialIconLibraryService } from "./services/official-icons.service";
+import { FuturePurchaseSimulationsService } from "./services/future-purchase-simulations.service";
 import { BillingService } from "../serverless/services/billing.service";
 import { calculateRemaining } from "../shared/subscription";
 import { requirePremiumFeature } from "./subscription-access";
@@ -104,6 +106,7 @@ export function registerRoutes(app: Express): void {
   const iconMatchRulesController = createIconMatchRulesController(new IconMatchRulesService());
   const userIconLibraryController = createUserIconLibraryController(new UserIconLibraryService());
   const officialIconsController = createOfficialIconsController(new OfficialIconLibraryService());
+  const futurePurchaseSimulationsController = createFuturePurchaseSimulationsController(new FuturePurchaseSimulationsService(storage));
   const billingService = new BillingService();
 
   registerFinancialDomainRoutes(app, {
@@ -123,6 +126,11 @@ export function registerRoutes(app: Express): void {
   });
 
   app.get("/api/reports/overview", requireAuth, reportsController.overview);
+  app.get("/api/simulador/compra-futura/simulacoes", requireAuth, futurePurchaseSimulationsController.list);
+  app.post("/api/simulador/compra-futura/simulacoes", requireAuth, futurePurchaseSimulationsController.create);
+  app.get("/api/simulador/compra-futura/simulacoes/:id", requireAuth, futurePurchaseSimulationsController.get);
+  app.patch("/api/simulador/compra-futura/simulacoes/:id", requireAuth, futurePurchaseSimulationsController.update);
+  app.delete("/api/simulador/compra-futura/simulacoes/:id", requireAuth, futurePurchaseSimulationsController.remove);
   app.get("/api/compra-aliases", requireAuth, compraAliasesController.list);
   app.post("/api/compra-aliases", requireAuth, compraAliasesController.create);
   app.delete("/api/compra-aliases/:id", requireAuth, compraAliasesController.remove);
