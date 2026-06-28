@@ -226,7 +226,7 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
             targetId: compraId,
             details: { reason: "icone_update_error", errorCode },
           });
-          return res.status(400).json({ message: errorMessage, errorCode });
+          return res.status(500).json({ message: errorMessage, errorCode });
         }
 
         auditRequest(req, {

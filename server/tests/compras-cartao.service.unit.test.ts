@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import type { CompraCartao, ParcelaCompra } from "@shared/schema";
 import { ComprasCartaoService } from "../services/compras-cartao.service";
 
@@ -245,4 +247,52 @@ test("update com override de icone trata erro de persistencia conhecido sem derr
     reason: "ICON_COLUMN_MISSING",
     message: "Não foi possível salvar o ícone manual porque a coluna compras_cartao.icone_id não está disponível.",
   });
+});
+
+test("update com override de icone reconhece erro de coluna mesmo sem nome explicito da tabela", async () => {
+  const compra: CompraCartao = {
+    id: "compra-icon-2",
+    userId: "user-compras-unit",
+    cartaoId: "cartao-1",
+    descricao: "Compra com icone",
+    valorTotal: "100.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "100.00",
+    dataCompra: "2026-04-20",
+    pessoaId: null,
+    statusPessoa: null,
+    dataPagamentoPessoa: null,
+    iconeId: null,
+  };
+
+  const repository = {
+    getCompraCartao: async () => compra,
+    updateCompraCartao: async () => {
+      const error = new Error("column \"icone_id\" does not exist");
+      (error as Error & { code?: string }).code = "42703";
+      throw error;
+    },
+    getParcelasCompra: async () => [] as ParcelaCompra[],
+    getCartao: async () => ({ id: "cartao-1" }),
+  };
+
+  const service = new ComprasCartaoService(repository as any);
+  const result = await service.update("compra-icon-2", "user-compras-unit", {
+    descricao: "Compra com icone atualizado",
+    iconeId: "mercadolivre",
+  });
+
+  assert.deepEqual(result, {
+    error: "ICONE_UPDATE_ERROR",
+    reason: "ICON_COLUMN_MISSING",
+    message: "Não foi possível salvar o ícone manual porque a coluna compras_cartao.icone_id não está disponível.",
+  });
+});
+
+test("migration guard de icone em compras_cartao continua idempotente e com índice", async () => {
+  const migrationPath = path.resolve(process.cwd(), "migrations", "0041_compras_cartao_icone_id_guard.sql");
+  const source = await readFile(migrationPath, "utf8");
+  assert.match(source, /ADD COLUMN IF NOT EXISTS icone_id text;/i);
+  assert.match(source, /CREATE INDEX IF NOT EXISTS idx_compras_cartao_icone_id/i);
 });

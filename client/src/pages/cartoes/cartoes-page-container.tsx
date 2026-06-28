@@ -752,7 +752,12 @@ export default function CartoesPage() {
   const handleSaveCompraIconRule = async (descricao: string, iconId: string) => {
     await saveIconMatchRuleMutation.mutateAsync({ descricao, iconId });
   };
-  const editCompraPersistedIconeId = editingCompra?.iconeId ?? null;
+  const editCompraResolvedIconReference = useMemo(
+    () => resolveEntityIconReference(editingCompra?.iconeId ?? null, userIconLibrary),
+    [editingCompra?.iconeId, userIconLibrary],
+  );
+  const editCompraPersistedIconeId = editCompraResolvedIconReference.displayIconId;
+  const editCompraPersistedIconePersistableId = editCompraResolvedIconReference.persistableIconId;
   const editCompraAutoSuggestedIconId = editingCompra
     ? resolveStrongAutoIconId(editCompraForm.descricao || editingCompra.descricao, null)
     : null;
@@ -1513,7 +1518,8 @@ export default function CartoesPage() {
       iconDirty: editCompraIconDirty,
       editedIconId: editCompraIcone,
       editedPersistableIconId: resolvedPersistableIcon.ok ? (resolvedPersistableIcon.value ?? null) : null,
-      persistedIconId: editingCompra.iconeId ?? null,
+      persistedIconId: editCompraPersistedIconeId,
+      persistedPersistableIconId: editCompraPersistedIconePersistableId,
     });
     const updateIconPatch = buildEditCompraIconUpdatePatch({
       iconDirty: editCompraIconDirty,
@@ -2648,10 +2654,11 @@ export default function CartoesPage() {
     setOpenCompra(true);
   };
   const handleEditCompraFromFatura = (compra: CompraCartao) => {
+    const resolvedCompraIcon = resolveEntityIconReference(compra.iconeId ?? null, userIconLibrary);
     setEditingCompra(compra);
-    setEditCompraIcone(compra.iconeId ?? null);
+    setEditCompraIcone(resolvedCompraIcon.displayIconId);
     setEditCompraIconDirty(false);
-    setEditCompraIconPersistableId(undefined);
+    setEditCompraIconPersistableId(resolvedCompraIcon.persistableIconId ?? null);
     setApplyEditCompraIconRule(false);
     setEditCompraForm({
       descricao: compra.descricao,

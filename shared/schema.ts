@@ -142,6 +142,7 @@ export const comprasCartao = pgTable("compras_cartao", {
   comprasPessoaIdIdx: index("idx_compras_cartao_pessoa_id").on(table.pessoaId),
   comprasDataIdx: index("idx_compras_cartao_data_compra").on(table.dataCompra),
   comprasStatusPessoaIdx: index("idx_compras_cartao_status_pessoa").on(table.statusPessoa),
+  comprasIconeIdIdx: index("idx_compras_cartao_icone_id").on(table.iconeId),
 }));
 
 export const insertCompraCartaoSchema = createInsertSchema(comprasCartao).omit({ id: true });

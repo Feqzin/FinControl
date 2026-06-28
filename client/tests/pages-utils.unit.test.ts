@@ -4248,6 +4248,15 @@ test("editar compra ícone: regra para compras parecidas usa somente ícone manu
   });
   assert.equal(fromPersisted, "ifood");
 
+  const fromPersistedPersonal = resolveEditCompraIconRuleTarget({
+    applyRule: true,
+    iconDirty: false,
+    editedIconId: null,
+    persistedIconId: "https://cdn.fincontrol.dev/icons/mercado-livre.png",
+    persistedPersistableIconId: "user-icon-mercado-livre",
+  });
+  assert.equal(fromPersistedPersonal, "user-icon-mercado-livre");
+
   const fromChanged = resolveEditCompraIconRuleTarget({
     applyRule: true,
     iconDirty: true,

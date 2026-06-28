@@ -91,6 +91,15 @@ type IconUpdateFailureReason =
   | "ICON_COLUMN_MISSING"
   | "ICON_PERSISTENCE_FAILED";
 
+function sanitizeIconIdForLog(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value !== "string") return String(value);
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^data:/i.test(trimmed)) return "[DATA_URL]";
+  return trimmed.slice(0, 160);
+}
+
 function getErrorCode(error: unknown): string | null {
   if (!error || typeof error !== "object") return null;
   const code = (error as { code?: unknown }).code;
@@ -125,13 +134,13 @@ function classifyIconPersistenceError(error: unknown): {
   }
 
   if (code === "42703") {
-    if (message.includes("icone_id") && message.includes("compras_cartao")) {
+    if (message.includes("icone_id")) {
       return {
         reason: "ICON_COLUMN_MISSING",
         message: "Não foi possível salvar o ícone manual porque a coluna compras_cartao.icone_id não está disponível.",
       };
     }
-    if (message.includes("image_url") && message.includes("user_icon_library")) {
+    if (message.includes("image_url")) {
       return {
         reason: "ICON_COLUMN_MISSING",
         message: "Não foi possível validar o ícone manual porque a coluna user_icon_library.image_url não está disponível.",
@@ -505,6 +514,8 @@ export class ComprasCartaoService {
         data: {
           userId,
           compraId: id,
+          receivedIconId: sanitizeIconIdForLog(data.iconeId),
+          receivedIconIdLength: typeof data.iconeId === "string" ? data.iconeId.length : null,
           iconKind: typeof data.iconeId === "string"
             ? (data.iconeId.startsWith("data:")
               ? "data_url"
