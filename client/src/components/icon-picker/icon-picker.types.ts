@@ -29,8 +29,15 @@ export type IconPickerSelectMeta = {
   displayValue: string | null;
   persistableIconId: string | null;
   source: IconPickerSelectionSource;
+  id?: string | null;
   userIconId?: string | null;
+  personalIconId?: string | null;
   officialIconId?: string | null;
+  iconId?: string | null;
+  imageUrl?: string | null;
+  previewUrl?: string | null;
+  storagePath?: string | null;
+  name?: string | null;
 };
 
 export type ManageBuiltinTarget = {

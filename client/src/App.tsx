@@ -8,12 +8,12 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeProvider } from "@/components/theme-provider";
-import { LayoutDashboard, Receipt, CreditCard, Wallet, PiggyBank, Eye, EyeOff } from "lucide-react";
+import { LayoutDashboard, Receipt, CreditCard, Wallet, PiggyBank, Eye, EyeOff, AlertCircle, RefreshCcw } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { ValuesVisibilityProvider, useValuesVisibility } from "@/context/values-visibility";
 import { UIPreferencesProvider } from "@/context/ui-preferences";
 import { Button } from "@/components/ui/button";
-import { useEffect, lazy, Suspense } from "react";
+import React, { useEffect, useState, lazy, Suspense } from "react";
 
 import { OnboardingTour } from "@/components/onboarding-tour";
 
@@ -55,6 +55,82 @@ function FullscreenLoadingFallback() {
       </div>
     </div>
   );
+}
+
+function AuthSessionFallback({
+  title,
+  description,
+  onRetry,
+  onSignOut,
+}: {
+  title: string;
+  description: string;
+  onRetry: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="w-full max-w-md rounded-3xl border bg-card p-6 shadow-sm">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border bg-muted/50 text-muted-foreground">
+            <AlertCircle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold text-foreground">{title}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button type="button" className="sm:flex-1" onClick={onRetry}>
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            Tentar novamente
+          </Button>
+          <Button type="button" variant="outline" className="sm:flex-1" onClick={onSignOut}>
+            Sair da conta
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+class AppErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    if (import.meta.env.DEV) {
+      console.error("[app.error-boundary]", error);
+    }
+  }
+
+  handleReload = () => {
+    window.location.reload();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <AuthSessionFallback
+          title="Nao foi possivel carregar a aplicacao."
+          description="Tente recarregar a pagina. Se o problema continuar, saia da conta e entre novamente."
+          onRetry={this.handleReload}
+          onSignOut={this.handleReload}
+        />
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
 function Router() {
@@ -183,10 +259,19 @@ function AuthenticatedLayout() {
 }
 
 function AppContent() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const {
+    isAuthenticated,
+    isLoading,
+    authError,
+    authErrorStatus,
+    retryAuth,
+    clearSessionSafely,
+  } = useAuth();
   const [location, setLocation] = useLocation();
+  const [authLoadingTimedOut, setAuthLoadingTimedOut] = useState(false);
   const isResetPage = location === "/redefinir-senha";
   const isAuthPage = location === "/auth";
+  const hasRecoverableAuthError = Boolean(authError && authErrorStatus !== null && authErrorStatus >= 500);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !isAuthPage && !isResetPage) {
@@ -198,8 +283,53 @@ function AppContent() {
     }
   }, [isAuthenticated, isLoading, isAuthPage, isResetPage, setLocation]);
 
+  useEffect(() => {
+    if (!isLoading) {
+      setAuthLoadingTimedOut(false);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setAuthLoadingTimedOut(true);
+    }, 10000);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [isLoading]);
+
   if (isLoading) {
+    if (authLoadingTimedOut) {
+      return (
+        <AuthSessionFallback
+          title="Sua sessao esta demorando para carregar."
+          description="Voce pode tentar novamente agora ou sair da conta para voltar a tela de login."
+          onRetry={() => {
+            setAuthLoadingTimedOut(false);
+            void retryAuth();
+          }}
+          onSignOut={() => {
+            void clearSessionSafely().then(() => setLocation("/auth"));
+          }}
+        />
+      );
+    }
     return <FullscreenLoadingFallback />;
+  }
+
+  if (hasRecoverableAuthError && !isAuthPage && !isResetPage) {
+    return (
+      <AuthSessionFallback
+        title="Nao foi possivel carregar sua sessao."
+        description="Tente recarregar os dados agora. Se continuar falhando, volte para a tela de login."
+        onRetry={() => {
+          void retryAuth();
+        }}
+        onSignOut={() => {
+          void clearSessionSafely().then(() => setLocation("/auth"));
+        }}
+      />
+    );
   }
 
   if (isResetPage && !isAuthenticated) {
@@ -213,7 +343,37 @@ function AppContent() {
   if (!isAuthenticated) {
     return (
       <Suspense fallback={<FullscreenLoadingFallback />}>
-        <AuthPage />
+        <div className="min-h-screen bg-background">
+          {hasRecoverableAuthError ? (
+            <div className="px-4 pt-4">
+              <div className="mx-auto flex w-full max-w-md flex-col gap-3 rounded-2xl border bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground">
+                    Nao foi possivel carregar sua sessao.
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Voce ainda pode entrar novamente ou tentar recarregar a sessao.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => void retryAuth()}>
+                    Tentar novamente
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      void clearSessionSafely();
+                    }}
+                  >
+                    Sair da conta
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <AuthPage />
+        </div>
       </Suspense>
     );
   }
@@ -228,8 +388,10 @@ function App() {
         <UIPreferencesProvider>
           <ValuesVisibilityProvider>
             <TooltipProvider>
-              <Toaster />
-              <AppContent />
+              <AppErrorBoundary>
+                <Toaster />
+                <AppContent />
+              </AppErrorBoundary>
             </TooltipProvider>
           </ValuesVisibilityProvider>
         </UIPreferencesProvider>

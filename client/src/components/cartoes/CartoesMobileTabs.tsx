@@ -4,7 +4,7 @@ import { CartaoCard } from "@/components/cartoes/CartaoCard";
 import { BrandIconDisplay } from "@/lib/brand-icons";
 import { getCompraReembolsoVisualStatus } from "@/lib/cartao-reembolso-status";
 import type { Cartao, CompraCartao, ParcelaCompra, Servico } from "@shared/schema";
-import { Eye, List, Plus, Trash2 } from "lucide-react";
+import { Eye, List, Pencil, Plus, Trash2 } from "lucide-react";
 import { getNextInvoiceDate } from "@/pages/cartoes/cartoes.utils";
 import type { PurchaseIconMatchResult } from "@/lib/purchase-icon-matching";
 
@@ -26,6 +26,7 @@ type CartoesMobileTabsProps = {
   getInvoicePaymentActionLabel: (cartaoId: string) => string;
   onOpenInvoicePaymentDialog: (cartaoId: string) => void;
   onOpenParcelas: (compra: CompraCartao) => void;
+  onEditCompra: (compra: CompraCartao) => void;
   onDeleteCompra: (compra: CompraCartao) => void;
   resolveCompraIconSuggestion: (compra: CompraCartao) => PurchaseIconMatchResult;
   resolveCardIconId: (cartao: Cartao) => string | null;
@@ -54,6 +55,7 @@ export function CartoesMobileTabs({
   getInvoicePaymentActionLabel,
   onOpenInvoicePaymentDialog,
   onOpenParcelas,
+  onEditCompra,
   onDeleteCompra,
   resolveCompraIconSuggestion,
   resolveCardIconId,
@@ -210,6 +212,17 @@ export function CartoesMobileTabs({
                                   data-testid={`button-view-parcelas-mobile-${compra.id}`}
                                 >
                                   <List className="h-3 w-3 text-muted-foreground" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  aria-label="Editar compra"
+                                  title="Editar compra"
+                                  onClick={() => onEditCompra(compra)}
+                                  data-testid={`button-edit-compra-mobile-${compra.id}`}
+                                >
+                                  <Pencil className="h-3 w-3 text-muted-foreground" />
                                 </Button>
                                 <Button
                                   variant="ghost"

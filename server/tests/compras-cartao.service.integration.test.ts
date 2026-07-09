@@ -430,7 +430,7 @@ testComprasIntegration("update de compra aceita ícone padrão, ícone pessoal d
   }).returning();
 
   const ownIconUrl = "https://cdn.fincontrol.dev/icons/club-ifood.png";
-  await db.insert(userIconLibrary).values({
+  const [ownIcon] = await db.insert(userIconLibrary).values({
     userId: user.id,
     sourceType: "upload",
     officialIconId: null,
@@ -439,7 +439,7 @@ testComprasIntegration("update de compra aceita ícone padrão, ícone pessoal d
     storagePath: null,
     category: "servico",
     tags: ["ifood", "club ifood"],
-  });
+  }).returning();
 
   try {
     const updatedBuiltin = await service.update(compra.id, user.id, {
@@ -453,12 +453,18 @@ testComprasIntegration("update de compra aceita ícone padrão, ícone pessoal d
 
     const updatedPersonal = await service.update(compra.id, user.id, {
       descricao: "Ifood Club",
-      iconeId: ownIconUrl,
+      iconeId: ownIcon.id,
     });
     if ("error" in updatedPersonal) {
       assert.fail(`Nao deveria falhar ao salvar ícone pessoal: ${updatedPersonal.error}`);
     }
     assert.equal(updatedPersonal.updated.iconeId, ownIconUrl);
+
+    const [persistedWithPersonalIcon] = await db.select().from(comprasCartao).where(and(
+      eq(comprasCartao.userId, user.id),
+      eq(comprasCartao.id, compra.id),
+    ));
+    assert.equal(persistedWithPersonalIcon?.iconeId ?? null, ownIcon.id);
 
     const clearedIcon = await service.update(compra.id, user.id, {
       descricao: "Ifood Club",
@@ -526,7 +532,7 @@ testComprasIntegration("update de compra bloqueia uso de ícone pessoal de outro
   }).returning();
 
   const iconFromUserB = "https://cdn.fincontrol.dev/icons/private-user-b.png";
-  await db.insert(userIconLibrary).values({
+  const [iconRowFromUserB] = await db.insert(userIconLibrary).values({
     userId: userB.id,
     sourceType: "upload",
     officialIconId: null,
@@ -535,12 +541,12 @@ testComprasIntegration("update de compra bloqueia uso de ícone pessoal de outro
     storagePath: null,
     category: "outro",
     tags: ["privado-b"],
-  });
+  }).returning();
 
   try {
     const result = await service.update(compraA.id, userA.id, {
       descricao: "Compra A",
-      iconeId: iconFromUserB,
+      iconeId: iconRowFromUserB.id,
     });
 
     assert.deepEqual(result, { error: "ICONE_NOT_FOUND" });

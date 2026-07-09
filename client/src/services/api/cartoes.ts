@@ -1,6 +1,10 @@
 import { apiRequest } from "@/lib/queryClient";
 import { divide, formatMoneyFixed, parseMoney } from "@/lib/money";
 import type { ParsedItem } from "@/pages/cartoes/import-parser";
+import {
+  INVALID_ICON_ID_REFERENCE_MESSAGE,
+  isRemoteIconReference,
+} from "@shared/icon-persistence";
 
 type ImportSourceType = "texto" | "csv" | "ofx" | "qfx" | "pdf" | "manual";
 type ImportLogStatus = "previewed" | "confirmed" | "rolled_back";
@@ -599,9 +603,9 @@ export async function createCompraCartao(payload: CompraPayload): Promise<void> 
 }
 
 export type UpdateCompraPayload = {
-  descricao: string;
-  valorTotal: string;
-  parcelas: string | number;
+  descricao?: string;
+  valorTotal?: string;
+  parcelas?: string | number;
   pessoaId?: string | null;
   statusPessoa?: string | null;
   iconeId?: string | null;
@@ -610,18 +614,37 @@ export type UpdateCompraPayload = {
   reembolsoPercentual?: string | number | null;
 };
 
+function hasOwnField<T extends object>(payload: T, key: keyof T): boolean {
+  return Object.prototype.hasOwnProperty.call(payload, key);
+}
+
 function sanitizeOptionalIconId(
   value: string | null | undefined,
 ): string | null | undefined {
   if (value === undefined) return undefined;
   if (value === null) return null;
   const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  if (trimmed.length === 0) return null;
+  if (isRemoteIconReference(trimmed)) {
+    throw new Error(INVALID_ICON_ID_REFERENCE_MESSAGE);
+  }
+  return trimmed;
 }
 
 export function buildUpdateCompraRequestBody(
   payload: UpdateCompraPayload,
 ): Record<string, unknown> {
+  const sanitizedIconId = sanitizeOptionalIconId(payload.iconeId);
+  const isIconOnlyUpdate = Object.keys(payload).length === 1 && hasOwnField(payload, "iconeId");
+  if (isIconOnlyUpdate) {
+    return { iconeId: sanitizedIconId ?? null };
+  }
+
+  const descricao = typeof payload.descricao === "string" ? payload.descricao.trim() : "";
+  if (!descricao || payload.valorTotal === undefined || payload.parcelas === undefined) {
+    throw new Error("Dados da compra incompletos para atualizar.");
+  }
+
   const parcelas = Number(payload.parcelas);
   const valorTotal = formatMoneyFixed(payload.valorTotal);
   if (!valorTotal) {
@@ -638,7 +661,7 @@ export function buildUpdateCompraRequestBody(
   });
 
   const body: Record<string, unknown> = {
-    descricao: payload.descricao,
+    descricao,
     valorTotal,
     parcelas,
     valorParcela,
@@ -647,7 +670,6 @@ export function buildUpdateCompraRequestBody(
     ...reembolsoFields,
   };
 
-  const sanitizedIconId = sanitizeOptionalIconId(payload.iconeId);
   if (sanitizedIconId !== undefined) {
     body.iconeId = sanitizedIconId;
   }

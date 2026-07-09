@@ -1,6 +1,9 @@
 import type { FinancialRepository } from "../repositories/financial.repository";
 import { and, eq, inArray } from "drizzle-orm";
 import { userIconLibrary, type ParcelaCompra } from "@shared/schema";
+import {
+  isRemoteIconReference,
+} from "@shared/icon-persistence";
 import { db } from "../db";
 import { formatMoneyFixed, parseMoney } from "../../utils/money";
 import type {
@@ -81,10 +84,7 @@ function normalizeOptionalIconId(value: string | null | undefined): string | nul
 }
 
 const UUID_LIKE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function iconRequiresOwnershipCheck(iconId: string): boolean {
-  return /^data:/i.test(iconId) || /^https?:\/\//i.test(iconId);
-}
+const SHOULD_LOG_ICON_UPDATE_DEBUG = process.env.NODE_ENV !== "production";
 
 type IconUpdateFailureReason =
   | "ICON_TABLE_MISSING"
@@ -165,16 +165,6 @@ async function findOwnedUserIconByIdOrUrl(
   const trimmedReference = iconReference.trim();
   if (!trimmedReference) return null;
 
-  const [byUrl] = await db
-    .select({ id: userIconLibrary.id, imageUrl: userIconLibrary.imageUrl })
-    .from(userIconLibrary)
-    .where(and(
-      eq(userIconLibrary.userId, userId),
-      eq(userIconLibrary.imageUrl, trimmedReference),
-    ))
-    .limit(1);
-  if (byUrl) return byUrl;
-
   const [byId] = await db
     .select({ id: userIconLibrary.id, imageUrl: userIconLibrary.imageUrl })
     .from(userIconLibrary)
@@ -191,16 +181,16 @@ async function findOwnedUserIconByIdOrUrl(
 async function resolveCompraIconForPersistence(
   userId: string,
   iconId: string | null,
-): Promise<{ ok: true; persistedIconId: string | null } | { ok: false }> {
+): Promise<
+  | { ok: true; persistedIconId: string | null }
+  | { ok: false; reason: "INVALID_ICON_ID_REFERENCE" | "ICON_OWNERSHIP_INVALID" }
+> {
   if (iconId == null) {
     return { ok: true, persistedIconId: null };
   }
 
-  if (iconRequiresOwnershipCheck(iconId)) {
-    const owned = await findOwnedUserIconByIdOrUrl(userId, iconId);
-    if (!owned) return { ok: false };
-    // Persistimos referência curta para evitar depender de data URL gigante.
-    return { ok: true, persistedIconId: owned.id };
+  if (isRemoteIconReference(iconId)) {
+    return { ok: false, reason: "INVALID_ICON_ID_REFERENCE" };
   }
 
   if (!UUID_LIKE_PATTERN.test(iconId)) {
@@ -213,7 +203,7 @@ async function resolveCompraIconForPersistence(
     return { ok: true, persistedIconId: ownedById.id };
   }
 
-  return { ok: false };
+  return { ok: false, reason: "ICON_OWNERSHIP_INVALID" };
 }
 
 async function hydrateCompraIconIdsForOutput<T extends { iconeId?: string | null }>(
@@ -400,7 +390,11 @@ export class ComprasCartaoService {
       }
       const iconResolution = await resolveCompraIconForPersistence(userId, iconeId);
       if (!iconResolution.ok) {
-        return { error: "ICONE_NOT_FOUND" as const };
+        return {
+          error: iconResolution.reason === "INVALID_ICON_ID_REFERENCE"
+            ? ("ICONE_INVALID_REFERENCE" as const)
+            : ("ICONE_NOT_FOUND" as const),
+        };
       }
 
       const normalized = normalizeReembolsoFields({
@@ -455,9 +449,31 @@ export class ComprasCartaoService {
         if (hasIconeOverride) {
           const iconResolution = await resolveCompraIconForPersistence(userId, nextIconeId ?? null);
           if (!iconResolution.ok) {
-            return { error: "ICONE_NOT_FOUND" as const };
+            return {
+              error: iconResolution.reason === "INVALID_ICON_ID_REFERENCE"
+                ? ("ICONE_INVALID_REFERENCE" as const)
+                : ("ICONE_NOT_FOUND" as const),
+            };
           }
           persistedIconeId = iconResolution.persistedIconId;
+          if (SHOULD_LOG_ICON_UPDATE_DEBUG) {
+            writeTechnicalLog({
+              event: "compras_cartao.icon_update.received",
+              source: "compras-cartao.service",
+              level: "info",
+              data: {
+                userId,
+                compraId: id,
+                receivedKeys: Object.keys(data),
+                receivedIconId: sanitizeIconIdForLog(data.iconeId),
+                isDataUrlIconId: typeof data.iconeId === "string" ? data.iconeId.startsWith("data:") : false,
+                isHttpIconId: typeof data.iconeId === "string"
+                  ? (data.iconeId.startsWith("http://") || data.iconeId.startsWith("https://"))
+                  : false,
+                resolvedPersistableIconId: sanitizeIconIdForLog(persistedIconeId),
+              },
+            });
+          }
         }
 
         const effectiveValorTotal = data.valorTotal ?? currentCompra.valorTotal;
@@ -516,6 +532,10 @@ export class ComprasCartaoService {
           compraId: id,
           receivedIconId: sanitizeIconIdForLog(data.iconeId),
           receivedIconIdLength: typeof data.iconeId === "string" ? data.iconeId.length : null,
+          isDataUrlIconId: typeof data.iconeId === "string" ? data.iconeId.startsWith("data:") : false,
+          isHttpIconId: typeof data.iconeId === "string"
+            ? (data.iconeId.startsWith("http://") || data.iconeId.startsWith("https://"))
+            : false,
           iconKind: typeof data.iconeId === "string"
             ? (data.iconeId.startsWith("data:")
               ? "data_url"

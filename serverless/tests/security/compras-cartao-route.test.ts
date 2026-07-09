@@ -119,6 +119,56 @@ test("compras-cartao PATCH: aceita iconeId e usa userId autenticado da sessão",
   });
 });
 
+test("compras-cartao PATCH: aceita payload mínimo só com iconeId", async () => {
+  const { app, getCaptured } = createComprasCartaoRouteApp();
+  await withTestServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/compras-cartao/compra_a_1`, {
+      method: "PATCH",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        iconeId: "d8d210d6-06fe-4a7b-95f1-ae2676d95088",
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.iconeId, "d8d210d6-06fe-4a7b-95f1-ae2676d95088");
+
+    const captured = getCaptured();
+    assert.deepEqual(captured.capturedPayload, {
+      iconeId: "d8d210d6-06fe-4a7b-95f1-ae2676d95088",
+    });
+  });
+});
+
+test("compras-cartao PATCH: rejeita iconeId data/http antes da persistência", async () => {
+  const { app, getCaptured } = createComprasCartaoRouteApp();
+  await withTestServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/compras-cartao/compra_a_1`, {
+      method: "PATCH",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        descricao: "Teclado musical",
+        iconeId: "data:image/png;base64,abc123",
+      }),
+    });
+
+    assert.equal(response.status, 400);
+    const body = await response.json();
+    assert.equal(body.errorCode, "INVALID_ICON_ID_REFERENCE");
+    assert.match(body.message, /referência válida para salvar/i);
+
+    const captured = getCaptured();
+    assert.equal(captured.capturedPayload, null);
+  });
+});
+
 test("compras-cartao PATCH: falha de persistência de ícone retorna 500 controlado", async () => {
   const { app } = createComprasCartaoRouteApp({
     updateResult: {

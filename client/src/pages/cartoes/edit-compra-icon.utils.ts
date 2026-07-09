@@ -1,3 +1,12 @@
+import { getItemTerms } from "@/components/icon-picker.utils";
+import { LIBRARY_ICONS } from "@/lib/brand-icons";
+import {
+  isRemoteIconReference,
+  type PersistableIconSelectionCandidate,
+  resolvePersistableIconSelectionId,
+  trimIconPersistenceValue,
+} from "@shared/icon-persistence";
+
 type ResolveEditCompraIconPresentationInput = {
   persistedIconId: string | null;
   editedIconId: string | null;
@@ -9,6 +18,9 @@ type ResolvePersistableCompraIconIdInput = {
   iconDirty: boolean;
   editedDisplayIconId: string | null;
   explicitPersistableIconId?: string | null | undefined;
+  selectedIcon?: (PersistableIconSelectionCandidate & {
+    displayValue?: string | null;
+  }) | null;
   userIcons?: Array<{ id: string; imageUrl: string }>;
 };
 
@@ -77,14 +89,58 @@ export function resolveEditCompraIconRuleTarget(
     ? (input.editedPersistableIconId ?? input.editedIconId ?? null)
     : (input.persistedPersistableIconId ?? input.persistedIconId ?? null);
 
-  if (!manualIconId) return null;
-  const trimmed = manualIconId.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  const trimmed = trimIconPersistenceValue(manualIconId);
+  if (typeof trimmed !== "string" || trimmed.length === 0 || isRemoteIconReference(trimmed)) {
+    return null;
+  }
+  return trimmed;
 }
 
 type ResolvePersistableCompraIconIdResult =
   | { ok: true; value: string | null | undefined }
-  | { ok: false; reason: "ICON_REFERENCE_INVALID" };
+  | { ok: false; reason: "INVALID_ICON_ID_REFERENCE" | "MISSING_PERSISTABLE_ICON_ID" };
+
+const GENERIC_ICON_RULE_TERMS = new Set([
+  "mercado",
+  "supermercado",
+  "banco",
+  "cartao",
+  "pagamento",
+]);
+
+function normalizeRuleTerm(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function shouldKeepRuleTerm(normalizedTerm: string): boolean {
+  return normalizedTerm.length >= 3 && !GENERIC_ICON_RULE_TERMS.has(normalizedTerm);
+}
+
+function addUniqueRuleTerm(target: Map<string, string>, rawValue: string): void {
+  const originalTerm = rawValue.trim();
+  if (!originalTerm) return;
+
+  const normalizedTerm = normalizeRuleTerm(originalTerm);
+  if (!shouldKeepRuleTerm(normalizedTerm) || target.has(normalizedTerm)) {
+    return;
+  }
+
+  target.set(normalizedTerm, originalTerm);
+
+  const tokens = normalizedTerm.split(" ").filter(Boolean);
+  if (tokens.length === 2 && tokens.every((token) => /^[a-z]+$/.test(token))) {
+    const compactTerm = tokens.join("");
+    if (shouldKeepRuleTerm(compactTerm) && !target.has(compactTerm)) {
+      target.set(compactTerm, compactTerm);
+    }
+  }
+}
 
 export function resolvePersistableCompraIconId(
   input: ResolvePersistableCompraIconIdInput,
@@ -97,32 +153,66 @@ export function resolvePersistableCompraIconId(
     return { ok: true, value: null };
   }
 
-  const explicitPersistable = typeof input.explicitPersistableIconId === "string"
-    ? input.explicitPersistableIconId.trim()
-    : "";
-  if (explicitPersistable.length > 0) {
+  const trimmedDisplay = trimIconPersistenceValue(input.editedDisplayIconId);
+  const trimmedSelectedDisplay = trimIconPersistenceValue(input.selectedIcon?.displayValue);
+  const selectedIconMatchesDisplay = trimmedSelectedDisplay === trimmedDisplay;
+  const selectedPersistable = selectedIconMatchesDisplay && input.selectedIcon
+    ? resolvePersistableIconSelectionId(input.selectedIcon)
+    : null;
+  if (selectedPersistable) {
+    return { ok: true, value: selectedPersistable };
+  }
+
+  const explicitPersistable = resolvePersistableIconSelectionId({
+    id: input.explicitPersistableIconId,
+  });
+  if (explicitPersistable) {
     return { ok: true, value: explicitPersistable };
   }
 
-  const trimmedDisplay = input.editedDisplayIconId.trim();
-  if (!trimmedDisplay) {
+  if (trimmedDisplay == null) {
     return { ok: true, value: null };
   }
 
-  const looksLikeRemoteReference = /^data:/i.test(trimmedDisplay) || /^https?:\/\//i.test(trimmedDisplay);
-
-  if (!looksLikeRemoteReference) {
-    return { ok: true, value: trimmedDisplay };
+  if (typeof trimmedDisplay !== "string") {
+    return { ok: true, value: null };
   }
 
-  const matchedUserIcon = (input.userIcons ?? []).find((icon) => {
-    const normalizedImageUrl = icon.imageUrl.trim();
-    return normalizedImageUrl.length > 0 && normalizedImageUrl === trimmedDisplay;
+  if (isRemoteIconReference(trimmedDisplay)) {
+    return {
+      ok: false,
+      reason: selectedIconMatchesDisplay ? "MISSING_PERSISTABLE_ICON_ID" : "INVALID_ICON_ID_REFERENCE",
+    };
+  }
+
+  return { ok: true, value: trimmedDisplay };
+}
+
+export function buildCompraIconMatchRuleTerms(input: {
+  persistableIconId: string | null;
+  userIcons?: Array<{ id: string; name: string; tags?: string[] | null }>;
+}): string[] {
+  const persistableIconId = resolvePersistableIconSelectionId({
+    id: input.persistableIconId,
   });
+  if (!persistableIconId) return [];
 
-  if (!matchedUserIcon) {
-    return { ok: false, reason: "ICON_REFERENCE_INVALID" };
+  const terms = new Map<string, string>();
+  const personalIcon = (input.userIcons ?? []).find((icon) => icon.id === persistableIconId);
+  if (personalIcon) {
+    for (const term of getItemTerms({
+      name: personalIcon.name,
+      tags: personalIcon.tags ?? [],
+    })) {
+      addUniqueRuleTerm(terms, term);
+    }
+    return Array.from(terms.values());
   }
 
-  return { ok: true, value: matchedUserIcon.id };
+  const builtinIcon = LIBRARY_ICONS.find((icon) => icon.key === persistableIconId);
+  if (builtinIcon) {
+    addUniqueRuleTerm(terms, builtinIcon.label);
+  }
+
+  return Array.from(terms.values());
 }

@@ -83,6 +83,7 @@ import {
   ICON_CATEGORY_OPTIONS as USER_ICON_CATEGORIES,
   getIconCategoryLabel,
 } from "@shared/icon-categories";
+import { resolvePersistableIconSelectionId } from "@shared/icon-persistence";
 import {
   buildIconKeywordsFromNameAndFilename,
   ICON_ALLOWED_MIME_TYPES,
@@ -387,34 +388,55 @@ export function IconPicker({
 
   const resolveSuggestionMeta = (iconId: string): IconPickerSelectMeta => {
     const personalByImage = personalIconByImageUrl.get(iconId);
-    if (personalByImage) {
-      return {
-        displayValue: personalByImage.imageUrl,
-        persistableIconId: personalByImage.id,
-        source: "suggestion",
-        userIconId: personalByImage.id,
-        officialIconId: personalByImage.officialIconId ?? null,
-      };
-    }
+      if (personalByImage) {
+        return {
+          displayValue: personalByImage.imageUrl,
+          persistableIconId: resolvePersistableIconSelectionId({
+            id: personalByImage.id,
+            userIconId: personalByImage.id,
+            officialIconId: personalByImage.officialIconId ?? null,
+          }),
+          source: "suggestion",
+          id: personalByImage.id,
+          userIconId: personalByImage.id,
+          personalIconId: personalByImage.id,
+          officialIconId: personalByImage.officialIconId ?? null,
+          iconId: personalByImage.id,
+          imageUrl: personalByImage.imageUrl,
+          storagePath: personalByImage.storagePath ?? null,
+          name: personalByImage.name,
+        };
+      }
 
     const personalById = personalIconById.get(iconId);
-    if (personalById) {
-      return {
-        displayValue: personalById.imageUrl,
-        persistableIconId: personalById.id,
-        source: "suggestion",
-        userIconId: personalById.id,
-        officialIconId: personalById.officialIconId ?? null,
-      };
-    }
+      if (personalById) {
+        return {
+          displayValue: personalById.imageUrl,
+          persistableIconId: resolvePersistableIconSelectionId({
+            id: personalById.id,
+            userIconId: personalById.id,
+            officialIconId: personalById.officialIconId ?? null,
+          }),
+          source: "suggestion",
+          id: personalById.id,
+          userIconId: personalById.id,
+          personalIconId: personalById.id,
+          officialIconId: personalById.officialIconId ?? null,
+          iconId: personalById.id,
+          imageUrl: personalById.imageUrl,
+          storagePath: personalById.storagePath ?? null,
+          name: personalById.name,
+        };
+      }
 
-    const looksLikeRemoteReference = /^data:/i.test(iconId) || /^https?:\/\//i.test(iconId);
-    return {
-      displayValue: iconId,
-      persistableIconId: looksLikeRemoteReference ? null : iconId,
-      source: "suggestion",
+      return {
+        displayValue: iconId,
+        persistableIconId: resolvePersistableIconSelectionId({ iconId }),
+        source: "suggestion",
+        id: iconId,
+        iconId,
+      };
     };
-  };
 
   useEffect(() => {
     if (isManageMode) return;
@@ -461,10 +483,20 @@ export function IconPicker({
     onSuccess: (icon) => {
       emitSelection({
         displayValue: icon.imageUrl,
-        persistableIconId: icon.id,
+        persistableIconId: resolvePersistableIconSelectionId({
+          id: icon.id,
+          userIconId: icon.id,
+          officialIconId: icon.officialIconId ?? null,
+        }),
         source: "upload",
+        id: icon.id,
         userIconId: icon.id,
+        personalIconId: icon.id,
         officialIconId: icon.officialIconId ?? null,
+        iconId: icon.id,
+        imageUrl: icon.imageUrl,
+        storagePath: icon.storagePath ?? null,
+        name: icon.name,
       });
       setUploadPreview(null);
       setUploadFileName("");
@@ -990,8 +1022,10 @@ export function IconPicker({
 
     emitSelection({
       displayValue: key,
-      persistableIconId: key,
+      persistableIconId: resolvePersistableIconSelectionId({ iconId: key }),
       source: "builtin",
+      id: key,
+      iconId: key,
     });
     if (!isManageMode) {
       setOpen(false);
@@ -1010,10 +1044,20 @@ export function IconPicker({
 
     emitSelection({
       displayValue: icon.imageUrl,
-      persistableIconId: icon.id,
+      persistableIconId: resolvePersistableIconSelectionId({
+        id: icon.id,
+        userIconId: icon.id,
+        officialIconId: icon.officialIconId ?? null,
+      }),
       source: "personal",
+      id: icon.id,
       userIconId: icon.id,
+      personalIconId: icon.id,
       officialIconId: icon.officialIconId ?? null,
+      iconId: icon.id,
+      imageUrl: icon.imageUrl,
+      storagePath: icon.storagePath ?? null,
+      name: icon.name,
     });
     if (!isManageMode) {
       setOpen(false);
@@ -2873,10 +2917,19 @@ export function IconPicker({
                     const selectedUserIconId = addedResult.userIconId;
                     emitSelection({
                       displayValue: manageActionTarget.icon.imageUrl,
-                      persistableIconId: selectedUserIconId,
+                      persistableIconId: resolvePersistableIconSelectionId({
+                        userIconId: selectedUserIconId,
+                        officialIconId: manageActionTarget.icon.id,
+                      }),
                       source: "personal",
+                      id: selectedUserIconId ?? manageActionTarget.icon.id,
                       userIconId: selectedUserIconId,
+                      personalIconId: selectedUserIconId,
                       officialIconId: manageActionTarget.icon.id,
+                      iconId: selectedUserIconId ?? manageActionTarget.icon.id,
+                      imageUrl: manageActionTarget.icon.imageUrl,
+                      storagePath: manageActionTarget.icon.storagePath ?? null,
+                      name: manageActionTarget.icon.name,
                     });
                     if (!isManageMode) {
                       setOpen(false);

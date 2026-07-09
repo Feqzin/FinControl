@@ -3,6 +3,10 @@ import { formatMoneyFixed } from "../../utils/money.js";
 import { normalizeIsoDate } from "../../utils/date.js";
 import { ComprasCartaoService, type DeleteCompraScope } from "../services/compras-cartao.service.js";
 import { compraBody, compraUpdateBody } from "../validators/financial.validators.js";
+import {
+  INVALID_ICON_ID_REFERENCE_ERROR_CODE,
+  INVALID_ICON_ID_REFERENCE_MESSAGE,
+} from "../../shared/icon-persistence.js";
 import { auditRequest, getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils.js";
 
 function parseDeleteScope(value: unknown): DeleteCompraScope {
@@ -18,11 +22,18 @@ function parseDryRun(value: unknown): boolean {
   return normalized === "1" || normalized === "true";
 }
 
-function isRemoteIconReference(value: unknown): boolean {
-  if (typeof value !== "string") return false;
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  return /^data:/i.test(trimmed) || /^https?:\/\//i.test(trimmed);
+function hasInvalidIconReferenceIssue(error: { issues?: Array<{ path?: Array<string | number>; message?: string }> }): boolean {
+  return Array.isArray(error.issues) && error.issues.some((issue) =>
+    issue.message === INVALID_ICON_ID_REFERENCE_MESSAGE
+      && (issue.path == null || issue.path.length === 0 || issue.path[0] === "iconeId")
+  );
+}
+
+function sendInvalidIconReference(res: Response) {
+  return res.status(400).json({
+    message: INVALID_ICON_ID_REFERENCE_MESSAGE,
+    errorCode: INVALID_ICON_ID_REFERENCE_ERROR_CODE,
+  });
 }
 
 export function createComprasCartaoController(service: ComprasCartaoService) {
@@ -55,29 +66,37 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
           userId,
           details: { reason: "validation_error" },
         });
+        if (hasInvalidIconReferenceIssue(parsed.error)) {
+          return sendInvalidIconReference(res);
+        }
         return sendBadRequest(res, parsed.error.message);
       }
 
       const result = await service.create(userId, parsed.data);
       if ("error" in result) {
-        if (result.error === "ICONE_NOT_FOUND") {
-          const iconErrorCode = isRemoteIconReference(parsed.data.iconeId)
-            ? "ICON_REFERENCE_INVALID"
-            : "ICON_OWNERSHIP_INVALID";
+        if (result.error === "ICONE_INVALID_REFERENCE") {
           auditRequest(req, {
             action: "create",
             status: "failure",
             domain: "compras_cartao",
             userId,
-            details: { reason: "icone_not_found_or_not_owned", errorCode: iconErrorCode },
+            details: { reason: "icone_invalid_reference", errorCode: INVALID_ICON_ID_REFERENCE_ERROR_CODE },
           });
-          if (iconErrorCode === "ICON_REFERENCE_INVALID") {
-            return res.status(400).json({
-              message: "Ícone selecionado não possui referência persistível válida na sua biblioteca.",
-              errorCode: iconErrorCode,
-            });
-          }
-          return sendBadRequest(res, "Icone selecionado nao pertence a sua biblioteca.");
+          return sendInvalidIconReference(res);
+        }
+
+        if (result.error === "ICONE_NOT_FOUND") {
+          auditRequest(req, {
+            action: "create",
+            status: "failure",
+            domain: "compras_cartao",
+            userId,
+            details: { reason: "icone_not_found_or_not_owned", errorCode: "ICON_NOT_FOUND" },
+          });
+          return res.status(404).json({
+            message: "O ícone selecionado não foi encontrado na sua biblioteca.",
+            errorCode: "ICON_NOT_FOUND",
+          });
         }
 
         if (result.error === "PESSOA_NOT_FOUND") {
@@ -146,30 +165,39 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
           targetId: compraId,
           details: { reason: "validation_error" },
         });
+        if (hasInvalidIconReferenceIssue(parsed.error)) {
+          return sendInvalidIconReference(res);
+        }
         return sendBadRequest(res, parsed.error.message);
       }
 
       const result = await service.update(compraId, userId, parsed.data);
       if ("error" in result) {
-        if (result.error === "ICONE_NOT_FOUND") {
-          const iconErrorCode = isRemoteIconReference(parsed.data.iconeId)
-            ? "ICON_REFERENCE_INVALID"
-            : "ICON_OWNERSHIP_INVALID";
+        if (result.error === "ICONE_INVALID_REFERENCE") {
           auditRequest(req, {
             action: "update",
             status: "failure",
             domain: "compras_cartao",
             userId,
             targetId: compraId,
-            details: { reason: "icone_not_found_or_not_owned", errorCode: iconErrorCode },
+            details: { reason: "icone_invalid_reference", errorCode: INVALID_ICON_ID_REFERENCE_ERROR_CODE },
           });
-          if (iconErrorCode === "ICON_REFERENCE_INVALID") {
-            return res.status(400).json({
-              message: "Ícone selecionado não possui referência persistível válida na sua biblioteca.",
-              errorCode: iconErrorCode,
-            });
-          }
-          return sendBadRequest(res, "Icone selecionado nao pertence a sua biblioteca.");
+          return sendInvalidIconReference(res);
+        }
+
+        if (result.error === "ICONE_NOT_FOUND") {
+          auditRequest(req, {
+            action: "update",
+            status: "failure",
+            domain: "compras_cartao",
+            userId,
+            targetId: compraId,
+            details: { reason: "icone_not_found_or_not_owned", errorCode: "ICON_NOT_FOUND" },
+          });
+          return res.status(404).json({
+            message: "O ícone selecionado não foi encontrado na sua biblioteca.",
+            errorCode: "ICON_NOT_FOUND",
+          });
         }
 
         if (result.error === "CARTAO_NOT_FOUND") {

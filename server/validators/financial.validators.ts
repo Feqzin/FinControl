@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { normalizeIsoDate } from "../../utils/date";
 import { parseMoney } from "../../utils/money";
+import {
+  INVALID_ICON_ID_REFERENCE_MESSAGE,
+  isRemoteIconReference,
+} from "@shared/icon-persistence";
 
 const nonEmptyUpdateMessage = "Informe ao menos um campo para atualizar";
 const moneyField = z.string().or(z.number()).transform(String);
@@ -129,6 +133,24 @@ const percentualNullableOptional = z
     return Number(parsed.toFixed(4));
   });
 
+const persistableIconIdNullableOptional = z
+  .union([z.string(), z.null(), z.undefined()])
+  .transform((value, ctx) => {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (isRemoteIconReference(trimmed)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: INVALID_ICON_ID_REFERENCE_MESSAGE,
+        path: ["iconeId"],
+      });
+      return z.NEVER;
+    }
+    return trimmed;
+  });
+
 export const dividaBody = z.object({
   pessoaId: z.string().min(1),
   tipo: z.enum(["receber", "pagar"]),
@@ -182,7 +204,7 @@ export const compraBody = z.object({
   valorParcela: moneyField,
   dataCompra: isoDateRequired,
   pessoaId: z.string().optional().nullable(),
-  iconeId: z.string().optional().nullable(),
+  iconeId: persistableIconIdNullableOptional,
   reembolsoModo: reembolsoModeNullableOptional,
   reembolsoValorTotal: nonNegativeMoneyNullableOptional,
   reembolsoPercentual: percentualNullableOptional,
@@ -224,7 +246,7 @@ export const compraUpdateBody = z.object({
   valorParcela: moneyField.optional(),
   dataCompra: isoDateOptional,
   pessoaId: z.string().min(1).optional().nullable(),
-  iconeId: z.string().optional().nullable(),
+  iconeId: persistableIconIdNullableOptional,
   statusPessoa: canonicalStatusNullableOptional,
   dataPagamentoPessoa: isoDateNullableOptional,
   reembolsoModo: reembolsoModeNullableOptional,

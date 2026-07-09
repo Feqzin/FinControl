@@ -136,6 +136,28 @@ test("icon match rules: criar exige auth", async () => {
   });
 });
 
+test("icon match rules: rejeita iconId remoto/base64", async () => {
+  const { app } = createIconMatchRulesRouteApp();
+  await withTestServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/icon-match-rules`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        iconId: "data:image/png;base64,mercado-livre",
+        terms: ["mercado livre"],
+      }),
+    });
+
+    assert.equal(response.status, 400);
+    const body = await response.json();
+    assert.equal(body.errorCode, "INVALID_ICON_ID_REFERENCE");
+    assert.match(body.message, /referência válida para salvar/i);
+  });
+});
+
 test("icon match rules: ownership por userId em listar/criar/excluir", async () => {
   const { app, fixture } = createIconMatchRulesRouteApp();
   await withTestServer(app, async (baseUrl) => {
@@ -183,5 +205,26 @@ test("icon match rules: ownership por userId em listar/criar/excluir", async () 
     });
     assert.equal(deleteOwn.status, 200);
     assert.equal(fixture.rules.length, 0);
+  });
+});
+
+test("icon match rules: preserva iconId persistível real ao criar regra", async () => {
+  const { app } = createIconMatchRulesRouteApp();
+  await withTestServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/icon-match-rules`, {
+      method: "POST",
+      headers: {
+        "x-test-auth": "user_a",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        iconId: "d8d210d6-06fe-4a7b-95f1-ae2676d95088",
+        terms: ["mercado livre"],
+      }),
+    });
+
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(body.rules[0]?.iconId, "d8d210d6-06fe-4a7b-95f1-ae2676d95088");
   });
 });

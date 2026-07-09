@@ -135,6 +135,13 @@ registerRoutes(app);
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   const status = err.status || err.statusCode || 500;
   const message = buildSafeClientErrorMessage(err, status);
+  const payload =
+    req.path === "/api/auth/me" && status >= 500
+      ? {
+          message: "Erro ao carregar sessao.",
+          errorCode: "AUTH_ME_FAILED",
+        }
+      : { message };
 
   writeTechnicalLog({
     event: "http.request.error",
@@ -153,7 +160,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     return next(err);
   }
 
-  return res.status(status).json({ message });
+  return res.status(status).json(payload);
 });
 
 export default app;

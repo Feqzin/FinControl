@@ -27,6 +27,30 @@ test("compraUpdateBody aceita statusPessoa vazio e converte para null", () => {
   assert.equal(parsed.data.statusPessoa, null);
 });
 
+test("compraUpdateBody rejeita iconeId com referência data/url", () => {
+  const dataUrl = compraUpdateBody.safeParse({ iconeId: "data:image/png;base64,abc123" });
+  assert.equal(dataUrl.success, false);
+
+  const httpUrl = compraUpdateBody.safeParse({ iconeId: "https://cdn.fincontrol.dev/icon.png" });
+  assert.equal(httpUrl.success, false);
+});
+
+test("compraBody converte iconeId vazio para null", () => {
+  const parsed = compraBody.safeParse({
+    cartaoId: "cartao-1",
+    descricao: "Compra teste",
+    valorTotal: "300.00",
+    parcelas: 3,
+    parcelaAtual: 1,
+    valorParcela: "100.00",
+    dataCompra: "2026-05-10",
+    iconeId: "   ",
+  });
+  assert.equal(parsed.success, true);
+  if (!parsed.success) return;
+  assert.equal(parsed.data.iconeId, null);
+});
+
 test("compraBody valida modo de reembolso total com pessoa vinculada", () => {
   const parsed = compraBody.safeParse({
     cartaoId: "cartao-1",

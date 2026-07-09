@@ -1,6 +1,10 @@
 import type { Request, Response } from "express";
 import { IconMatchRulesService } from "../services/icon-match-rules.service.js";
 import { iconMatchRuleCreateBody } from "../validators/icon-match-rules.validators.js";
+import {
+  INVALID_ICON_ID_REFERENCE_ERROR_CODE,
+  INVALID_ICON_ID_REFERENCE_MESSAGE,
+} from "../../shared/icon-persistence.js";
 import { getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils.js";
 import { toErrorLog, writeTechnicalLog } from "../logger.js";
 
@@ -15,6 +19,10 @@ function isIconMatchSchemaError(error: unknown): boolean {
   return message.includes("icon_match_rules");
 }
 
+function hasInvalidIconReferenceIssue(error: { issues?: Array<{ message?: string }> }): boolean {
+  return Array.isArray(error.issues) && error.issues.some((issue) => issue.message === INVALID_ICON_ID_REFERENCE_MESSAGE);
+}
+
 export function createIconMatchRulesController(service: IconMatchRulesService) {
   return {
     list: async (req: Request, res: Response) => {
@@ -27,6 +35,12 @@ export function createIconMatchRulesController(service: IconMatchRulesService) {
       const userId = getUserId(req);
       const parsed = iconMatchRuleCreateBody.safeParse(req.body);
       if (!parsed.success) {
+        if (hasInvalidIconReferenceIssue(parsed.error)) {
+          return res.status(400).json({
+            message: INVALID_ICON_ID_REFERENCE_MESSAGE,
+            errorCode: INVALID_ICON_ID_REFERENCE_ERROR_CODE,
+          });
+        }
         return sendBadRequest(res, parsed.error.message);
       }
       try {

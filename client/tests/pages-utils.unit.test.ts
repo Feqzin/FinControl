@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { addMonths, format } from "date-fns";
 import { formatCurrencyBRL, formatIsoDateToBR } from "../src/utils/formatters";
 import {
@@ -99,6 +101,7 @@ import {
 import { buildCompraAliasDraft, findPossibleExistingPurchaseMatch } from "../src/pages/cartoes/import-existing-purchase-match";
 import { buildCreateCompraAliasRequestBody, buildUpdateCompraRequestBody } from "../src/services/api/cartoes";
 import {
+  buildCompraIconMatchRuleTerms,
   buildEditCompraIconUpdatePatch,
   resolveEditCompraIconPresentation,
   resolvePersistableCompraIconId,
@@ -195,6 +198,7 @@ import {
   getPackRatingLabel,
   getPackRatingSummaryLabel,
 } from "../src/components/icon-picker.utils";
+import { resolvePersistableIconSelectionId } from "@shared/icon-persistence";
 
 test("formatters: moeda e data em pt-BR", () => {
   assert.equal(formatCurrencyBRL(1234.56), "R$\u00a01.234,56");
@@ -4149,8 +4153,8 @@ test("import parser: buildCreateCompraAliasRequestBody aceita cartaoId ausente e
   assert.equal(Object.hasOwn(body, "totalParcelas"), false);
 });
 
-test("cartões API: buildUpdateCompraRequestBody saneia iconeId e remove undefined", () => {
-  const body = buildUpdateCompraRequestBody({
+test("cartões API: buildUpdateCompraRequestBody rejeita iconeId remoto/base64", () => {
+  assert.throws(() => buildUpdateCompraRequestBody({
     descricao: "Ifood Club",
     valorTotal: "422,79",
     parcelas: "1",
@@ -4160,13 +4164,40 @@ test("cartões API: buildUpdateCompraRequestBody saneia iconeId e remove undefin
     reembolsoModo: null,
     reembolsoValorTotal: undefined,
     reembolsoPercentual: undefined,
+  }), /referência válida para salvar/i);
+});
+
+test("cartões API: buildUpdateCompraRequestBody aceita PATCH mínimo só com iconeId", () => {
+  const body = buildUpdateCompraRequestBody({
+    iconeId: "d8d210d6-06fe-4a7b-95f1-ae2676d95088",
+  });
+
+  assert.deepEqual(body, {
+    iconeId: "d8d210d6-06fe-4a7b-95f1-ae2676d95088",
+  });
+  assert.equal(Object.hasOwn(body, "descricao"), false);
+  assert.equal(Object.hasOwn(body, "valorTotal"), false);
+  assert.equal(Object.hasOwn(body, "parcelas"), false);
+});
+
+test("cartões API: buildUpdateCompraRequestBody saneia iconeId persistível e remove undefined", () => {
+  const body = buildUpdateCompraRequestBody({
+    descricao: "Ifood Club",
+    valorTotal: "422,79",
+    parcelas: "1",
+    pessoaId: "",
+    statusPessoa: "pendente",
+    iconeId: "  user-icon-ifood  ",
+    reembolsoModo: null,
+    reembolsoValorTotal: undefined,
+    reembolsoPercentual: undefined,
   });
 
   assert.equal(body.descricao, "Ifood Club");
   assert.equal(body.valorTotal, "422.79");
   assert.equal(body.parcelas, 1);
   assert.equal(body.pessoaId, null);
-  assert.equal(body.iconeId, "https://cdn.exemplo/icon-ifood.png");
+  assert.equal(body.iconeId, "user-icon-ifood");
   assert.equal(Object.hasOwn(body, "reembolsoValorTotal"), true);
   assert.equal(Object.hasOwn(body, "reembolsoPercentual"), true);
 });
@@ -4288,17 +4319,75 @@ test("editar compra ícone: resolve icone persistível para ícone padrão sem a
   assert.equal(resolved.value, "nubank");
 });
 
-test("editar compra ícone: converte imageUrl pessoal para user_icon_library.id antes do PATCH", () => {
+test("ícone persistível: prioriza id real e ignora imageUrl/previewUrl", () => {
+  const persistable = resolvePersistableIconSelectionId({
+    id: "user-icon-1",
+    userIconId: "user-icon-2",
+    personalIconId: "user-icon-3",
+    officialIconId: "mercadolivre",
+    iconId: "fallback-icon",
+    imageUrl: "https://cdn.fincontrol.dev/icons/club-ifood.png",
+    previewUrl: "data:image/png;base64,preview",
+  });
+
+  assert.equal(persistable, "user-icon-1");
+});
+
+test("editar compra ícone: usa explicitPersistableIconId e nunca reconstrói por imageUrl", () => {
   const resolved = resolvePersistableCompraIconId({
     iconDirty: true,
     editedDisplayIconId: "https://cdn.fincontrol.dev/icons/club-ifood.png",
-    explicitPersistableIconId: undefined,
+    explicitPersistableIconId: "user-icon-1",
     userIcons: [{ id: "user-icon-1", imageUrl: "https://cdn.fincontrol.dev/icons/club-ifood.png" }],
   });
 
   assert.equal(resolved.ok, true);
   if (!resolved.ok) return;
   assert.equal(resolved.value, "user-icon-1");
+});
+
+test("editar compra ícone: usa selectedIcon com UUID real mesmo quando o display é imageUrl", () => {
+  const resolved = resolvePersistableCompraIconId({
+    iconDirty: true,
+    editedDisplayIconId: "https://cdn.fincontrol.dev/icons/club-ifood.png",
+    explicitPersistableIconId: undefined,
+    selectedIcon: {
+      displayValue: "https://cdn.fincontrol.dev/icons/club-ifood.png",
+      id: "user-icon-1",
+      userIconId: "user-icon-1",
+      personalIconId: "user-icon-1",
+      iconId: "user-icon-1",
+      imageUrl: "https://cdn.fincontrol.dev/icons/club-ifood.png",
+      persistableIconId: "user-icon-1",
+      source: "personal",
+    },
+    userIcons: [{ id: "user-icon-1", imageUrl: "https://cdn.fincontrol.dev/icons/club-ifood.png" }],
+  });
+
+  assert.equal(resolved.ok, true);
+  if (!resolved.ok) return;
+  assert.equal(resolved.value, "user-icon-1");
+});
+
+test("editar compra ícone: não aceita imageUrl sem ID persistível explícito", () => {
+  const resolved = resolvePersistableCompraIconId({
+    iconDirty: true,
+    editedDisplayIconId: "https://cdn.fincontrol.dev/icons/club-ifood.png",
+    explicitPersistableIconId: undefined,
+    selectedIcon: {
+      displayValue: "https://cdn.fincontrol.dev/icons/club-ifood.png",
+      imageUrl: "https://cdn.fincontrol.dev/icons/club-ifood.png",
+      previewUrl: "https://cdn.fincontrol.dev/icons/club-ifood-preview.png",
+      storagePath: "user-icons/club-ifood.png",
+      persistableIconId: null,
+      source: "personal",
+    },
+    userIcons: [{ id: "user-icon-1", imageUrl: "https://cdn.fincontrol.dev/icons/club-ifood.png" }],
+  });
+
+  assert.equal(resolved.ok, false);
+  if (resolved.ok) return;
+  assert.equal(resolved.reason, "MISSING_PERSISTABLE_ICON_ID");
 });
 
 test("editar compra ícone: bloqueia referência remota sem vínculo persistível", () => {
@@ -4311,7 +4400,60 @@ test("editar compra ícone: bloqueia referência remota sem vínculo persistíve
 
   assert.equal(resolved.ok, false);
   if (resolved.ok) return;
-  assert.equal(resolved.reason, "ICON_REFERENCE_INVALID");
+  assert.equal(resolved.reason, "INVALID_ICON_ID_REFERENCE");
+});
+
+test("editar compra ícone: termos da regra usam contexto seguro do ícone e evitam genéricos", () => {
+  const terms = buildCompraIconMatchRuleTerms({
+    persistableIconId: "user-icon-mercado-livre",
+    userIcons: [
+      {
+        id: "user-icon-mercado-livre",
+        name: "Mercado Livre",
+        tags: ["mercado livre img3 1", "mercado", "pagamento"],
+      },
+    ],
+  });
+
+  assert.deepEqual(terms, [
+    "Mercado Livre",
+    "mercadolivre",
+    "mercado livre img3 1",
+  ]);
+});
+
+test("cartões mobile: listagem responsiva expõe ação clara de editar compra", () => {
+  const componentPath = path.resolve(
+    process.cwd(),
+    "client",
+    "src",
+    "components",
+    "cartoes",
+    "CartoesMobileTabs.tsx",
+  );
+  const source = readFileSync(componentPath, "utf8");
+
+  assert.match(source, /aria-label="Editar compra"/);
+  assert.match(source, /title="Editar compra"/);
+  assert.match(source, /data-testid=\{`button-edit-compra-mobile-\$\{compra\.id\}`\}/);
+  assert.match(source, /onClick=\{\(\) => onEditCompra\(compra\)\}/);
+});
+
+test("editar compra ícone: salva compra antes de tentar regra automática e loga motivo quando pula o PATCH", () => {
+  const containerPath = path.resolve(
+    process.cwd(),
+    "client",
+    "src",
+    "pages",
+    "cartoes",
+    "cartoes-page-container.tsx",
+  );
+  const source = readFileSync(containerPath, "utf8");
+
+  assert.match(source, /logDev\("update-compra:skip-patch"/);
+  assert.match(source, /selectedIcon: describeSelectedIconForLog\(editCompraSelectedIcon\)/);
+  assert.match(source, /updateCompraMutation\.mutate\([\s\S]*onSuccess: async \(\) => \{[\s\S]*await handleSaveCompraIconRule\(iconRuleTarget, iconRuleTerms\)/);
+  assert.match(source, /Não foi possível identificar o ID do ícone selecionado\. Selecione o ícone novamente\./);
 });
 
 test("entity icon suggestion: Novo Cartão aplica ícone por palavra-chave forte com referência persistível", () => {

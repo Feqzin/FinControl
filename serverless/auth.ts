@@ -392,6 +392,52 @@ function auditAuth(req: Request, event: Omit<Parameters<typeof writeAuditLog>[0]
   });
 }
 
+type AuthSessionUser = {
+  id: string;
+  username?: string | null;
+  email?: string | null;
+  nomeCompleto?: string | null;
+  fullNameVisibility?: unknown;
+  subscriptionTier?: unknown;
+};
+
+function resolveAuthenticatedSessionUser(req: Request): AuthSessionUser | null {
+  try {
+    if (typeof req.isAuthenticated !== "function" || !req.isAuthenticated()) {
+      return null;
+    }
+  } catch (error) {
+    writeTechnicalLog({
+      event: "auth.session.state.error",
+      source: "auth",
+      level: "warn",
+      requestId: req.requestId ?? undefined,
+      data: {
+        reason: "is_authenticated_failed",
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+    return null;
+  }
+
+  const user = req.user as Partial<AuthSessionUser> | null | undefined;
+  if (!user || typeof user.id !== "string" || user.id.trim() === "") {
+    writeTechnicalLog({
+      event: "auth.session.user_missing",
+      source: "auth",
+      level: "warn",
+      requestId: req.requestId ?? undefined,
+      data: {
+        hasUserObject: Boolean(user),
+        userIdType: user ? typeof user.id : null,
+      },
+    });
+    return null;
+  }
+
+  return user as AuthSessionUser;
+}
+
 export function setupAuth(app: Express) {
   const PgStore = connectPgSimple(session);
 
@@ -531,7 +577,21 @@ export function setupAuth(app: Express) {
   passport.deserializeUser(async (id: string, done) => {
     try {
       const user = await storage.getUser(id);
-      done(null, user || null);
+      if (!user) {
+        writeTechnicalLog({
+          event: "auth.session.user_missing",
+          source: "auth",
+          level: "warn",
+          data: {
+            userId: id,
+            reason: "user_not_found_for_session",
+          },
+        });
+        done(null, false);
+        return;
+      }
+
+      done(null, user);
     } catch (err) {
       writeTechnicalLog({
         event: "auth.session.deserialize.error",
@@ -917,11 +977,29 @@ export function setupAuth(app: Express) {
   });
 
   app.get("/api/auth/me", (req, res) => {
-    if (req.isAuthenticated()) {
-      const user = req.user as any;
+    try {
+      const user = resolveAuthenticatedSessionUser(req);
+      if (!user) {
+        return res.status(401).json({ message: "Nao autenticado" });
+      }
+
       return res.json(toAuthUserResponse(user));
+    } catch (error) {
+      writeTechnicalLog({
+        event: "auth.me.error",
+        source: "auth",
+        level: "error",
+        requestId: req.requestId ?? undefined,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+
+      return res.status(500).json({
+        message: "Erro ao carregar sessao.",
+        errorCode: "AUTH_ME_FAILED",
+      });
     }
-    return res.status(401).json({ message: "Nao autenticado" });
   });
 
   app.post("/api/auth/forgot-password", loginLimiter, async (req, res) => {
@@ -1154,6 +1232,20 @@ export function setupAuth(app: Express) {
 }
 
 export function requireAuth(req: any, res: any, next: any) {
-  if (req.isAuthenticated()) return next();
+  try {
+    if (typeof req.isAuthenticated === "function" && req.isAuthenticated()) {
+      return next();
+    }
+  } catch (error) {
+    writeTechnicalLog({
+      event: "auth.require.error",
+      source: "auth",
+      level: "warn",
+      requestId: req.requestId ?? undefined,
+      data: {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
   return res.status(401).json({ message: "Nao autenticado" });
 }

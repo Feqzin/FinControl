@@ -65,6 +65,7 @@ import {
   EditCompraDialog,
   NewCompraDialog,
 } from "@/pages/cartoes/dialogs";
+import type { IconPickerSelectMeta } from "@/components/icon-picker";
 import {
   useCartoesDeleteDialogState,
   useCartoesFilters,
@@ -119,6 +120,7 @@ import {
 } from "@/pages/cartoes/cartoes-page.utils";
 import { buildCartoesInsightsItems } from "@/pages/cartoes/cartoes-page-insights";
 import {
+  buildCompraIconMatchRuleTerms,
   buildEditCompraIconUpdatePatch,
   resolveEditCompraIconPresentation,
   resolvePersistableCompraIconId,
@@ -240,6 +242,7 @@ export default function CartoesPage() {
   const [editCompraIcone, setEditCompraIcone] = useState<string | null>(null);
   const [editCompraIconDirty, setEditCompraIconDirty] = useState(false);
   const [editCompraIconPersistableId, setEditCompraIconPersistableId] = useState<string | null | undefined>(undefined);
+  const [editCompraSelectedIcon, setEditCompraSelectedIcon] = useState<IconPickerSelectMeta | null>(null);
   const [applyEditCompraIconRule, setApplyEditCompraIconRule] = useState(false);
 
   const [viewingCompra, setViewingCompra] = useState<CompraCartao | null>(null);
@@ -406,10 +409,10 @@ export default function CartoesPage() {
     staleTime: 5 * 60_000,
   });
   const saveIconMatchRuleMutation = useMutation({
-    mutationFn: async ({ descricao, iconId }: { descricao: string; iconId: string }) =>
+    mutationFn: async ({ iconId, terms }: { iconId: string; terms: string[] }) =>
       createIconMatchRules({
         iconId,
-        terms: [descricao],
+        terms,
       }),
     onSuccess: () => {
       toast({
@@ -603,6 +606,33 @@ export default function CartoesPage() {
     console.info("[cartoes][dev]", event, payload ?? {});
   };
 
+  const sanitizeIconLogValue = (value: unknown): string | null => {
+    if (value == null) return null;
+    if (typeof value !== "string") return String(value);
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith("data:")) return "[DATA_URL]";
+    return trimmed.slice(0, 160);
+  };
+
+  const describeSelectedIconForLog = (meta: IconPickerSelectMeta | null): Record<string, unknown> | null => {
+    if (!meta) return null;
+    return {
+      source: meta.source,
+      displayValue: sanitizeIconLogValue(meta.displayValue),
+      persistableIconId: sanitizeIconLogValue(meta.persistableIconId),
+      id: sanitizeIconLogValue(meta.id),
+      userIconId: sanitizeIconLogValue(meta.userIconId),
+      personalIconId: sanitizeIconLogValue(meta.personalIconId),
+      officialIconId: sanitizeIconLogValue(meta.officialIconId),
+      iconId: sanitizeIconLogValue(meta.iconId),
+      imageUrl: sanitizeIconLogValue(meta.imageUrl),
+      previewUrl: sanitizeIconLogValue(meta.previewUrl),
+      storagePath: sanitizeIconLogValue(meta.storagePath),
+      name: meta.name ?? null,
+    };
+  };
+
   const showSmartImportPremiumToast = () => {
     toast({
       title: "Importação inteligente é Premium",
@@ -749,8 +779,20 @@ export default function CartoesPage() {
     && !editCardStrongIconSuggestion.shouldAutoApply
     && editCardStrongIconSuggestion.shouldSuggest
     && Boolean(editCardStrongIconSuggestion.persistableIconId);
-  const handleSaveCompraIconRule = async (descricao: string, iconId: string) => {
-    await saveIconMatchRuleMutation.mutateAsync({ descricao, iconId });
+  const handleSaveCompraIconRule = async (descricaoOrIconId: string, iconIdOrTerms: string | string[]) => {
+    const iconId = Array.isArray(iconIdOrTerms) ? descricaoOrIconId : iconIdOrTerms;
+    const terms = Array.isArray(iconIdOrTerms)
+      ? iconIdOrTerms
+      : buildCompraIconMatchRuleTerms({
+        persistableIconId: iconId,
+        userIcons: userIconLibrary,
+      });
+
+    if (!iconId || terms.length === 0) {
+      return;
+    }
+
+    await saveIconMatchRuleMutation.mutateAsync({ iconId, terms });
   };
   const editCompraResolvedIconReference = useMemo(
     () => resolveEntityIconReference(editingCompra?.iconeId ?? null, userIconLibrary),
@@ -1487,21 +1529,40 @@ export default function CartoesPage() {
 
   const handleUpdateCompra = () => {
     if (!editingCompra) return;
+    logDev("update-compra:resolve-icon:start", {
+      compraId: editingCompra.id,
+      saveSimilarRuleEnabled: applyEditCompraIconRule,
+      manualIcon: sanitizeIconLogValue(editCompraIcone),
+      editedDisplayIconId: sanitizeIconLogValue(editCompraIcone),
+      explicitPersistableIconId: sanitizeIconLogValue(editCompraIconPersistableId),
+      selectedIcon: describeSelectedIconForLog(editCompraSelectedIcon),
+    });
     const resolvedPersistableIcon = resolvePersistableCompraIconId({
       iconDirty: editCompraIconDirty,
       editedDisplayIconId: editCompraIcone,
       explicitPersistableIconId: editCompraIconPersistableId,
+      selectedIcon: editCompraSelectedIcon,
       userIcons: userIconLibrary,
     });
     if (!resolvedPersistableIcon.ok) {
       toast({
         title: "Não foi possível salvar",
-        description: "Não foi possível resolver uma referência válida do ícone selecionado. Selecione novamente em “Alterar ícone”.",
+        description: resolvedPersistableIcon.reason === "MISSING_PERSISTABLE_ICON_ID"
+          ? "Não foi possível identificar o ID do ícone selecionado. Selecione o ícone novamente."
+          : "Não foi possível salvar este ícone porque a referência do ícone está inválida. Selecione o ícone novamente.",
         variant: "destructive",
       });
-      logDev("update-compra:icon-reference-invalid", {
+      logDev("update-compra:skip-patch", {
         compraId: editingCompra.id,
+        reason: resolvedPersistableIcon.reason,
         iconDirty: editCompraIconDirty,
+        saveSimilarIconRule: applyEditCompraIconRule,
+        manualIcon: sanitizeIconLogValue(editCompraIcone),
+        editedDisplayIconId: sanitizeIconLogValue(editCompraIcone),
+        explicitPersistableIconId: sanitizeIconLogValue(editCompraIconPersistableId),
+        selectedIcon: describeSelectedIconForLog(editCompraSelectedIcon),
+        isDataUrlIconId: Boolean(editCompraIcone?.startsWith("data:")),
+        isHttpIconId: Boolean(editCompraIcone?.startsWith("http://") || editCompraIcone?.startsWith("https://")),
         iconPreviewKind: editCompraIcone
           ? (editCompraIcone.startsWith("data:")
             ? "data_url"
@@ -1521,17 +1582,47 @@ export default function CartoesPage() {
       persistedIconId: editCompraPersistedIconeId,
       persistedPersistableIconId: editCompraPersistedIconePersistableId,
     });
+    const iconRuleTerms = buildCompraIconMatchRuleTerms({
+      persistableIconId: iconRuleTarget,
+      userIcons: userIconLibrary,
+    });
     const updateIconPatch = buildEditCompraIconUpdatePatch({
       iconDirty: editCompraIconDirty,
       editedIconId: resolvedPersistableIcon.value ?? null,
     });
+    const isCompraFormUnchanged = editCompraForm.descricao === editingCompra.descricao
+      && editCompraForm.valorTotal === String(editingCompra.valorTotal)
+      && editCompraForm.parcelas === String(editingCompra.parcelas)
+      && editCompraForm.pessoaId === (editingCompra.pessoaId ?? "")
+      && editCompraForm.statusPessoa === (editingCompra.statusPessoa ?? "pendente")
+      && editCompraForm.reembolsoModo === ((editingCompra.reembolsoModo as "total" | "metade" | "valor_custom" | "percentual_custom" | null | undefined) ?? "total")
+      && editCompraForm.reembolsoValorTotal === (editingCompra.reembolsoValorTotal ? String(editingCompra.reembolsoValorTotal) : "")
+      && editCompraForm.reembolsoPercentual === (editingCompra.reembolsoPercentual ? String(editingCompra.reembolsoPercentual) : "");
+    const shouldUseIconOnlyUpdate = editCompraIconDirty && isCompraFormUnchanged;
+    const compraUpdateData = shouldUseIconOnlyUpdate
+      ? updateIconPatch
+      : {
+        ...editCompraForm,
+        ...updateIconPatch,
+        reembolsoModo: editCompraForm.pessoaId ? editCompraForm.reembolsoModo : null,
+        reembolsoValorTotal: editCompraForm.pessoaId ? editCompraForm.reembolsoValorTotal : null,
+        reembolsoPercentual: editCompraForm.pessoaId ? editCompraForm.reembolsoPercentual : null,
+      };
     logDev("update-compra:start", {
       compraId: editingCompra.id,
       cartaoId: editingCompra.cartaoId,
       valorTotal: editCompraForm.valorTotal,
       parcelas: editCompraForm.parcelas,
       pessoaId: editCompraForm.pessoaId || null,
+      shouldSaveSimilarIconRule: applyEditCompraIconRule,
       hasIconOverride: editCompraIconDirty,
+      manualIcon: sanitizeIconLogValue(editCompraIcone),
+      editedDisplayIconId: sanitizeIconLogValue(editCompraIcone),
+      explicitPersistableIconId: sanitizeIconLogValue(editCompraIconPersistableId),
+      selectedIcon: describeSelectedIconForLog(editCompraSelectedIcon),
+      selectedPreviewIconId: editCompraIconDirty ? (editCompraIcone ?? null) : "unchanged",
+      payloadIconId: editCompraIconDirty ? (resolvedPersistableIcon.value ?? null) : "unchanged",
+      iconRuleTerms,
       iconPreviewKind: editCompraIconDirty
         ? (editCompraIcone
           ? (editCompraIcone.startsWith("data:")
@@ -1552,23 +1643,19 @@ export default function CartoesPage() {
         : "unchanged",
       iconPreviewLength: editCompraIconDirty ? (editCompraIcone?.length ?? 0) : 0,
       iconPersistableLength: editCompraIconDirty ? (resolvedPersistableIcon.value?.length ?? 0) : 0,
+      requestKeys: Object.keys(compraUpdateData),
+      isIconOnlyUpdate: shouldUseIconOnlyUpdate,
     });
     updateCompraMutation.mutate(
       {
         id: editingCompra.id,
-        data: {
-          ...editCompraForm,
-          ...updateIconPatch,
-          reembolsoModo: editCompraForm.pessoaId ? editCompraForm.reembolsoModo : null,
-          reembolsoValorTotal: editCompraForm.pessoaId ? editCompraForm.reembolsoValorTotal : null,
-          reembolsoPercentual: editCompraForm.pessoaId ? editCompraForm.reembolsoPercentual : null,
-        },
+        data: compraUpdateData,
       },
       {
         onSuccess: async () => {
-          if (iconRuleTarget && editCompraForm.descricao.trim().length > 0) {
+          if (iconRuleTarget && iconRuleTerms.length > 0) {
             try {
-              await handleSaveCompraIconRule(editCompraForm.descricao, iconRuleTarget);
+              await handleSaveCompraIconRule(iconRuleTarget, iconRuleTerms);
               toast({
                 title: "Reconhecimento salvo",
                 description: "Compras parecidas podem usar esse ícone automaticamente.",
@@ -1590,11 +1677,18 @@ export default function CartoesPage() {
                   "Ícone salvo na compra, mas não foi possível salvar o reconhecimento automático agora. Você pode tentar novamente depois.",
               });
             }
+          } else if (applyEditCompraIconRule && iconRuleTarget) {
+            logDev("icon-match-rule:create-from-compra:skipped", {
+              compraId: editingCompra.id,
+              iconId: iconRuleTarget,
+              reason: "no_safe_terms",
+            });
           }
           setEditingCompra(null);
           setEditCompraIcone(null);
           setEditCompraIconDirty(false);
           setEditCompraIconPersistableId(undefined);
+          setEditCompraSelectedIcon(null);
           setApplyEditCompraIconRule(false);
           toast({ title: "Compra atualizada" });
           logDev("update-compra:success", { compraId: editingCompra.id });
@@ -1604,6 +1698,10 @@ export default function CartoesPage() {
           logDev("update-compra:error", {
             compraId: editingCompra.id,
             message: error instanceof Error ? error.message : String(error),
+            manualIcon: sanitizeIconLogValue(editCompraIcone),
+            editedDisplayIconId: sanitizeIconLogValue(editCompraIcone),
+            explicitPersistableIconId: sanitizeIconLogValue(editCompraIconPersistableId),
+            selectedIcon: describeSelectedIconForLog(editCompraSelectedIcon),
           });
         },
       },
@@ -2659,6 +2757,23 @@ export default function CartoesPage() {
     setEditCompraIcone(resolvedCompraIcon.displayIconId);
     setEditCompraIconDirty(false);
     setEditCompraIconPersistableId(resolvedCompraIcon.persistableIconId ?? null);
+    setEditCompraSelectedIcon(resolvedCompraIcon.displayIconId || resolvedCompraIcon.persistableIconId
+      ? {
+        displayValue: resolvedCompraIcon.displayIconId,
+        persistableIconId: resolvedCompraIcon.persistableIconId,
+        source: resolvedCompraIcon.isPersonal
+          ? "personal"
+          : resolvedCompraIcon.isBuiltin
+            ? "builtin"
+            : "unknown",
+        id: resolvedCompraIcon.persistableIconId,
+        userIconId: resolvedCompraIcon.isPersonal ? resolvedCompraIcon.persistableIconId : null,
+        personalIconId: resolvedCompraIcon.isPersonal ? resolvedCompraIcon.persistableIconId : null,
+        officialIconId: resolvedCompraIcon.isBuiltin ? resolvedCompraIcon.persistableIconId : null,
+        iconId: resolvedCompraIcon.persistableIconId,
+        imageUrl: resolvedCompraIcon.isPersonal ? resolvedCompraIcon.displayIconId : null,
+      }
+      : null);
     setApplyEditCompraIconRule(false);
     setEditCompraForm({
       descricao: compra.descricao,
@@ -2768,6 +2883,7 @@ export default function CartoesPage() {
         setEditCompraIconDirty={setEditCompraIconDirty}
         setEditCompraIcone={setEditCompraIcone}
         setEditCompraIconPersistableId={setEditCompraIconPersistableId}
+        setEditCompraSelectedIcon={setEditCompraSelectedIcon}
         onUpdateCompra={handleUpdateCompra}
         updateCompraPending={updateCompraMutation.isPending}
       />

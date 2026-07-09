@@ -21,6 +21,12 @@ declare module "express-serve-static-core" {
 
 const app = express();
 
+function extractErrorMessage(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value instanceof Error) return value.message;
+  return String(value ?? "");
+}
+
 app.use(
   express.json({
     // Mantem margem para JSON/base64 e fica abaixo do limite de payload da Vercel Functions.
@@ -83,7 +89,17 @@ app.use("/api", (_req, res) => {
 
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   const status = err.status || err.statusCode || 500;
-  const message = err.message || "Internal Server Error";
+  const defaultMessage =
+    status < 500
+      ? extractErrorMessage(err) || "Bad Request"
+      : "Internal Server Error";
+  const payload =
+    req.path === "/api/auth/me" && status >= 500
+      ? {
+          message: "Erro ao carregar sessao.",
+          errorCode: "AUTH_ME_FAILED",
+        }
+      : { message: defaultMessage };
 
   writeTechnicalLog({
     event: "http.request.error",
@@ -102,7 +118,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     return next(err);
   }
 
-  return res.status(status).json({ message });
+  return res.status(status).json(payload);
 });
 
 export { app };

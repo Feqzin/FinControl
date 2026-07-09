@@ -96,6 +96,7 @@ export function CartaoFaturaSection({
           invoiceMonthLabel={selectedInvoiceMonthLabel}
           servicos={servicos}
           onOpenParcelas={onOpenParcelas}
+          onEditCompra={onEditCompra}
           onDeleteCompra={onDeleteCompra}
           canOpenInvoicePaymentDialog={canOpenInvoicePaymentDialog}
           getInvoicePaymentActionLabel={getInvoicePaymentActionLabel}

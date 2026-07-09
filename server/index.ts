@@ -7,6 +7,7 @@ import { startHttpServer } from "./server-startup";
 import { toErrorLog, writeTechnicalLog } from "./logger";
 
 const httpServer = createServer(app);
+const shouldLogLifecycle = ENV.nodeEnv === "development";
 
 export function log(message: string, source = "server") {
   writeTechnicalLog({
@@ -16,7 +17,56 @@ export function log(message: string, source = "server") {
   });
 }
 
+function logLifecycle(event: string, data?: Record<string, unknown>) {
+  if (!shouldLogLifecycle) return;
+
+  const payload = data && Object.keys(data).length > 0 ? data : undefined;
+  console.info(`[dev-server] ${event}`, payload ?? "");
+  writeTechnicalLog({
+    event,
+    source: "server.lifecycle",
+    data: payload ?? {},
+  });
+}
+
+function attachLifecycleInstrumentation() {
+  if (!shouldLogLifecycle) return;
+
+  logLifecycle("server.routes.registered", {
+    nodeEnv: ENV.nodeEnv,
+    port: ENV.port,
+  });
+
+  httpServer.on("close", () => {
+    logLifecycle("server.close");
+  });
+
+  httpServer.on("error", (error) => {
+    logLifecycle("server.error", toErrorLog(error));
+  });
+
+  process.on("beforeExit", (code) => {
+    logLifecycle("process.beforeExit", { code });
+  });
+
+  process.on("exit", (code) => {
+    logLifecycle("process.exit", { code });
+  });
+
+  process.on("uncaughtException", (error) => {
+    logLifecycle("process.uncaughtException", toErrorLog(error));
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    logLifecycle("process.unhandledRejection", toErrorLog(reason));
+  });
+}
+
+attachLifecycleInstrumentation();
+
 (async () => {
+  logLifecycle("server.bootstrap.start");
+
   if (ENV.demoSeed.enabled) {
     seedDatabase({
       username: ENV.demoSeed.username,
@@ -41,8 +91,13 @@ export function log(message: string, source = "server") {
   } else {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
+    logLifecycle("server.vite.configured");
   }
 
+  logLifecycle("server.listen.start", {
+    preferredHost: "0.0.0.0",
+    preferredPort: ENV.port,
+  });
   const started = await startHttpServer(httpServer, {
     preferredHost: "0.0.0.0",
     preferredPort: ENV.port,
@@ -50,5 +105,9 @@ export function log(message: string, source = "server") {
     log: (message) => log(message, "server"),
   });
 
+  logLifecycle("server.listen.callback", {
+    host: started.host,
+    port: started.port,
+  });
   log(`serving on ${started.host}:${started.port}`);
 })();

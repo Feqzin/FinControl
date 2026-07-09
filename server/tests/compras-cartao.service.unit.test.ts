@@ -290,6 +290,43 @@ test("update com override de icone reconhece erro de coluna mesmo sem nome expli
   });
 });
 
+test("update com override de ícone rejeita referência remota/base64 antes de persistir", async () => {
+  const compra: CompraCartao = {
+    id: "compra-icon-3",
+    userId: "user-compras-unit",
+    cartaoId: "cartao-1",
+    descricao: "Compra com icone",
+    valorTotal: "100.00",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "100.00",
+    dataCompra: "2026-04-20",
+    pessoaId: null,
+    statusPessoa: null,
+    dataPagamentoPessoa: null,
+    iconeId: null,
+  };
+
+  let updateCalled = false;
+  const repository = {
+    getCompraCartao: async () => compra,
+    updateCompraCartao: async () => {
+      updateCalled = true;
+      return compra;
+    },
+    getParcelasCompra: async () => [] as ParcelaCompra[],
+  };
+
+  const service = new ComprasCartaoService(repository as any);
+  const result = await service.update("compra-icon-3", "user-compras-unit", {
+    descricao: "Compra com icone atualizado",
+    iconeId: "data:image/png;base64,abc123",
+  });
+
+  assert.deepEqual(result, { error: "ICONE_INVALID_REFERENCE" });
+  assert.equal(updateCalled, false);
+});
+
 test("migration guard de icone em compras_cartao continua idempotente e com índice", async () => {
   const migrationPath = path.resolve(process.cwd(), "migrations", "0041_compras_cartao_icone_id_guard.sql");
   const source = await readFile(migrationPath, "utf8");

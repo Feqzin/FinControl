@@ -40,6 +40,7 @@ type EditCompraDialogProps = {
   setEditCompraIconDirty: Dispatch<SetStateAction<boolean>>;
   setEditCompraIcone: Dispatch<SetStateAction<string | null>>;
   setEditCompraIconPersistableId: Dispatch<SetStateAction<string | null | undefined>>;
+  setEditCompraSelectedIcon: Dispatch<SetStateAction<IconPickerSelectMeta | null>>;
   onUpdateCompra: () => void;
   updateCompraPending: boolean;
 };
@@ -59,6 +60,7 @@ export function EditCompraDialog({
   setEditCompraIconDirty,
   setEditCompraIcone,
   setEditCompraIconPersistableId,
+  setEditCompraSelectedIcon,
   onUpdateCompra,
   updateCompraPending,
 }: EditCompraDialogProps) {
@@ -71,6 +73,7 @@ export function EditCompraDialog({
           setEditCompraIcone(null);
           setEditCompraIconDirty(false);
           setEditCompraIconPersistableId(undefined);
+          setEditCompraSelectedIcon(null);
           setApplyEditCompraIconRule(false);
         }
       }}
@@ -93,11 +96,15 @@ export function EditCompraDialog({
               setEditCompraIconDirty(true);
               setEditCompraIcone(nextIconId);
               setEditCompraIconPersistableId(undefined);
+              setEditCompraSelectedIcon((current) => (
+                current?.displayValue === nextIconId ? current : null
+              ));
             }}
             onSelectMeta={(meta: IconPickerSelectMeta) => {
               setEditCompraIconDirty(true);
               setEditCompraIcone(meta.displayValue);
               setEditCompraIconPersistableId(meta.persistableIconId ?? null);
+              setEditCompraSelectedIcon(meta);
             }}
             size="md"
           />
