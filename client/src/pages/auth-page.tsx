@@ -14,6 +14,31 @@ import {
 } from "lucide-react";
 import { normalizePublicUsername, validatePublicUsername } from "@shared/public-username";
 
+function extractApiErrorDetails(error: unknown): { message: string; errorCode: string | null } {
+  const rawMessage = typeof (error as { message?: unknown } | null)?.message === "string"
+    ? String((error as { message: string }).message)
+    : "";
+  const normalized = rawMessage.replace(/^\d+\s*:\s*/, "").trim();
+
+  if (!normalized) {
+    return { message: "Não foi possível processar a solicitação agora.", errorCode: null };
+  }
+
+  try {
+    const parsed = JSON.parse(normalized) as { message?: unknown; errorCode?: unknown };
+    return {
+      message: typeof parsed.message === "string" && parsed.message.trim()
+        ? parsed.message
+        : normalized,
+      errorCode: typeof parsed.errorCode === "string" && parsed.errorCode.trim()
+        ? parsed.errorCode
+        : null,
+    };
+  } catch {
+    return { message: normalized, errorCode: null };
+  }
+}
+
 function PasswordInput({ id, placeholder, value, onChange, testId }: {
   id: string; placeholder: string; value: string; onChange: (v: string) => void; testId?: string;
 }) {
@@ -93,9 +118,10 @@ export default function AuthPage() {
       await login.mutateAsync(loginData);
     } catch (error: any) {
       const rawMessage = typeof error?.message === "string" ? error.message : "";
+      const details = extractApiErrorDetails(error);
       const description = rawMessage.includes("401")
         ? "E-mail/usuário ou senha inválidos."
-        : (rawMessage || "Não foi possível entrar agora.");
+        : `${details.message}${details.errorCode ? ` (${details.errorCode})` : ""}`;
       toast({ title: "Erro ao entrar", description, variant: "destructive" });
     }
   };

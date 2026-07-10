@@ -1,7 +1,7 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { storage } from "./storage.js";
-import { type Express, type Request } from "express";
+import { type Express, type Request, type Response } from "express";
 import session from "express-session";
 import { pool } from "./db.js";
 import connectPgSimple from "connect-pg-simple";
@@ -392,6 +392,114 @@ function auditAuth(req: Request, event: Omit<Parameters<typeof writeAuditLog>[0]
   });
 }
 
+type AuthRouteError = Error & {
+  status?: number;
+  errorCode?: string | null;
+  cause?: unknown;
+};
+
+function maskLoginIdentifierForLog(input: string): string | null {
+  const normalized = normalizeLoginIdentifier(input);
+  if (!normalized) return null;
+
+  if (isEmailLikeUsername(normalized)) {
+    const [local, domain = ""] = normalized.split("@");
+    const safeLocal = local.length <= 2 ? `${local.slice(0, 1)}***` : `${local.slice(0, 2)}***`;
+    return `${safeLocal}@${domain}`;
+  }
+
+  return normalized.length <= 2
+    ? `${normalized.slice(0, 1)}***`
+    : `${normalized.slice(0, 2)}***`;
+}
+
+function buildAuthRouteError(
+  message: string,
+  errorCode: string,
+  status = 500,
+  cause?: unknown,
+): AuthRouteError {
+  const error = new Error(message) as AuthRouteError;
+  error.status = status;
+  error.errorCode = errorCode;
+  if (cause !== undefined) {
+    error.cause = cause;
+  }
+  return error;
+}
+
+function getAuthRouteErrorStatus(error: unknown, fallback = 500): number {
+  const status = (error as { status?: unknown; statusCode?: unknown } | null)?.status;
+  if (typeof status === "number" && Number.isFinite(status)) return status;
+  const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
+  if (typeof statusCode === "number" && Number.isFinite(statusCode)) return statusCode;
+  return fallback;
+}
+
+function getAuthRouteErrorCode(error: unknown, fallback: string): string {
+  const explicit = (error as { errorCode?: unknown } | null)?.errorCode;
+  if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
+  return fallback;
+}
+
+function getAuthRouteErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && typeof error.message === "string" && error.message.trim()) {
+    return error.message;
+  }
+  if (typeof error === "string" && error.trim()) return error.trim();
+  return fallback;
+}
+
+function logAuthLoginEvent(
+  req: Request,
+  event: string,
+  data: Record<string, unknown>,
+  level: "info" | "warn" | "error" = "info",
+): void {
+  writeTechnicalLog({
+    event,
+    source: "auth",
+    level,
+    requestId: req.requestId ?? undefined,
+    data,
+  });
+}
+
+function respondWithLoginError(
+  req: Request,
+  res: Response,
+  error: unknown,
+  options: {
+    identifierMasked: string | null;
+    step: string;
+    fallbackErrorCode: string;
+    fallbackMessage: string;
+    userId?: string | null;
+  },
+) {
+  const status = getAuthRouteErrorStatus(error, 500);
+  const errorCode = getAuthRouteErrorCode(error, options.fallbackErrorCode);
+  const message =
+    status === 401
+      ? "E-mail/usuario ou senha invalidos."
+      : getAuthRouteErrorMessage(error, options.fallbackMessage);
+
+  logAuthLoginEvent(
+    req,
+    "auth.login.error",
+    {
+      step: options.step,
+      identifierMasked: options.identifierMasked,
+      errorCode,
+      userId: options.userId ?? null,
+      error: error instanceof Error ? error.message : String(error),
+    },
+    status >= 500 ? "error" : "warn",
+  );
+
+  return res.status(status).json({ message, errorCode });
+}
+
 type AuthSessionUser = {
   id: string;
   username?: string | null;
@@ -467,10 +575,44 @@ export function setupAuth(app: Express) {
     new LocalStrategy(
       { usernameField: "identifier", passwordField: "password", passReqToCallback: true },
       async (req, _identifier, password, done) => {
+        const rawIdentifier = resolveRawLoginIdentifierFromBody(req.body);
+        const identifierMasked = maskLoginIdentifierForLog(rawIdentifier);
         try {
-          const rawIdentifier = resolveRawLoginIdentifierFromBody(req.body);
-          const lookup = await findUserForLoginIdentifier(rawIdentifier);
+          let lookup: LoginLookupResult;
+          try {
+            lookup = await findUserForLoginIdentifier(rawIdentifier);
+          } catch (error) {
+            logAuthLoginEvent(
+              req,
+              "auth.login.user_lookup",
+              {
+                identifierMasked,
+                errorCode: "AUTH_LOGIN_USER_LOOKUP_FAILED",
+                foundUser: false,
+                reason: "lookup_exception",
+              },
+              "error",
+            );
+            return done(
+              buildAuthRouteError(
+                "Nao foi possivel localizar o usuario para login.",
+                "AUTH_LOGIN_USER_LOOKUP_FAILED",
+                500,
+                error,
+              ),
+            );
+          }
+
           const user = lookup.user;
+
+          logAuthLoginEvent(req, "auth.login.user_lookup", {
+            identifierMasked,
+            identifierKind: lookup.identifierKind,
+            triedEmailColumn: lookup.triedEmailColumn,
+            triedLegacyUsernameEmail: lookup.triedLegacyUsernameEmail,
+            foundBy: lookup.foundBy,
+            foundUser: Boolean(user),
+          });
 
           if (!user) {
             writeTechnicalLog({
@@ -521,6 +663,18 @@ export function setupAuth(app: Express) {
           });
 
           if (!storedPasswordInspection.isComparable) {
+            logAuthLoginEvent(
+              req,
+              "auth.login.password_check",
+              {
+                identifierMasked,
+                userId: user.id,
+                passwordComparable: false,
+                passwordValid: false,
+                reason: "stored_password_not_comparable",
+              },
+              "warn",
+            );
             writeTechnicalLog({
               event: "auth.login.lookup",
               source: "auth",
@@ -537,7 +691,45 @@ export function setupAuth(app: Express) {
             return done(null, false, { message: LEGACY_PASSWORD_RESET_MESSAGE });
           }
 
-          const match = await comparePasswords(password, user.password);
+          let match = false;
+          try {
+            match = await comparePasswords(password, user.password);
+          } catch (error) {
+            logAuthLoginEvent(
+              req,
+              "auth.login.password_check",
+              {
+                identifierMasked,
+                userId: user.id,
+                errorCode: "AUTH_LOGIN_PASSWORD_CHECK_FAILED",
+                passwordComparable: true,
+                passwordValid: false,
+                reason: "compare_exception",
+              },
+              "error",
+            );
+            return done(
+              buildAuthRouteError(
+                "Nao foi possivel validar a senha informada.",
+                "AUTH_LOGIN_PASSWORD_CHECK_FAILED",
+                500,
+                error,
+              ),
+            );
+          }
+
+          logAuthLoginEvent(
+            req,
+            "auth.login.password_check",
+            {
+              identifierMasked,
+              userId: user.id,
+              passwordComparable: true,
+              passwordValid: match,
+            },
+            match ? "info" : "warn",
+          );
+
           writeTechnicalLog({
             event: "auth.login.lookup",
             source: "auth",
@@ -554,16 +746,17 @@ export function setupAuth(app: Express) {
           if (!match) return done(null, false, { message: "E-mail/usuario ou senha invalidos." });
           return done(null, user);
         } catch (err) {
-          writeTechnicalLog({
-            event: "auth.login.strategy.error",
-            source: "auth",
-            level: "error",
-            data: {
-              identifier: normalizeLoginIdentifier(resolveRawLoginIdentifierFromBody(req.body)),
-              reason: "strategy_exception",
+          logAuthLoginEvent(
+            req,
+            "auth.login.error",
+            {
+              step: "strategy",
+              identifierMasked,
+              errorCode: getAuthRouteErrorCode(err, "AUTH_LOGIN_PASSPORT_FAILED"),
               error: err instanceof Error ? err.message : String(err),
             },
-          });
+            "error",
+          );
           return done(err);
         }
       },
@@ -797,28 +990,14 @@ export function setupAuth(app: Express) {
             });
             return next(err);
           }
-          req.session.save((saveErr) => {
-            if (saveErr) {
-              auditAuth(req, {
-                action: "auth",
-                status: "error",
-                domain: "auth.register",
-                userId: updatedUser!.id,
-                details: { username, reason: "session_save_failed" },
-                error: saveErr.message,
-              });
-              return next(saveErr);
-            }
-
-            auditAuth(req, {
-              action: "auth",
-              status: "success",
-              domain: "auth.register",
-              userId: updatedUser!.id,
-              details: { username },
-            });
-            return res.json(toAuthUserResponse(updatedUser!));
+          auditAuth(req, {
+            action: "auth",
+            status: "success",
+            domain: "auth.register",
+            userId: updatedUser!.id,
+            details: { username },
           });
+          return res.json(toAuthUserResponse(updatedUser!));
         });
       });
     } catch (error) {
@@ -836,11 +1015,35 @@ export function setupAuth(app: Express) {
   app.post("/api/auth/login", loginLimiter, (req, res, next) => {
     const rawIdentifier = resolveRawLoginIdentifierFromBody(req.body);
     const attemptedIdentifier = normalizeLoginIdentifier(rawIdentifier);
+    const identifierMasked = maskLoginIdentifierForLog(rawIdentifier);
     const requestBody = typeof req.body === "object" && req.body !== null
       ? req.body as Record<string, unknown>
       : {};
+    const password = typeof requestBody.password === "string" ? requestBody.password : "";
     requestBody.identifier = rawIdentifier;
     req.body = requestBody;
+
+    logAuthLoginEvent(req, "auth.login.start", {
+      identifierMasked,
+      hasPassword: password.length > 0,
+    });
+
+    if (!attemptedIdentifier || !password) {
+      logAuthLoginEvent(
+        req,
+        "auth.login.failed",
+        {
+          identifierMasked,
+          errorCode: "AUTH_LOGIN_INVALID_PAYLOAD",
+          reason: "missing_identifier_or_password",
+        },
+        "warn",
+      );
+      return res.status(400).json({
+        message: "Informe e-mail/usuario e senha para entrar.",
+        errorCode: "AUTH_LOGIN_INVALID_PAYLOAD",
+      });
+    }
 
     passport.authenticate("local", (err: any, user: any, info: any) => {
       if (err) {
@@ -851,16 +1054,34 @@ export function setupAuth(app: Express) {
           details: { identifier: attemptedIdentifier, reason: "passport_error" },
           error: err.message,
         });
-        return next(err);
+        return respondWithLoginError(req, res, err, {
+          identifierMasked,
+          step: "passport_authenticate",
+          fallbackErrorCode: "AUTH_LOGIN_PASSPORT_FAILED",
+          fallbackMessage: "Nao foi possivel autenticar a sessao de login.",
+        });
       }
       if (!user) {
+        logAuthLoginEvent(
+          req,
+          "auth.login.failed",
+          {
+            identifierMasked,
+            errorCode: "AUTH_LOGIN_INVALID_CREDENTIALS",
+            reason: info?.message || "invalid_credentials",
+          },
+          "warn",
+        );
         auditAuth(req, {
           action: "auth",
           status: "failure",
           domain: "auth.login",
           details: { identifier: attemptedIdentifier, reason: info?.message || "invalid_credentials" },
         });
-        return res.status(401).json({ message: "E-mail/usuario ou senha invalidos." });
+        return res.status(401).json({
+          message: "E-mail/usuario ou senha invalidos.",
+          errorCode: "AUTH_LOGIN_INVALID_CREDENTIALS",
+        });
       }
       req.session.regenerate((regenErr) => {
         if (regenErr) {
@@ -872,7 +1093,13 @@ export function setupAuth(app: Express) {
             details: { identifier: attemptedIdentifier, reason: "session_regenerate_failed" },
             error: regenErr.message,
           });
-          return next(regenErr);
+          return respondWithLoginError(req, res, regenErr, {
+            identifierMasked,
+            step: "session_regenerate",
+            fallbackErrorCode: "AUTH_LOGIN_SESSION_REGENERATE_FAILED",
+            fallbackMessage: "Nao foi possivel preparar a sessao de login.",
+            userId: user.id,
+          });
         }
         req.login(user, (loginErr) => {
           if (loginErr) {
@@ -884,30 +1111,27 @@ export function setupAuth(app: Express) {
               details: { identifier: attemptedIdentifier, reason: "session_login_failed" },
               error: loginErr.message,
             });
-            return next(loginErr);
-          }
-          req.session.save((saveErr) => {
-            if (saveErr) {
-              auditAuth(req, {
-                action: "auth",
-                status: "error",
-                domain: "auth.login",
-                userId: user.id,
-                details: { identifier: attemptedIdentifier, reason: "session_save_failed" },
-                error: saveErr.message,
-              });
-              return next(saveErr);
-            }
-
-            auditAuth(req, {
-              action: "auth",
-              status: "success",
-              domain: "auth.login",
+            return respondWithLoginError(req, res, loginErr, {
+              identifierMasked,
+              step: "session_login",
+              fallbackErrorCode: "AUTH_LOGIN_SESSION_ESTABLISH_FAILED",
+              fallbackMessage: "Nao foi possivel concluir a sessao autenticada.",
               userId: user.id,
-              details: { username: user.username },
             });
-            return res.json(toAuthUserResponse(user));
+          }
+          logAuthLoginEvent(req, "auth.login.session_established", {
+            identifierMasked,
+            userId: user.id,
           });
+
+          auditAuth(req, {
+            action: "auth",
+            status: "success",
+            domain: "auth.login",
+            userId: user.id,
+            details: { username: user.username },
+          });
+          return res.json(toAuthUserResponse(user));
         });
       });
     })(req, res, next);

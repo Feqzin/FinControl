@@ -31,11 +31,17 @@ function extractErrorMessage(value: unknown): string {
 
 function extractErrorCode(error: unknown): string | null {
   if (!error || typeof error !== "object") return null;
+  const direct = (error as { errorCode?: unknown }).errorCode;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
   const code = (error as { code?: unknown }).code;
   if (typeof code === "string" && code.trim()) return code.trim();
 
   const cause = (error as { cause?: unknown }).cause;
   if (cause && typeof cause === "object") {
+    const causeErrorCode = (cause as { errorCode?: unknown }).errorCode;
+    if (typeof causeErrorCode === "string" && causeErrorCode.trim()) {
+      return causeErrorCode.trim();
+    }
     const causeCode = (cause as { code?: unknown }).code;
     if (typeof causeCode === "string" && causeCode.trim()) return causeCode.trim();
   }
@@ -135,13 +141,16 @@ registerRoutes(app);
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   const status = err.status || err.statusCode || 500;
   const message = buildSafeClientErrorMessage(err, status);
+  const errorCode = extractErrorCode(err);
   const payload =
     req.path === "/api/auth/me" && status >= 500
       ? {
           message: "Erro ao carregar sessao.",
           errorCode: "AUTH_ME_FAILED",
         }
-      : { message };
+      : errorCode
+        ? { message, errorCode }
+        : { message };
 
   writeTechnicalLog({
     event: "http.request.error",

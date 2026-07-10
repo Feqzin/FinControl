@@ -27,6 +27,22 @@ function extractErrorMessage(value: unknown): string {
   return String(value ?? "");
 }
 
+function extractErrorCode(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const direct = (value as { errorCode?: unknown }).errorCode;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  const code = (value as { code?: unknown }).code;
+  if (typeof code === "string" && code.trim()) return code.trim();
+  const cause = (value as { cause?: unknown }).cause;
+  if (cause && typeof cause === "object") {
+    const causeDirect = (cause as { errorCode?: unknown }).errorCode;
+    if (typeof causeDirect === "string" && causeDirect.trim()) return causeDirect.trim();
+    const causeCode = (cause as { code?: unknown }).code;
+    if (typeof causeCode === "string" && causeCode.trim()) return causeCode.trim();
+  }
+  return null;
+}
+
 app.use(
   express.json({
     // Mantem margem para JSON/base64 e fica abaixo do limite de payload da Vercel Functions.
@@ -92,14 +108,17 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   const defaultMessage =
     status < 500
       ? extractErrorMessage(err) || "Bad Request"
-      : "Internal Server Error";
+      : "Erro interno ao processar a requisicao.";
+  const errorCode = extractErrorCode(err);
   const payload =
     req.path === "/api/auth/me" && status >= 500
       ? {
           message: "Erro ao carregar sessao.",
           errorCode: "AUTH_ME_FAILED",
         }
-      : { message: defaultMessage };
+      : errorCode
+        ? { message: defaultMessage, errorCode }
+        : { message: defaultMessage };
 
   writeTechnicalLog({
     event: "http.request.error",
