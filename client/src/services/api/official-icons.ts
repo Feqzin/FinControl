@@ -229,12 +229,12 @@ export async function fetchCommunityIconPacks(query: FetchOfficialIconPacksQuery
 }
 
 export async function fetchCommunityIconPackDetails(packId: string): Promise<CommunityIconPackDetailsApiModel> {
-  const response = await apiRequest("GET", `/api/icons/community/packs/${packId}`);
+  const response = await apiRequest("GET", `/api/icons/community/packs/${encodeURIComponent(packId)}`);
   return response.json();
 }
 
 export async function addCommunityPackToLibrary(packId: string): Promise<AddOfficialPackToLibraryResult> {
-  const response = await apiRequest("POST", `/api/icons/community/packs/${packId}/add-to-library`);
+  const response = await apiRequest("POST", `/api/icons/community/packs/${encodeURIComponent(packId)}/add-to-library`);
   return response.json();
 }
 

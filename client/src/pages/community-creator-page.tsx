@@ -1,3 +1,4 @@
+import { useState, type KeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
 import {
@@ -18,6 +19,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CreatorPackDetailsDialog } from "@/pages/community/components/creator-pack-details-dialog";
+import { queryClient } from "@/lib/queryClient";
 import {
   fetchCommunityCreatorProfile,
   type CommunityCreatorPackApiModel,
@@ -27,9 +30,28 @@ function formatMetric(value: number): string {
   return new Intl.NumberFormat("pt-BR").format(value);
 }
 
-function CreatorPackCard({ pack }: { pack: CommunityCreatorPackApiModel }) {
+function CreatorPackCard({
+  pack,
+  onOpen,
+}: {
+  pack: CommunityCreatorPackApiModel;
+  onOpen: () => void;
+}) {
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onOpen();
+  };
+
   return (
-    <Card className="overflow-hidden">
+    <Card
+      role="button"
+      tabIndex={0}
+      aria-label={`Abrir pack ${pack.name}`}
+      onClick={onOpen}
+      onKeyDown={handleKeyDown}
+      className="cursor-pointer overflow-hidden transition-all hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    >
       <div className="flex min-h-28 items-center gap-4 border-b bg-muted/20 p-4">
         <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-background">
           {pack.coverImageUrl ? (
@@ -83,6 +105,7 @@ export default function CommunityCreatorPage() {
   const [, params] = useRoute("/comunidade/criadores/:publicCode");
   const [, navigate] = useLocation();
   const publicCode = params?.publicCode ?? "";
+  const [selectedPack, setSelectedPack] = useState<CommunityCreatorPackApiModel | null>(null);
   const profileQuery = useQuery({
     queryKey: ["/api/community/creators", publicCode],
     queryFn: () => fetchCommunityCreatorProfile(publicCode),
@@ -231,11 +254,28 @@ export default function CommunityCreatorPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {profile.packs.map((pack) => (
-              <CreatorPackCard key={pack.id} pack={pack} />
+              <CreatorPackCard
+                key={pack.id}
+                pack={pack}
+                onOpen={() => setSelectedPack(pack)}
+              />
             ))}
           </div>
         )}
       </section>
+
+      <CreatorPackDetailsDialog
+        pack={selectedPack}
+        open={Boolean(selectedPack)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedPack(null);
+        }}
+        onPackAdded={() => {
+          queryClient.invalidateQueries({
+            queryKey: ["/api/community/creators", publicCode],
+          });
+        }}
+      />
     </div>
   );
 }
