@@ -51,6 +51,7 @@ type CartaoFaturaPaymentDialogProps = {
   cartao: Cartao | null;
   monthReference: string;
   snapshot: CardInvoiceSnapshot | null;
+  projectedServicesAmount?: number;
   payments: CartaoFaturaPagamentoApiModel[];
   installments: InvoiceInstallmentModel[];
   isPending: boolean;
@@ -97,6 +98,7 @@ export function CartaoFaturaPaymentDialog({
   cartao,
   monthReference,
   snapshot,
+  projectedServicesAmount = 0,
   payments,
   installments,
   isPending,
@@ -228,6 +230,11 @@ export function CartaoFaturaPaymentDialog({
                   </p>
                 </div>
               </div>
+              {projectedServicesAmount > 0 ? (
+                <p className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+                  Este pagamento considera apenas compras e parcelas do cartão. Há {formatCurrency(projectedServicesAmount)} em serviços projetados nesta competência; registre essas cobranças na área Serviços.
+                </p>
+              ) : null}
             </div>
 
             {snapshot.remainingAmount > 0 ? (

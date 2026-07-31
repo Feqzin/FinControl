@@ -73,6 +73,8 @@ import {
   isCompraReembolsoOutstanding,
 } from "../src/lib/cartao-reembolso-status";
 import {
+  buildInvoicePaymentInstallmentsForCard,
+  buildInvoiceTrackingInstallmentsForCard,
   buildProjectedServiceInstallmentsForCard,
   calculateCardLimitSummary,
   calculateCardInvoiceForCompetency,
@@ -84,7 +86,9 @@ import {
   getNextOutstandingCardInvoiceSnapshot,
   getInvoiceCompetency,
   groupParcelasCompraByCompraId,
+  resolveCardInvoicePaymentActionState,
 } from "../src/lib/card-limit-usage";
+import { findCardInvoiceSnapshot } from "@shared/card-invoice-payments";
 import {
   buildFinancialCalendarEvents,
   getFinancialCalendarEventImpactAmount,
@@ -2133,6 +2137,95 @@ test("card limit usage: serviço mensal no cartão com projeção ativa entra na
       servicoCobrancaPagamentos: [],
     }),
     12.9,
+  );
+});
+
+test("card limit usage: pagamento de fatura usa apenas parcelas aceitas pelo backend", () => {
+  const compra = buildCompraCartaoViewFixture({
+    id: "compra-fatura-pagavel",
+    cartaoId: "card-fatura-pagavel",
+    descricao: "Compras da fatura",
+    valorTotal: "1110.70",
+    parcelas: 1,
+    parcelaAtual: 1,
+    valorParcela: "1110.70",
+    dataCompra: "2026-07-01",
+  });
+  const parcela = buildParcelaCompraViewFixture({
+    id: "parcela-fatura-pagavel",
+    compraCartaoId: compra.id,
+    numero: 1,
+    valor: "1110.70",
+    dataVencimento: "2026-07-15",
+    statusCartao: "pago",
+  });
+  const servico = buildServicoFixture({
+    id: "servico-fatura-projetado",
+    nome: "Serviço projetado",
+    periodicidadeCobranca: "mensal",
+    valorCobranca: "83.97",
+    valorMensal: "83.97",
+    dataCobranca: 15,
+    formaPagamento: "cartao",
+    cartaoId: compra.cartaoId,
+    projetarNaFaturaCartao: true,
+    compraCartaoId: null,
+  });
+  const parcelasByCompraId = groupParcelasCompraByCompraId([parcela]);
+  const displaySnapshot = findCardInvoiceSnapshot({
+    cartaoId: compra.cartaoId,
+    monthReference: "2026-07",
+    installments: buildInvoiceTrackingInstallmentsForCard(
+      compra.cartaoId,
+      [compra],
+      parcelasByCompraId,
+      {
+        servicos: [servico],
+        servicoCobrancaPagamentos: [],
+        monthReferences: ["2026-07"],
+      },
+    ),
+  });
+  const paymentSnapshot = findCardInvoiceSnapshot({
+    cartaoId: compra.cartaoId,
+    monthReference: "2026-07",
+    installments: buildInvoicePaymentInstallmentsForCard(
+      compra.cartaoId,
+      [compra],
+      parcelasByCompraId,
+    ),
+  });
+
+  assert.equal(displaySnapshot?.originalTotal, 1194.67);
+  assert.equal(displaySnapshot?.amountPaid, 1110.7);
+  assert.equal(displaySnapshot?.remainingAmount, 83.97);
+  assert.equal(paymentSnapshot?.originalTotal, 1110.7);
+  assert.equal(paymentSnapshot?.remainingAmount, 0);
+  assert.equal(
+    resolveCardInvoicePaymentActionState(
+      compra.cartaoId,
+      "2026-07",
+      [compra],
+      parcelasByCompraId,
+    ),
+    "none",
+  );
+  assert.equal(
+    resolveCardInvoicePaymentActionState(
+      compra.cartaoId,
+      "2026-07",
+      [compra],
+      parcelasByCompraId,
+      [buildCartaoFaturaPagamentoFixture({
+        cartaoId: compra.cartaoId,
+        competenciaAno: 2026,
+        competenciaMes: 7,
+        valorPago: "1110.70",
+        tipoPagamento: "quitacao_total",
+        considerarNoSaldoCompetencia: false,
+      })],
+    ),
+    "history",
   );
 });
 

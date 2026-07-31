@@ -11,6 +11,7 @@ import {
 } from "@shared/card-limit-summary";
 import {
   buildCardInvoiceSnapshots,
+  findCardInvoiceSnapshot,
   type CardInvoicePaymentRecord,
 } from "@shared/card-invoice-payments";
 import {
@@ -285,9 +286,11 @@ export function buildInvoiceTrackingInstallmentsForCard(
   parcelasByCompraId: ParcelasCompraByCompraId,
   options?: CardProjectionOptions,
 ): CardSummaryInstallment[] {
-  const realInstallments = compras
-    .filter((compra) => compra.cartaoId === cartaoId)
-    .flatMap((compra) => buildInvoiceTrackingInstallmentsForCompra(compra, parcelasByCompraId.get(compra.id)));
+  const realInstallments = buildInvoicePaymentInstallmentsForCard(
+    cartaoId,
+    compras,
+    parcelasByCompraId,
+  );
   const projectedInstallments = buildProjectedServiceInstallmentsForCard(
     cartaoId,
     compras,
@@ -296,6 +299,45 @@ export function buildInvoiceTrackingInstallmentsForCard(
   );
 
   return [...realInstallments, ...projectedInstallments];
+}
+
+export function buildInvoicePaymentInstallmentsForCard(
+  cartaoId: string,
+  compras: CompraCartao[],
+  parcelasByCompraId: ParcelasCompraByCompraId,
+): CardSummaryInstallment[] {
+  return compras
+    .filter((compra) => compra.cartaoId === cartaoId)
+    .flatMap((compra) => buildInvoiceTrackingInstallmentsForCompra(compra, parcelasByCompraId.get(compra.id)));
+}
+
+export function resolveCardInvoicePaymentActionState(
+  cartaoId: string,
+  monthReference: string,
+  compras: CompraCartao[],
+  parcelasByCompraId: ParcelasCompraByCompraId,
+  invoicePayments: CardInvoicePaymentRecord[] = [],
+): "pay" | "history" | "none" {
+  const [year, month] = monthReference.split("-").map(Number);
+  const paymentsForCompetency = invoicePayments.filter((payment) => (
+    payment.cartaoId === cartaoId
+    && Number(payment.competenciaAno) === year
+    && Number(payment.competenciaMes) === month
+  ));
+  const snapshot = findCardInvoiceSnapshot({
+    cartaoId,
+    monthReference,
+    installments: buildInvoicePaymentInstallmentsForCard(
+      cartaoId,
+      compras,
+      parcelasByCompraId,
+    ),
+    payments: paymentsForCompetency,
+  });
+
+  if ((snapshot?.remainingAmount ?? 0) > 0) return "pay";
+  if (paymentsForCompetency.length > 0) return "history";
+  return "none";
 }
 
 export function listOutstandingCardInvoiceSnapshots(

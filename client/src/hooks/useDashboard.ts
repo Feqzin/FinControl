@@ -28,6 +28,7 @@ import {
   calculateCardUsedLimit,
   getNextOutstandingCardInvoiceSnapshot,
   groupParcelasCompraByCompraId,
+  resolveCardInvoicePaymentActionState,
 } from "@/lib/card-limit-usage";
 import {
   fetchCartaoFaturaPagamentos,
@@ -54,6 +55,7 @@ export interface VencimentoItem {
   valor: number;
   dataVenc: string;
   actionLabel: string;
+  actionPath?: string;
   cartaoId?: string;
   monthReference?: string;
   compraCartaoId?: string;
@@ -497,6 +499,13 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       const dataVenc = proximaFatura.dueDate ?? getNextDueDate(c.diaVencimento);
       if (!dataVenc) return;
       const invoiceMonthLabel = formatInvoiceMonthLabel(proximaFatura.monthReference);
+      const paymentActionState = resolveCardInvoicePaymentActionState(
+        c.id,
+        proximaFatura.monthReference,
+        compras,
+        parcelasCompraByCompraId,
+        cartaoFaturaPagamentos,
+      );
       items.push({
         id: `cartao-${c.id}-${proximaFatura.monthReference}`,
         tipo: "cartao",
@@ -505,7 +514,12 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
         subtitulo: buildUrgencyLabel(dataVenc),
         valor: proximaFatura.total,
         dataVenc,
-        actionLabel: "Pagar fatura",
+        actionLabel: paymentActionState === "pay"
+          ? "Pagar fatura"
+          : paymentActionState === "history"
+            ? "Ver pagamentos"
+            : "Ver serviços",
+        actionPath: paymentActionState === "none" ? "/servicos" : undefined,
         cartaoId: c.id,
         monthReference: proximaFatura.monthReference,
       });

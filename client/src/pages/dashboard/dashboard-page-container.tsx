@@ -38,6 +38,7 @@ import { parseMoney } from "@/lib/money";
 import { queryClient } from "@/lib/queryClient";
 import { CartaoFaturaPaymentDialog } from "@/pages/cartoes/components";
 import {
+  buildInvoicePaymentInstallmentsForCard,
   buildInvoiceTrackingInstallmentsForCard,
   getInvoiceCompetency,
   groupParcelasCompraByCompraId,
@@ -270,7 +271,7 @@ export default function Dashboard() {
   const getInvoicePaymentsForCompetency = (cartaoId: string, monthReference: string) =>
     invoicePaymentsByCardMonthKey.get(`${cartaoId}:${monthReference}`) ?? [];
 
-  const getInvoiceSnapshotForCompetency = (cartaoId: string, monthReference: string) => {
+  const getInvoiceDisplaySnapshotForCompetency = (cartaoId: string, monthReference: string) => {
     const cartao = dashboardCartoesById.get(cartaoId);
     if (!cartao) return null;
 
@@ -292,13 +293,40 @@ export default function Dashboard() {
       referenceDate: format(new Date(), "yyyy-MM-dd"),
     });
   };
+  const getInvoicePaymentSnapshotForCompetency = (cartaoId: string, monthReference: string) => {
+    const cartao = dashboardCartoesById.get(cartaoId);
+    if (!cartao) return null;
+
+    return findCardInvoiceSnapshot({
+      cartaoId,
+      monthReference,
+      installments: buildInvoicePaymentInstallmentsForCard(
+        cartaoId,
+        compras,
+        dashboardParcelasCompraByCompraId,
+      ),
+      payments: getInvoicePaymentsForCompetency(cartaoId, monthReference),
+      getDueDayForCard: () => cartao.diaVencimento,
+      referenceDate: format(new Date(), "yyyy-MM-dd"),
+    });
+  };
 
   const selectedInvoicePaymentCartao = invoicePaymentTarget
     ? (dashboardCartoesById.get(invoicePaymentTarget.cartaoId) ?? null)
     : null;
-  const selectedInvoicePaymentSnapshot = invoicePaymentTarget
-    ? getInvoiceSnapshotForCompetency(invoicePaymentTarget.cartaoId, invoicePaymentTarget.monthReference)
+  const selectedInvoiceDisplaySnapshot = invoicePaymentTarget
+    ? getInvoiceDisplaySnapshotForCompetency(invoicePaymentTarget.cartaoId, invoicePaymentTarget.monthReference)
     : null;
+  const selectedInvoicePaymentSnapshot = invoicePaymentTarget
+    ? getInvoicePaymentSnapshotForCompetency(invoicePaymentTarget.cartaoId, invoicePaymentTarget.monthReference)
+    : null;
+  const selectedInvoiceProjectedServicesAmount = Math.max(
+    0,
+    Number((
+      (selectedInvoiceDisplaySnapshot?.originalTotal ?? 0)
+      - (selectedInvoicePaymentSnapshot?.originalTotal ?? 0)
+    ).toFixed(2)),
+  );
   const selectedInvoicePaymentHistory = invoicePaymentTarget
     ? getInvoicePaymentsForCompetency(invoicePaymentTarget.cartaoId, invoicePaymentTarget.monthReference)
     : [];
@@ -344,7 +372,7 @@ export default function Dashboard() {
           .some((parcela) => getInvoiceCompetency(parcela.dataVencimento) === monthReference)
       ));
 
-    const snapshot = getInvoiceSnapshotForCompetency(cartaoId, monthReference);
+    const snapshot = getInvoicePaymentSnapshotForCompetency(cartaoId, monthReference);
     return Boolean((snapshot && snapshot.originalTotal > 0 && hasRealInstallments) || payments.length > 0);
   };
 
@@ -455,6 +483,11 @@ export default function Dashboard() {
   };
 
   const handleTriggerVencimentoAction = async (item: VencimentoItem) => {
+    if (item.actionPath) {
+      setLocation(item.actionPath);
+      return;
+    }
+
     if (item.kind === "cartao_fatura") {
       if (!item.cartaoId || !item.monthReference) return;
       if (!canOpenInvoicePaymentDialog(item.cartaoId, item.monthReference)) return;
@@ -1589,6 +1622,7 @@ export default function Dashboard() {
         cartao={selectedInvoicePaymentCartao}
         monthReference={invoicePaymentTarget?.monthReference ?? selectedMonth}
         snapshot={selectedInvoicePaymentSnapshot}
+        projectedServicesAmount={selectedInvoiceProjectedServicesAmount}
         payments={selectedInvoicePaymentHistory}
         installments={selectedInvoiceInstallments}
         isPending={registerInvoicePaymentMutation.isPending}

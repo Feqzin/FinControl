@@ -98,6 +98,7 @@ import {
   resolveEntityIconSuggestion,
 } from "@/lib/entity-icon-suggestion";
 import {
+  buildInvoicePaymentInstallmentsForCard,
   buildInvoiceTrackingInstallmentsForCard,
   getInvoiceCompetency,
   groupParcelasCompraByCompraId,
@@ -863,6 +864,22 @@ export default function CartoesPage() {
       referenceDate: format(new Date(), "yyyy-MM-dd"),
     });
   }, [cartoesById, compras, getInvoicePaymentsForCompetency, parcelasCompraByCompraId, servicoCobrancaPagamentos, servicos]);
+  const getInvoicePaymentSnapshotForCompetency = useCallback((cartaoId: string, monthReference: string) => {
+    const cartao = cartoesById.get(cartaoId);
+    if (!cartao) return null;
+    return findCardInvoiceSnapshot({
+      cartaoId,
+      monthReference,
+      installments: buildInvoicePaymentInstallmentsForCard(
+        cartaoId,
+        compras,
+        parcelasCompraByCompraId,
+      ),
+      payments: getInvoicePaymentsForCompetency(cartaoId, monthReference),
+      getDueDayForCard: () => cartao.diaVencimento,
+      referenceDate: format(new Date(), "yyyy-MM-dd"),
+    });
+  }, [cartoesById, compras, getInvoicePaymentsForCompetency, parcelasCompraByCompraId]);
   const selectedInvoiceSnapshotsByCardId = useMemo(
     () => new Map(
       cartoes.map((cartao) => [cartao.id, getInvoiceSnapshotForCompetency(cartao.id, selectedInvoiceMonth)]),
@@ -890,7 +907,7 @@ export default function CartoesPage() {
   const getCardTotalForSelectedMonth = (cartaoId: string) =>
     selectedInvoiceSnapshotsByCardId.get(cartaoId)?.remainingAmount ?? 0;
   const canOpenInvoicePaymentDialog = (cartaoId: string) => {
-    const snapshot = selectedInvoiceSnapshotsByCardId.get(cartaoId);
+    const snapshot = getInvoicePaymentSnapshotForCompetency(cartaoId, selectedInvoiceMonth);
     const payments = getInvoicePaymentsForCompetency(cartaoId, selectedInvoiceMonth);
     const hasRealInstallments = getFilteredCardFaturaCompras(cartaoId).some((compra) =>
       getCompraParcelas(compra.id).some((parcela) => getInvoiceCompetency(parcela.dataVencimento) === selectedInvoiceMonth),
@@ -898,7 +915,7 @@ export default function CartoesPage() {
     return Boolean((snapshot && snapshot.originalTotal > 0 && hasRealInstallments) || payments.length > 0);
   };
   const getInvoicePaymentActionLabel = (cartaoId: string) => {
-    const snapshot = selectedInvoiceSnapshotsByCardId.get(cartaoId);
+    const snapshot = getInvoicePaymentSnapshotForCompetency(cartaoId, selectedInvoiceMonth);
     const payments = getInvoicePaymentsForCompetency(cartaoId, selectedInvoiceMonth);
     if ((snapshot?.remainingAmount ?? 0) > 0) return "Pagar fatura";
     if (payments.length > 0) return "Ver pagamentos";
@@ -911,9 +928,19 @@ export default function CartoesPage() {
   const selectedInvoicePaymentCartao = invoicePaymentTarget
     ? (cartoesById.get(invoicePaymentTarget.cartaoId) ?? null)
     : null;
-  const selectedInvoicePaymentSnapshot = invoicePaymentTarget
+  const selectedInvoiceDisplaySnapshot = invoicePaymentTarget
     ? getInvoiceSnapshotForCompetency(invoicePaymentTarget.cartaoId, invoicePaymentTarget.monthReference)
     : null;
+  const selectedInvoicePaymentSnapshot = invoicePaymentTarget
+    ? getInvoicePaymentSnapshotForCompetency(invoicePaymentTarget.cartaoId, invoicePaymentTarget.monthReference)
+    : null;
+  const selectedInvoiceProjectedServicesAmount = Math.max(
+    0,
+    Number((
+      (selectedInvoiceDisplaySnapshot?.originalTotal ?? 0)
+      - (selectedInvoicePaymentSnapshot?.originalTotal ?? 0)
+    ).toFixed(2)),
+  );
   const selectedInvoicePaymentHistory = invoicePaymentTarget
     ? getInvoicePaymentsForCompetency(invoicePaymentTarget.cartaoId, invoicePaymentTarget.monthReference)
     : [];
@@ -2940,6 +2967,7 @@ export default function CartoesPage() {
         cartao={selectedInvoicePaymentCartao}
         monthReference={invoicePaymentTarget?.monthReference ?? selectedInvoiceMonth}
         snapshot={selectedInvoicePaymentSnapshot}
+        projectedServicesAmount={selectedInvoiceProjectedServicesAmount}
         payments={selectedInvoicePaymentHistory}
         installments={selectedInvoiceInstallments}
         isPending={registerInvoicePaymentMutation.isPending}
