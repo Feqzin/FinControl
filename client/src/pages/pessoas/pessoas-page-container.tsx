@@ -134,11 +134,20 @@ export default function PessoasPage() {
     comprovanteReferencia: "",
   });
 
-  const [editForm, setEditForm] = useState<{ nome: string; tipo: PessoaKind; telefone: string; observacao: string }>({
+  const [editForm, setEditForm] = useState<{
+    nome: string;
+    tipo: PessoaKind;
+    telefone: string;
+    observacao: string;
+    listaNegra: boolean;
+    listaNegraMotivo: string;
+  }>({
     nome: "",
     tipo: "me_deve",
     telefone: "",
     observacao: "",
+    listaNegra: false,
+    listaNegraMotivo: "",
   });
   const [historyFilter, setHistoryFilter] = useState<"todos" | "pendente">("todos");
   const [historyTab, setHistoryTab] = useState<"visao_geral" | "pendencias" | "saldo" | "servicos" | "historico">("visao_geral");
@@ -519,6 +528,8 @@ export default function PessoasPage() {
       tipo: pessoa.tipo,
       telefone: pessoa.telefone || "",
       observacao: pessoa.observacao || "",
+      listaNegra: pessoa.listaNegra === true,
+      listaNegraMotivo: pessoa.listaNegraMotivo || "",
     });
   };
 

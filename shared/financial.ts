@@ -47,6 +47,7 @@ export interface FinancialSummary {
   saldo: number;
   totalRenda: number;
   totalReceberMes: number;
+  totalRecebidoMes: number;
   totalPagarMes: number;
   totalServicos: number;
   servicosEquivalenteMensalTotal: number;

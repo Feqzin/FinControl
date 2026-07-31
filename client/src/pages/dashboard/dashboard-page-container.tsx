@@ -171,6 +171,7 @@ export default function Dashboard() {
     totalPatrimonio,
     totalServicos,
     totalReceber,
+    recebiveisMes,
     totalPagar,
     totalCartoesMes,
     totalPagarMes,
@@ -216,10 +217,9 @@ export default function Dashboard() {
   const diasProximoVencimento = proximoVencimento
     ? Math.ceil((new Date(`${proximoVencimento.dataVenc}T00:00:00`).getTime() - Date.now()) / 86_400_000)
     : null;
-  const receberPorPessoa = dividas.reduce<Map<string, number>>((acc, divida) => {
-    if (divida.tipo !== "receber" || divida.status !== "pendente") return acc;
-    const current = acc.get(divida.pessoaId) ?? 0;
-    acc.set(divida.pessoaId, current + Number(divida.valor));
+  const receberPorPessoa = recebiveisMes.reduce<Map<string, number>>((acc, item) => {
+    const current = acc.get(item.pessoaId) ?? 0;
+    acc.set(item.pessoaId, current + item.valor);
     return acc;
   }, new Map<string, number>());
   const principalReceberEntry = Array.from(receberPorPessoa.entries()).sort((a, b) => b[1] - a[1])[0] ?? null;
@@ -680,7 +680,7 @@ export default function Dashboard() {
       title: "A receber",
       value: maskValue(formatCurrencyBRL(totalReceber), visible),
       icon: ArrowUpRight,
-      trend: `${dividas.filter((d) => d.tipo === "receber" && d.status === "pendente").length} pendentes`,
+      trend: `${recebiveisMes.length} pendente${recebiveisMes.length === 1 ? "" : "s"} no mês`,
       color: "bg-emerald-500/10 text-emerald-600",
       valueColor: "text-emerald-600",
       tooltipLines: aReceberTooltip,
@@ -1129,7 +1129,7 @@ export default function Dashboard() {
               <div className="flex gap-4 text-sm opacity-85">
                 <div className="flex items-center gap-1.5">
                   <ArrowUpRight className="w-3.5 h-3.5" />
-                  <span>{maskValue(formatCurrencyBRL(totalRenda), visible)}</span>
+                  <span>{maskValue(formatCurrencyBRL(totalEntradas), visible)}</span>
                 </div>
                 <div className="w-px bg-white/30" />
                 <div className="flex items-center gap-1.5">
@@ -1556,8 +1556,8 @@ export default function Dashboard() {
               </p>
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="rounded-xl bg-white/10 px-3 py-2">
-                  <p className="text-[12px] uppercase tracking-wide opacity-80">Entradas</p>
-                  <p className="text-sm font-semibold">{maskValue(formatCurrencyBRL(totalRenda), visible)}</p>
+                  <p className="text-[12px] uppercase tracking-wide opacity-80">Entradas confirmadas</p>
+                  <p className="text-sm font-semibold">{maskValue(formatCurrencyBRL(totalEntradas), visible)}</p>
                 </div>
                 <div className="rounded-xl bg-white/10 px-3 py-2">
                   <p className="text-[12px] uppercase tracking-wide opacity-80">Saídas</p>

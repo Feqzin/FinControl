@@ -5,6 +5,7 @@ import {
   getDebtObligations,
   getDebtPortfolioSummary,
   getMonthlyDebtObligations,
+  getMonthlyReceivedDebtObligations,
   getOutstandingDebtInstallments,
 } from "../services/financial-debt-analytics";
 
@@ -105,6 +106,44 @@ test("getMonthlyDebtObligations filtra pendencias pelo mes de vencimento real", 
   assert.equal(april[0]?.dividaId, "d-simple");
   assert.equal(may.length, 1);
   assert.equal(may[0]?.dividaId, "d-parcelada");
+});
+
+test("recebiveis mensais excluem divida sem expectativa, mas entrada realizada usa a data do pagamento", () => {
+  const semExpectativa: Divida = {
+    id: "d-sem-expectativa",
+    userId,
+    pessoaId: "p3",
+    tipo: "receber",
+    valor: "500.00",
+    dataVencimento: "2026-07-10",
+    status: "pendente",
+    dataPagamento: null,
+    formaPagamento: null,
+    descricao: "Acordo não cumprido",
+    expectativaRecebimento: false,
+    totalParcelas: null,
+    valorTotal: null,
+  };
+  const recebida: Divida = {
+    ...semExpectativa,
+    id: "d-recebida",
+    valor: "120.00",
+    status: "pago",
+    dataPagamento: "2026-07-20",
+  };
+
+  const expected = getMonthlyDebtObligations({
+    dividas: [semExpectativa, recebida],
+    parcelas: [],
+  }, "2026-07");
+  const received = getMonthlyReceivedDebtObligations({
+    dividas: [semExpectativa, recebida],
+    parcelas: [],
+  }, "2026-07");
+
+  assert.equal(expected.length, 0);
+  assert.deepEqual(received.map((row) => row.dividaId), ["d-recebida"]);
+  assert.equal(received[0]?.valor, "120.00");
 });
 
 test("getDebtPortfolioSummary separa total contratado e saldo pendente", () => {

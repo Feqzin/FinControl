@@ -134,6 +134,11 @@ import {
 } from "../src/components/cartoes/invoice-month-selector.utils";
 import { buildRelatoriosServicosMetrics } from "../src/pages/relatorios/relatorios-servicos-metrics.utils";
 import { resolveDashboardServicosMetrics } from "../src/pages/dashboard/dashboard-servicos-metrics.utils";
+import { getDashboardReceivablesForMonth } from "../src/pages/dashboard/dashboard-receivables.utils";
+import {
+  FINANCIAL_QUERY_ROOTS,
+  invalidateFinancialQueries,
+} from "../src/lib/financial-query-invalidation";
 import {
   DASHBOARD_UPCOMING_WINDOW_DAYS,
   filterDashboardUpcomingVencimentos,
@@ -167,6 +172,22 @@ import {
   isServicoLinkedToCardCharge,
   resolveServicoBillingFields,
 } from "@shared/servico-periodicidade";
+
+test("cache financeiro: invalida o painel e os agregados após alterar uma dívida", async () => {
+  const invalidatedKeys: Array<readonly unknown[]> = [];
+
+  await invalidateFinancialQueries({
+    invalidateQueries: async ({ queryKey }) => {
+      invalidatedKeys.push(queryKey);
+    },
+  });
+
+  assert.deepEqual(invalidatedKeys, [...FINANCIAL_QUERY_ROOTS]);
+  assert.equal(
+    invalidatedKeys.some((queryKey) => queryKey[0] === "/api/dashboard/overview"),
+    true,
+  );
+});
 import { resolveServicoCategoryValue } from "@shared/service-categories";
 import {
   ICON_CATEGORY_OPTIONS,
@@ -235,6 +256,7 @@ function buildDividaFixture(overrides: Partial<Divida> = {}, parcelas: Parcela[]
     comprovanteTamanho: overrides.comprovanteTamanho ?? null,
     comprovanteEnviadoEm: overrides.comprovanteEnviadoEm ?? null,
     descricao: overrides.descricao ?? "Teste",
+    expectativaRecebimento: overrides.expectativaRecebimento ?? true,
     totalParcelas: overrides.totalParcelas ?? null,
     valorTotal: overrides.valorTotal ?? null,
     parcelas,
@@ -698,6 +720,39 @@ function buildServicoFixture(overrides: Partial<Servico> = {}): Servico {
     iconeId: overrides.iconeId ?? null,
   };
 }
+
+test("dashboard a receber: mostra somente pendências esperadas do mês selecionado", () => {
+  const dividas = [
+    buildDividaFixture({
+      id: "receber-julho",
+      pessoaId: "pessoa-a",
+      valor: "160.00",
+      dataVencimento: "2026-07-10",
+    }),
+    buildDividaFixture({
+      id: "sem-expectativa",
+      pessoaId: "pessoa-b",
+      valor: "1000.00",
+      dataVencimento: "2026-07-05",
+      expectativaRecebimento: false,
+    }),
+    buildDividaFixture({
+      id: "receber-agosto",
+      pessoaId: "pessoa-c",
+      valor: "250.00",
+      dataVencimento: "2026-08-10",
+    }),
+  ];
+
+  const items = getDashboardReceivablesForMonth({
+    dividas,
+    parcelas: [],
+    monthReference: "2026-07",
+  });
+
+  assert.deepEqual(items.map((item) => item.dividaId), ["receber-julho"]);
+  assert.equal(items.reduce((sum, item) => sum + item.valor, 0), 160);
+});
 
 function buildCartaoFaturaPagamentoFixture(
   overrides: Partial<CartaoFaturaPagamento> = {},

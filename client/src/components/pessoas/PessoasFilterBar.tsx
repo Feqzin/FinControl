@@ -23,8 +23,8 @@ export function PessoasFilterBar({
 }: PessoasFilterBarProps) {
   return (
     <div className="rounded-2xl border border-border/60 bg-card/95 p-3 shadow-sm sm:p-3.5">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-        <div className="relative w-full min-w-0 xl:max-w-md xl:flex-1">
+      <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center">
+        <div className="relative w-full min-w-0 2xl:max-w-md 2xl:flex-1">
           <Search className="absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             data-testid="input-search-pessoa"
@@ -34,18 +34,19 @@ export function PessoasFilterBar({
             onChange={(e) => onSearchChange(e.target.value)}
           />
         </div>
-        <Tabs value={filterTipo} onValueChange={onFilterChange} className="w-full min-w-0 xl:flex-1">
-          <TabsList className="mobile-tabs-scroll h-10 w-max min-w-full justify-start rounded-xl border border-border/60 bg-muted/25 p-1 xl:w-auto">
-            <TabsTrigger value="todos" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-todos">Todos</TabsTrigger>
-            <TabsTrigger value="me_deve" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-me-devem">Me devem</TabsTrigger>
-            <TabsTrigger value="eu_devo" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-eu-devo">Eu devo</TabsTrigger>
-            <TabsTrigger value="atrasados" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-atrasados">Atrasados</TabsTrigger>
-            <TabsTrigger value="removidas" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="filter-pessoas-removidas">Removidas</TabsTrigger>
+        <Tabs value={filterTipo} onValueChange={onFilterChange} className="w-full min-w-0 2xl:flex-1">
+          <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-xl border border-border/60 bg-muted/25 p-1 sm:grid-cols-6 2xl:h-10">
+            <TabsTrigger value="todos" className="h-8 rounded-lg px-2 text-xs font-medium" data-testid="filter-pessoas-todos">Todos</TabsTrigger>
+            <TabsTrigger value="me_deve" className="h-8 rounded-lg px-2 text-xs font-medium" data-testid="filter-pessoas-me-devem">Me devem</TabsTrigger>
+            <TabsTrigger value="eu_devo" className="h-8 rounded-lg px-2 text-xs font-medium" data-testid="filter-pessoas-eu-devo">Eu devo</TabsTrigger>
+            <TabsTrigger value="atrasados" className="h-8 rounded-lg px-2 text-xs font-medium" data-testid="filter-pessoas-atrasados">Atrasados</TabsTrigger>
+            <TabsTrigger value="lista_negra" className="h-8 rounded-lg px-2 text-xs font-medium" data-testid="filter-pessoas-lista-negra">Lista negra</TabsTrigger>
+            <TabsTrigger value="removidas" className="h-8 rounded-lg px-2 text-xs font-medium" data-testid="filter-pessoas-removidas">Removidas</TabsTrigger>
           </TabsList>
         </Tabs>
         <Select value={sortBy} onValueChange={(value) => onSortChange(value as PessoaSortBy)}>
           <SelectTrigger
-            className="h-10 w-full rounded-xl border-border/70 bg-background/95 text-sm shadow-sm xl:w-[240px]"
+            className="h-10 w-full rounded-xl border-border/70 bg-background/95 text-sm shadow-sm 2xl:w-[240px]"
             aria-label="Ordenar por"
           >
             <SelectValue placeholder="Ordenar por" />

@@ -160,6 +160,7 @@ export const dividaBody = z.object({
   dataPagamento: isoDateNullableOptional,
   formaPagamento: z.string().optional().nullable(),
   descricao: z.string().optional().nullable(),
+  expectativaRecebimento: z.boolean().optional(),
   totalParcelas: z.coerce.number().int().optional().nullable(),
   valorTotal: z.string().or(z.number()).transform(String).optional().nullable(),
 });
@@ -172,13 +173,20 @@ export const dividaParceladoBody = z.object({
   primeiroVencimento: isoDateRequired,
   descricao: z.string().optional().nullable(),
   formaPagamento: z.string().optional().nullable(),
+  expectativaRecebimento: z.boolean().optional(),
 });
 
 export const dividaUpdateBody = z.object({
+  pessoaId: z.string().min(1).optional(),
+  tipo: z.enum(["receber", "pagar"]).optional(),
+  valor: moneyField.optional(),
+  dataVencimento: isoDateNullableOptional,
   status: debtPersistedStatus.optional(),
   dataPagamento: isoDateNullableOptional,
   formaPagamento: z.string().optional().nullable(),
   descricao: z.string().optional().nullable(),
+  expectativaRecebimento: z.boolean().optional(),
+  valorTotal: moneyField.optional().nullable(),
 }).strict().refine((data) => Object.keys(data).length > 0, { message: nonEmptyUpdateMessage });
 
 export const parcelaUpdateBody = z.object({

@@ -34,6 +34,7 @@ import {
   getDebtObligations,
   getDebtPortfolioSummary,
   getMonthlyDebtObligations,
+  getMonthlyReceivedDebtObligations,
   getOutstandingDebtInstallments,
 } from "./financial-debt-analytics.js";
 import {
@@ -152,8 +153,12 @@ function getMonthlyDebtTotals(
     monthlyDebtObligations.filter((row) => row.tipo === "pagar"),
     (row) => row.valor,
   );
+  const totalRecebidoMes = sumMoneyBy(
+    getMonthlyReceivedDebtObligations(debtInput, monthReference),
+    (row) => row.valor,
+  );
 
-  return { monthlyDebtObligations, totalReceberMes, totalPagarMes };
+  return { monthlyDebtObligations, totalReceberMes, totalRecebidoMes, totalPagarMes };
 }
 
 function getMonthlyCardTotals(
@@ -301,7 +306,7 @@ function calculateScoreFromContext({
   const cardInput = { compras, parcelasCompra, cartaoFaturaPagamentos, cartoes, servicos, servicoCobrancaPagamentos };
   const outstandingDebtInstallments = getOutstandingDebtInstallments(debtInput);
   const debtPortfolio = getDebtPortfolioSummary(debtInput);
-  const { totalReceberMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, currentMonth);
+  const { totalRecebidoMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, currentMonth);
   const { totalCartoesMes } = getMonthlyCardTotals(cardInput, currentMonth);
   const cardSnapshots = buildMonthlyCardSnapshots(cardInput, [currentMonth]);
   const limiteComprometidoTotal = sumMoneyValues(cardSnapshots.map((snapshot) => snapshot.remainingAmount));
@@ -321,7 +326,7 @@ function calculateScoreFromContext({
   const totalRenda = sumMoneyBy(rendas.filter((r) => r.ativo), (r) => r.valor);
   const totalServicos = calculateServicoRealMonthlyTotal(servicos, currentMonth);
 
-  const entradas = totalRenda + totalReceberMes;
+  const entradas = totalRenda + totalRecebidoMes;
   const saidas = totalPagarMes + totalServicos + totalCartoesMes;
   const saldo = entradas - saidas;
 
@@ -441,10 +446,10 @@ function generateInsightsFromContext({
   const totalRenda = sumMoneyBy(rendas.filter((r) => r.ativo), (r) => r.valor);
   const servicosAtivos = servicos.filter((s) => s.status === "ativo");
   const totalServicos = calculateServicoRealMonthlyTotal(servicosAtivos, currentMonth);
-  const { totalReceberMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, currentMonth);
+  const { totalRecebidoMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, currentMonth);
   const { totalCartoesMes } = getMonthlyCardTotals(cardInput, currentMonth);
 
-  const entradas = totalRenda + totalReceberMes;
+  const entradas = totalRenda + totalRecebidoMes;
   const saidas = totalPagarMes + totalServicos + totalCartoesMes;
   const saldo = entradas - saidas;
 
@@ -826,7 +831,7 @@ export class FinancialService {
       servicos: context.servicos,
       servicoCobrancaPagamentos: context.servicoCobrancaPagamentos,
     };
-    const { totalReceberMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, mesReferencia);
+    const { totalReceberMes, totalRecebidoMes, totalPagarMes } = getMonthlyDebtTotals(debtInput, mesReferencia);
     const { totalCartoesMes } = getMonthlyCardTotals(cardInput, mesReferencia);
     const debtPortfolio = getDebtPortfolioSummary(debtInput);
     const servicoSummaryTotals = calculateServicoSummaryTotals(context.servicos, mesReferencia);
@@ -834,7 +839,7 @@ export class FinancialService {
     const totalRenda = sumMoneyBy(context.rendas.filter((r) => r.ativo), (r) => r.valor);
     const totalServicos = servicoSummaryTotals.servicosNaoVinculadosCartaoCobrancaRealTotal;
 
-    const totalEntradas = totalRenda + totalReceberMes;
+    const totalEntradas = totalRenda + totalRecebidoMes;
     const totalSaidas = totalPagarMes + totalServicos + totalCartoesMes;
     const saldo = totalEntradas - totalSaidas;
 
@@ -848,6 +853,7 @@ export class FinancialService {
       saldo: round2(saldo),
       totalRenda: round2(totalRenda),
       totalReceberMes: round2(totalReceberMes),
+      totalRecebidoMes: round2(totalRecebidoMes),
       totalPagarMes: round2(totalPagarMes),
       totalServicos: round2(totalServicos),
       servicosEquivalenteMensalTotal: round2(servicoSummaryTotals.servicosEquivalenteMensalTotal),

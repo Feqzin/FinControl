@@ -119,12 +119,23 @@ export function PessoaCard({
                     <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{pessoa.telefone}</p>
                   )}
                 </div>
-                <Badge
-                  variant={isMeDeve ? "default" : "destructive"}
-                  className="h-5 shrink-0 rounded-full px-2 py-0 text-[10px] font-medium shadow-sm"
-                >
-                  {isMeDeve ? "Me deve" : "Eu devo"}
-                </Badge>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <Badge
+                    variant={isMeDeve ? "default" : "destructive"}
+                    className="h-5 rounded-full px-2 py-0 text-[10px] font-medium shadow-sm"
+                  >
+                    {isMeDeve ? "Me deve" : "Eu devo"}
+                  </Badge>
+                  {pessoa.listaNegra && (
+                    <Badge
+                      variant="destructive"
+                      className="h-5 rounded-full px-2 py-0 text-[10px] font-medium"
+                      title={pessoa.listaNegraMotivo || "Pessoa marcada como mau pagador"}
+                    >
+                      Lista negra
+                    </Badge>
+                  )}
+                </div>
               </div>
 
               <div className="flex flex-wrap items-end justify-between gap-2">
@@ -193,29 +204,36 @@ export function PessoaCard({
       data-testid={`card-pessoa-${pessoa.id}`}
     >
       <CardContent className="flex h-full min-h-[220px] flex-col gap-4 p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-black/5 bg-muted/45 text-primary shadow-sm">
-                <span className="text-sm font-semibold">
-                  {pessoa.nome.charAt(0).toUpperCase()}
-                </span>
-              </div>
-            <div className="min-w-0">
-              <p className="truncate text-xl font-semibold leading-tight tracking-tight">{pessoa.nome}</p>
-              {pessoa.telefone && (
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">{pessoa.telefone}</p>
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-black/5 bg-muted/45 text-primary shadow-sm">
+            <span className="text-sm font-semibold">
+              {pessoa.nome.charAt(0).toUpperCase()}
+            </span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="line-clamp-2 break-words text-xl font-semibold leading-tight tracking-tight">{pessoa.nome}</p>
+            {pessoa.telefone && (
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">{pessoa.telefone}</p>
+            )}
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <Badge variant={isMeDeve ? "default" : "destructive"} className="h-6 px-2.5 text-[11px] shadow-sm">
+                {isMeDeve ? "Me deve" : "Eu devo"}
+              </Badge>
+              {pessoa.listaNegra && (
+                <Badge
+                  variant="destructive"
+                  className="h-6 px-2.5 text-[11px] shadow-sm"
+                  title={pessoa.listaNegraMotivo || "Pessoa marcada como mau pagador"}
+                >
+                  Lista negra
+                </Badge>
               )}
             </div>
           </div>
-          <div className="flex min-w-[132px] flex-col items-end justify-center gap-2 text-right">
-            <Badge variant={isMeDeve ? "default" : "destructive"} className="h-6 px-2.5 text-[11px] shadow-sm">
-              {isMeDeve ? "Me deve" : "Eu devo"}
-            </Badge>
-            <p className="text-[clamp(20px,2vw,24px)] font-semibold leading-none tracking-tight">
-              {formatCurrencyBRL(resumo.consolidadoPendente)}
-            </p>
-          </div>
         </div>
+        <p className="text-right text-[clamp(20px,2vw,24px)] font-semibold leading-none tracking-tight">
+          {formatCurrencyBRL(resumo.consolidadoPendente)}
+        </p>
 
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-xl border border-border/50 bg-muted/[0.16] px-3 py-2.5">

@@ -11,6 +11,7 @@ import type {
 } from "@shared/schema";
 import { format } from "date-fns";
 import { queryClient } from "@/lib/queryClient";
+import { invalidateFinancialQueries } from "@/lib/financial-query-invalidation";
 import { matchesPessoaTipoFilter } from "@/pages/pessoas/pessoas-filter.utils";
 import {
   abaterSaldoParcelaPessoa,
@@ -276,9 +277,8 @@ export function usePessoas({
 
   const createDividaMutation = useMutation({
     mutationFn: (payload: DividaPessoaPayload) => createDividaPessoa(payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+    onSuccess: async () => {
+      await invalidateFinancialQueries(queryClient);
       invalidateTimeline();
     },
   });
@@ -286,20 +286,16 @@ export function usePessoas({
   const payMutation = useMutation({
     mutationFn: ({ id, formaPagamento }: { id: string; formaPagamento: string }) =>
       marcarDividaPessoaComoPaga({ id, formaPagamento }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+    onSuccess: async () => {
+      await invalidateFinancialQueries(queryClient);
       invalidateTimeline();
     },
   });
 
   const reverterDividaPagamentoMutation = useMutation({
     mutationFn: (id: string) => reverterDividaPessoaParaPendente(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+    onSuccess: async () => {
+      await invalidateFinancialQueries(queryClient);
       invalidateTimeline();
     },
   });
@@ -400,12 +396,10 @@ export function usePessoas({
       data?: string | null;
       observacao?: string | null;
     }) => abaterSaldoDividaPessoa(pessoaId, dividaId, { valor, data, observacao }),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+    onSuccess: async (_data, variables) => {
+      await invalidateFinancialQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "saldo-movimentacoes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "resumo"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
       invalidateTimeline();
     },
@@ -533,6 +527,7 @@ export function usePessoas({
         })
         .filter((pessoa) => {
           if (isRemovedFilter) return true;
+          if (filterTipo === "lista_negra") return pessoa.listaNegra === true;
           const resumo = (() => {
             try {
               return getPessoaResumoConsolidado(pessoa.id);

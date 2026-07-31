@@ -20,6 +20,23 @@ test("dividaUpdateBody rejeita status invalido", () => {
   assert.equal(parsed.success, false);
 });
 
+test("dividaUpdateBody aceita os campos editáveis da tela de dívidas", () => {
+  const parsed = dividaUpdateBody.safeParse({
+    pessoaId: "pessoa-1",
+    tipo: "receber",
+    valor: 239.38,
+    dataVencimento: "2026-07-31",
+    formaPagamento: "pix",
+    descricao: "Recebível de julho",
+    expectativaRecebimento: false,
+  });
+
+  assert.equal(parsed.success, true);
+  if (!parsed.success) return;
+  assert.equal(parsed.data.valor, "239.38");
+  assert.equal(parsed.data.expectativaRecebimento, false);
+});
+
 test("compraUpdateBody aceita statusPessoa vazio e converte para null", () => {
   const parsed = compraUpdateBody.safeParse({ statusPessoa: "   " });
   assert.equal(parsed.success, true);

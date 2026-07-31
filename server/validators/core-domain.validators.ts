@@ -37,6 +37,8 @@ export const pessoaBody = z.object({
   tipo: z.enum(["me_deve", "eu_devo"]),
   telefone: z.string().optional().nullable(),
   observacao: z.string().optional().nullable(),
+  listaNegra: z.boolean().optional(),
+  listaNegraMotivo: z.string().optional().nullable(),
 });
 
 export const pessoaUpdateBody = pessoaBody.partial();

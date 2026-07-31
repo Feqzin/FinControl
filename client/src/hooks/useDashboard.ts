@@ -38,6 +38,7 @@ import { fetchDashboardOverview, fetchFinancialSummary } from "@/services/api/da
 import { fetchServicoCobrancaPagamentos } from "@/services/api/servicos";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { resolveDashboardServicosMetrics } from "@/pages/dashboard/dashboard-servicos-metrics.utils";
+import { getDashboardReceivablesForMonth } from "@/pages/dashboard/dashboard-receivables.utils";
 
 export type DashboardAlert = {
   icon: any;
@@ -396,13 +397,21 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const servicosNaoVinculadosCartaoEquivalenteMensalTotal = servicosMetrics.naoVinculadosCartaoEquivalenteMensalTotal;
   const servicosNaoVinculadosCartaoCobrancaRealTotal = servicosMetrics.naoVinculadosCartaoCobrancaRealTotal;
   const totalReceber = financialSummary?.totalReceberMes ?? 0;
+  const totalRecebidoMes = financialSummary?.totalRecebidoMes ?? 0;
   const totalPagar = financialSummary?.totalPagarMes ?? 0;
   const totalCartoesMes = financialSummary?.totalCartoesMes ?? 0;
-  const ReceberMes = totalReceber;
   const totalPagarMes = totalPagar;
   const totalEntradas = financialSummary?.totalEntradas ?? 0;
   const totalSaidas = totalPagarMes + totalServicos + totalCartoesMes;
-  const saldoPrevisto = totalEntradas - totalSaidas;
+  const saldoPrevisto = financialSummary?.saldo ?? (totalEntradas - totalSaidas);
+  const recebiveisMes = useMemo(
+    () => getDashboardReceivablesForMonth({
+      dividas,
+      parcelas,
+      monthReference: selectedMonth,
+    }),
+    [dividas, parcelas, selectedMonth],
+  );
 
   const saldoColor =
     saldoPrevisto > 0 ? "text-emerald-600"
@@ -526,6 +535,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     });
 
     dividas.forEach((d) => {
+      if (d.tipo === "receber" && d.expectativaRecebimento === false) return;
       const pessoa = pessoasById.get(d.pessoaId);
       const nome = d.descricao || pessoa?.nome || (d.tipo === "receber" ? "Recebimento" : "Pagamento");
       const parcelasDaDivida = (parcelasByDividaId.get(d.id) ?? []).filter(
@@ -703,18 +713,17 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const mask = (v: string) => maskValue(v, visible);
 
   const aReceberTooltip = useMemo(() => {
-    const items = dividas
-      .filter((d) => d.tipo === "receber" && d.status === "pendente")
-      .sort((a, b) => toMoneyNumber(b.valor) - toMoneyNumber(a.valor))
-      .slice(0, 5);
+    const items = recebiveisMes.slice(0, 5);
     if (items.length === 0) return ["Nenhum valor a receber pendente."];
     return [
-      "Principais valores a receber:",
-      ...items.map((d) => `• ${getPessoaNome(d.pessoaId)} — ${mask(formatCurrencyBRL(toMoneyNumber(d.valor)))}`),
+      "Valores esperados neste mês:",
+      ...items.map((item) => (
+        `• ${getPessoaNome(item.pessoaId)}${item.numeroParcela ? ` · parcela ${item.numeroParcela}` : ""} — ${mask(formatCurrencyBRL(item.valor))}`
+      )),
       "---",
       `Total: ${mask(formatCurrencyBRL(totalReceber))}`,
     ];
-  }, [dividas, totalReceber, visible]);
+  }, [recebiveisMes, totalReceber, visible]);
 
   const aPagarTooltip = useMemo(() => {
     const items = dividas
@@ -765,8 +774,8 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     () => [
       "ENTRADAS",
       `• Renda mensal: ${mask(formatCurrencyBRL(totalRenda))}`,
-      ...(ReceberMes > 0 ? [`• A receber (mês): ${mask(formatCurrencyBRL(ReceberMes))}`] : []),
-      `Total entradas: ${mask(formatCurrencyBRL(totalEntradas))}`,
+      ...(totalRecebidoMes > 0 ? [`• Recebimentos realizados: ${mask(formatCurrencyBRL(totalRecebidoMes))}`] : []),
+      `Total confirmado: ${mask(formatCurrencyBRL(totalEntradas))}`,
       "---",
       "SAÍDAS",
       `• Cartões: ${mask(formatCurrencyBRL(totalCartoesMes))}`,
@@ -776,7 +785,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       "---",
       `Saldo = ${mask(formatCurrencyBRL(totalEntradas))} - ${mask(formatCurrencyBRL(totalSaidas))} = ${mask(formatCurrencyBRL(saldoPrevisto))}`,
     ],
-    [ReceberMes, saldoPrevisto, totalCartoesMes, totalEntradas, totalPagarMes, totalRenda, totalSaidas, totalServicos, visible],
+    [saldoPrevisto, totalCartoesMes, totalEntradas, totalPagarMes, totalRecebidoMes, totalRenda, totalSaidas, totalServicos, visible],
   );
 
   const rendaMensalTooltip = useMemo(() => {
@@ -901,13 +910,14 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     servicosNaoVinculadosCartaoEquivalenteMensalTotal,
     servicosNaoVinculadosCartaoCobrancaRealTotal,
     totalReceber,
+    totalRecebidoMes,
     totalPagar,
     totalCartoesMes,
-    ReceberMes,
     totalPagarMes,
     totalEntradas,
     totalSaidas,
     saldoPrevisto,
+    recebiveisMes,
     saldoColor,
     saldoIconBg,
     today,

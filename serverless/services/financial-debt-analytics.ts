@@ -17,6 +17,7 @@ export type DebtObligation = {
   status: string;
   dataVencimento: string | null;
   dataPagamento: string | null;
+  expectativaRecebimento: boolean;
 };
 
 export type DebtPortfolioSummary = {
@@ -93,6 +94,7 @@ export function getDebtObligations(input: DebtAnalyticsInput): DebtObligation[] 
           status: parcela.status,
           dataVencimento: parcela.dataVencimento ?? null,
           dataPagamento: parcela.dataPagamento ?? null,
+          expectativaRecebimento: divida.expectativaRecebimento !== false,
         });
       }
       continue;
@@ -107,6 +109,7 @@ export function getDebtObligations(input: DebtAnalyticsInput): DebtObligation[] 
       status: divida.status,
       dataVencimento: divida.dataVencimento ?? null,
       dataPagamento: divida.dataPagamento ?? null,
+      expectativaRecebimento: divida.expectativaRecebimento !== false,
     });
   }
 
@@ -118,7 +121,15 @@ export function getOutstandingDebtInstallments(input: DebtAnalyticsInput): DebtO
 }
 
 export function getMonthlyDebtObligations(input: DebtAnalyticsInput, monthReference: string): DebtObligation[] {
-  return getOutstandingDebtInstallments(input).filter((row) => String(row.dataVencimento || "").startsWith(monthReference));
+  return getOutstandingDebtInstallments(input)
+    .filter((row) => row.tipo !== "receber" || row.expectativaRecebimento)
+    .filter((row) => String(row.dataVencimento || "").startsWith(monthReference));
+}
+
+export function getMonthlyReceivedDebtObligations(input: DebtAnalyticsInput, monthReference: string): DebtObligation[] {
+  return getDebtObligations(input)
+    .filter((row) => row.tipo === "receber" && isPaidStatus(row.status))
+    .filter((row) => String(row.dataPagamento || "").startsWith(monthReference));
 }
 
 export function getDebtPortfolioSummary(input: DebtAnalyticsInput): DebtPortfolioSummary {

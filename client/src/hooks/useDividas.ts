@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Cartao, CompraCartao, Divida, Parcela, ParcelaCompra, Pessoa } from "@shared/schema";
 import { toMoneyNumber } from "@/lib/money";
 import { queryClient } from "@/lib/queryClient";
+import { invalidateFinancialQueries } from "@/lib/financial-query-invalidation";
 import {
   anteciparParcelas,
   createDividaParcelada,
@@ -123,16 +124,15 @@ export function useDividas({ search, filterStatus, filterTipo }: UseDividasArgs)
 
   const createSimpleMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => createDividaSimples(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+    onSuccess: async () => {
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const createParceladoMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => createDividaParcelada(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+    onSuccess: async () => {
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
@@ -143,68 +143,58 @@ export function useDividas({ search, filterStatus, filterTipo }: UseDividasArgs)
         dataPagamento,
         formaPagamento,
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+    onSuccess: async () => {
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const editParcelaMutation = useMutation({
     mutationFn: ({ id, ...data }: { id: string; valor?: string; dataVencimento?: string }) => updateParcela(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+    onSuccess: async () => {
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const anteciparMutation = useMutation({
     mutationFn: (data: { dividaId: string; quantidade: number; formaPagamento: string }) => anteciparParcelas(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+    onSuccess: async () => {
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteDivida(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+    onSuccess: async () => {
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const restoreMutation = useMutation({
     mutationFn: (id: string) => restoreDivida(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
+    onSuccess: async () => {
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const deletePermanentMutation = useMutation({
     mutationFn: (id: string) => deleteDividaPermanent(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
+    onSuccess: async () => {
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const updateDividaMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => updateDivida(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
+    onSuccess: async () => {
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const recalcularMutation = useMutation({
     mutationFn: ({ id, novoTotal, primeiroVencimento }: { id: string; novoTotal: number; primeiroVencimento?: string }) =>
       recalcularDivida({ id, novoTotal, primeiroVencimento }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/parcelas"] });
+    onSuccess: async () => {
+      await invalidateFinancialQueries(queryClient);
     },
   });
 

@@ -9,6 +9,8 @@ export type PessoaPayload = {
   tipo: string;
   telefone?: string;
   observacao?: string;
+  listaNegra?: boolean;
+  listaNegraMotivo?: string | null;
 };
 
 export type DividaPessoaPayload = {

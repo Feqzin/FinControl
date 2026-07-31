@@ -32,11 +32,14 @@ export const pessoas = pgTable("pessoas", {
   tipo: text("tipo").notNull(),
   telefone: text("telefone"),
   observacao: text("observacao"),
+  listaNegra: boolean("lista_negra").notNull().default(false),
+  listaNegraMotivo: text("lista_negra_motivo"),
   deletedAt: timestamp("deleted_at"),
-}, (table) => ({
-  pessoasUserIdIdx: index("idx_pessoas_user_id").on(table.userId),
-  pessoasUserNomeIdx: index("idx_pessoas_user_nome").on(table.userId, table.nome),
-  pessoasUserDeletedAtIdx: index("idx_pessoas_user_deleted_at").on(table.userId, table.deletedAt),
+  }, (table) => ({
+    pessoasUserIdIdx: index("idx_pessoas_user_id").on(table.userId),
+    pessoasUserNomeIdx: index("idx_pessoas_user_nome").on(table.userId, table.nome),
+    pessoasUserDeletedAtIdx: index("idx_pessoas_user_deleted_at").on(table.userId, table.deletedAt),
+    pessoasUserListaNegraIdx: index("idx_pessoas_user_lista_negra").on(table.userId, table.listaNegra),
 }));
 
 export const insertPessoaSchema = createInsertSchema(pessoas).omit({ id: true });
@@ -60,16 +63,21 @@ export const dividas = pgTable("dividas", {
   comprovanteTamanho: integer("comprovante_tamanho"),
   comprovanteEnviadoEm: timestamp("comprovante_enviado_em"),
   descricao: text("descricao"),
+  expectativaRecebimento: boolean("expectativa_recebimento").notNull().default(true),
   totalParcelas: integer("total_parcelas"),
   valorTotal: decimal("valor_total", { precision: 12, scale: 2 }),
   deletedAt: timestamp("deleted_at"),
 }, (table) => ({
   dividasUserIdIdx: index("idx_dividas_user_id").on(table.userId),
   dividasPessoaIdIdx: index("idx_dividas_pessoa_id").on(table.pessoaId),
-  dividasStatusIdx: index("idx_dividas_status").on(table.status),
-  dividasVencimentoIdx: index("idx_dividas_data_vencimento").on(table.dataVencimento),
-  dividasUserDeletedAtIdx: index("idx_dividas_user_deleted_at").on(table.userId, table.deletedAt),
-}));
+    dividasStatusIdx: index("idx_dividas_status").on(table.status),
+    dividasVencimentoIdx: index("idx_dividas_data_vencimento").on(table.dataVencimento),
+    dividasUserDeletedAtIdx: index("idx_dividas_user_deleted_at").on(table.userId, table.deletedAt),
+    dividasUserExpectativaRecebimentoIdx: index("idx_dividas_user_expectativa_recebimento").on(
+      table.userId,
+      table.expectativaRecebimento,
+    ),
+  }));
 
 export const insertDividaSchema = createInsertSchema(dividas).omit({ id: true });
 export type InsertDivida = z.infer<typeof insertDividaSchema>;

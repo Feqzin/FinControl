@@ -240,6 +240,7 @@ test("calcula resumo financeiro mensal com consistencia de valores", async () =>
   assert.equal(summary.mesReferencia, "2026-04");
   assert.equal(summary.totalRenda, 1000);
   assert.equal(summary.totalReceberMes, 500);
+  assert.equal(summary.totalRecebidoMes, 0);
   assert.equal(summary.totalPagarMes, 0);
   assert.equal(summary.totalServicos, 100);
   assert.equal(summary.servicosEquivalenteMensalTotal, 100);
@@ -249,9 +250,9 @@ test("calcula resumo financeiro mensal com consistencia de valores", async () =>
   assert.equal(summary.servicosNaoVinculadosCartaoEquivalenteMensalTotal, 100);
   assert.equal(summary.servicosNaoVinculadosCartaoCobrancaRealTotal, 100);
   assert.equal(summary.totalCartoesMes, 200);
-  assert.equal(summary.totalEntradas, 1500);
+  assert.equal(summary.totalEntradas, 1000);
   assert.equal(summary.totalSaidas, 300);
-  assert.equal(summary.saldo, 1200);
+  assert.equal(summary.saldo, 700);
   assert.equal(summary.dividaTotal, 700);
   assert.equal(summary.dividaTotalPendente, 550);
   assert.equal(summary.dividaTotalPaga, 150);

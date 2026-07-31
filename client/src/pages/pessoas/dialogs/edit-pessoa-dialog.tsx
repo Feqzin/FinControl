@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -24,8 +25,22 @@ type PessoaKind = Pessoa["tipo"];
 type EditPessoaDialogProps = {
   open: boolean;
   onOpenChange: (value: boolean) => void;
-  editForm: { nome: string; tipo: PessoaKind; telefone: string; observacao: string };
-  onEditFormChange: (value: { nome: string; tipo: PessoaKind; telefone: string; observacao: string }) => void;
+  editForm: {
+    nome: string;
+    tipo: PessoaKind;
+    telefone: string;
+    observacao: string;
+    listaNegra: boolean;
+    listaNegraMotivo: string;
+  };
+  onEditFormChange: (value: {
+    nome: string;
+    tipo: PessoaKind;
+    telefone: string;
+    observacao: string;
+    listaNegra: boolean;
+    listaNegraMotivo: string;
+  }) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   isPending: boolean;
 };
@@ -88,6 +103,42 @@ export function EditPessoaDialog({
               onChange={(e) => onEditFormChange({ ...editForm, observacao: e.target.value })}
               placeholder="Notas sobre essa pessoa"
             />
+          </div>
+          <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="edit-pessoa-lista-negra" className="cursor-pointer text-red-700 dark:text-red-300">
+                  Lista negra de mau pagador
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Identifica esta pessoa com um alerta visível na listagem.
+                </p>
+              </div>
+              <Switch
+                id="edit-pessoa-lista-negra"
+                checked={editForm.listaNegra}
+                onCheckedChange={(checked) => onEditFormChange({
+                  ...editForm,
+                  listaNegra: checked,
+                  listaNegraMotivo: checked ? editForm.listaNegraMotivo : "",
+                })}
+                data-testid="switch-edit-pessoa-lista-negra"
+              />
+            </div>
+            {editForm.listaNegra && (
+              <div className="mt-3 space-y-2">
+                <Label>Motivo (opcional)</Label>
+                <Textarea
+                  value={editForm.listaNegraMotivo}
+                  onChange={(event) => onEditFormChange({
+                    ...editForm,
+                    listaNegraMotivo: event.target.value,
+                  })}
+                  placeholder="Ex.: atrasos recorrentes ou acordo não cumprido"
+                  data-testid="input-edit-pessoa-lista-negra-motivo"
+                />
+              </div>
+            )}
           </div>
           <Button type="submit" className="w-full" data-testid="button-save-edit-pessoa" disabled={isPending}>
             {isPending ? "Salvando..." : "Salvar alteracoes"}

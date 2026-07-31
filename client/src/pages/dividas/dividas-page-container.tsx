@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -101,7 +102,7 @@ export default function DividasPage() {
 
   const [editingDivida, setEditingDivida] = useState<DividaWithParcelas | null>(null);
   const [editDividaForm, setEditDividaForm] = useState({
-    pessoaId: "", tipo: "receber", valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix",
+    pessoaId: "", tipo: "receber", valor: "", dataVencimento: "", descricao: "", formaPagamento: "pix", expectativaRecebimento: true,
   });
   const [recalcularForm, setRecalcularForm] = useState({ novoTotal: "", primeiroVencimento: "" });
   const [showRecalcular, setShowRecalcular] = useState(false);
@@ -400,6 +401,9 @@ export default function DividasPage() {
           dataVencimento: editDividaForm.dataVencimento || null,
           descricao: editDividaForm.descricao || null,
           formaPagamento: editDividaForm.formaPagamento || null,
+          expectativaRecebimento: editDividaForm.tipo === "receber"
+            ? editDividaForm.expectativaRecebimento
+            : true,
           ...(editingDivida.parcelas.length > 0 ? { valorTotal: editDividaForm.valor } : {}),
         },
       },
@@ -794,6 +798,11 @@ export default function DividasPage() {
                               Removida
                             </span>
                           )}
+                          {d.tipo === "receber" && d.expectativaRecebimento === false && (
+                            <span className="rounded-full bg-slate-500/10 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+                              Sem expectativa
+                            </span>
+                          )}
                         </div>
                         <p className="mt-0.5 text-xs text-muted-foreground break-words">
                           {hasParce
@@ -1018,6 +1027,11 @@ export default function DividasPage() {
                               Removida
                             </Badge>
                           )}
+                          {d.tipo === "receber" && d.expectativaRecebimento === false && (
+                            <Badge variant="outline" className="text-slate-600 dark:text-slate-300">
+                              Sem expectativa
+                            </Badge>
+                          )}
                           {parcelasVencidas > 0 && (
                             <Badge variant="destructive" className="text-xs">
                               <AlertCircle className="w-3 h-3 mr-1" />
@@ -1072,6 +1086,7 @@ export default function DividasPage() {
                                 dataVencimento: d.dataVencimento || "",
                                 descricao: d.descricao || "",
                                 formaPagamento: d.formaPagamento || "pix",
+                                expectativaRecebimento: d.expectativaRecebimento !== false,
                               });
                               setRecalcularForm({ novoTotal: String(d.totalParcelas || d.parcelas.length || ""), primeiroVencimento: "" });
                               setShowRecalcular(false);
@@ -1324,6 +1339,28 @@ export default function DividasPage() {
                   placeholder="Descrição breve"
                 />
               </div>
+
+              {editDividaForm.tipo === "receber" && (
+                <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 p-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-divida-expectativa" className="cursor-pointer">
+                      Considerar no “A receber”
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Desative quando não houver mais expectativa real de recebimento.
+                    </p>
+                  </div>
+                  <Switch
+                    id="edit-divida-expectativa"
+                    checked={editDividaForm.expectativaRecebimento}
+                    onCheckedChange={(checked) => setEditDividaForm({
+                      ...editDividaForm,
+                      expectativaRecebimento: checked,
+                    })}
+                    data-testid="switch-edit-divida-expectativa"
+                  />
+                </div>
+              )}
 
               {editingDivida.parcelas.length > 0 && (
                 <div className="border rounded-md p-3 space-y-3">
