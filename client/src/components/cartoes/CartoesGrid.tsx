@@ -43,7 +43,7 @@ export function CartoesGrid({
 
   if (cartoesTab === "resumo") {
     return (
-      <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {cartoes.map((cartao) => {
           const limite = Number(cartao.limite) || 0;
           const faturaAtual = getCardTotal(cartao.id);

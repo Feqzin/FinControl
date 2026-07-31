@@ -1,5 +1,6 @@
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, CircleHelp } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type ProjectedServicesNoticeProps = {
   amount: number;
@@ -18,28 +19,37 @@ export function ProjectedServicesNotice({
 
   return (
     <div
-      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2.5"
+      className="flex min-w-0 items-center gap-2 rounded-lg border border-border/50 bg-muted/20 px-2.5 py-2"
       data-testid={testId}
     >
-      <div className="flex min-w-0 items-start gap-2">
-        <CalendarClock className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
-        <div className="min-w-0">
-          <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
-            Serviços previstos: {formatCurrency(amount)}
-          </p>
-          <p className="text-[11px] leading-snug text-muted-foreground">
-            Previsão separada; não faz parte do saldo pagável da fatura.
-          </p>
-        </div>
-      </div>
+      <CalendarClock className="h-3.5 w-3.5 flex-shrink-0 text-amber-500" />
+      <p className="min-w-0 flex-1 text-xs leading-snug text-muted-foreground">
+        <span className="font-semibold text-foreground">{formatCurrency(amount)}</span>
+        {" "}em serviços previstos
+      </p>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Explicação dos serviços previstos"
+          >
+            <CircleHelp className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-56 text-xs">
+          Esta previsão afeta o limite estimado, mas não faz parte do saldo pagável da fatura.
+        </TooltipContent>
+      </Tooltip>
       <Button
         type="button"
         variant="ghost"
         size="sm"
-        className="h-7 px-2 text-xs text-amber-800 hover:text-amber-900 dark:text-amber-200"
+        className="h-7 flex-shrink-0 px-2 text-xs"
         onClick={onOpenServices}
+        aria-label="Ver serviços previstos"
       >
-        Ver serviços
+        Ver
       </Button>
     </div>
   );

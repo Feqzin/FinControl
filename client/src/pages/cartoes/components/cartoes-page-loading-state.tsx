@@ -44,7 +44,7 @@ export function CartoesPageLoadingState() {
         </div>
       </FintechLoadingSurface>
 
-      <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {Array.from({ length: 4 }).map((_, index) => (
           <FintechLoadingSurface key={index}>
             <div className="space-y-3 p-4">
