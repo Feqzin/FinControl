@@ -25,6 +25,24 @@ export const insertUserSchema = createInsertSchema(users).pick({ username: true,
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
+export const userPublicProfiles = pgTable("user_public_profiles", {
+  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  bio: text("bio"),
+  profileVisibility: text("profile_visibility").notNull().default("private"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  userPublicProfilesVisibilityIdx: index("idx_user_public_profiles_visibility").on(table.profileVisibility),
+  userPublicProfilesUpdatedAtIdx: index("idx_user_public_profiles_updated_at").on(table.updatedAt),
+}));
+
+export const insertUserPublicProfileSchema = createInsertSchema(userPublicProfiles).omit({
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertUserPublicProfile = z.infer<typeof insertUserPublicProfileSchema>;
+export type UserPublicProfile = typeof userPublicProfiles.$inferSelect;
+
 export const pessoas = pgTable("pessoas", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -248,6 +266,7 @@ export type UserIconLibraryItem = typeof userIconLibrary.$inferSelect;
 export const officialIconPacks = pgTable("official_icon_packs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   publicCode: text("public_code"),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   description: text("description"),
   category: text("category"),
@@ -258,6 +277,7 @@ export const officialIconPacks = pgTable("official_icon_packs", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
   officialIconPacksActiveIdx: index("idx_official_icon_packs_is_active").on(table.isActive),
+  officialIconPacksOwnerIdx: index("idx_official_icon_packs_owner_user_id").on(table.ownerUserId),
   officialIconPacksCreatedAtIdx: index("idx_official_icon_packs_created_at").on(table.createdAt),
   officialIconPacksCoverIconIdx: index("idx_official_icon_packs_cover_icon_id").on(table.coverIconId),
 }));

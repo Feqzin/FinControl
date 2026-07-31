@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { IconPickerBuiltinIconCard } from "@/components/icon-picker-builtin-icon-card";
@@ -198,6 +199,7 @@ export function IconPicker({
   const [packRatingHover, setPackRatingHover] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const hasExploreSearch = hasExploreSearchTerm(exploreSearch);
   const shouldIncludeExplorePackItems = exploreType !== "packs" || hasExploreSearch;
   const shouldLoadSuggestionContext = open || Boolean(value) || Boolean(name.trim());
@@ -1981,6 +1983,12 @@ export function IconPicker({
                               onOpenDetails={() => openPackDetails(pack)}
                               onAddPack={() => addPackToLibraryMutation.mutate(pack)}
                               onOpenActions={() => openPackActions(pack)}
+                              onOpenAuthorProfile={pack.sourceType === "community" && pack.ownerPublicCode
+                                ? () => {
+                                  setOpen(false);
+                                  navigate(`/comunidade/criadores/${encodeURIComponent(pack.ownerPublicCode as string)}`);
+                                }
+                                : undefined}
                             />
                           );
                         })}
@@ -2568,11 +2576,25 @@ export function IconPicker({
                             </Badge>
                           ) : null}
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {packDetailsTarget.sourceType === "community"
-                            ? `Publicado por: ${formatCommunityAuthorLabel(packDetailsTarget.ownerLabel)}`
-                            : "Catálogo oficial"}
-                        </p>
+                        {packDetailsTarget.sourceType === "community" && packDetailsTarget.ownerPublicCode ? (
+                          <button
+                            type="button"
+                            className="text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            onClick={() => {
+                              setPackDetailsOpen(false);
+                              setOpen(false);
+                              navigate(`/comunidade/criadores/${encodeURIComponent(packDetailsTarget.ownerPublicCode as string)}`);
+                            }}
+                          >
+                            Publicado por: {formatCommunityAuthorLabel(packDetailsTarget.ownerLabel)}
+                          </button>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            {packDetailsTarget.sourceType === "community"
+                              ? `Publicado por: ${formatCommunityAuthorLabel(packDetailsTarget.ownerLabel)}`
+                              : "Catálogo oficial"}
+                          </p>
+                        )}
                         {packDetailsTarget.publicCode ? (
                           <p className="text-xs text-muted-foreground">
                             ID do pack: {packDetailsTarget.publicCode}

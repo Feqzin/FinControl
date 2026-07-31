@@ -34,6 +34,7 @@ import { createCompraAliasesController } from "./controllers/compra-aliases.cont
 import { createIconMatchRulesController } from "./controllers/icon-match-rules.controller.js";
 import { createUserIconLibraryController } from "./controllers/user-icon-library.controller.js";
 import { createOfficialIconsController } from "./controllers/official-icons.controller.js";
+import { createCommunityProfilesController } from "./controllers/community-profiles.controller.js";
 import { createFuturePurchaseSimulationsController } from "./controllers/future-purchase-simulations.controller.js";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.js";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
@@ -67,6 +68,7 @@ import { CompraAliasesService } from "./services/compra-aliases.service.js";
 import { IconMatchRulesService } from "./services/icon-match-rules.service.js";
 import { UserIconLibraryService } from "./services/user-icon-library.service.js";
 import { OfficialIconLibraryService } from "./services/official-icons.service.js";
+import { CommunityProfilesService } from "./services/community-profiles.service.js";
 import { FuturePurchaseSimulationsService } from "./services/future-purchase-simulations.service.js";
 
 function auditRoute(
@@ -119,6 +121,7 @@ export function registerRoutes(app: Express): void {
   const iconMatchRulesController = createIconMatchRulesController(new IconMatchRulesService());
   const userIconLibraryController = createUserIconLibraryController(new UserIconLibraryService());
   const officialIconsController = createOfficialIconsController(new OfficialIconLibraryService());
+  const communityProfilesController = createCommunityProfilesController(new CommunityProfilesService());
   const futurePurchaseSimulationsController = createFuturePurchaseSimulationsController(new FuturePurchaseSimulationsService(storage));
 
   registerFinancialDomainRoutes(app, {
@@ -329,6 +332,9 @@ export function registerRoutes(app: Express): void {
   app.post("/api/user-icon-library/batch", requireAuth, userIconLibraryController.createBatch);
   app.patch("/api/user-icon-library/:id", requireAuth, userIconLibraryController.update);
   app.delete("/api/user-icon-library/:id", requireAuth, userIconLibraryController.remove);
+  app.get("/api/community/profile", requireAuth, communityProfilesController.getOwnProfile);
+  app.patch("/api/community/profile", requireAuth, communityProfilesController.updateOwnProfile);
+  app.get("/api/community/creators/:publicCode", requireAuth, communityProfilesController.getCreatorProfile);
   app.get("/api/icons/official", requireAuth, officialIconsController.listOfficial);
   app.get("/api/icons/community", requireAuth, officialIconsController.listCommunity);
   app.get("/api/icons/packs", requireAuth, officialIconsController.listPacks);

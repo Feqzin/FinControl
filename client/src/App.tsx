@@ -34,6 +34,7 @@ const SimuladorPage = lazy(() => import("@/pages/simulador-page"));
 const RendaPage = lazy(() => import("@/pages/renda-page"));
 const PatrimonioPage = lazy(() => import("@/pages/patrimonio-page"));
 const PerfilPage = lazy(() => import("@/pages/perfil-page"));
+const CommunityCreatorPage = lazy(() => import("@/pages/community-creator-page"));
 const RedefinirSenhaPage = lazy(() => import("@/pages/redefinir-senha-page"));
 
 function RouteLoadingFallback() {
@@ -181,6 +182,9 @@ function Router() {
         </Route>
         <Route path="/perfil">
           <PerfilPage />
+        </Route>
+        <Route path="/comunidade/criadores/:publicCode">
+          <CommunityCreatorPage />
         </Route>
         <Route>
           <NotFoundPage />

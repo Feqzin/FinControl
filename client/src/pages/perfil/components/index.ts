@@ -1,6 +1,7 @@
 export { PerfilPageHeader } from "./perfil-page-header";
 export { PerfilTabsNav } from "./perfil-tabs-nav";
 export { PerfilPersonalInfoCard } from "./perfil-personal-info-card";
+export { PerfilCommunityProfileCard } from "./perfil-community-profile-card";
 export { PerfilAccountStatusCard } from "./perfil-account-status-card";
 export { PerfilHelpCard } from "./perfil-help-card";
 export { PerfilLogoutCard } from "./perfil-logout-card";

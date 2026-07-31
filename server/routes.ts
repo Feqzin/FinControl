@@ -32,6 +32,7 @@ import { createCompraAliasesController } from "./controllers/compra-aliases.cont
 import { createIconMatchRulesController } from "./controllers/icon-match-rules.controller";
 import { createUserIconLibraryController } from "./controllers/user-icon-library.controller";
 import { createOfficialIconsController } from "./controllers/official-icons.controller";
+import { createCommunityProfilesController } from "./controllers/community-profiles.controller";
 import { createFuturePurchaseSimulationsController } from "./controllers/future-purchase-simulations.controller";
 import { getUserId } from "./controllers/controller-utils";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes";
@@ -43,6 +44,7 @@ import { CompraAliasesService } from "./services/compra-aliases.service";
 import { IconMatchRulesService } from "./services/icon-match-rules.service";
 import { UserIconLibraryService } from "./services/user-icon-library.service";
 import { OfficialIconLibraryService } from "./services/official-icons.service";
+import { CommunityProfilesService } from "./services/community-profiles.service";
 import { FuturePurchaseSimulationsService } from "./services/future-purchase-simulations.service";
 import { BillingService } from "../serverless/services/billing.service";
 import { calculateRemaining } from "../shared/subscription";
@@ -106,6 +108,7 @@ export function registerRoutes(app: Express): void {
   const iconMatchRulesController = createIconMatchRulesController(new IconMatchRulesService());
   const userIconLibraryController = createUserIconLibraryController(new UserIconLibraryService());
   const officialIconsController = createOfficialIconsController(new OfficialIconLibraryService());
+  const communityProfilesController = createCommunityProfilesController(new CommunityProfilesService());
   const futurePurchaseSimulationsController = createFuturePurchaseSimulationsController(new FuturePurchaseSimulationsService(storage));
   const billingService = new BillingService();
 
@@ -142,6 +145,9 @@ export function registerRoutes(app: Express): void {
   app.post("/api/user-icon-library/batch", requireAuth, userIconLibraryController.createBatch);
   app.patch("/api/user-icon-library/:id", requireAuth, userIconLibraryController.update);
   app.delete("/api/user-icon-library/:id", requireAuth, userIconLibraryController.remove);
+  app.get("/api/community/profile", requireAuth, communityProfilesController.getOwnProfile);
+  app.patch("/api/community/profile", requireAuth, communityProfilesController.updateOwnProfile);
+  app.get("/api/community/creators/:publicCode", requireAuth, communityProfilesController.getCreatorProfile);
   app.get("/api/icons/official", requireAuth, officialIconsController.listOfficial);
   app.get("/api/icons/community", requireAuth, officialIconsController.listCommunity);
   app.get("/api/icons/packs", requireAuth, officialIconsController.listPacks);

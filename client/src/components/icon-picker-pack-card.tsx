@@ -23,6 +23,7 @@ type IconPickerPackCardProps = {
   onOpenDetails: () => void;
   onAddPack: () => void;
   onOpenActions: () => void;
+  onOpenAuthorProfile?: () => void;
 };
 
 export function IconPickerPackCard({
@@ -44,6 +45,7 @@ export function IconPickerPackCard({
   onOpenDetails,
   onAddPack,
   onOpenActions,
+  onOpenAuthorProfile,
 }: IconPickerPackCardProps) {
   const handleAddPackClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -55,6 +57,12 @@ export function IconPickerPackCard({
     event.preventDefault();
     event.stopPropagation();
     onOpenActions();
+  };
+
+  const handleOpenAuthorProfileClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onOpenAuthorProfile?.();
   };
 
   const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -104,7 +112,17 @@ export function IconPickerPackCard({
               {statusLabel}
             </Badge>
           </div>
-          <p className="truncate text-[11px] text-muted-foreground">{authorLabel}</p>
+          {onOpenAuthorProfile ? (
+            <button
+              type="button"
+              onClick={handleOpenAuthorProfileClick}
+              className="truncate text-left text-[11px] text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {authorLabel}
+            </button>
+          ) : (
+            <p className="truncate text-[11px] text-muted-foreground">{authorLabel}</p>
+          )}
         </div>
       </div>
       {matchHint ? (

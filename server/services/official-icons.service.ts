@@ -1220,19 +1220,22 @@ export class OfficialIconLibraryService {
       }
     }
 
-    const ownerUserIds = Array.from(
-      new Set(
-        Array.from(ownerByPackId.values()).filter(
-          (value): value is string => typeof value === "string" && value.trim().length > 0,
-        ),
+    const ownerUserIds = Array.from(new Set(
+      [
+        ...packs.map((pack) => pack.ownerUserId),
+        ...Array.from(ownerByPackId.values()),
+      ].filter(
+        (value): value is string => typeof value === "string" && value.trim().length > 0,
       ),
-    );
+    ));
     const ownerProfilesByUserId = await this.getPublicUserProfilesByIds(ownerUserIds);
 
     let list = packs.map((pack) => {
-      const sourceType = sourceByPackId.get(pack.id) ?? (parseCommunityPackId(pack.id) ? "community" : "official");
+      const sourceType = pack.ownerUserId
+        ? "community"
+        : sourceByPackId.get(pack.id) ?? (parseCommunityPackId(pack.id) ? "community" : "official");
       const ownerUserId = sourceType === "community"
-        ? ownerByPackId.get(pack.id) ?? parseCommunityPackId(pack.id)?.ownerUserId ?? null
+        ? pack.ownerUserId ?? ownerByPackId.get(pack.id) ?? parseCommunityPackId(pack.id)?.ownerUserId ?? null
         : null;
       const ownerProfile = ownerUserId ? ownerProfilesByUserId.get(ownerUserId) : undefined;
       const ownerLabel = sourceType === "community"
@@ -1687,6 +1690,7 @@ export class OfficialIconLibraryService {
       .values({
         id: packId,
         publicCode: packPublicCode,
+        ownerUserId: userId,
         name: payload.name.trim(),
         description: sanitizeOptionalText(payload.description, 280),
         category: sanitizeOptionalText(payload.category, 60),

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,11 @@ import {
   type BillingStatusResponse,
 } from "@/services/api/billing";
 import {
+  fetchOwnCommunityProfile,
+  updateOwnCommunityProfile,
+  type CommunityProfileVisibility,
+} from "@/services/api/community-profiles";
+import {
   Download, Shield, Upload
 } from "lucide-react";
 import {
@@ -43,6 +49,7 @@ import {
   PerfilDataSummaryCard,
   PerfilHelpCard,
   PerfilLogoutCard,
+  PerfilCommunityProfileCard,
   PerfilPersonalInfoCard,
   PerfilPlanActionsCard,
   PerfilPlanBenefitsCard,
@@ -293,11 +300,14 @@ function formatRestoreModeLabel(mode: BackupRestoreMode): string {
 export default function PerfilPage() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [nomeCompleto, setNomeCompleto] = useState(user?.nomeCompleto || "");
   const [publicUsername, setPublicUsername] = useState(user?.username || "");
   const [fullNameVisibility, setFullNameVisibility] = useState<"private" | "public">(
     user?.fullNameVisibility === "public" ? "public" : "private",
   );
+  const [communityBio, setCommunityBio] = useState("");
+  const [communityProfileVisibility, setCommunityProfileVisibility] = useState<CommunityProfileVisibility>("private");
   const [arquivoImportacao, setArquivoImportacao] = useState<File | null>(null);
   const [backupRestaurandoId, setBackupRestaurandoId] = useState<string | null>(null);
   const [restoreReviewOpen, setRestoreReviewOpen] = useState(false);
@@ -327,6 +337,11 @@ export default function PerfilPage() {
     enabled: Boolean(user),
     retry: false,
   });
+  const communityProfileQuery = useQuery({
+    queryKey: ["/api/community/profile"],
+    queryFn: fetchOwnCommunityProfile,
+    enabled: Boolean(user),
+  });
   const billingStatus = billingStatusQuery.data;
   const planoEfetivo = billingStatus?.effectiveTier ?? planoAtualAutenticado;
   const premiumAtivoNaUi = planoEfetivo === "premium";
@@ -350,6 +365,12 @@ export default function PerfilPage() {
     setPublicUsername(resolvePublicUsernameForResponse(user.username) ?? "");
     setFullNameVisibility(user.fullNameVisibility === "public" ? "public" : "private");
   }, [user]);
+
+  useEffect(() => {
+    if (!communityProfileQuery.data) return;
+    setCommunityBio(communityProfileQuery.data.bio ?? "");
+    setCommunityProfileVisibility(communityProfileQuery.data.profileVisibility);
+  }, [communityProfileQuery.data]);
 
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
   const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
@@ -389,6 +410,27 @@ export default function PerfilPage() {
       toast({
         title: "Erro ao atualizar",
         description: parseApiErrorMessage(error, "Não foi possível atualizar seu perfil agora."),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateCommunityProfileMutation = useMutation({
+    mutationFn: () => updateOwnCommunityProfile({
+      bio: communityBio,
+      profileVisibility: communityProfileVisibility,
+    }),
+    onSuccess: (profile) => {
+      queryClient.setQueryData(["/api/community/profile"], profile);
+      queryClient.invalidateQueries({
+        queryKey: ["/api/community/creators", profile.publicCode],
+      });
+      toast({ title: "Perfil de criador atualizado" });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro ao atualizar perfil de criador",
+        description: parseApiErrorMessage(error, "Não foi possível salvar as configurações da comunidade."),
         variant: "destructive",
       });
     },
@@ -1055,6 +1097,23 @@ export default function PerfilPage() {
         onSave={() => updateProfile.mutate()}
         saveDisabled={updateProfile.isPending}
         saveLabel={saveProfileButtonLabel}
+      />
+
+      <PerfilCommunityProfileCard
+        isVisible={perfilTab === "conta"}
+        bio={communityBio}
+        onBioChange={setCommunityBio}
+        profileVisibility={communityProfileVisibility}
+        onProfileVisibilityChange={setCommunityProfileVisibility}
+        onSave={() => updateCommunityProfileMutation.mutate()}
+        onViewProfile={() => {
+          const publicCode = communityProfileQuery.data?.publicCode;
+          if (publicCode) {
+            navigate(`/comunidade/criadores/${encodeURIComponent(publicCode)}`);
+          }
+        }}
+        saveDisabled={updateCommunityProfileMutation.isPending}
+        canViewProfile={Boolean(communityProfileQuery.data?.publicCode)}
       />
 
       <PerfilAccountStatusCard
