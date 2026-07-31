@@ -20,6 +20,7 @@ import {
   User,
 } from "lucide-react";
 import { CartaoCard } from "@/components/cartoes/CartaoCard";
+import { ProjectedServicesNotice } from "@/components/cartoes/ProjectedServicesNotice";
 import type { PurchaseIconMatchResult } from "@/lib/purchase-icon-matching";
 
 type CartoesComprasGridProps = {
@@ -30,6 +31,7 @@ type CartoesComprasGridProps = {
   servicos: Servico[];
   formatCurrency: (value: number) => string;
   getCardTotal: (cartaoId: string) => number;
+  getCardProjectedServicesTotal: (cartaoId: string) => number;
   getCardUsedLimit: (cartaoId: string) => number;
   getCardAvailableLimit: (cartaoId: string) => number;
   getFilteredCardCompras: (cartaoId: string) => CompraCartao[];
@@ -43,6 +45,7 @@ type CartoesComprasGridProps = {
   canOpenInvoicePaymentDialog: (cartaoId: string) => boolean;
   getInvoicePaymentActionLabel: (cartaoId: string) => string;
   onOpenInvoicePaymentDialog: (cartaoId: string) => void;
+  onOpenServices: () => void;
   onOpenParcelas: (compra: CompraCartao) => void;
   onEditCompra: (compra: CompraCartao) => void;
   onDeleteCompra: (compra: CompraCartao) => void;
@@ -65,6 +68,7 @@ export function CartoesComprasGrid({
   servicos,
   formatCurrency,
   getCardTotal,
+  getCardProjectedServicesTotal,
   getCardUsedLimit,
   getCardAvailableLimit,
   getFilteredCardCompras,
@@ -78,6 +82,7 @@ export function CartoesComprasGrid({
   canOpenInvoicePaymentDialog,
   getInvoicePaymentActionLabel,
   onOpenInvoicePaymentDialog,
+  onOpenServices,
   onOpenParcelas,
   onEditCompra,
   onDeleteCompra,
@@ -128,6 +133,7 @@ export function CartoesComprasGrid({
       {cartoesVisiveis.map((cartao) => {
         const limite = Number(cartao.limite);
         const faturaAtual = getCardTotal(cartao.id);
+        const servicosPrevistos = getCardProjectedServicesTotal(cartao.id);
         const limiteComprometido = getCardUsedLimit(cartao.id);
         const limiteDisponivel = getCardAvailableLimit(cartao.id);
         const percentUsed = limite > 0 ? (limiteComprometido / limite) * 100 : 0;
@@ -201,6 +207,13 @@ export function CartoesComprasGrid({
                 <p className="text-base font-bold text-emerald-600">{formatCurrency(limiteDisponivel)}</p>
               </div>
             </div>
+
+            <ProjectedServicesNotice
+              amount={servicosPrevistos}
+              formatCurrency={formatCurrency}
+              onOpenServices={onOpenServices}
+              testId={`projected-services-invoice-${cartao.id}`}
+            />
 
             <div className="space-y-1.5">
               <div className="grid grid-cols-1 gap-2 text-[11px] text-muted-foreground sm:grid-cols-2">

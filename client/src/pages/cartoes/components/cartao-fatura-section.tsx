@@ -15,6 +15,7 @@ type CartaoFaturaSectionProps = {
   totalFaturasForSelectedMonth: number;
   formatCartaoCurrency: (value: number) => string;
   getCardTotalForSelectedMonth: (cartaoId: string) => number;
+  getCardProjectedServicesTotalForSelectedMonth: (cartaoId: string) => number;
   getCardUsedLimit: (cartaoId: string) => number;
   getCardAvailableLimit: (cartaoId: string) => number;
   getFilteredCardFaturaCompras: (cartaoId: string) => CompraCartao[];
@@ -37,6 +38,7 @@ type CartaoFaturaSectionProps = {
   canOpenInvoicePaymentDialog: (cartaoId: string) => boolean;
   getInvoicePaymentActionLabel: (cartaoId: string) => string;
   onOpenInvoicePaymentDialog: (cartaoId: string) => void;
+  onOpenServices: () => void;
   getDaysUntilInvoice: (diaVencimento: number) => number;
   getNextInvoiceDate: (diaVencimento: number) => string;
 };
@@ -51,6 +53,7 @@ export function CartaoFaturaSection({
   totalFaturasForSelectedMonth,
   formatCartaoCurrency,
   getCardTotalForSelectedMonth,
+  getCardProjectedServicesTotalForSelectedMonth,
   getCardUsedLimit,
   getCardAvailableLimit,
   getFilteredCardFaturaCompras,
@@ -73,6 +76,7 @@ export function CartaoFaturaSection({
   canOpenInvoicePaymentDialog,
   getInvoicePaymentActionLabel,
   onOpenInvoicePaymentDialog,
+  onOpenServices,
   getDaysUntilInvoice,
   getNextInvoiceDate,
 }: CartaoFaturaSectionProps) {
@@ -89,6 +93,7 @@ export function CartaoFaturaSection({
           totalFaturas={totalFaturasForSelectedMonth}
           formatCurrency={formatCartaoCurrency}
           getCardTotal={getCardTotalForSelectedMonth}
+          getCardProjectedServicesTotal={getCardProjectedServicesTotalForSelectedMonth}
           getCardAvailableLimit={getCardAvailableLimit}
           getFilteredCardCompras={getFilteredCardFaturaCompras}
           getCompraParcelas={getCompraParcelas}
@@ -101,6 +106,7 @@ export function CartaoFaturaSection({
           canOpenInvoicePaymentDialog={canOpenInvoicePaymentDialog}
           getInvoicePaymentActionLabel={getInvoicePaymentActionLabel}
           onOpenInvoicePaymentDialog={onOpenInvoicePaymentDialog}
+          onOpenServices={onOpenServices}
           resolveCompraIconSuggestion={resolveCompraIconSuggestion}
           resolveCardIconId={resolveCardIconId}
         />
@@ -112,6 +118,7 @@ export function CartaoFaturaSection({
           servicos={servicos}
           formatCurrency={formatCartaoCurrency}
           getCardTotal={getCardTotalForSelectedMonth}
+          getCardProjectedServicesTotal={getCardProjectedServicesTotalForSelectedMonth}
           getCardUsedLimit={getCardUsedLimit}
           getCardAvailableLimit={getCardAvailableLimit}
           getFilteredCardCompras={getFilteredCardFaturaCompras}
@@ -126,6 +133,7 @@ export function CartaoFaturaSection({
           canOpenInvoicePaymentDialog={canOpenInvoicePaymentDialog}
           getInvoicePaymentActionLabel={getInvoicePaymentActionLabel}
           onOpenInvoicePaymentDialog={onOpenInvoicePaymentDialog}
+          onOpenServices={onOpenServices}
           onOpenParcelas={onOpenParcelas}
           onEditCompra={onEditCompra}
           onDeleteCompra={onDeleteCompra}

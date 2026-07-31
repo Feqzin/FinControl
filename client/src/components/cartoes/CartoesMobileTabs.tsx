@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CartaoCard } from "@/components/cartoes/CartaoCard";
+import { ProjectedServicesNotice } from "@/components/cartoes/ProjectedServicesNotice";
 import { BrandIconDisplay } from "@/lib/brand-icons";
 import { getCompraReembolsoVisualStatus } from "@/lib/cartao-reembolso-status";
 import type { Cartao, CompraCartao, ParcelaCompra, Servico } from "@shared/schema";
@@ -16,6 +17,7 @@ type CartoesMobileTabsProps = {
   totalFaturas: number;
   formatCurrency: (value: number) => string;
   getCardTotal: (cartaoId: string) => number;
+  getCardProjectedServicesTotal: (cartaoId: string) => number;
   getCardAvailableLimit: (cartaoId: string) => number;
   getFilteredCardCompras: (cartaoId: string) => CompraCartao[];
   getCompraParcelas: (compraId: string) => ParcelaCompra[];
@@ -25,6 +27,7 @@ type CartoesMobileTabsProps = {
   canOpenInvoicePaymentDialog: (cartaoId: string) => boolean;
   getInvoicePaymentActionLabel: (cartaoId: string) => string;
   onOpenInvoicePaymentDialog: (cartaoId: string) => void;
+  onOpenServices: () => void;
   onOpenParcelas: (compra: CompraCartao) => void;
   onEditCompra: (compra: CompraCartao) => void;
   onDeleteCompra: (compra: CompraCartao) => void;
@@ -45,6 +48,7 @@ export function CartoesMobileTabs({
   totalFaturas,
   formatCurrency,
   getCardTotal,
+  getCardProjectedServicesTotal,
   getCardAvailableLimit,
   getFilteredCardCompras,
   getCompraParcelas,
@@ -54,6 +58,7 @@ export function CartoesMobileTabs({
   canOpenInvoicePaymentDialog,
   getInvoicePaymentActionLabel,
   onOpenInvoicePaymentDialog,
+  onOpenServices,
   onOpenParcelas,
   onEditCompra,
   onDeleteCompra,
@@ -99,6 +104,7 @@ export function CartoesMobileTabs({
         <p className="px-1 text-sm font-semibold text-muted-foreground">Meus cartões</p>
         {cartoes.map((cartao) => {
           const faturaAtual = getCardTotal(cartao.id);
+          const servicosPrevistos = getCardProjectedServicesTotal(cartao.id);
           const limiteDisponivel = getCardAvailableLimit(cartao.id);
           const nextDate = getNextInvoiceDate(Number(cartao.diaVencimento));
           const [nextDay, nextMonth] = nextDate.split("/");
@@ -149,6 +155,15 @@ export function CartoesMobileTabs({
                   </p>
                   <p className="text-sm font-semibold">{formatCurrency(faturaAtual)}</p>
                 </div>
+              </div>
+
+              <div className="px-4 pb-3 pt-3">
+                <ProjectedServicesNotice
+                  amount={servicosPrevistos}
+                  formatCurrency={formatCurrency}
+                  onOpenServices={onOpenServices}
+                  testId={`projected-services-mobile-${cartao.id}`}
+                />
               </div>
 
               {selectedCartao === cartao.id ? (

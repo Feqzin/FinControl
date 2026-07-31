@@ -100,6 +100,7 @@ import {
 import {
   buildInvoicePaymentInstallmentsForCard,
   buildInvoiceTrackingInstallmentsForCard,
+  calculateCardInvoiceProjectedServicesAmount,
   getInvoiceCompetency,
   groupParcelasCompraByCompraId,
   isParcelaComprometendoLimite,
@@ -886,6 +887,12 @@ export default function CartoesPage() {
     ),
     [cartoes, getInvoiceSnapshotForCompetency, selectedInvoiceMonth],
   );
+  const selectedInvoicePaymentSnapshotsByCardId = useMemo(
+    () => new Map(
+      cartoes.map((cartao) => [cartao.id, getInvoicePaymentSnapshotForCompetency(cartao.id, selectedInvoiceMonth)]),
+    ),
+    [cartoes, getInvoicePaymentSnapshotForCompetency, selectedInvoiceMonth],
+  );
   const {
     invoiceMonthOptions,
     selectedInvoiceMonthLabel,
@@ -905,7 +912,12 @@ export default function CartoesPage() {
     formatInvoiceCompetencyLabel,
   });
   const getCardTotalForSelectedMonth = (cartaoId: string) =>
-    selectedInvoiceSnapshotsByCardId.get(cartaoId)?.remainingAmount ?? 0;
+    selectedInvoicePaymentSnapshotsByCardId.get(cartaoId)?.remainingAmount ?? 0;
+  const getCardProjectedServicesTotalForSelectedMonth = (cartaoId: string) =>
+    calculateCardInvoiceProjectedServicesAmount(
+      selectedInvoiceSnapshotsByCardId.get(cartaoId),
+      selectedInvoicePaymentSnapshotsByCardId.get(cartaoId),
+    );
   const canOpenInvoicePaymentDialog = (cartaoId: string) => {
     const snapshot = getInvoicePaymentSnapshotForCompetency(cartaoId, selectedInvoiceMonth);
     const payments = getInvoicePaymentsForCompetency(cartaoId, selectedInvoiceMonth);
@@ -923,7 +935,7 @@ export default function CartoesPage() {
   };
   const totalFaturasForSelectedMonth = useMemo(
     () => cartoes.reduce((sum, cartao) => sum + getCardTotalForSelectedMonth(cartao.id), 0),
-    [cartoes, selectedInvoiceSnapshotsByCardId],
+    [cartoes, selectedInvoicePaymentSnapshotsByCardId],
   );
   const selectedInvoicePaymentCartao = invoicePaymentTarget
     ? (cartoesById.get(invoicePaymentTarget.cartaoId) ?? null)
@@ -934,12 +946,9 @@ export default function CartoesPage() {
   const selectedInvoicePaymentSnapshot = invoicePaymentTarget
     ? getInvoicePaymentSnapshotForCompetency(invoicePaymentTarget.cartaoId, invoicePaymentTarget.monthReference)
     : null;
-  const selectedInvoiceProjectedServicesAmount = Math.max(
-    0,
-    Number((
-      (selectedInvoiceDisplaySnapshot?.originalTotal ?? 0)
-      - (selectedInvoicePaymentSnapshot?.originalTotal ?? 0)
-    ).toFixed(2)),
+  const selectedInvoiceProjectedServicesAmount = calculateCardInvoiceProjectedServicesAmount(
+    selectedInvoiceDisplaySnapshot,
+    selectedInvoicePaymentSnapshot,
   );
   const selectedInvoicePaymentHistory = invoicePaymentTarget
     ? getInvoicePaymentsForCompetency(invoicePaymentTarget.cartaoId, invoicePaymentTarget.monthReference)
@@ -3169,6 +3178,7 @@ export default function CartoesPage() {
         activeCartoesTab={activeCartoesTab}
         cartoes={cartoes}
         getCardTotal={getCardTotalForSelectedMonth}
+        getCardProjectedServicesTotal={getCardProjectedServicesTotalForSelectedMonth}
         getCardUsedLimit={getCardUsedLimit}
         getCardAvailableLimit={getCardAvailableLimit}
         getCardCompras={getCardCompras}
@@ -3178,6 +3188,7 @@ export default function CartoesPage() {
           setSelectedCartao(cartaoId);
           setComprasCartaoFocadoId(cartaoId);
         }}
+        onOpenServices={() => setLocation("/servicos")}
         resolveCardIconId={resolveCardAutoIconId}
       />
 
@@ -3191,6 +3202,7 @@ export default function CartoesPage() {
         totalFaturasForSelectedMonth={totalFaturasForSelectedMonth}
         formatCartaoCurrency={formatCartaoCurrency}
         getCardTotalForSelectedMonth={getCardTotalForSelectedMonth}
+        getCardProjectedServicesTotalForSelectedMonth={getCardProjectedServicesTotalForSelectedMonth}
         getCardUsedLimit={getCardUsedLimit}
         getCardAvailableLimit={getCardAvailableLimit}
         getFilteredCardFaturaCompras={getFilteredCardFaturaCompras}
@@ -3213,6 +3225,7 @@ export default function CartoesPage() {
         canOpenInvoicePaymentDialog={canOpenInvoicePaymentDialog}
         getInvoicePaymentActionLabel={getInvoicePaymentActionLabel}
         onOpenInvoicePaymentDialog={handleOpenInvoicePaymentDialog}
+        onOpenServices={() => setLocation("/servicos")}
         getDaysUntilInvoice={getDaysUntilInvoice}
         getNextInvoiceDate={getNextInvoiceDate}
       />

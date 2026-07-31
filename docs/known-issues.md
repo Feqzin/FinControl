@@ -28,7 +28,8 @@ O snapshot geral da fatura inclui serviços projetados no cartão, enquanto o en
 
 ### Correção aplicada
 
-- O total geral da fatura continua incluindo os serviços projetados.
+- O campo `Fatura atual` mostra somente o saldo pagável de compras e parcelas.
+- Serviços projetados continuam compondo a previsão financeira e o limite comprometido, mas aparecem em um aviso separado.
 - O diálogo e a ação de pagamento agora usam um snapshot formado somente pelas parcelas aceitas pelo backend.
 - Quando existem serviços projetados, o diálogo informa o valor e orienta o registro pela área de Serviços.
 - A mesma regra foi aplicada nas telas de Cartões e Dashboard.
@@ -41,6 +42,7 @@ O teste reproduz os valores observados: fatura geral de `R$ 1.194,67`, parcelas 
 
 - O fluxo completo foi reproduzido no PostgreSQL de teste e validado visualmente nas telas de Cartões, Dashboard e Serviços.
 - O pagamento das parcelas reais foi aceito sem o erro `Esta fatura já está quitada`.
+- Após a quitação, a tela de Cartões mostra `Fatura atual R$ 0,00` e `Serviços previstos: R$ 83,97` separadamente.
 - Após a quitação, o Dashboard oferece `Ver pagamentos`; quando há somente serviços projetados, oferece `Ver serviços`.
 - Os testes unitários do frontend, a tipagem, o build de produção, a verificação de codificação e o `git diff --check` foram concluídos com sucesso.
 

@@ -12,6 +12,7 @@ import {
 import {
   buildCardInvoiceSnapshots,
   findCardInvoiceSnapshot,
+  type CardInvoiceSnapshot as InvoicePaymentSnapshot,
   type CardInvoicePaymentRecord,
 } from "@shared/card-invoice-payments";
 import {
@@ -338,6 +339,19 @@ export function resolveCardInvoicePaymentActionState(
   if ((snapshot?.remainingAmount ?? 0) > 0) return "pay";
   if (paymentsForCompetency.length > 0) return "history";
   return "none";
+}
+
+export function calculateCardInvoiceProjectedServicesAmount(
+  displaySnapshot: InvoicePaymentSnapshot | null | undefined,
+  paymentSnapshot: InvoicePaymentSnapshot | null | undefined,
+): number {
+  return Math.max(
+    0,
+    Number((
+      (displaySnapshot?.remainingAmount ?? 0)
+      - (paymentSnapshot?.remainingAmount ?? 0)
+    ).toFixed(2)),
+  );
 }
 
 export function listOutstandingCardInvoiceSnapshots(

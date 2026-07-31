@@ -76,6 +76,7 @@ import {
   buildInvoicePaymentInstallmentsForCard,
   buildInvoiceTrackingInstallmentsForCard,
   buildProjectedServiceInstallmentsForCard,
+  calculateCardInvoiceProjectedServicesAmount,
   calculateCardLimitSummary,
   calculateCardInvoiceForCompetency,
   calculateCardCurrentInvoiceTotal,
@@ -2201,6 +2202,10 @@ test("card limit usage: pagamento de fatura usa apenas parcelas aceitas pelo bac
   assert.equal(displaySnapshot?.remainingAmount, 83.97);
   assert.equal(paymentSnapshot?.originalTotal, 1110.7);
   assert.equal(paymentSnapshot?.remainingAmount, 0);
+  assert.equal(
+    calculateCardInvoiceProjectedServicesAmount(displaySnapshot, paymentSnapshot),
+    83.97,
+  );
   assert.equal(
     resolveCardInvoicePaymentActionState(
       compra.cartaoId,

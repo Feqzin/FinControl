@@ -4,6 +4,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { BrandIconDisplay } from "@/lib/brand-icons";
 import { CartaoCard } from "@/components/cartoes/CartaoCard";
+import { ProjectedServicesNotice } from "@/components/cartoes/ProjectedServicesNotice";
 import { CircleHelp } from "lucide-react";
 
 type CartoesTab = "resumo" | "compras";
@@ -12,11 +13,13 @@ type CartoesGridProps = {
   cartoes: Cartao[];
   cartoesTab: CartoesTab;
   getCardTotal: (cartaoId: string) => number;
+  getCardProjectedServicesTotal: (cartaoId: string) => number;
   getCardUsedLimit: (cartaoId: string) => number;
   getCardAvailableLimit: (cartaoId: string) => number;
   getCardCompras: (cartaoId: string) => CompraCartao[];
   formatCartaoCurrency: (value: number) => string;
   onOpenCompras: (cartaoId: string) => void;
+  onOpenServices: () => void;
   resolveCardIconId: (cartao: Cartao) => string | null;
 };
 
@@ -24,11 +27,13 @@ export function CartoesGrid({
   cartoes,
   cartoesTab,
   getCardTotal,
+  getCardProjectedServicesTotal,
   getCardUsedLimit,
   getCardAvailableLimit,
   getCardCompras,
   formatCartaoCurrency,
   onOpenCompras,
+  onOpenServices,
   resolveCardIconId,
 }: CartoesGridProps) {
   const comprometidoTooltip =
@@ -42,6 +47,7 @@ export function CartoesGrid({
         {cartoes.map((cartao) => {
           const limite = Number(cartao.limite) || 0;
           const faturaAtual = getCardTotal(cartao.id);
+          const servicosPrevistos = getCardProjectedServicesTotal(cartao.id);
           const comprometido = getCardUsedLimit(cartao.id);
           const limiteDisponivel = getCardAvailableLimit(cartao.id);
           const totalCompras = getCardCompras(cartao.id).length;
@@ -95,6 +101,13 @@ export function CartoesGrid({
                     </p>
                   </div>
                 </div>
+
+                <ProjectedServicesNotice
+                  amount={servicosPrevistos}
+                  formatCurrency={formatCartaoCurrency}
+                  onOpenServices={onOpenServices}
+                  testId={`projected-services-summary-${cartao.id}`}
+                />
 
                 <div className="mt-3 space-y-2 rounded-2xl border border-border/50 bg-background/80 px-3 py-2.5">
                   <div className="flex items-center justify-between gap-2 text-xs">
