@@ -224,8 +224,8 @@ export function createBillingController(service: BillingService) {
       const webhookValidation = service.validateMercadoPagoWebhookRequest({
         query: req.query as Record<string, unknown>,
         payload: req.body,
-        xSignature: req.get("x-signature"),
-        xRequestId: req.get("x-request-id"),
+        xSignature: req.get("x-signature") ?? null,
+        xRequestId: req.get("x-request-id") ?? null,
       });
 
       if (!webhookValidation.isValid) {
@@ -251,8 +251,8 @@ export function createBillingController(service: BillingService) {
           query: req.query as Record<string, unknown>,
           payload: req.body,
           rawBody,
-          xSignature: req.get("x-signature"),
-          xRequestId: req.get("x-request-id"),
+          xSignature: req.get("x-signature") ?? null,
+          xRequestId: req.get("x-request-id") ?? null,
         });
 
         auditRequest(req, {

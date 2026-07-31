@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "npm run build:client",
+  "buildCommand": "npm run check:serverless && npm run build:client",
   "outputDirectory": "dist/public",
   "routes": [
     {

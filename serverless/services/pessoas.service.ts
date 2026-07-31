@@ -1293,7 +1293,7 @@ export class PessoasService {
         servicoPessoaId,
       });
 
-      const pagamentosMes = pagamentosDoServico.filter((item) => item.mes === mes);
+      const pagamentosMes = pagamentosDoServico.filter((item: ServicoPagamento) => item.mes === mes);
       for (const pagamento of pagamentosMes) {
         await txStorage.deleteServicoPagamento(pagamento.id, userId);
       }

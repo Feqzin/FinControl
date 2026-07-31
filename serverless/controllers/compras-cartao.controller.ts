@@ -327,7 +327,7 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
       if ("error" in result) {
         if (result.error === "PARCELA_NOT_FOUND") {
           auditRequest(req, {
-            action: "delete_compra_scope",
+            action: "delete",
             status: "failure",
             domain: "compras_cartao",
             userId,
@@ -338,7 +338,7 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
         }
 
         auditRequest(req, {
-          action: "delete_compra_scope",
+          action: "delete",
           status: "failure",
           domain: "compras_cartao",
           userId,
@@ -349,7 +349,7 @@ export function createComprasCartaoController(service: ComprasCartaoService) {
       }
 
       auditRequest(req, {
-        action: "delete_compra_scope",
+        action: "delete",
         status: "success",
         domain: "compras_cartao",
         userId,

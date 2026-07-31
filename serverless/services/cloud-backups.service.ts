@@ -567,7 +567,7 @@ export class CloudBackupsService {
       transformed = transformBackupForPersistence(envelope.backup, userId);
     } catch (error) {
       if (isTransformValidationError(error)) {
-        throw new CloudBackupsServiceError(400, error.message);
+        throw new CloudBackupsServiceError(400, error instanceof Error ? error.message : "Registro invalido no backup.");
       }
       throw error;
     }

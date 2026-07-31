@@ -322,7 +322,7 @@ export function createCartoesController(service: CartoesService) {
       const result = await service.deleteFaturaDoCartao(userId, { cartaoId, mes, dryRun });
       if ("error" in result) {
         auditRequest(req, {
-          action: "delete_fatura_cartao_mes",
+          action: "delete",
           status: "failure",
           domain: "cartoes",
           userId,
@@ -331,9 +331,16 @@ export function createCartoesController(service: CartoesService) {
         });
         return sendNotFound(res, "Cartao not found");
       }
+      if (!("impact" in result)) {
+        return sendBadRequest(res, "Nao foi possivel calcular o impacto da exclusao.");
+      }
+      const impact = result.impact;
+      if (!impact) {
+        return sendBadRequest(res, "Nao foi possivel calcular o impacto da exclusao.");
+      }
 
       auditRequest(req, {
-        action: "delete_fatura_cartao_mes",
+        action: "delete",
         status: "success",
         domain: "cartoes",
         userId,
@@ -341,9 +348,9 @@ export function createCartoesController(service: CartoesService) {
         details: {
           mes,
           dryRun: result.dryRun,
-          comprasRemovidas: result.impact.comprasRemovidas,
-          parcelasRemovidas: result.impact.parcelasRemovidas,
-          valorTotalRemovido: result.impact.valorTotalRemovido,
+          comprasRemovidas: impact.comprasRemovidas,
+          parcelasRemovidas: impact.parcelasRemovidas,
+          valorTotalRemovido: impact.valorTotalRemovido,
         },
       });
       return res.json(result);
@@ -359,18 +366,25 @@ export function createCartoesController(service: CartoesService) {
       }
 
       const result = await service.deleteFaturaDoCartao(userId, { mes, dryRun });
+      if (!("impact" in result)) {
+        return sendBadRequest(res, "Nao foi possivel calcular o impacto da exclusao.");
+      }
+      const impact = result.impact;
+      if (!impact) {
+        return sendBadRequest(res, "Nao foi possivel calcular o impacto da exclusao.");
+      }
       auditRequest(req, {
-        action: "delete_faturas_mes",
+        action: "delete",
         status: "success",
         domain: "cartoes",
         userId,
         details: {
           mes,
           dryRun: result.dryRun,
-          comprasRemovidas: result.impact.comprasRemovidas,
-          parcelasRemovidas: result.impact.parcelasRemovidas,
-          valorTotalRemovido: result.impact.valorTotalRemovido,
-          cartoesAfetados: result.impact.cartoesAfetados.length,
+          comprasRemovidas: impact.comprasRemovidas,
+          parcelasRemovidas: impact.parcelasRemovidas,
+          valorTotalRemovido: impact.valorTotalRemovido,
+          cartoesAfetados: impact.cartoesAfetados.length,
         },
       });
 

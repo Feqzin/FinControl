@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["api/**/*", "serverless/**/*", "shared/**/*", "utils/**/*"],
+  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
+  "compilerOptions": {
+    "target": "ES2022",
+    "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo.serverless"
+  }
+}
