@@ -136,6 +136,7 @@ import {
   groupInvoiceMonthsByYear,
 } from "../src/components/cartoes/invoice-month-selector.utils";
 import { buildRelatoriosServicosMetrics } from "../src/pages/relatorios/relatorios-servicos-metrics.utils";
+import { buildDashboardBalanceView } from "../src/pages/dashboard/dashboard-balance-mode.utils";
 import { resolveDashboardServicosMetrics } from "../src/pages/dashboard/dashboard-servicos-metrics.utils";
 import { getDashboardReceivablesForMonth } from "../src/pages/dashboard/dashboard-receivables.utils";
 import {
@@ -5860,6 +5861,40 @@ test("dashboard serviços: fallback compatível quando campos novos estão ausen
   assert.equal(metrics.vinculadosCartaoCobrancaRealTotal, 0);
   assert.equal(metrics.naoVinculadosCartaoEquivalenteMensalTotal, 80);
   assert.equal(metrics.naoVinculadosCartaoCobrancaRealTotal, 80);
+});
+
+test("dashboard saldo: modo mensal mantém entradas menos saídas", () => {
+  const view = buildDashboardBalanceView({
+    mode: "monthly",
+    monthlyBalance: -1824.34,
+    totalPatrimony: 5150,
+    confirmedIncome: 2899,
+    totalExpenses: 4723.34,
+  });
+
+  assert.equal(view.title, "Saldo do mês");
+  assert.equal(view.value, -1824.34);
+  assert.equal(view.primaryLabel, "Entradas confirmadas");
+  assert.equal(view.primaryValue, 2899);
+  assert.equal(view.secondaryLabel, "Saídas");
+  assert.equal(view.secondaryValue, 4723.34);
+});
+
+test("dashboard saldo: modo patrimônio soma patrimônio atual ao resultado do mês", () => {
+  const view = buildDashboardBalanceView({
+    mode: "patrimony",
+    monthlyBalance: -1824.34,
+    totalPatrimony: 5150,
+    confirmedIncome: 2899,
+    totalExpenses: 4723.34,
+  });
+
+  assert.equal(view.title, "Saldo com patrimônio");
+  assert.equal(view.value, 3325.66);
+  assert.equal(view.primaryLabel, "Patrimônio atual");
+  assert.equal(view.primaryValue, 5150);
+  assert.equal(view.secondaryLabel, "Resultado do mês");
+  assert.equal(view.secondaryValue, -1824.34);
 });
 
 test("relatórios serviços: separa média mensal e cobrança real no período para anual/trimestral", () => {

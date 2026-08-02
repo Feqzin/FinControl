@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactElement } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { useUIPreferences } from "@/context/ui-preferences";
@@ -69,12 +69,17 @@ import { DashboardPageHeader } from "@/components/dashboard/DashboardPageHeader"
 import { DashboardSummaryCards } from "@/components/dashboard/DashboardSummaryCards";
 import { DashboardInsights } from "@/components/dashboard/DashboardInsights";
 import { DashboardFinancialOverview } from "@/components/dashboard/DashboardFinancialOverview";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
 import {
   FintechLoadingListItem,
   FintechLoadingMetricCard,
   FintechLoadingSurface,
 } from "@/components/layout/fintech-loading-shell";
+import {
+  buildDashboardBalanceView,
+  type DashboardBalanceMode,
+} from "@/pages/dashboard/dashboard-balance-mode.utils";
 
 const insightIconMap: Record<string, any> = {
   trophy: Trophy,
@@ -135,6 +140,34 @@ function resolveVencimentoPath(item: { tipo: "cartao" | "divida" | "servico" } |
   return "/dividas";
 }
 
+function DashboardBalanceModeTooltip({
+  children,
+  mode,
+}: {
+  children: ReactElement;
+  mode: DashboardBalanceMode;
+}) {
+  const usingPatrimony = mode === "patrimony";
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="bottom" align="center" className="max-w-[320px] p-3">
+        <p className="text-xs font-semibold">
+          {usingPatrimony
+            ? "Clique para voltar ao saldo do mês"
+            : "Clique para considerar o patrimônio"}
+        </p>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {usingPatrimony
+            ? "Mostra entradas confirmadas menos as saídas do período."
+            : "Mostra patrimônio atual somado ao resultado deste mês."}
+        </p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export default function Dashboard() {
   const { visible } = useValuesVisibility();
   const { toast } = useToast();
@@ -151,6 +184,7 @@ export default function Dashboard() {
     setMobileModeManual,
   } = useUIPreferences();
   const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), "yyyy-MM"));
+  const [balanceMode, setBalanceMode] = useState<DashboardBalanceMode>("monthly");
   const [pendingVencimentoActionId, setPendingVencimentoActionId] = useState<string | null>(null);
   const [invoicePaymentTarget, setInvoicePaymentTarget] = useState<{ cartaoId: string; monthReference: string } | null>(null);
   const [cancelPendingPaymentId, setCancelPendingPaymentId] = useState<string | null>(null);
@@ -195,6 +229,39 @@ export default function Dashboard() {
     allDashCards,
     sectionStatus,
   } = useDashboard({ selectedMonth, visible });
+  const balanceView = useMemo(
+    () => buildDashboardBalanceView({
+      mode: balanceMode,
+      monthlyBalance: saldoPrevisto,
+      totalPatrimony: totalPatrimonio,
+      confirmedIncome: totalEntradas,
+      totalExpenses: totalSaidas,
+    }),
+    [balanceMode, saldoPrevisto, totalEntradas, totalPatrimonio, totalSaidas],
+  );
+  const usingPatrimonyBalance = balanceMode === "patrimony";
+  const toggleBalanceMode = () => {
+    setBalanceMode((current) => current === "monthly" ? "patrimony" : "monthly");
+  };
+  const handleBalanceCardKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    toggleBalanceMode();
+  };
+  const balanceCardInteractionProps = {
+    role: "button" as const,
+    tabIndex: 0,
+    "aria-pressed": usingPatrimonyBalance,
+    "aria-label": usingPatrimonyBalance
+      ? "Mostrar saldo do mês sem patrimônio"
+      : "Mostrar saldo do mês considerando o patrimônio",
+    title: usingPatrimonyBalance
+      ? "Clique para voltar ao saldo do mês"
+      : "Clique para calcular com base no patrimônio",
+    onClick: toggleBalanceMode,
+    onKeyDown: handleBalanceCardKeyDown,
+    "data-balance-mode": balanceMode,
+  };
   const selectedMonthLabel = monthOptions.find((o) => o.value === selectedMonth)?.label || selectedMonth;
 
   const alertasUrgentes = alertas
@@ -872,22 +939,28 @@ export default function Dashboard() {
         ) : sectionStatus.saldo.isError ? (
           <SectionErrorState message={sectionStatus.saldo.message} />
         ) : (
-          <Card className={`border-0 shadow-sm ${saldoPrevisto >= 0 ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`} data-testid="essencial-hero">
-            <CardContent className="p-4 sm:p-5">
-              <p className="mb-1 text-xs font-medium uppercase tracking-wide opacity-90">Seu dinheiro este mês</p>
-              <p className="fin-value-hero">{maskValue(formatCurrencyBRL(saldoPrevisto), visible)}</p>
-              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div className="rounded-xl bg-white/10 px-3 py-2">
-                  <p className="text-[12px] opacity-80">Entrou</p>
-                  <p className="text-base font-semibold">{maskValue(formatCurrencyBRL(totalEntradas), visible)}</p>
+          <DashboardBalanceModeTooltip mode={balanceMode}>
+            <Card
+              {...balanceCardInteractionProps}
+              className={`cursor-pointer select-none border-0 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${balanceView.value >= 0 ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}
+              data-testid="essencial-hero"
+            >
+              <CardContent className="p-4 sm:p-5">
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide opacity-90">{balanceView.title}</p>
+                <p className="fin-value-hero">{maskValue(formatCurrencyBRL(balanceView.value), visible)}</p>
+                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="rounded-xl bg-white/10 px-3 py-2">
+                    <p className="text-[12px] opacity-80">{balanceView.primaryLabel}</p>
+                    <p className="text-base font-semibold">{maskValue(formatCurrencyBRL(balanceView.primaryValue), visible)}</p>
+                  </div>
+                  <div className="rounded-xl bg-white/10 px-3 py-2">
+                    <p className="text-[12px] opacity-80">{balanceView.secondaryLabel}</p>
+                    <p className="text-base font-semibold">{maskValue(formatCurrencyBRL(balanceView.secondaryValue), visible)}</p>
+                  </div>
                 </div>
-                <div className="rounded-xl bg-white/10 px-3 py-2">
-                  <p className="text-[12px] opacity-80">Saiu</p>
-                  <p className="text-base font-semibold">{maskValue(formatCurrencyBRL(totalSaidas), visible)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </DashboardBalanceModeTooltip>
         )}
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1118,26 +1191,35 @@ export default function Dashboard() {
           ) : sectionStatus.saldo.isError ? (
             <SectionErrorState message={sectionStatus.saldo.message} />
           ) : (
-            <div
-              className={`rounded-2xl p-[14px] shadow-sm ${saldoPrevisto >= 0 ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}
-              data-testid="mobile-saldo-hero"
-            >
-              <p className="mb-1 text-[12px] font-medium uppercase tracking-wide opacity-80">Saldo do mês</p>
-              <p className="fin-value-hero mb-3">
-                {maskValue(formatCurrencyBRL(saldoPrevisto), visible)}
-              </p>
-              <div className="flex gap-4 text-sm opacity-85">
-                <div className="flex items-center gap-1.5">
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                  <span>{maskValue(formatCurrencyBRL(totalEntradas), visible)}</span>
-                </div>
-                <div className="w-px bg-white/30" />
-                <div className="flex items-center gap-1.5">
-                  <ArrowDownRight className="w-3.5 h-3.5" />
-                  <span>{maskValue(formatCurrencyBRL(totalCartoesMes + totalPagarMes + totalServicos), visible)}</span>
+            <DashboardBalanceModeTooltip mode={balanceMode}>
+              <div
+                {...balanceCardInteractionProps}
+                className={`cursor-pointer select-none rounded-2xl p-[14px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${balanceView.value >= 0 ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}
+                data-testid="mobile-saldo-hero"
+              >
+                <p className="mb-1 text-[12px] font-medium uppercase tracking-wide opacity-80">{balanceView.title}</p>
+                <p className="fin-value-hero mb-3">
+                  {maskValue(formatCurrencyBRL(balanceView.value), visible)}
+                </p>
+                <div className="flex gap-4 text-sm opacity-85">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    {usingPatrimonyBalance ? <PiggyBank className="h-3.5 w-3.5 shrink-0" /> : <ArrowUpRight className="h-3.5 w-3.5 shrink-0" />}
+                    <span className="sr-only">{balanceView.primaryLabel}: </span>
+                    <span className="truncate">{maskValue(formatCurrencyBRL(balanceView.primaryValue), visible)}</span>
+                  </div>
+                  <div className="w-px bg-white/30" />
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    {usingPatrimonyBalance
+                      ? balanceView.secondaryValue >= 0
+                        ? <TrendingUp className="h-3.5 w-3.5 shrink-0" />
+                        : <TrendingDown className="h-3.5 w-3.5 shrink-0" />
+                      : <ArrowDownRight className="h-3.5 w-3.5 shrink-0" />}
+                    <span className="sr-only">{balanceView.secondaryLabel}: </span>
+                    <span className="truncate">{maskValue(formatCurrencyBRL(balanceView.secondaryValue), visible)}</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            </DashboardBalanceModeTooltip>
           )}
 
           {visibleCards.filter(c => c.id !== "saldo").length > 0 ? (
@@ -1545,29 +1627,32 @@ export default function Dashboard() {
         ) : sectionStatus.saldo.isError ? (
           <SectionErrorState message={sectionStatus.saldo.message} />
         ) : (
-          <Card
-            className={`border-0 shadow-sm ${saldoPrevisto >= 0 ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}
-            data-testid="desktop-saldo-hero"
-          >
-            <CardContent className="p-[14px] md:p-[18px]">
-              <p className="mb-1 text-[12px] uppercase tracking-wide opacity-85">Saldo do mês</p>
-              <p className="fin-value-hero">
-                {maskValue(formatCurrencyBRL(saldoPrevisto), visible)}
-              </p>
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div className="rounded-xl bg-white/10 px-3 py-2">
-                  <p className="text-[12px] uppercase tracking-wide opacity-80">Entradas confirmadas</p>
-                  <p className="text-sm font-semibold">{maskValue(formatCurrencyBRL(totalEntradas), visible)}</p>
+          <DashboardBalanceModeTooltip mode={balanceMode}>
+            <Card
+              {...balanceCardInteractionProps}
+              className={`cursor-pointer select-none border-0 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${balanceView.value >= 0 ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}
+              data-testid="desktop-saldo-hero"
+            >
+              <CardContent className="p-[14px] md:p-[18px]">
+                <p className="mb-1 text-[12px] uppercase tracking-wide opacity-85">{balanceView.title}</p>
+                <p className="fin-value-hero">
+                  {maskValue(formatCurrencyBRL(balanceView.value), visible)}
+                </p>
+                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="rounded-xl bg-white/10 px-3 py-2">
+                    <p className="text-[12px] uppercase tracking-wide opacity-80">{balanceView.primaryLabel}</p>
+                    <p className="text-sm font-semibold">{maskValue(formatCurrencyBRL(balanceView.primaryValue), visible)}</p>
+                  </div>
+                  <div className="rounded-xl bg-white/10 px-3 py-2">
+                    <p className="text-[12px] uppercase tracking-wide opacity-80">{balanceView.secondaryLabel}</p>
+                    <p className="text-sm font-semibold">
+                      {maskValue(formatCurrencyBRL(balanceView.secondaryValue), visible)}
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-xl bg-white/10 px-3 py-2">
-                  <p className="text-[12px] uppercase tracking-wide opacity-80">Saídas</p>
-                  <p className="text-sm font-semibold">
-                    {maskValue(formatCurrencyBRL(totalCartoesMes + totalPagarMes + totalServicos), visible)}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </DashboardBalanceModeTooltip>
         )
       )}
 
