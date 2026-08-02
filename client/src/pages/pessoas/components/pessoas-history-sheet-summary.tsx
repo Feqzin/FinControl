@@ -1,4 +1,4 @@
-import { Plus, Wallet } from "lucide-react";
+import { FileDown, Plus, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -14,6 +14,7 @@ type PessoasHistorySheetSummaryProps = {
   overdueInstallmentsLabel: string;
   onOpenNewDivida: () => void;
   onOpenSaldo: () => void;
+  onOpenPdf: () => void;
 };
 
 export function PessoasHistorySheetSummary({
@@ -27,6 +28,7 @@ export function PessoasHistorySheetSummary({
   overdueInstallmentsLabel,
   onOpenNewDivida,
   onOpenSaldo,
+  onOpenPdf,
 }: PessoasHistorySheetSummaryProps) {
   return (
     <>
@@ -76,6 +78,14 @@ export function PessoasHistorySheetSummary({
             data-testid="button-quick-open-saldo-history"
           >
             <Wallet className="w-3.5 h-3.5 mr-1" /> Saldo
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onOpenPdf}
+            data-testid="button-open-pessoa-pdf-report"
+          >
+            <FileDown className="w-3.5 h-3.5 mr-1" /> Gerar PDF
           </Button>
         </div>
       </div>

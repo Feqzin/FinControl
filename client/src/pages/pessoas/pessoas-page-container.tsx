@@ -38,6 +38,7 @@ import {
   OrphanRecoveryDialog,
   PayDividaDialog,
 } from "@/pages/pessoas/dialogs";
+import { PessoaPdfReportDialog } from "@/pages/pessoas/dialogs/pessoa-pdf-report-dialog";
 import {
   usePessoasDialogState,
   usePessoasFilters,
@@ -151,6 +152,7 @@ export default function PessoasPage() {
   });
   const [historyFilter, setHistoryFilter] = useState<"todos" | "pendente">("todos");
   const [historyTab, setHistoryTab] = useState<"visao_geral" | "pendencias" | "saldo" | "servicos" | "historico">("visao_geral");
+  const [pdfReportOpen, setPdfReportOpen] = useState(false);
   const [historyVisible, setHistoryVisible] = useState({
     dividas: 8,
     compras: 6,
@@ -178,8 +180,11 @@ export default function PessoasPage() {
   const {
     pessoas,
     dividas,
+    parcelas,
     comprasCartao,
+    parcelasCompra,
     cartoes,
+    cartoesResumo,
     servicoPessoas,
     servicoPagamentos,
     servicos,
@@ -543,6 +548,7 @@ export default function PessoasPage() {
       onSuccess: () => {
         if (historyPessoa?.id === pessoa.id) {
           setHistoryPessoa(null);
+          setPdfReportOpen(false);
         }
         toast({ title: "Pessoa removida" });
       },
@@ -872,6 +878,7 @@ export default function PessoasPage() {
                   setOpenDivida(true);
                 }}
                 onOpenSaldo={() => setHistoryTab("saldo")}
+                onOpenPdf={() => setPdfReportOpen(true)}
               />
 
               <Tabs
@@ -1790,6 +1797,22 @@ export default function PessoasPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      <PessoaPdfReportDialog
+        open={pdfReportOpen}
+        onOpenChange={setPdfReportOpen}
+        pessoa={historyPessoa}
+        dividas={dividas}
+        parcelas={parcelas}
+        comprasCartao={comprasCartao}
+        parcelasCompra={parcelasCompra}
+        cartoes={cartoes}
+        cartoesResumo={cartoesResumo}
+        servicoPessoas={servicoPessoas}
+        servicoPagamentos={servicoPagamentos}
+        servicos={servicos}
+        saldoMovimentacoes={historySaldoMovimentacoes}
+      />
       </PessoasDialogs>
     </div>
   );

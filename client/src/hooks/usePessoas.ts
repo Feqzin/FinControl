@@ -4,6 +4,8 @@ import type {
   Cartao,
   CompraCartao,
   Divida,
+  Parcela,
+  ParcelaCompra,
   Pessoa,
   Servico,
   ServicoPagamento,
@@ -50,6 +52,7 @@ import {
   type PessoaPayload,
 } from "@/services/api/pessoas";
 import { buildCompraReembolsoBreakdown } from "@shared/compra-reembolso";
+import { fetchCartoesResumo, type CartaoResumo } from "@/services/api/cartoes";
 
 type UsePessoasArgs = {
   search: string;
@@ -192,8 +195,14 @@ export function usePessoas({
     ? removedPessoasQuery.isLoading
     : (shouldUseLegacyPessoasList ? legacyPessoasQuery.isLoading : pessoasComResumoQuery.isLoading);
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
+  const { data: parcelas = [] } = useQuery<Parcela[]>({ queryKey: ["/api/parcelas"] });
   const { data: comprasCartao = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
+  const { data: parcelasCompra = [] } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"] });
   const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
+  const { data: cartoesResumo = [] } = useQuery<CartaoResumo[]>({
+    queryKey: ["/api/cartoes/resumo"],
+    queryFn: fetchCartoesResumo,
+  });
   const { data: servicoPessoas = [] } = useQuery<ServicoPessoa[]>({ queryKey: ["/api/servico-pessoas"] });
   const { data: servicoPagamentos = [] } = useQuery<ServicoPagamento[]>({ queryKey: ["/api/servico-pagamentos"] });
   const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
@@ -759,8 +768,11 @@ export function usePessoas({
     orphanGroups: orphanGroupsQuery.data ?? [],
     isOrphanGroupsLoading: orphanGroupsQuery.isLoading,
     dividas,
+    parcelas,
     comprasCartao,
+    parcelasCompra,
     cartoes,
+    cartoesResumo,
     servicoPessoas,
     servicoPagamentos,
     servicos,

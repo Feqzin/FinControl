@@ -58,6 +58,8 @@ import type {
   Renda,
   Servico,
   ServicoCobrancaPagamento,
+  ServicoPagamento,
+  ServicoPessoa,
 } from "@shared/schema";
 import {
   extractTextFromPdfBuffer,
@@ -66,6 +68,7 @@ import {
   reconstructPdfLinesByPosition,
 } from "../src/pages/cartoes/import-pdf-utils";
 import { buildRelatorioPdfMetadata } from "../src/pages/relatorios/relatorios-pdf-utils";
+import { buildPessoaFinancialReport } from "../src/pages/pessoas/pessoa-financial-report.utils";
 import { formatMoneyFixed } from "../src/lib/money";
 import { gerarHistoricoMensal } from "../src/utils/financialEngine";
 import {
@@ -7760,4 +7763,209 @@ test("dashboard próximos vencimentos: aplica janela de 30 dias para futuros e v
   const filtered = filterDashboardUpcomingVencimentos(items, "2026-06-19");
 
   assert.deepEqual(filtered.map((item) => item.id), ["receber-recente"]);
+});
+
+test("relatório por pessoa consolida parcelas, serviços e uso dos cartões", () => {
+  const pessoa = {
+    id: "pessoa-1",
+    userId: "user-1",
+    nome: "Ana",
+    tipo: "me_deve",
+    telefone: null,
+    observacao: null,
+    listaNegra: false,
+    listaNegraMotivo: null,
+    deletedAt: null,
+  } as Pessoa;
+  const divida = {
+    id: "divida-1",
+    userId: "user-1",
+    pessoaId: pessoa.id,
+    tipo: "receber",
+    valor: "300.00",
+    valorTotal: "300.00",
+    totalParcelas: 3,
+    status: "pendente",
+    dataVencimento: "2026-08-10",
+    descricao: "Empréstimo",
+    deletedAt: null,
+  } as Divida;
+  const parcelas = [
+    { id: "dp-1", userId: "user-1", dividaId: divida.id, numero: 1, valor: "100.00", dataVencimento: "2026-07-10", status: "pago", dataPagamento: "2026-07-08" },
+    { id: "dp-2", userId: "user-1", dividaId: divida.id, numero: 2, valor: "100.00", dataVencimento: "2026-08-10", status: "pendente" },
+    { id: "dp-3", userId: "user-1", dividaId: divida.id, numero: 3, valor: "100.00", dataVencimento: "2026-09-10", status: "pendente" },
+  ] as Parcela[];
+  const compra = {
+    id: "compra-1",
+    userId: "user-1",
+    cartaoId: "cartao-1",
+    descricao: "Notebook",
+    valorTotal: "300.00",
+    parcelas: 3,
+    parcelaAtual: 2,
+    valorParcela: "100.00",
+    dataCompra: "2026-07-01",
+    pessoaId: pessoa.id,
+    statusPessoa: "pendente",
+    reembolsoModo: "total",
+  } as CompraCartao;
+  const parcelasCompra = [
+    { id: "cp-1", userId: "user-1", compraCartaoId: compra.id, numero: 1, valor: "100.00", dataVencimento: "2026-07-20", statusCartao: "pago", statusPessoa: "pago", dataPagamentoPessoa: "2026-07-15" },
+    { id: "cp-2", userId: "user-1", compraCartaoId: compra.id, numero: 2, valor: "100.00", dataVencimento: "2026-08-20", statusCartao: "pendente", statusPessoa: "pendente" },
+    { id: "cp-3", userId: "user-1", compraCartaoId: compra.id, numero: 3, valor: "100.00", dataVencimento: "2026-09-20", statusCartao: "pendente", statusPessoa: "pendente" },
+  ] as ParcelaCompra[];
+  const cartao = {
+    id: "cartao-1",
+    userId: "user-1",
+    nome: "Cartão principal",
+    limite: "1000.00",
+    melhorDiaCompra: 10,
+    diaVencimento: 20,
+  } as Cartao;
+  const servico = {
+    id: "servico-1",
+    userId: "user-1",
+    nome: "Streaming",
+    categoria: "streaming",
+    valorMensal: "100.00",
+    formaPagamento: "cartao",
+    status: "ativo",
+  } as Servico;
+  const servicoPessoa = {
+    id: "servico-pessoa-1",
+    userId: "user-1",
+    servicoId: servico.id,
+    pessoaId: pessoa.id,
+    valorDevido: "50.00",
+  } as ServicoPessoa;
+  const servicoPagamento = {
+    id: "servico-pagamento-1",
+    userId: "user-1",
+    servicoPessoaId: servicoPessoa.id,
+    mes: "2026-07",
+    status: "pago",
+    dataPagamento: "2026-07-05",
+  } as ServicoPagamento;
+
+  const report = buildPessoaFinancialReport({
+    pessoa,
+    dividas: [divida],
+    parcelas,
+    comprasCartao: [compra],
+    parcelasCompra,
+    cartoes: [cartao],
+    cartoesResumo: [{ cartaoId: cartao.id, limiteComprometido: 500 }],
+    servicoPessoas: [servicoPessoa],
+    servicoPagamentos: [servicoPagamento],
+    servicos: [servico],
+    saldoMovimentacoes: [],
+  }, {
+    includePersonalDebts: true,
+    includeSharedServices: true,
+    includeCardDebts: true,
+  }, new Date("2026-08-02T12:00:00.000Z"));
+
+  assert.equal(report.summary.installmentTotal, 600);
+  assert.equal(report.summary.installmentPaid, 200);
+  assert.equal(report.summary.installmentPending, 400);
+  assert.equal(report.summary.totalPaidTracked, 250);
+  assert.equal(report.summary.totalPending, 450);
+  assert.equal(report.personalDebts[0]?.installmentProgress, "1/3");
+  assert.deepEqual(report.personalDebts[0]?.paidMonthReferences, ["2026-07"]);
+  assert.equal(report.cardDebts[0]?.paidInstallments, 1);
+  assert.equal(report.cardUsage[0]?.totalUsagePercent, 50);
+  assert.equal(report.cardUsage[0]?.personLimitPercent, 20);
+  assert.equal(report.cardUsage[0]?.personShareOfUsedPercent, 40);
+  assert.equal(report.sharedServices[0]?.totalPaid, 50);
+  assert.equal(report.sharedServices[0]?.currentMonthPending, 50);
+});
+
+test("relatório por pessoa respeita as categorias escolhidas", () => {
+  const pessoa = { id: "pessoa-1", nome: "Ana", telefone: null } as Pessoa;
+  const report = buildPessoaFinancialReport({
+    pessoa,
+    dividas: [],
+    parcelas: [],
+    comprasCartao: [],
+    parcelasCompra: [],
+    cartoes: [],
+    cartoesResumo: [],
+    servicoPessoas: [],
+    servicoPagamentos: [],
+    servicos: [],
+    saldoMovimentacoes: [],
+  }, {
+    includePersonalDebts: false,
+    includeSharedServices: true,
+    includeCardDebts: false,
+  }, new Date("2026-08-02T12:00:00.000Z"));
+
+  assert.equal(report.personalDebts.length, 0);
+  assert.equal(report.cardDebts.length, 0);
+  assert.equal(report.cardUsage.length, 0);
+  assert.equal(report.overallCardUsage, null);
+});
+
+test("relatório por pessoa considera abatimentos parciais por saldo", () => {
+  const pessoa = { id: "pessoa-1", nome: "Ana", telefone: null } as Pessoa;
+  const report = buildPessoaFinancialReport({
+    pessoa,
+    dividas: [{
+      id: "divida-1",
+      pessoaId: pessoa.id,
+      tipo: "receber",
+      valor: "80.00",
+      status: "pendente",
+      deletedAt: null,
+      descricao: "Dívida parcial",
+    } as Divida],
+    parcelas: [],
+    comprasCartao: [{
+      id: "compra-1",
+      cartaoId: "cartao-1",
+      pessoaId: pessoa.id,
+      descricao: "Compra parcial",
+      valorTotal: "100.00",
+      parcelas: 1,
+      parcelaAtual: 1,
+      valorParcela: "100.00",
+      dataCompra: "2026-08-01",
+      statusPessoa: "pendente",
+      reembolsoModo: "total",
+    } as CompraCartao],
+    parcelasCompra: [{
+      id: "parcela-compra-1",
+      compraCartaoId: "compra-1",
+      numero: 1,
+      valor: "100.00",
+      dataVencimento: "2026-08-20",
+      statusCartao: "pendente",
+      statusPessoa: "pendente",
+    } as ParcelaCompra],
+    cartoes: [{ id: "cartao-1", nome: "Cartão", limite: "1000.00" } as Cartao],
+    cartoesResumo: [{ cartaoId: "cartao-1", limiteComprometido: 100 }],
+    servicoPessoas: [{
+      id: "servico-pessoa-1",
+      servicoId: "servico-1",
+      pessoaId: pessoa.id,
+      valorDevido: "50.00",
+    } as ServicoPessoa],
+    servicoPagamentos: [],
+    servicos: [{ id: "servico-1", nome: "Serviço parcial" } as Servico],
+    saldoMovimentacoes: [
+      { tipo: "debito", valor: "20.00", origem: "abatimento_divida", dividaId: "divida-1" },
+      { tipo: "debito", valor: "25.00", origem: "abatimento_parcela_cartao", parcelaCompraId: "parcela-compra-1" },
+      { tipo: "debito", valor: "10.00", origem: "abatimento_servico", servicoPessoaId: "servico-pessoa-1", categoria: "servico_mes:2026-08" },
+    ] as any[],
+  }, {
+    includePersonalDebts: true,
+    includeSharedServices: true,
+    includeCardDebts: true,
+  }, new Date("2026-08-02T12:00:00.000Z"));
+
+  assert.equal(report.personalDebts[0]?.paid, 20);
+  assert.equal(report.cardDebts[0]?.paid, 25);
+  assert.equal(report.sharedServices[0]?.currentMonthPaid, 10);
+  assert.equal(report.summary.totalPaidTracked, 55);
+  assert.equal(report.summary.totalPending, 195);
 });
