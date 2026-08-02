@@ -72,6 +72,12 @@ import { buildPessoaFinancialReport } from "../src/pages/pessoas/pessoa-financia
 import { formatMoneyFixed } from "../src/lib/money";
 import { gerarHistoricoMensal } from "../src/utils/financialEngine";
 import {
+  buildVacationPlanProjectionMonths,
+  calculateVacationMonthImpact,
+  calculateVacationPlanEstimate,
+  vacationPlansOverlap,
+} from "../../shared/vacation-planning";
+import {
   getCompraReembolsoVisualStatus,
   isCompraReembolsoOutstanding,
 } from "../src/lib/cartao-reembolso-status";
@@ -8003,4 +8009,85 @@ test("relatório por pessoa considera abatimentos parciais por saldo", () => {
   assert.equal(report.sharedServices[0]?.currentMonthPaid, 10);
   assert.equal(report.summary.totalPaidTracked, 55);
   assert.equal(report.summary.totalPending, 195);
+});
+
+test("Modo férias estima renda suspensa, adicional de um terço e pagamento antecipado", () => {
+  const income = { id: "income-1", descricao: "Salário", valor: "3000.00" };
+  const plan = {
+    rendaId: income.id,
+    startDate: "2026-09-01",
+    durationDays: 30,
+    vacationPayReceived: false,
+    vacationPayDate: null,
+    vacationPayAmount: null,
+    includedInPatrimony: false,
+  };
+
+  const estimate = calculateVacationPlanEstimate(plan, income);
+
+  assert.equal(estimate.dailyIncome, 100);
+  assert.equal(estimate.suspendedIncome, 3000);
+  assert.equal(estimate.estimatedVacationPay, 4000);
+  assert.equal(estimate.vacationPayDate, "2026-08-30");
+  assert.equal(estimate.endDate, "2026-09-30");
+});
+
+test("Modo férias distribui a pausa corretamente quando o período atravessa meses", () => {
+  const income = { id: "income-1", descricao: "Salário", valor: "3000.00" };
+  const plan = {
+    id: "vacation-1",
+    rendaId: income.id,
+    startDate: "2026-08-20",
+    durationDays: 20,
+    vacationPayReceived: false,
+    vacationPayDate: null,
+    vacationPayAmount: null,
+    includedInPatrimony: false,
+  };
+
+  const projection = buildVacationPlanProjectionMonths(plan, income);
+
+  assert.deepEqual(projection.map((month) => month.monthReference), ["2026-08", "2026-09"]);
+  assert.equal(projection[0]?.affectedDays, 12);
+  assert.equal(projection[0]?.suspendedIncome, 1200);
+  assert.equal(projection[0]?.vacationPayIncome, 2666.67);
+  assert.equal(projection[0]?.projectedIncome, 4466.67);
+  assert.equal(projection[1]?.affectedDays, 8);
+  assert.equal(projection[1]?.suspendedIncome, 800);
+  assert.equal(projection[1]?.projectedIncome, 2200);
+});
+
+test("Modo férias não duplica adiantamento que já consta no patrimônio", () => {
+  const income = { id: "income-1", valor: "3000.00" };
+  const plan = {
+    id: "vacation-1",
+    rendaId: income.id,
+    startDate: "2026-08-20",
+    durationDays: 12,
+    vacationPayReceived: true,
+    vacationPayDate: "2026-08-18",
+    vacationPayAmount: "1500.00",
+    includedInPatrimony: true,
+  };
+
+  const impact = calculateVacationMonthImpact({
+    monthReference: "2026-08",
+    plans: [plan],
+    incomes: [income],
+  });
+
+  assert.equal(impact.suspendedIncome, 1200);
+  assert.equal(impact.vacationPayIncome, 0);
+  assert.equal(impact.netAdjustment, -1200);
+});
+
+test("Modo férias identifica sobreposição na mesma renda", () => {
+  assert.equal(vacationPlansOverlap(
+    { startDate: "2026-08-10", durationDays: 15 },
+    { startDate: "2026-08-24", durationDays: 10 },
+  ), true);
+  assert.equal(vacationPlansOverlap(
+    { startDate: "2026-08-10", durationDays: 15 },
+    { startDate: "2026-08-25", durationDays: 10 },
+  ), false);
 });

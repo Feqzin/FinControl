@@ -3,7 +3,7 @@ import { db } from "./db.js";
 import { writeTechnicalLog } from "./logger.js";
 import {
   users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos,
-  servicoPessoas, servicoPagamentos, servicoCobrancaPagamentos, metas, parcelasCompra, cartaoFaturaPagamentos, cartaoFaturaPagamentoAlocacoes, futurePurchaseSimulations, pessoaSaldoMovimentacoes, rendas, patrimonios, compraAliases,
+  servicoPessoas, servicoPagamentos, servicoCobrancaPagamentos, metas, parcelasCompra, cartaoFaturaPagamentos, cartaoFaturaPagamentoAlocacoes, futurePurchaseSimulations, vacationPlans, pessoaSaldoMovimentacoes, rendas, patrimonios, compraAliases,
   type User, type InsertUser,
   type Pessoa, type InsertPessoa,
   type PessoaSaldoMovimentacao, type InsertPessoaSaldoMovimentacao,
@@ -20,6 +20,7 @@ import {
   type CartaoFaturaPagamento, type InsertCartaoFaturaPagamento,
   type CartaoFaturaPagamentoAlocacao, type InsertCartaoFaturaPagamentoAlocacao,
   type FuturePurchaseSimulation, type InsertFuturePurchaseSimulation,
+  type VacationPlan, type InsertVacationPlan,
   type Renda, type InsertRenda,
   type Patrimonio, type InsertPatrimonio,
   type CompraAlias, type InsertCompraAlias,
@@ -401,6 +402,10 @@ export interface IStorage {
   createRenda(data: InsertRenda): Promise<Renda>;
   updateRenda(id: string, userId: string, data: Partial<InsertRenda>): Promise<Renda | undefined>;
   deleteRenda(id: string, userId: string): Promise<boolean>;
+
+  getVacationPlans(userId: string): Promise<VacationPlan[]>;
+  createVacationPlan(data: InsertVacationPlan): Promise<VacationPlan>;
+  deleteVacationPlan(id: string, userId: string): Promise<boolean>;
 
   getPatrimonios(userId: string): Promise<Patrimonio[]>;
   createPatrimonio(data: InsertPatrimonio): Promise<Patrimonio>;
@@ -1157,6 +1162,21 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteRenda(id: string, userId: string) {
     const result = await this.database.delete(rendas).where(and(eq(rendas.id, id), eq(rendas.userId, userId))).returning();
+    return result.length > 0;
+  }
+
+  async getVacationPlans(userId: string) {
+    return this.database.select().from(vacationPlans).where(eq(vacationPlans.userId, userId));
+  }
+  async createVacationPlan(data: InsertVacationPlan) {
+    const [row] = await this.database.insert(vacationPlans).values(data).returning();
+    return row;
+  }
+  async deleteVacationPlan(id: string, userId: string) {
+    const result = await this.database
+      .delete(vacationPlans)
+      .where(and(eq(vacationPlans.id, id), eq(vacationPlans.userId, userId)))
+      .returning();
     return result.length > 0;
   }
 

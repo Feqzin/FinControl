@@ -66,6 +66,7 @@ import { formatCurrencyBRL } from "@/utils/formatters";
 import { useLocation } from "wouter";
 import { DashboardQuickActions } from "@/components/dashboard/DashboardQuickActions";
 import { DashboardPageHeader } from "@/components/dashboard/DashboardPageHeader";
+import { VacationModeDialog } from "@/components/dashboard/VacationModeDialog";
 import { DashboardSummaryCards } from "@/components/dashboard/DashboardSummaryCards";
 import { DashboardInsights } from "@/components/dashboard/DashboardInsights";
 import { DashboardFinancialOverview } from "@/components/dashboard/DashboardFinancialOverview";
@@ -195,6 +196,7 @@ export default function Dashboard() {
     servicos,
     pessoas,
     rendas,
+    vacationPlans,
     patrimonios,
     cartoes,
     compras,
@@ -1597,6 +1599,7 @@ export default function Dashboard() {
         selectedMonth={selectedMonth}
         monthOptions={monthOptions}
         onMonthChange={setSelectedMonth}
+        vacationAction={<VacationModeDialog rendas={rendas} plans={vacationPlans} />}
         settingsContent={desktopSettingsContent}
         showAdvancedResources={showAdvancedResources}
         scoreStatus={sectionStatus.score}

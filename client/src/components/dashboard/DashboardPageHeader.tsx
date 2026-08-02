@@ -20,6 +20,7 @@ type DashboardPageHeaderProps = {
   monthOptions: Array<{ value: string; label: string }>;
   onMonthChange: (value: string) => void;
   settingsContent: ReactNode;
+  vacationAction: ReactNode;
   showAdvancedResources: boolean;
   scoreStatus: DashboardSectionStatus;
   score: { valor: number; classificacao: string };
@@ -43,6 +44,7 @@ export function DashboardPageHeader({
   monthOptions,
   onMonthChange,
   settingsContent,
+  vacationAction,
   showAdvancedResources,
   scoreStatus,
   score,
@@ -59,7 +61,8 @@ export function DashboardPageHeader({
       actionsClassName="w-full xl:w-auto"
       actions={(
         <div className="w-full xl:w-auto">
-          <div className="grid w-full min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(210px,220px)_auto] xl:items-start">
+          <div className="grid w-full min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-[auto_minmax(0,1fr)_auto] xl:grid-cols-[auto_minmax(210px,220px)_auto] xl:items-start">
+            {vacationAction}
             <Select value={selectedMonth} onValueChange={onMonthChange}>
               <SelectTrigger
                 className="h-9 w-full min-w-0 rounded-xl border-border/70 bg-background/95 text-sm shadow-sm sm:h-10"

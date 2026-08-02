@@ -36,6 +36,7 @@ import { createUserIconLibraryController } from "./controllers/user-icon-library
 import { createOfficialIconsController } from "./controllers/official-icons.controller.js";
 import { createCommunityProfilesController } from "./controllers/community-profiles.controller.js";
 import { createFuturePurchaseSimulationsController } from "./controllers/future-purchase-simulations.controller.js";
+import { createVacationPlansController } from "./controllers/vacation-plans.controller.js";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.js";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
 import { registerDebugDbPingRoute } from "./routes/debug-db-ping.route.js";
@@ -70,6 +71,7 @@ import { UserIconLibraryService } from "./services/user-icon-library.service.js"
 import { OfficialIconLibraryService } from "./services/official-icons.service.js";
 import { CommunityProfilesService } from "./services/community-profiles.service.js";
 import { FuturePurchaseSimulationsService } from "./services/future-purchase-simulations.service.js";
+import { VacationPlansService } from "./services/vacation-plans.service.js";
 
 function auditRoute(
   req: Request,
@@ -123,6 +125,7 @@ export function registerRoutes(app: Express): void {
   const officialIconsController = createOfficialIconsController(new OfficialIconLibraryService());
   const communityProfilesController = createCommunityProfilesController(new CommunityProfilesService());
   const futurePurchaseSimulationsController = createFuturePurchaseSimulationsController(new FuturePurchaseSimulationsService(storage));
+  const vacationPlansController = createVacationPlansController(new VacationPlansService(storage));
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -146,6 +149,9 @@ export function registerRoutes(app: Express): void {
   app.get("/api/simulador/compra-futura/simulacoes/:id", requireAuth, futurePurchaseSimulationsController.get);
   app.patch("/api/simulador/compra-futura/simulacoes/:id", requireAuth, futurePurchaseSimulationsController.update);
   app.delete("/api/simulador/compra-futura/simulacoes/:id", requireAuth, futurePurchaseSimulationsController.remove);
+  app.get("/api/vacation-plans", requireAuth, vacationPlansController.list);
+  app.post("/api/vacation-plans", requireAuth, vacationPlansController.create);
+  app.delete("/api/vacation-plans/:id", requireAuth, vacationPlansController.remove);
 
   registerDebugDbPingRoute(app);
 

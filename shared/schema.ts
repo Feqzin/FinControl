@@ -681,6 +681,32 @@ export const insertRendaSchema = createInsertSchema(rendas).omit({ id: true });
 export type InsertRenda = z.infer<typeof insertRendaSchema>;
 export type Renda = typeof rendas.$inferSelect;
 
+export const vacationPlans = pgTable("vacation_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  rendaId: varchar("renda_id").notNull().references(() => rendas.id, { onDelete: "cascade" }),
+  startDate: date("start_date", { mode: "string" }).notNull(),
+  durationDays: integer("duration_days").notNull(),
+  vacationPayReceived: boolean("vacation_pay_received").notNull().default(false),
+  vacationPayDate: date("vacation_pay_date", { mode: "string" }),
+  vacationPayAmount: decimal("vacation_pay_amount", { precision: 12, scale: 2 }),
+  includedInPatrimony: boolean("included_in_patrimony").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  vacationPlansUserIdIdx: index("idx_vacation_plans_user_id").on(table.userId),
+  vacationPlansRendaIdIdx: index("idx_vacation_plans_renda_id").on(table.rendaId),
+  vacationPlansStartDateIdx: index("idx_vacation_plans_start_date").on(table.startDate),
+}));
+
+export const insertVacationPlanSchema = createInsertSchema(vacationPlans).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertVacationPlan = z.infer<typeof insertVacationPlanSchema>;
+export type VacationPlan = typeof vacationPlans.$inferSelect;
+
 export const patrimonios = pgTable("patrimonios", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),

@@ -11,6 +11,7 @@ import type {
   Renda,
   Servico,
   ServicoCobrancaPagamento,
+  VacationPlan,
 } from "@shared/schema";
 import type { DashboardOverviewResponse, FinancialInsight, FinancialScore, FinancialSummary } from "@shared/financial";
 import { addDays, addMonths, differenceInDays, format, parseISO } from "date-fns";
@@ -39,6 +40,8 @@ import { fetchServicoCobrancaPagamentos } from "@/services/api/servicos";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { resolveDashboardServicosMetrics } from "@/pages/dashboard/dashboard-servicos-metrics.utils";
 import { getDashboardReceivablesForMonth } from "@/pages/dashboard/dashboard-receivables.utils";
+import { calculateVacationMonthImpact } from "@shared/vacation-planning";
+import { fetchVacationPlans } from "@/services/api/vacation-plans";
 
 export type DashboardAlert = {
   icon: any;
@@ -241,6 +244,10 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     queryFn: () => fetchDashboardJson<Renda[]>("/api/rendas", "rendas"),
     enabled: shouldEnableLegacyQueries,
   });
+  const vacationPlansQuery = useQuery<VacationPlan[]>({
+    queryKey: ["/api/vacation-plans"],
+    queryFn: fetchVacationPlans,
+  });
   const patrimoniosQuery = useQuery<Patrimonio[]>({
     queryKey: ["/api/patrimonios"],
     queryFn: () => fetchDashboardJson<Patrimonio[]>("/api/patrimonios", "patrimônio"),
@@ -282,6 +289,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const financialScore = shouldUseLegacyFallback ? financialScoreQuery.data : dashboardOverview?.financialScore;
   const financialInsights = shouldUseLegacyFallback ? (financialInsightsQuery.data ?? []) : (dashboardOverview?.financialInsights ?? []);
   const financialSummary = shouldUseLegacyFallback ? financialSummaryQuery.data : dashboardOverview?.financialSummary;
+  const vacationPlans = vacationPlansQuery.data ?? [];
 
   const legacyIsLoading =
     dividasQuery.isLoading
@@ -387,7 +395,16 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     [financialSummary],
   );
 
-  const totalRenda = financialSummary?.totalRenda ?? 0;
+  const vacationImpact = useMemo(
+    () => calculateVacationMonthImpact({
+      monthReference: selectedMonth,
+      plans: vacationPlans,
+      incomes: rendas,
+    }),
+    [rendas, selectedMonth, vacationPlans],
+  );
+  const baseTotalRenda = financialSummary?.totalRenda ?? 0;
+  const totalRenda = Math.max(0, baseTotalRenda + vacationImpact.netAdjustment);
   const totalPatrimonio = patrimonios.reduce((s, p) => s + toMoneyNumber(p.valorAtual), 0);
   const totalServicos = servicosMetrics.realMonthlyTotal;
   const servicosEquivalenteMensalTotal = servicosMetrics.equivalenteMensalTotal;
@@ -401,9 +418,11 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   const totalPagar = financialSummary?.totalPagarMes ?? 0;
   const totalCartoesMes = financialSummary?.totalCartoesMes ?? 0;
   const totalPagarMes = totalPagar;
-  const totalEntradas = financialSummary?.totalEntradas ?? 0;
+  const baseTotalEntradas = financialSummary?.totalEntradas ?? 0;
+  const totalEntradas = Math.max(0, baseTotalEntradas + vacationImpact.netAdjustment);
   const totalSaidas = totalPagarMes + totalServicos + totalCartoesMes;
-  const saldoPrevisto = financialSummary?.saldo ?? (totalEntradas - totalSaidas);
+  const baseSaldoPrevisto = financialSummary?.saldo ?? (baseTotalEntradas - totalSaidas);
+  const saldoPrevisto = baseSaldoPrevisto + vacationImpact.netAdjustment;
   const recebiveisMes = useMemo(
     () => getDashboardReceivablesForMonth({
       dividas,
@@ -774,6 +793,8 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     () => [
       "ENTRADAS",
       `• Renda mensal: ${mask(formatCurrencyBRL(totalRenda))}`,
+      ...(vacationImpact.suspendedIncome > 0 ? [`• Pausa Modo férias: -${mask(formatCurrencyBRL(vacationImpact.suspendedIncome))}`] : []),
+      ...(vacationImpact.vacationPayIncome > 0 ? [`• Adiantamento de férias: +${mask(formatCurrencyBRL(vacationImpact.vacationPayIncome))}`] : []),
       ...(totalRecebidoMes > 0 ? [`• Recebimentos realizados: ${mask(formatCurrencyBRL(totalRecebidoMes))}`] : []),
       `Total confirmado: ${mask(formatCurrencyBRL(totalEntradas))}`,
       "---",
@@ -785,7 +806,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
       "---",
       `Saldo = ${mask(formatCurrencyBRL(totalEntradas))} - ${mask(formatCurrencyBRL(totalSaidas))} = ${mask(formatCurrencyBRL(saldoPrevisto))}`,
     ],
-    [saldoPrevisto, totalCartoesMes, totalEntradas, totalPagarMes, totalRecebidoMes, totalRenda, totalSaidas, totalServicos, visible],
+    [saldoPrevisto, totalCartoesMes, totalEntradas, totalPagarMes, totalRecebidoMes, totalRenda, totalSaidas, totalServicos, vacationImpact, visible],
   );
 
   const rendaMensalTooltip = useMemo(() => {
@@ -794,10 +815,12 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     return [
       "Fontes de renda ativas:",
       ...items.map((r) => `• ${r.descricao} — ${mask(formatCurrencyBRL(toMoneyNumber(r.valor)))} (${r.tipo === "fixo" ? "Fixo" : "Variável"})`),
+      ...(vacationImpact.suspendedIncome > 0 ? ["---", `Modo férias reduz ${mask(formatCurrencyBRL(vacationImpact.suspendedIncome))} da renda normal deste mês.`] : []),
+      ...(vacationImpact.vacationPayIncome > 0 ? [`Adiantamento considerado: ${mask(formatCurrencyBRL(vacationImpact.vacationPayIncome))}.`] : []),
       "---",
       `Total: ${mask(formatCurrencyBRL(totalRenda))}`,
     ];
-  }, [rendas, totalRenda, visible]);
+  }, [rendas, totalRenda, vacationImpact, visible]);
 
   const patrimonioTooltip = useMemo(() => {
     if (patrimonios.length === 0) return ["Nenhum patrimônio cadastrado."];
@@ -899,6 +922,8 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     cartaoFaturaPagamentos,
     servicoCobrancaPagamentos,
     rendas,
+    vacationPlans,
+    vacationImpact,
     patrimonios,
     totalRenda,
     totalPatrimonio,

@@ -26,12 +26,19 @@ import type {
   Renda,
   Servico,
   ServicoCobrancaPagamento,
+  VacationPlan,
 } from "@shared/schema";
 import { calculateServicoOutstandingChargeForCompetency } from "@shared/servico-periodicidade";
 import { format, getDaysInMonth } from "date-fns";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { fetchServicoCobrancaPagamentos } from "@/services/api/servicos";
-import { buildFinancialCalendarEvents, getFinancialCalendarEventImpactAmount } from "@/lib/financial-calendar";
+import {
+  buildFinancialCalendarEvents,
+  getFinancialCalendarEventImpactAmount,
+  type FinancialCalendarEvent,
+} from "@/lib/financial-calendar";
+import { calculateVacationMonthImpact, calculateVacationPlanEstimate } from "@shared/vacation-planning";
+import { fetchVacationPlans } from "@/services/api/vacation-plans";
 
 const PrevisaoSaldoChart = lazy(
   () => import("@/components/charts/previsao-saldo-chart"),
@@ -61,7 +68,11 @@ export default function PrevisaoPage() {
   const { data: cartaoFaturaPagamentos = [], isLoading: l8 } = useQuery<CartaoFaturaPagamento[]>({
     queryKey: ["/api/cartoes/fatura-pagamentos"],
   });
-  const isLoading = l1 || l2 || l3 || l4 || l5 || l6 || l7 || l8;
+  const { data: vacationPlans = [], isLoading: l9 } = useQuery<VacationPlan[]>({
+    queryKey: ["/api/vacation-plans"],
+    queryFn: fetchVacationPlans,
+  });
+  const isLoading = l1 || l2 || l3 || l4 || l5 || l6 || l7 || l8 || l9;
 
   const mask = (v: string) => maskValue(v, visible);
 
@@ -72,7 +83,7 @@ export default function PrevisaoPage() {
 
   const rendasAtivas = rendas.filter((r) => r.ativo);
   const servicosAtivos = servicos.filter((s) => s.status === "ativo");
-  const monthlyEvents = buildFinancialCalendarEvents({
+  const baseMonthlyEvents = buildFinancialCalendarEvents({
     monthReference: currentMonth,
     cartoes,
     compras,
@@ -87,13 +98,63 @@ export default function PrevisaoPage() {
     metas: [],
     referenceDate: format(now, "yyyy-MM-dd"),
   });
+  const vacationImpact = calculateVacationMonthImpact({
+    monthReference: currentMonth,
+    plans: vacationPlans,
+    incomes: rendas,
+  });
+  const suspendedByIncome = new Map<string, number>();
+  vacationImpact.plans.forEach((impact) => {
+    suspendedByIncome.set(
+      impact.rendaId,
+      (suspendedByIncome.get(impact.rendaId) ?? 0) + impact.suspendedIncome,
+    );
+  });
+  const adjustedIncomeEvents = baseMonthlyEvents.map((event): FinancialCalendarEvent => {
+    if (event.source !== "renda_prevista" || !event.entityId) return event;
+    const suspendedIncome = suspendedByIncome.get(event.entityId) ?? 0;
+    if (suspendedIncome <= 0) return event;
+    return {
+      ...event,
+      amount: Math.max(0, (event.amount ?? 0) - suspendedIncome),
+      subtitle: "Renda fixa ajustada pelo Modo férias",
+    };
+  });
+  const vacationPayEvents: FinancialCalendarEvent[] = vacationImpact.plans.flatMap((impact) => {
+    if (impact.vacationPayIncome <= 0) return [];
+    const plan = vacationPlans.find((item) => item.id === impact.planId);
+    const income = rendas.find((item) => item.id === impact.rendaId);
+    if (!plan || !income) return [];
+    const estimate = calculateVacationPlanEstimate(plan, income);
+    return [{
+      id: `vacation-pay-${plan.id}-${currentMonth}`,
+      date: estimate.vacationPayDate,
+      monthReference: currentMonth,
+      group: "renda",
+      direction: "entrada",
+      source: "renda_prevista",
+      title: `Adiantamento de férias · ${income.descricao}`,
+      subtitle: "Pagamento antecipado considerado pelo Modo férias",
+      amount: impact.vacationPayIncome,
+      statusLabel: plan.vacationPayReceived ? "Recebido" : "Previsto",
+      entityId: income.id,
+    }];
+  });
+  const monthlyEvents: FinancialCalendarEvent[] = [...adjustedIncomeEvents, ...vacationPayEvents];
+  const adjustedIncomeAmountById = new Map(
+    rendasAtivas.map((income) => [
+      income.id,
+      Math.max(0, Number(income.valor) - (suspendedByIncome.get(income.id) ?? 0)),
+    ] as const),
+  );
   const servicosSaidaMes = servicosAtivos
     .map((servico) => ({
       servico,
       valor: calculateServicoOutstandingChargeForCompetency(servico, currentMonth, servicoCobrancaPagamentos),
     }))
     .filter((item) => item.valor > 0);
-  const rendaMensal = rendasAtivas.reduce((s, r) => s + Number(r.valor), 0);
+  const rendaMensalBase = rendasAtivas.reduce((s, r) => s + Number(r.valor), 0);
+  const rendaMensal = Math.max(0, rendaMensalBase + vacationImpact.netAdjustment);
 
   const receberDividas = dividas
     .filter((d) => d.tipo === "receber" && d.status === "pendente" && (d.dataVencimento || "").startsWith(currentMonth))
@@ -353,7 +414,7 @@ export default function PrevisaoPage() {
           <CardHeader className="space-y-2 pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <ArrowUpRight className="w-4 h-4 text-emerald-600" />
-              Entradas previstas ({rendasAtivas.length + entradasDividas.length})
+              Entradas previstas ({rendasAtivas.length + entradasDividas.length + vacationPayEvents.length})
             </CardTitle>
             <p className="text-sm text-muted-foreground">
               Valores esperados para entrar no caixa ao longo deste mês.
@@ -366,11 +427,36 @@ export default function PrevisaoPage() {
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-foreground break-words">{r.descricao}</p>
                     <div className="flex flex-wrap items-center gap-1">
-                      <Badge variant="secondary" className="rounded-full border border-emerald-500/15 bg-background/80 text-[10px] shadow-sm">Renda fixa</Badge>
+                      <Badge variant="secondary" className="rounded-full border border-emerald-500/15 bg-background/80 text-[10px] shadow-sm">
+                        {r.tipo === "fixo" ? "Renda fixa" : "Renda variável"}
+                      </Badge>
+                      {(suspendedByIncome.get(r.id) ?? 0) > 0 ? (
+                        <Badge variant="outline" className="rounded-full border-sky-500/20 bg-sky-500/5 text-[10px] text-sky-700 dark:text-sky-300">
+                          Modo férias · -{mask(formatCurrency(suspendedByIncome.get(r.id) ?? 0))}
+                        </Badge>
+                      ) : null}
                       <span className="text-xs text-muted-foreground">Dia {r.diaRecebimento}</span>
                     </div>
                   </div>
-                  <span className="text-sm font-semibold text-emerald-600 [overflow-wrap:anywhere] sm:shrink-0">{mask(formatCurrency(Number(r.valor)))}</span>
+                  <span className="text-sm font-semibold text-emerald-600 [overflow-wrap:anywhere] sm:shrink-0">
+                    {mask(formatCurrency(adjustedIncomeAmountById.get(r.id) ?? Number(r.valor)))}
+                  </span>
+                </div>
+              ))}
+              {vacationPayEvents.map((event) => (
+                <div key={event.id} className="flex flex-col gap-2 rounded-2xl border border-sky-500/15 bg-sky-500/[0.06] p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-semibold text-foreground">{event.title}</p>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Badge variant="outline" className="rounded-full border-sky-500/20 bg-background/80 text-[10px] text-sky-700 dark:text-sky-300">
+                        Modo férias
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">{event.statusLabel} em {event.date}</span>
+                    </div>
+                  </div>
+                  <span className="text-sm font-semibold text-sky-600 [overflow-wrap:anywhere] sm:shrink-0">
+                    {mask(formatCurrency(event.amount ?? 0))}
+                  </span>
                 </div>
               ))}
               {entradasDividas.map((d) => (
