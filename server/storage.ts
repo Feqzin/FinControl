@@ -143,6 +143,7 @@ export interface IStorage {
 
   getVacationPlans(userId: string): Promise<VacationPlan[]>;
   createVacationPlan(data: InsertVacationPlan): Promise<VacationPlan>;
+  createVacationPlans(data: InsertVacationPlan[]): Promise<VacationPlan[]>;
   deleteVacationPlan(id: string, userId: string): Promise<boolean>;
 
   getPatrimonios(userId: string): Promise<Patrimonio[]>;
@@ -1002,6 +1003,12 @@ export class DatabaseStorage implements IStorage {
       () => this.database.insert(vacationPlans).values(data).returning(),
     );
     return row;
+  }
+  async createVacationPlans(data: InsertVacationPlan[]) {
+    if (data.length === 0) return [];
+    return this.withVacationPlansTable<VacationPlan[]>(
+      () => this.database.insert(vacationPlans).values(data).returning(),
+    );
   }
   async deleteVacationPlan(id: string, userId: string) {
     const result = await this.withVacationPlansTable<VacationPlan[]>(

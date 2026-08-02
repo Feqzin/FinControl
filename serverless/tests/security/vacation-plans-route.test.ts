@@ -12,6 +12,7 @@ import { VacationPlansService } from "../../services/vacation-plans.service.js";
 function createFixture() {
   const incomes = [
     { id: "income-a", userId: "user_a", tipo: "fixo", ativo: true, valor: "3000.00", descricao: "Salário A" },
+    { id: "income-a-2", userId: "user_a", tipo: "fixo", ativo: true, valor: "1500.00", descricao: "Vale A" },
     { id: "income-variable", userId: "user_a", tipo: "variavel", ativo: true, valor: "500.00", descricao: "Freela" },
     { id: "income-b", userId: "user_b", tipo: "fixo", ativo: true, valor: "2500.00", descricao: "Salário B" },
   ];
@@ -29,6 +30,17 @@ function createFixture() {
       const row = { ...payload, id: `plan-${sequence++}`, createdAt: now, updatedAt: now };
       plans.push(row);
       return row;
+    },
+    async createVacationPlans(payloads: any[]) {
+      const now = new Date();
+      const rows = payloads.map((payload) => ({
+        ...payload,
+        id: `plan-${sequence++}`,
+        createdAt: now,
+        updatedAt: now,
+      }));
+      plans.push(...rows);
+      return rows;
     },
     async deleteVacationPlan(id: string, userId: string) {
       const index = plans.findIndex((plan) => plan.id === id && plan.userId === userId);
@@ -65,6 +77,7 @@ function createApp() {
     next();
   });
   app.get("/api/vacation-plans", requireAuth, controller.list);
+  app.post("/api/vacation-plans/batch", requireAuth, controller.createBatch);
   app.post("/api/vacation-plans", requireAuth, controller.create);
   app.delete("/api/vacation-plans/:id", requireAuth, controller.remove);
   return { app, fixture };
@@ -83,9 +96,19 @@ function payload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function batchPayload(overrides: Record<string, unknown> = {}) {
+  const { rendaId: _rendaId, ...commonPayload } = payload();
+  return {
+    ...commonPayload,
+    rendaIds: ["income-a", "income-a-2"],
+    ...overrides,
+  };
+}
+
 test("rotas de Modo férias no serverless exigem autenticação", async () => {
   const routesSource = await readFile(path.resolve(process.cwd(), "serverless", "routes.ts"), "utf8");
   assert.match(routesSource, /app\.get\(\s*"\/api\/vacation-plans"\s*,\s*requireAuth\s*,\s*vacationPlansController\.list\s*\)/m);
+  assert.match(routesSource, /app\.post\(\s*"\/api\/vacation-plans\/batch"\s*,\s*requireAuth\s*,\s*vacationPlansController\.createBatch\s*\)/m);
   assert.match(routesSource, /app\.post\(\s*"\/api\/vacation-plans"\s*,\s*requireAuth\s*,\s*vacationPlansController\.create\s*\)/m);
   assert.match(routesSource, /app\.delete\(\s*"\/api\/vacation-plans\/:id"\s*,\s*requireAuth\s*,\s*vacationPlansController\.remove\s*\)/m);
 });
@@ -99,6 +122,50 @@ test("Modo férias exige autenticação para criar", async () => {
       body: JSON.stringify(payload()),
     });
     assert.equal(response.status, 401);
+
+    const batchResponse = await fetch(`${baseUrl}/api/vacation-plans/batch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(batchPayload()),
+    });
+    assert.equal(batchResponse.status, 401);
+  });
+});
+
+test("Modo férias cria várias pausas atomicamente e divide o valor total", async () => {
+  const { app, fixture } = createApp();
+  await withTestServer(app, async (baseUrl) => {
+    const headers = { "x-test-auth": "user_a", "content-type": "application/json" };
+    const createdResponse = await fetch(`${baseUrl}/api/vacation-plans/batch`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(batchPayload({ vacationPayAmount: 4800 })),
+    });
+    assert.equal(createdResponse.status, 201);
+    const created = await createdResponse.json();
+    assert.equal(created.length, 2);
+    assert.deepEqual(created.map((plan: any) => plan.rendaId), ["income-a", "income-a-2"]);
+    assert.deepEqual(created.map((plan: any) => plan.vacationPayAmount), ["3200.00", "1600.00"]);
+    assert.equal(created.reduce((sum: number, plan: any) => sum + Number(plan.vacationPayAmount), 0), 4800);
+
+    const invalidBatch = await fetch(`${baseUrl}/api/vacation-plans/batch`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(batchPayload({
+        rendaIds: ["income-a", "income-b"],
+        startDate: "2026-11-01",
+      })),
+    });
+    assert.equal(invalidBatch.status, 400);
+    assert.equal(fixture.plans.length, 2);
+
+    const overlappingBatch = await fetch(`${baseUrl}/api/vacation-plans/batch`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(batchPayload({ startDate: "2026-09-15", durationDays: 10 })),
+    });
+    assert.equal(overlappingBatch.status, 400);
+    assert.equal(fixture.plans.length, 2);
   });
 });
 

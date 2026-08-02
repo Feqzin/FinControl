@@ -18,17 +18,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import {
-  createVacationPlan,
+  createVacationPlans,
   deleteVacationPlan,
-  type CreateVacationPlanPayload,
+  type CreateVacationPlansPayload,
 } from "@/services/api/vacation-plans";
 import { formatCurrencyBRL } from "@/utils/formatters";
 
@@ -75,7 +75,7 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
     [rendas],
   );
   const [open, setOpen] = useState(false);
-  const [rendaId, setRendaId] = useState("");
+  const [rendaIds, setRendaIds] = useState<string[]>([]);
   const [startDate, setStartDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [durationDays, setDurationDays] = useState("30");
   const [vacationPayReceived, setVacationPayReceived] = useState(false);
@@ -84,16 +84,33 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
   const [includedInPatrimony, setIncludedInPatrimony] = useState(false);
 
   useEffect(() => {
-    if (!rendaId && fixedIncomes[0]) setRendaId(fixedIncomes[0].id);
-  }, [fixedIncomes, rendaId]);
+    setRendaIds((currentIds) => {
+      const availableIds = new Set(fixedIncomes.map((income) => income.id));
+      const validIds = currentIds.filter((id) => availableIds.has(id));
+      if (validIds.length > 0) return validIds;
+      return fixedIncomes[0] ? [fixedIncomes[0].id] : [];
+    });
+  }, [fixedIncomes]);
 
-  const selectedIncome = fixedIncomes.find((income) => income.id === rendaId) ?? null;
+  const selectedIncomes = useMemo(
+    () => fixedIncomes.filter((income) => rendaIds.includes(income.id)),
+    [fixedIncomes, rendaIds],
+  );
+  const combinedIncome = useMemo(() => {
+    if (selectedIncomes.length === 0) return null;
+    return {
+      id: "selected-vacation-incomes",
+      descricao: selectedIncomes.map((income) => income.descricao).join(" + "),
+      valor: selectedIncomes.reduce((sum, income) => sum + Number(income.valor), 0).toFixed(2),
+      ativo: true,
+    };
+  }, [selectedIncomes]);
   const normalizedDuration = Math.min(90, Math.max(1, Number.parseInt(durationDays, 10) || 1));
   const normalizedAmount = vacationPayAmount.trim()
     ? Number(vacationPayAmount.trim().replace(",", "."))
     : null;
   const draftPlan = useMemo<VacationProjectionPlan>(() => ({
-    rendaId,
+    rendaId: combinedIncome?.id ?? "",
     startDate,
     durationDays: normalizedDuration,
     vacationPayReceived,
@@ -103,23 +120,25 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
   }), [
     durationDays,
     includedInPatrimony,
+    combinedIncome,
     normalizedAmount,
-    rendaId,
     startDate,
     vacationPayAmount,
     vacationPayDate,
     vacationPayReceived,
   ]);
-  const estimate = selectedIncome ? calculateVacationPlanEstimate(draftPlan, selectedIncome) : null;
-  const projection = selectedIncome ? buildVacationPlanProjectionMonths(draftPlan, selectedIncome) : [];
+  const estimate = combinedIncome ? calculateVacationPlanEstimate(draftPlan, combinedIncome) : null;
+  const projection = combinedIncome ? buildVacationPlanProjectionMonths(draftPlan, combinedIncome) : [];
 
   const createMutation = useMutation({
-    mutationFn: (payload: CreateVacationPlanPayload) => createVacationPlan(payload),
-    onSuccess: async () => {
+    mutationFn: (payload: CreateVacationPlansPayload) => createVacationPlans(payload),
+    onSuccess: async (createdPlans) => {
       await queryClient.invalidateQueries({ queryKey: ["/api/vacation-plans"] });
       toast({
         title: "Modo férias programado",
-        description: "A renda fixa será ajustada apenas nas projeções do período.",
+        description: createdPlans.length === 1
+          ? "A renda fixa será ajustada nas projeções do período."
+          : `${createdPlans.length} rendas fixas serão ajustadas nas projeções do período.`,
       });
     },
     onError: (error) => {
@@ -154,8 +173,8 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    if (!selectedIncome || !startDate) {
-      toast({ title: "Informe a renda e a data das férias", variant: "destructive" });
+    if (selectedIncomes.length === 0 || !startDate) {
+      toast({ title: "Selecione as rendas e informe a data das férias", variant: "destructive" });
       return;
     }
     if (normalizedAmount != null && (!Number.isFinite(normalizedAmount) || normalizedAmount < 0)) {
@@ -164,7 +183,7 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
     }
 
     createMutation.mutate({
-      rendaId: selectedIncome.id,
+      rendaIds: selectedIncomes.map((income) => income.id),
       startDate,
       durationDays: normalizedDuration,
       vacationPayReceived,
@@ -193,7 +212,7 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
             Planejar Modo férias
           </DialogTitle>
           <DialogDescription>
-            Simule o adiantamento das férias e pause somente a renda fixa escolhida durante o período.
+            Simule o adiantamento das férias e pause uma ou mais rendas fixas durante o período.
           </DialogDescription>
         </DialogHeader>
 
@@ -205,19 +224,43 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="vacation-income">Renda fixa que ficará pausada</Label>
-                <Select value={rendaId} onValueChange={setRendaId}>
-                  <SelectTrigger id="vacation-income" data-testid="select-vacation-income">
-                    <SelectValue placeholder="Selecione a renda" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {fixedIncomes.map((income) => (
-                      <SelectItem key={income.id} value={income.id}>
-                        {income.descricao} · {formatCurrencyBRL(Number(income.valor))}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div>
+                  <Label>Rendas fixas que ficarão pausadas</Label>
+                  <p className="mt-1 text-xs text-muted-foreground">Selecione uma ou mais rendas que compõem o pagamento das suas férias.</p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2" data-testid="vacation-income-options">
+                  {fixedIncomes.map((income) => {
+                    const checked = rendaIds.includes(income.id);
+                    const checkboxId = `vacation-income-${income.id}`;
+                    return (
+                      <label
+                        key={income.id}
+                        htmlFor={checkboxId}
+                        className="flex cursor-pointer items-center gap-3 rounded-xl border border-border/70 p-3 transition-colors hover:bg-muted/45 has-[[data-state=checked]]:border-sky-500/40 has-[[data-state=checked]]:bg-sky-500/5"
+                      >
+                        <Checkbox
+                          id={checkboxId}
+                          checked={checked}
+                          onCheckedChange={(nextChecked) => {
+                            setRendaIds((currentIds) => nextChecked === true
+                              ? (currentIds.includes(income.id) ? currentIds : [...currentIds, income.id])
+                              : currentIds.filter((id) => id !== income.id));
+                          }}
+                          data-testid={`checkbox-vacation-income-${income.id}`}
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">{income.descricao}</span>
+                          <span className="block text-xs text-muted-foreground">{formatCurrencyBRL(Number(income.valor))}</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {selectedIncomes.length > 1 ? (
+                  <p className="text-xs font-medium text-sky-700 dark:text-sky-300">
+                    Total mensal selecionado: {formatCurrencyBRL(Number(combinedIncome?.valor ?? 0))}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="vacation-start">Data de saída</Label>
@@ -252,7 +295,7 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
                 <p className="text-xs text-muted-foreground">Por padrão, dois dias antes do início.</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="vacation-payment-amount">Valor pago ou esperado (opcional)</Label>
+                <Label htmlFor="vacation-payment-amount">Valor total pago ou esperado (opcional)</Label>
                 <Input
                   id="vacation-payment-amount"
                   inputMode="decimal"
@@ -260,7 +303,11 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
                   value={vacationPayAmount}
                   onChange={(event) => setVacationPayAmount(event.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">Se ficar vazio, usa a estimativa com adicional de 1/3.</p>
+                <p className="text-xs text-muted-foreground">
+                  {selectedIncomes.length > 1
+                    ? "Se informado, será dividido proporcionalmente entre as rendas selecionadas."
+                    : "Se ficar vazio, usa a estimativa com adicional de 1/3."}
+                </p>
               </div>
             </div>
 
@@ -318,7 +365,7 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
               <div className="space-y-3">
                 <div>
                   <h3 className="text-sm font-semibold">Impacto mês a mês</h3>
-                  <p className="text-xs text-muted-foreground">Como a renda selecionada aparecerá nas projeções.</p>
+                  <p className="text-xs text-muted-foreground">Como as rendas selecionadas aparecerão nas projeções.</p>
                 </div>
                 <div className="overflow-hidden rounded-2xl border border-border/70">
                   <div className="hidden grid-cols-5 gap-2 bg-muted/45 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">

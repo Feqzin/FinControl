@@ -150,6 +150,7 @@ export function registerRoutes(app: Express): void {
   app.patch("/api/simulador/compra-futura/simulacoes/:id", requireAuth, futurePurchaseSimulationsController.update);
   app.delete("/api/simulador/compra-futura/simulacoes/:id", requireAuth, futurePurchaseSimulationsController.remove);
   app.get("/api/vacation-plans", requireAuth, vacationPlansController.list);
+  app.post("/api/vacation-plans/batch", requireAuth, vacationPlansController.createBatch);
   app.post("/api/vacation-plans", requireAuth, vacationPlansController.create);
   app.delete("/api/vacation-plans/:id", requireAuth, vacationPlansController.remove);
 

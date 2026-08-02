@@ -11,6 +11,10 @@ export type CreateVacationPlanPayload = {
   includedInPatrimony: boolean;
 };
 
+export type CreateVacationPlansPayload = Omit<CreateVacationPlanPayload, "rendaId"> & {
+  rendaIds: string[];
+};
+
 export async function fetchVacationPlans(): Promise<VacationPlan[]> {
   const response = await fetch("/api/vacation-plans", { credentials: "include" });
   if (!response.ok) {
@@ -22,6 +26,11 @@ export async function fetchVacationPlans(): Promise<VacationPlan[]> {
 
 export async function createVacationPlan(payload: CreateVacationPlanPayload): Promise<VacationPlan> {
   const response = await apiRequest("POST", "/api/vacation-plans", payload);
+  return response.json();
+}
+
+export async function createVacationPlans(payload: CreateVacationPlansPayload): Promise<VacationPlan[]> {
+  const response = await apiRequest("POST", "/api/vacation-plans/batch", payload);
   return response.json();
 }
 

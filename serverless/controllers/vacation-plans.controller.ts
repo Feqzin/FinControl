@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { VacationPlansService } from "../services/vacation-plans.service.js";
-import { vacationPlanCreateBody } from "../validators/vacation-plans.validators.js";
+import { vacationPlanCreateBody, vacationPlansBatchCreateBody } from "../validators/vacation-plans.validators.js";
 import { getParam, getUserId, sendBadRequest, sendNotFound } from "./controller-utils.js";
 
 export function createVacationPlansController(service: VacationPlansService) {
@@ -20,6 +20,24 @@ export function createVacationPlansController(service: VacationPlansService) {
           INCOME_NOT_FIXED: "O Modo férias só pode pausar uma renda fixa.",
           INCOME_INACTIVE: "Selecione uma renda fixa ativa.",
           OVERLAPPING_PLAN: "Já existe um período de férias sobreposto para esta renda.",
+        } as const;
+        return sendBadRequest(res, messages[result.error]);
+      }
+
+      return res.status(201).json(result.created);
+    },
+
+    createBatch: async (req: Request, res: Response) => {
+      const parsed = vacationPlansBatchCreateBody.safeParse(req.body);
+      if (!parsed.success) return sendBadRequest(res, parsed.error.message);
+
+      const result = await service.createMany(getUserId(req), parsed.data);
+      if ("error" in result) {
+        const messages = {
+          INCOME_NOT_FOUND: "Uma das rendas não foi encontrada.",
+          INCOME_NOT_FIXED: "O Modo férias só pode pausar rendas fixas.",
+          INCOME_INACTIVE: "Selecione apenas rendas fixas ativas.",
+          OVERLAPPING_PLAN: "Já existe um período de férias sobreposto para uma das rendas selecionadas.",
         } as const;
         return sendBadRequest(res, messages[result.error]);
       }

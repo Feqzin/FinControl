@@ -24,15 +24,19 @@ const nullableMoneySchema = z.preprocess((value) => {
   return value;
 }, z.union([z.number().finite().min(0), z.null()]));
 
-export const vacationPlanCreateBody = z.object({
-  rendaId: z.string().trim().min(1, "Selecione uma renda fixa."),
+const vacationPlanCommonBody = z.object({
   startDate: fullDateSchema,
   durationDays: durationDaysSchema,
   vacationPayReceived: z.boolean().default(false),
   vacationPayDate: z.union([fullDateSchema, z.null(), z.undefined()]).transform((value) => value ?? null),
   vacationPayAmount: nullableMoneySchema,
   includedInPatrimony: z.boolean().default(false),
-}).superRefine((value, context) => {
+});
+
+function validatePatrimonyState(
+  value: { includedInPatrimony: boolean; vacationPayReceived: boolean },
+  context: z.RefinementCtx,
+) {
   if (value.includedInPatrimony && !value.vacationPayReceived) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -40,6 +44,18 @@ export const vacationPlanCreateBody = z.object({
       message: "O valor só pode constar no patrimônio quando já foi recebido.",
     });
   }
-});
+}
+
+export const vacationPlanCreateBody = vacationPlanCommonBody.extend({
+  rendaId: z.string().trim().min(1, "Selecione uma renda fixa."),
+}).superRefine(validatePatrimonyState);
+
+export const vacationPlansBatchCreateBody = vacationPlanCommonBody.extend({
+  rendaIds: z.array(z.string().trim().min(1))
+    .min(1, "Selecione pelo menos uma renda fixa.")
+    .max(20, "Selecione no máximo 20 rendas fixas.")
+    .refine((ids) => new Set(ids).size === ids.length, "Não repita a mesma renda fixa."),
+}).superRefine(validatePatrimonyState);
 
 export type VacationPlanCreateBodyInput = z.infer<typeof vacationPlanCreateBody>;
+export type VacationPlansBatchCreateBodyInput = z.infer<typeof vacationPlansBatchCreateBody>;
