@@ -8032,6 +8032,27 @@ test("Modo férias estima renda suspensa, adicional de um terço e pagamento ant
   assert.equal(estimate.endDate, "2026-09-30");
 });
 
+test("Modo férias calcula salário composto e antecipa dois dias para o caso de agosto", () => {
+  const income = { id: "income-combined", descricao: "Salário + Vale", valor: "2899.00" };
+  const plan = {
+    rendaId: income.id,
+    startDate: "2026-08-02",
+    durationDays: 30,
+    vacationPayReceived: false,
+    vacationPayDate: null,
+    vacationPayAmount: null,
+    includedInPatrimony: false,
+  };
+
+  const estimate = calculateVacationPlanEstimate(plan, income);
+
+  assert.equal(estimate.suspendedIncome, 2899);
+  assert.equal(estimate.estimatedVacationPay, 3865.33);
+  assert.equal(estimate.projectedVacationPay, 3865.33);
+  assert.equal(estimate.vacationPayDate, "2026-07-31");
+  assert.equal(estimate.endDate, "2026-08-31");
+});
+
 test("Modo férias distribui a pausa corretamente quando o período atravessa meses", () => {
   const income = { id: "income-1", descricao: "Salário", valor: "3000.00" };
   const plan = {

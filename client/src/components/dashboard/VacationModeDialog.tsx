@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarDays, Loader2, Trash2, Umbrella, WalletCards } from "lucide-react";
+import { CalendarDays, Loader2, LockKeyhole, LockKeyholeOpen, Trash2, Umbrella, WalletCards } from "lucide-react";
 import type { Renda, VacationPlan } from "@shared/schema";
 import {
   buildVacationPlanProjectionMonths,
@@ -81,6 +81,7 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
   const [vacationPayReceived, setVacationPayReceived] = useState(false);
   const [vacationPayDate, setVacationPayDate] = useState("");
   const [vacationPayAmount, setVacationPayAmount] = useState("");
+  const [vacationPayAmountLocked, setVacationPayAmountLocked] = useState(true);
   const [includedInPatrimony, setIncludedInPatrimony] = useState(false);
 
   useEffect(() => {
@@ -91,6 +92,10 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
       return fixedIncomes[0] ? [fixedIncomes[0].id] : [];
     });
   }, [fixedIncomes]);
+
+  useEffect(() => {
+    if (!vacationPayReceived) setVacationPayDate("");
+  }, [startDate, vacationPayReceived]);
 
   const selectedIncomes = useMemo(
     () => fixedIncomes.filter((income) => rendaIds.includes(income.id)),
@@ -106,7 +111,7 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
     };
   }, [selectedIncomes]);
   const normalizedDuration = Math.min(90, Math.max(1, Number.parseInt(durationDays, 10) || 1));
-  const normalizedAmount = vacationPayAmount.trim()
+  const normalizedAmount = !vacationPayAmountLocked && vacationPayAmount.trim()
     ? Number(vacationPayAmount.trim().replace(",", "."))
     : null;
   const draftPlan = useMemo<VacationProjectionPlan>(() => ({
@@ -115,7 +120,7 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
     durationDays: normalizedDuration,
     vacationPayReceived,
     vacationPayDate: vacationPayDate || null,
-    vacationPayAmount: Number.isFinite(normalizedAmount) ? normalizedAmount : null,
+    vacationPayAmount: !vacationPayAmountLocked && Number.isFinite(normalizedAmount) ? normalizedAmount : null,
     includedInPatrimony,
   }), [
     durationDays,
@@ -124,6 +129,7 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
     normalizedAmount,
     startDate,
     vacationPayAmount,
+    vacationPayAmountLocked,
     vacationPayDate,
     vacationPayReceived,
   ]);
@@ -167,8 +173,22 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
 
   const handleReceivedChange = (checked: boolean) => {
     setVacationPayReceived(checked);
-    if (!checked) setIncludedInPatrimony(false);
+    if (!checked) {
+      setIncludedInPatrimony(false);
+      setVacationPayDate("");
+    }
     if (checked && !vacationPayDate) setVacationPayDate(format(new Date(), "yyyy-MM-dd"));
+  };
+
+  const handleVacationPayAmountLock = () => {
+    if (vacationPayAmountLocked) {
+      setVacationPayAmount(estimate ? estimate.estimatedVacationPay.toFixed(2).replace(".", ",") : "");
+      setVacationPayAmountLocked(false);
+      return;
+    }
+
+    setVacationPayAmount("");
+    setVacationPayAmountLocked(true);
   };
 
   const handleSubmit = (event: FormEvent) => {
@@ -296,17 +316,43 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="vacation-payment-amount">Valor total pago ou esperado (opcional)</Label>
-                <Input
-                  id="vacation-payment-amount"
-                  inputMode="decimal"
-                  placeholder={estimate ? formatCurrencyBRL(estimate.estimatedVacationPay) : "R$ 0,00"}
-                  value={vacationPayAmount}
-                  onChange={(event) => setVacationPayAmount(event.target.value)}
-                />
+                <div className="flex gap-2">
+                  <Input
+                    id="vacation-payment-amount"
+                    inputMode="decimal"
+                    readOnly={vacationPayAmountLocked}
+                    value={vacationPayAmountLocked
+                      ? (estimate?.estimatedVacationPay.toFixed(2).replace(".", ",") ?? "")
+                      : vacationPayAmount}
+                    onChange={(event) => setVacationPayAmount(event.target.value)}
+                    className={vacationPayAmountLocked ? "bg-muted/45 text-muted-foreground" : ""}
+                    data-testid="input-vacation-payment-amount"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="shrink-0"
+                    aria-label={vacationPayAmountLocked
+                      ? "Desbloquear valor calculado"
+                      : "Usar novamente o valor automático"}
+                    title={vacationPayAmountLocked
+                      ? "Desbloquear para alterar o valor"
+                      : "Bloquear e voltar ao cálculo automático"}
+                    onClick={handleVacationPayAmountLock}
+                    data-testid="button-vacation-payment-amount-lock"
+                  >
+                    {vacationPayAmountLocked
+                      ? <LockKeyhole className="h-4 w-4" />
+                      : <LockKeyholeOpen className="h-4 w-4" />}
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  {selectedIncomes.length > 1
+                  {vacationPayAmountLocked
+                    ? "Calculado automaticamente com adicional de 1/3. Abra o cadeado para informar outro valor."
+                    : selectedIncomes.length > 1
                     ? "Se informado, será dividido proporcionalmente entre as rendas selecionadas."
-                    : "Se ficar vazio, usa a estimativa com adicional de 1/3."}
+                    : "Valor manual ativo. Feche o cadeado para voltar ao cálculo automático."}
                 </p>
               </div>
             </div>
