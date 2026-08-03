@@ -269,6 +269,16 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     () => simulationContext ? listFuturePurchaseReceivablePersonOptions(simulationContext) : [],
     [simulationContext],
   );
+  const consideredReceivablePeopleCount = useMemo(
+    () => receivablePersonOptions.filter((pessoa) => (
+      selectedReceivablePersonIds.includes(pessoa.id)
+      && (
+        (includePersonalReceivables && pessoa.hasPersonalReceivables)
+        || (includeCardReceivables && pessoa.hasCardReceivables)
+      )
+    )).length,
+    [includeCardReceivables, includePersonalReceivables, receivablePersonOptions, selectedReceivablePersonIds],
+  );
 
   const handleExpectedReceivablesToggle = (checked: boolean) => {
     setIncludeExpectedReceivables(checked);
@@ -798,7 +808,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                         </p>
                       </div>
                       <p className="text-xs font-medium text-sky-600">
-                        {selectedReceivablePersonIds.length} {selectedReceivablePersonIds.length === 1 ? "pessoa selecionada" : "pessoas selecionadas"}
+                        {consideredReceivablePeopleCount} {consideredReceivablePeopleCount === 1 ? "pessoa considerada" : "pessoas consideradas"}
                       </p>
                     </div>
 
@@ -827,6 +837,12 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                       <div className="grid gap-2 md:grid-cols-2">
                         {receivablePersonOptions.map((pessoa) => {
                           const checked = selectedReceivablePersonIds.includes(pessoa.id);
+                          const personalReceivablesIncluded = checked
+                            && includePersonalReceivables
+                            && pessoa.hasPersonalReceivables;
+                          const cardReceivablesIncluded = checked
+                            && includeCardReceivables
+                            && pessoa.hasCardReceivables;
                           return (
                             <label
                               key={pessoa.id}
@@ -841,8 +857,34 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                               <span className="min-w-0 space-y-2">
                                 <span className="block truncate text-sm font-medium text-foreground">{pessoa.nome}</span>
                                 <span className="flex flex-wrap gap-1.5">
-                                  {pessoa.hasPersonalReceivables && <Badge variant="outline">Dívidas pessoais</Badge>}
-                                  {pessoa.hasCardReceivables && <Badge variant="outline">Cartão</Badge>}
+                                  {pessoa.hasPersonalReceivables && (
+                                    <Badge
+                                      variant="outline"
+                                      className={personalReceivablesIncluded
+                                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                                        : "text-muted-foreground"}
+                                    >
+                                      {personalReceivablesIncluded
+                                        ? "Dívidas incluídas"
+                                        : checked && !includePersonalReceivables
+                                          ? "Dívidas fora do cálculo"
+                                          : "Dívidas disponíveis"}
+                                    </Badge>
+                                  )}
+                                  {pessoa.hasCardReceivables && (
+                                    <Badge
+                                      variant="outline"
+                                      className={cardReceivablesIncluded
+                                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                                        : "text-muted-foreground"}
+                                    >
+                                      {cardReceivablesIncluded
+                                        ? "Cartão incluído"
+                                        : checked && !includeCardReceivables
+                                          ? "Cartão fora do cálculo"
+                                          : "Cartão disponível"}
+                                    </Badge>
+                                  )}
                                 </span>
                               </span>
                             </label>
