@@ -6293,6 +6293,78 @@ test("simulador compra futura: compra cabe no orçamento", () => {
   assert.equal(result.monthsBelowReserveCount, 0);
 });
 
+test("simulador compra futura: patrimônio, dívidas pessoais e valores a receber são opções independentes", () => {
+  const context = buildFuturePurchaseContextFixture({
+    dividas: [
+      buildDividaFixture({
+        id: "divida-pagar",
+        tipo: "pagar",
+        valor: "300.00",
+        dataVencimento: "2026-06-15",
+      }),
+      buildDividaFixture({
+        id: "divida-receber",
+        tipo: "receber",
+        valor: "500.00",
+        dataVencimento: "2026-06-20",
+      }),
+    ],
+    rendas: [buildSimuladorRendaFixture({ valor: "0.00" })],
+    patrimonios: [buildSimuladorPatrimonioFixture({ valorAtual: "1200.00" })],
+  });
+  const baseInput = {
+    nomeCompra: "Compra pequena",
+    valorTotal: 100,
+    parcelas: 1,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-06",
+    reservaMinima: 0,
+    entradasExtras: [],
+    includeCardCommitments: false,
+  } satisfies FuturePurchaseSimulationInput;
+
+  const conservador = withFakeNow("2026-06-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, {
+    ...baseInput,
+    includeLiquidAssets: true,
+    includePersonalDebts: true,
+    includeExpectedReceivables: false,
+  }));
+  const alternativo = withFakeNow("2026-06-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, {
+    ...baseInput,
+    includeLiquidAssets: false,
+    includePersonalDebts: false,
+    includeExpectedReceivables: true,
+  }));
+
+  assert.equal(conservador.initialAvailableBalance, 1200);
+  assert.equal(conservador.months[0]?.actualExpenses, 300);
+  assert.equal(conservador.months[0]?.actualIncome, 0);
+  assert.equal(conservador.calculationBasis.personalDebtsConsidered, 300);
+  assert.equal(alternativo.initialAvailableBalance, 0);
+  assert.equal(alternativo.months[0]?.actualExpenses, 0);
+  assert.equal(alternativo.months[0]?.actualIncome, 500);
+  assert.equal(alternativo.calculationBasis.expectedReceivablesConsidered, 500);
+});
+
+test("simulador compra futura: sem saldo ou renda não sugere alguns centavos como compra segura", () => {
+  const context = buildFuturePurchaseContextFixture({
+    rendas: [buildSimuladorRendaFixture({ valor: "0.00" })],
+    patrimonios: [],
+  });
+
+  const result = withFakeNow("2026-06-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, {
+    nomeCompra: "Compra sem caixa",
+    valorTotal: 1000,
+    parcelas: 10,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-06",
+    reservaMinima: 0,
+    entradasExtras: [],
+  }));
+
+  assert.equal(result.safePurchaseAmount, 0);
+});
+
 test("simulador compra futura: compra pode deixar saldo negativo em mês futuro", () => {
   const context = buildFuturePurchaseContextFixture({
     servicos: [
@@ -6571,9 +6643,21 @@ test("simulador compra futura: compra no cartão respeita faturas futuras já ex
     reservaMinima: 0,
     entradasExtras: [],
   }));
+  const monthsWithoutCurrentCardExpenses = withFakeNow("2026-06-01T12:00:00.000Z", () => projectFuturePurchaseCashflow(context, {
+    nomeCompra: "Nova compra",
+    valorTotal: 200,
+    parcelas: 2,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-06",
+    reservaMinima: 0,
+    entradasExtras: [],
+    includeCardCommitments: false,
+  }));
 
   assert.equal(months[0]?.actualExpenses, 150);
   assert.equal(months[0]?.simulatedInstallment, 100);
+  assert.equal(monthsWithoutCurrentCardExpenses[0]?.actualExpenses, 0);
+  assert.equal(monthsWithoutCurrentCardExpenses[0]?.simulatedInstallment, 100);
 });
 
 test("simulador compra futura: fatura parcialmente paga reduz a saída real do mês", () => {

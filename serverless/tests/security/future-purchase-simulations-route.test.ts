@@ -30,6 +30,10 @@ type InMemorySimulation = {
   cardId: string | null;
   firstInstallmentMonth: string;
   minimumReserve: string;
+  includeLiquidAssets: boolean;
+  includePersonalDebts: boolean;
+  includeCardCommitments: boolean;
+  includeExpectedReceivables: boolean;
   extraIncomes: Array<{
     id: string;
     descricao: string;
@@ -147,6 +151,10 @@ function createSimulationPayload() {
     cardId: "cartao_a_1",
     firstInstallmentMonth: "2026-06",
     minimumReserve: 500,
+    includeLiquidAssets: true,
+    includePersonalDebts: true,
+    includeCardCommitments: true,
+    includeExpectedReceivables: false,
     extraIncomes: [{
       id: "extra-1",
       descricao: "Freela",
@@ -241,6 +249,10 @@ test("simulações de compra futura: CRUD respeita ownership e preserva snapshot
     assert.equal(created.userId, "user_a");
     assert.equal(created.extraIncomes.length, 1);
     assert.equal(created.monthlyTimelineSnapshot.length, 1);
+    assert.equal(created.includeLiquidAssets, true);
+    assert.equal(created.includePersonalDebts, true);
+    assert.equal(created.includeCardCommitments, true);
+    assert.equal(created.includeExpectedReceivables, false);
     const createdId = created.id as string;
 
     const listA = await fetch(`${baseUrl}/api/simulador/compra-futura/simulacoes`, {

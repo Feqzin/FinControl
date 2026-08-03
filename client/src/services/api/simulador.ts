@@ -13,6 +13,10 @@ export type FuturePurchaseSimulationPayload = {
   cardId: string | null;
   firstInstallmentMonth: string;
   minimumReserve: number;
+  includeLiquidAssets: boolean;
+  includePersonalDebts: boolean;
+  includeCardCommitments: boolean;
+  includeExpectedReceivables: boolean;
   extraIncomes: FuturePurchaseSimulationStoredExtraIncome[];
   resultStatus: "Pode comprar" | "Atenção" | "Não recomendado" | null;
   worstMonth: string | null;

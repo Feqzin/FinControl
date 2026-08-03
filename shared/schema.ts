@@ -602,6 +602,10 @@ export const futurePurchaseSimulations = pgTable("future_purchase_simulations", 
   cardId: varchar("card_id").references(() => cartoes.id, { onDelete: "set null" }),
   firstInstallmentMonth: text("first_installment_month").notNull(),
   minimumReserve: decimal("minimum_reserve", { precision: 12, scale: 2 }).notNull().default("0"),
+  includeLiquidAssets: boolean("include_liquid_assets").notNull().default(true),
+  includePersonalDebts: boolean("include_personal_debts").notNull().default(true),
+  includeCardCommitments: boolean("include_card_commitments").notNull().default(true),
+  includeExpectedReceivables: boolean("include_expected_receivables").notNull().default(false),
   extraIncomes: jsonb("extra_incomes")
     .$type<FuturePurchaseSimulationStoredExtraIncome[]>()
     .notNull()

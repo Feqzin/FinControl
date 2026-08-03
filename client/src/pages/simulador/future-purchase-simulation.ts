@@ -50,6 +50,22 @@ export type FuturePurchaseSimulationInput = {
   mesPrimeiraParcela: string;
   reservaMinima: number;
   entradasExtras: FuturePurchaseExtraReceivable[];
+  includeLiquidAssets?: boolean;
+  includePersonalDebts?: boolean;
+  includeCardCommitments?: boolean;
+  includeExpectedReceivables?: boolean;
+};
+
+export type FuturePurchaseSimulationCalculationBasis = {
+  includeLiquidAssets: boolean;
+  liquidAssetsAvailable: number;
+  liquidAssetsUsed: number;
+  includePersonalDebts: boolean;
+  personalDebtsConsidered: number;
+  includeCardCommitments: boolean;
+  cardCommitmentsConsidered: number;
+  includeExpectedReceivables: boolean;
+  expectedReceivablesConsidered: number;
 };
 
 export type FuturePurchaseSimulationBreakdownItem = {
@@ -124,6 +140,7 @@ export type FuturePurchaseSimulationResult = {
   primaryReason: string | null;
   lateExtraIncomeWarning: string | null;
   cardLimitAssessment: FuturePurchaseCardLimitAssessment;
+  calculationBasis: FuturePurchaseSimulationCalculationBasis;
   suggestions: FuturePurchaseSimulationSuggestion[];
 };
 
@@ -162,6 +179,7 @@ type PreparedCardLimitBase = {
 type PreparedFuturePurchaseProjectionBase = {
   currentMonthReference: string;
   normalizedInput: FuturePurchaseSimulationInput;
+  liquidAssetsAvailable: number;
   initialAvailableBalance: number;
   monthReferences: string[];
   staticCashflowByMonthReference: Map<string, StaticCashflowMonth>;
@@ -219,6 +237,10 @@ function normalizeFuturePurchaseSimulationInput(
     cartaoId: String(input.cartaoId ?? ""),
     mesPrimeiraParcela: normalizeMonthReference(input.mesPrimeiraParcela, currentMonthReference),
     reservaMinima: Math.max(0, round2(Number(input.reservaMinima) || 0)),
+    includeLiquidAssets: input.includeLiquidAssets !== false,
+    includePersonalDebts: input.includePersonalDebts !== false,
+    includeCardCommitments: input.includeCardCommitments !== false,
+    includeExpectedReceivables: input.includeExpectedReceivables === true,
     entradasExtras: (input.entradasExtras ?? []).map((entry) => ({
       id: String(entry.id ?? ""),
       descricao: String(entry.descricao ?? "").trim(),
@@ -268,13 +290,17 @@ function buildInstallmentSchedule(params: {
   firstInstallmentMonth: string;
 }): Map<string, number> {
   const schedule = new Map<string, number>();
-  const installmentAmount = resolveInstallmentAmount(params.totalAmount, params.installmentCount);
-  const months = listMonthReferences(params.firstInstallmentMonth, params.installmentCount);
+  const installmentCount = Math.max(1, Math.trunc(params.installmentCount));
+  const totalCents = Math.max(0, toCents(params.totalAmount) ?? 0);
+  const baseInstallmentCents = Math.floor(totalCents / installmentCount);
+  const remainderCents = totalCents % installmentCount;
+  const months = listMonthReferences(params.firstInstallmentMonth, installmentCount);
 
-  for (const monthReference of months) {
+  months.forEach((monthReference, index) => {
+    const installmentCents = baseInstallmentCents + (index < remainderCents ? 1 : 0);
     const current = schedule.get(monthReference) ?? 0;
-    schedule.set(monthReference, round2(current + installmentAmount));
-  }
+    schedule.set(monthReference, round2(current + installmentCents / 100));
+  });
 
   return schedule;
 }
@@ -349,6 +375,7 @@ function toBreakdownItem(event: FinancialCalendarEvent): FuturePurchaseSimulatio
 function buildStaticCashflowByMonthReference(
   context: FuturePurchaseSimulationContext,
   monthReferences: string[],
+  input: FuturePurchaseSimulationInput,
 ): Map<string, StaticCashflowMonth> {
   return new Map(monthReferences.map((monthReference) => {
     const events = buildFinancialCalendarEvents({
@@ -365,7 +392,15 @@ function buildStaticCashflowByMonthReference(
       rendas: context.rendas,
       metas: [],
       referenceDate: context.referenceDate,
-    }).filter((event) => CASHFLOW_SOURCES.has(event.source));
+    }).filter((event) => {
+      if (!CASHFLOW_SOURCES.has(event.source)) return false;
+      if (event.source === "divida_receber") return input.includeExpectedReceivables === true;
+      if (event.source === "divida_pagar") return input.includePersonalDebts !== false;
+      if (event.source === "fatura_cartao" || event.source === "parcela_compra") {
+        return input.includeCardCommitments !== false;
+      }
+      return true;
+    });
 
     const actualIncomeBreakdown = events
       .filter((event) => event.direction === "entrada" && getFinancialCalendarEventImpactAmount(event) > 0)
@@ -454,13 +489,15 @@ function prepareFuturePurchaseProjectionBase(
     normalizedInput.mesPrimeiraParcela,
     Math.max(normalizedInput.parcelas, maxInstallmentCount),
   );
+  const liquidAssetsAvailable = getLiquidBalance(context.patrimonios);
 
   return {
     currentMonthReference,
     normalizedInput,
-    initialAvailableBalance: getLiquidBalance(context.patrimonios),
+    liquidAssetsAvailable,
+    initialAvailableBalance: normalizedInput.includeLiquidAssets === false ? 0 : liquidAssetsAvailable,
     monthReferences,
-    staticCashflowByMonthReference: buildStaticCashflowByMonthReference(context, monthReferences),
+    staticCashflowByMonthReference: buildStaticCashflowByMonthReference(context, monthReferences, normalizedInput),
     simulatedExtraIncomeEntriesByMonthReference: buildSimulatedExtraIncomeEntriesByMonthReference(
       monthReferences,
       normalizedInput.entradasExtras,
@@ -941,6 +978,19 @@ export function buildFuturePurchaseSimulation(
     lateExtraIncomeWarning,
     cardLimitAssessment,
   });
+  const personalDebtsConsidered = round2(months.reduce((total, month) => (
+    total + month.actualExpenseBreakdown
+      .filter((item) => item.source === "divida_pagar")
+      .reduce((sum, item) => sum + item.impactAmount, 0)
+  ), 0));
+  const expectedReceivablesConsidered = round2(months.reduce((total, month) => (
+    total + month.actualIncomeBreakdown
+      .filter((item) => item.source === "divida_receber")
+      .reduce((sum, item) => sum + item.impactAmount, 0)
+  ), 0));
+  const cardCommitmentsConsidered = round2(
+    months.reduce((total, month) => total + month.actualCardExpenses, 0),
+  );
 
   return {
     status,
@@ -961,6 +1011,17 @@ export function buildFuturePurchaseSimulation(
     primaryReason,
     lateExtraIncomeWarning,
     cardLimitAssessment,
+    calculationBasis: {
+      includeLiquidAssets: normalizedInput.includeLiquidAssets !== false,
+      liquidAssetsAvailable: preparedBase.liquidAssetsAvailable,
+      liquidAssetsUsed: initialAvailableBalance,
+      includePersonalDebts: normalizedInput.includePersonalDebts !== false,
+      personalDebtsConsidered,
+      includeCardCommitments: normalizedInput.includeCardCommitments !== false,
+      cardCommitmentsConsidered,
+      includeExpectedReceivables: normalizedInput.includeExpectedReceivables === true,
+      expectedReceivablesConsidered,
+    },
     suggestions,
   };
 }

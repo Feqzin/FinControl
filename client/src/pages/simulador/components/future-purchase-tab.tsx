@@ -35,6 +35,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
@@ -135,6 +136,12 @@ function buildSuggestionIcon(suggestion: FuturePurchaseSimulationSuggestion) {
   return <AlertTriangle className="mt-0.5 h-4 w-4 text-red-600" />;
 }
 
+function getSimpleStatusLabel(status: "Pode comprar" | "Atenção" | "Não recomendado"): string {
+  if (status === "Pode comprar") return "A compra cabe no orçamento";
+  if (status === "Atenção") return "A compra cabe, mas aperta o orçamento";
+  return "Melhor não comprar agora";
+}
+
 export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
   const { visible } = useValuesVisibility();
   const { toast } = useToast();
@@ -164,6 +171,10 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
   const [mesPrimeiraParcela, setMesPrimeiraParcela] = useState(currentMonth);
   const [reservaMinima, setReservaMinima] = useState("");
   const [entradasExtras, setEntradasExtras] = useState<ExtraReceivableFormRow[]>([]);
+  const [includeLiquidAssets, setIncludeLiquidAssets] = useState(true);
+  const [includePersonalDebts, setIncludePersonalDebts] = useState(true);
+  const [includeCardCommitments, setIncludeCardCommitments] = useState(true);
+  const [includeExpectedReceivables, setIncludeExpectedReceivables] = useState(false);
   const [savedSimulationsOpen, setSavedSimulationsOpen] = useState(false);
   const [activeSimulationId, setActiveSimulationId] = useState<string | null>(null);
   const [loadingSavedSimulationId, setLoadingSavedSimulationId] = useState<string | null>(null);
@@ -178,6 +189,10 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     setMesPrimeiraParcela(currentMonth);
     setReservaMinima("");
     setEntradasExtras([]);
+    setIncludeLiquidAssets(true);
+    setIncludePersonalDebts(true);
+    setIncludeCardCommitments(true);
+    setIncludeExpectedReceivables(false);
   };
 
   useEffect(() => {
@@ -210,7 +225,11 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     mesPrimeiraParcela,
     reservaMinima: parseMoney(reservaMinima) ?? 0,
     entradasExtras: entradasExtrasNormalizadas,
-  }), [cartaoId, entradasExtrasNormalizadas, mesPrimeiraParcela, nomeCompra, parcelas, reservaMinima, valorTotal]);
+    includeLiquidAssets,
+    includePersonalDebts,
+    includeCardCommitments,
+    includeExpectedReceivables,
+  }), [cartaoId, entradasExtrasNormalizadas, includeCardCommitments, includeExpectedReceivables, includeLiquidAssets, includePersonalDebts, mesPrimeiraParcela, nomeCompra, parcelas, reservaMinima, valorTotal]);
 
   const debouncedSimulationInput = useDebouncedValue(
     immediateSimulationInput,
@@ -261,6 +280,10 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
       cardId: cartaoId || null,
       firstInstallmentMonth: mesPrimeiraParcela,
       minimumReserve: parseMoney(reservaMinima) ?? 0,
+      includeLiquidAssets,
+      includePersonalDebts,
+      includeCardCommitments,
+      includeExpectedReceivables,
       extraIncomes: entradasExtrasNormalizadas,
       resultStatus: simulation.status,
       worstMonth: simulation.worstMonth?.monthReference ?? null,
@@ -280,6 +303,10 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     setCartaoId(savedSimulation.cardId ?? "");
     setMesPrimeiraParcela(savedSimulation.firstInstallmentMonth);
     setReservaMinima(numberToInputValue(savedSimulation.minimumReserve));
+    setIncludeLiquidAssets(savedSimulation.includeLiquidAssets !== false);
+    setIncludePersonalDebts(savedSimulation.includePersonalDebts !== false);
+    setIncludeCardCommitments(savedSimulation.includeCardCommitments !== false);
+    setIncludeExpectedReceivables(savedSimulation.includeExpectedReceivables === true);
     setEntradasExtras((savedSimulation.extraIncomes ?? []).map((entry) => ({
       id: entry.id,
       descricao: entry.descricao,
@@ -461,7 +488,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                           : "w-fit border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
                     }
                   >
-                    {simulation?.status ?? "Aguardando dados"}
+                    {simulation ? getSimpleStatusLabel(simulation.status) : "Aguardando dados"}
                   </Badge>
                   {activeSimulationId ? (
                     <Badge variant="outline" className="border-border/70 bg-background/80 text-foreground">
@@ -475,9 +502,22 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                   <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
                     Simule uma compra parcelada sem mexer nos seus dados reais e veja mês a mês se o cenário segue saudável.
                   </p>
-                  {simulation?.primaryReason ? (
-                    <p className={`text-sm font-medium ${simulation.status === "Não recomendado" ? "text-red-700" : "text-amber-700"}`}>
-                      {simulation.primaryReason}
+                  {simulation ? (
+                    <p className={`text-sm font-medium ${
+                      simulation.status === "Não recomendado"
+                        ? "text-red-700"
+                        : simulation.status === "Atenção"
+                          ? "text-amber-700"
+                          : "text-emerald-700"
+                    }`}
+                    >
+                      {simulation.status === "Pode comprar"
+                        ? `Depois de pagar a compra e os compromissos marcados, o menor saldo previsto é ${fc(simulation.lowestBalance)}.`
+                        : simulation.cardLimitAssessment.applicable && !simulation.cardLimitAssessment.fits
+                          ? `O cartão não tem limite suficiente: faltam ${fc(simulation.cardLimitShortfall)}.`
+                          : simulation.status === "Atenção"
+                            ? `No mês mais apertado, o saldo pode cair para ${fc(simulation.lowestBalance)} e ficar abaixo da reserva desejada.`
+                            : `No mês mais apertado, faltariam ${fc(Math.abs(simulation.lowestBalance))} para fechar as contas.`}
                     </p>
                   ) : null}
                   {simulation?.lateExtraIncomeWarning ? (
@@ -494,7 +534,15 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
 
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1">
-                    Saldo líquido inicial considerado: {simulation ? fc(simulation.initialAvailableBalance) : fc(0)}
+                    {includeLiquidAssets
+                      ? `Patrimônio usado como saldo inicial: ${simulation ? fc(simulation.initialAvailableBalance) : fc(0)}`
+                      : "Patrimônio fora do cálculo"}
+                  </span>
+                  <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1">
+                    Dívidas pessoais {includePersonalDebts ? "incluídas" : "ignoradas"}
+                  </span>
+                  <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1">
+                    Faturas atuais {includeCardCommitments ? "incluídas" : "ignoradas no orçamento"}
                   </span>
                   {selectedCard ? (
                     <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1">
@@ -522,31 +570,31 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                   </p>
                 </div>
                 <div className="rounded-2xl border border-border/60 bg-background/85 p-4 shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Parcela simulada</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Parcela por mês</p>
                   <p className="mt-2 text-base font-semibold text-foreground">
                     {simulation ? fc(simulation.installmentAmount) : fc(0)}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-border/60 bg-background/85 p-4 shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Entradas extras no período</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Dinheiro extra informado</p>
                   <p className="mt-2 text-base font-semibold text-foreground">
                     {simulation ? fc(simulation.totalSimulatedExtraIncome) : fc(0)}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-border/60 bg-background/85 p-4 shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Pior mês</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Mês mais apertado</p>
                   <p className="mt-2 text-base font-semibold text-foreground">
                     {simulation?.worstMonth?.label ?? "Defina a compra"}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-border/60 bg-background/85 p-4 shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Menor saldo</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Menor saldo previsto</p>
                   <p className={`mt-2 text-base font-semibold ${simulation && simulation.lowestBalance < 0 ? "text-red-600" : "text-foreground"}`}>
                     {simulation ? fc(simulation.lowestBalance) : fc(0)}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-border/60 bg-background/85 p-4 shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Limite após compra</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Limite que sobra</p>
                   <p className={`mt-2 text-base font-semibold ${
                     simulation?.cardLimitAssessment.applicable && !simulation.cardLimitAssessment.fits
                       ? "text-red-600"
@@ -656,8 +704,51 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                 </div>
               </div>
 
+              <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/15 p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-foreground">O que deve entrar no cálculo?</p>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    Marque somente o dinheiro e os compromissos que você quer considerar. O limite real do cartão sempre será respeitado.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 2xl:grid-cols-2">
+                  <div className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-background/80 p-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="include-liquid-assets" className="cursor-pointer font-medium">Patrimônio disponível hoje</Label>
+                      <p className="text-xs leading-5 text-muted-foreground">Usa contas bancárias, dinheiro e poupança como saldo inicial.</p>
+                    </div>
+                    <Switch id="include-liquid-assets" checked={includeLiquidAssets} onCheckedChange={setIncludeLiquidAssets} />
+                  </div>
+
+                  <div className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-background/80 p-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="include-personal-debts" className="cursor-pointer font-medium">Dívidas pessoais a pagar</Label>
+                      <p className="text-xs leading-5 text-muted-foreground">Desconta as dívidas pessoais previstas durante as parcelas.</p>
+                    </div>
+                    <Switch id="include-personal-debts" checked={includePersonalDebts} onCheckedChange={setIncludePersonalDebts} />
+                  </div>
+
+                  <div className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-background/80 p-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="include-card-commitments" className="cursor-pointer font-medium">Faturas e compras dos cartões</Label>
+                      <p className="text-xs leading-5 text-muted-foreground">Desconta as faturas atuais do orçamento projetado.</p>
+                    </div>
+                    <Switch id="include-card-commitments" checked={includeCardCommitments} onCheckedChange={setIncludeCardCommitments} />
+                  </div>
+
+                  <div className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-background/80 p-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="include-expected-receivables" className="cursor-pointer font-medium">Valores que outras pessoas devem</Label>
+                      <p className="text-xs leading-5 text-muted-foreground">Fica desligado por padrão para não depender de um recebimento incerto.</p>
+                    </div>
+                    <Switch id="include-expected-receivables" checked={includeExpectedReceivables} onCheckedChange={setIncludeExpectedReceivables} />
+                  </div>
+                </div>
+              </div>
+
               {simulation ? (
-                <div className="grid gap-3 rounded-2xl border border-border/60 bg-muted/20 p-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-3 rounded-2xl border border-border/60 bg-muted/20 p-4 md:grid-cols-2 2xl:grid-cols-4">
                   <div>
                     <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Compra máxima segura</p>
                     <p className="mt-1 text-lg font-semibold text-foreground">{fc(simulation.safePurchaseAmount)}</p>
@@ -804,7 +895,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2 text-base">
                 <ReceiptText className="h-4 w-4" />
-                Sugestões do cenário
+                Entenda o resultado
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -814,6 +905,47 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                 </p>
               ) : (
                 <>
+                  <div className="space-y-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">O cálculo considerou</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
+                        <p className="text-sm font-medium text-foreground">Patrimônio disponível</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {simulation.calculationBasis.includeLiquidAssets
+                            ? `${fc(simulation.calculationBasis.liquidAssetsUsed)} usados como saldo inicial`
+                            : `Não considerado · disponível hoje: ${fc(simulation.calculationBasis.liquidAssetsAvailable)}`}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
+                        <p className="text-sm font-medium text-foreground">Dívidas pessoais</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {simulation.calculationBasis.includePersonalDebts
+                            ? `${fc(simulation.calculationBasis.personalDebtsConsidered)} descontados no período`
+                            : "Não consideradas nesta simulação"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
+                        <p className="text-sm font-medium text-foreground">Faturas atuais</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {simulation.calculationBasis.includeCardCommitments
+                            ? `${fc(simulation.calculationBasis.cardCommitmentsConsidered)} descontados no período`
+                            : "Fora do orçamento; o limite real ainda foi respeitado"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
+                        <p className="text-sm font-medium text-foreground">Valores a receber</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {simulation.calculationBasis.includeExpectedReceivables
+                            ? `${fc(simulation.calculationBasis.expectedReceivablesConsidered)} somados no período`
+                            : "Não considerados, deixando a projeção mais conservadora"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">O que você pode fazer</p>
                   <div className="space-y-3">
                     {simulation.suggestions.length === 0 ? (
                       <div className="rounded-2xl border border-border/60 bg-background/80 p-4 text-sm text-muted-foreground">
@@ -831,17 +963,17 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
 
                   <Separator />
 
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                     <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Reserva mínima</p>
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Dinheiro que você quer preservar</p>
                       <p className="mt-1 text-lg font-semibold text-foreground">{fc(immediateSimulationInput.reservaMinima)}</p>
                     </div>
                     <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Receita extra necessária</p>
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Valor que faltaria para não apertar</p>
                       <p className="mt-1 text-lg font-semibold text-foreground">{fc(simulation.extraAmountNeeded)}</p>
                     </div>
                     <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Limite antes da compra</p>
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Limite livre hoje</p>
                       <p className="mt-1 text-lg font-semibold text-foreground">
                         {simulation.cardLimitAssessment.applicable
                           ? fc(simulation.cardLimitAssessment.availableBeforePurchase)
@@ -849,7 +981,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                       </p>
                     </div>
                     <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Comprometido após compra</p>
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Total usado após a compra</p>
                       <p className="mt-1 text-lg font-semibold text-foreground">
                         {simulation.cardLimitAssessment.applicable
                           ? fc(simulation.cardLimitAssessment.committedAfterPurchase)
@@ -857,7 +989,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                       </p>
                     </div>
                     <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Limite após compra</p>
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Limite que sobra</p>
                       <p className={`mt-1 text-lg font-semibold ${
                         simulation.cardLimitAssessment.applicable && !simulation.cardLimitAssessment.fits
                           ? "text-red-600"
@@ -870,7 +1002,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                       </p>
                     </div>
                     <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Falta de limite</p>
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Quanto passaria do limite</p>
                       <p className="mt-1 text-lg font-semibold text-foreground">{fc(simulation.cardLimitShortfall)}</p>
                     </div>
                   </div>
@@ -963,25 +1095,25 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                     </div>
                   </div>
 
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-6">
                     <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
                       <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Saldo inicial</p>
                       <p className="mt-1 text-sm font-semibold text-foreground">{fc(month.startingBalance)}</p>
                     </div>
                     <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Entradas reais</p>
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Dinheiro que entra</p>
                       <p className="mt-1 text-sm font-semibold text-emerald-600">{fc(month.actualIncome)}</p>
                     </div>
                     <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Entradas extras</p>
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Dinheiro extra</p>
                       <p className="mt-1 text-sm font-semibold text-emerald-600">{fc(month.simulatedExtraIncome)}</p>
                     </div>
                     <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Saídas reais</p>
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Contas fora do cartão</p>
                       <p className="mt-1 text-sm font-semibold text-rose-600">{fc(month.actualNonCardExpenses)}</p>
                     </div>
                     <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Cartão / faturas</p>
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Faturas existentes</p>
                       <p className="mt-1 text-sm font-semibold text-rose-600">{fc(month.actualCardExpenses)}</p>
                     </div>
                     <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
