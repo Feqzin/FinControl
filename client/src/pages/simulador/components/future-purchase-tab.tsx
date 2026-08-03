@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import type { DashboardOverviewResponse } from "@shared/financial";
-import type { FuturePurchaseSimulation, Parcela } from "@shared/schema";
+import type { FuturePurchaseSimulation, Parcela, VacationPlan } from "@shared/schema";
 import {
   AlertTriangle,
   ArrowUpRight,
   CalendarClock,
   Copy,
   CreditCard,
+  FileDown,
   FolderOpen,
   Loader2,
   PiggyBank,
@@ -19,11 +20,12 @@ import {
   ShieldCheck,
   ShoppingBag,
   Trash2,
+  Umbrella,
 } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -41,6 +43,8 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { useValuesVisibility, maskValue } from "@/context/values-visibility";
 import { parseMoney } from "@/lib/money";
+import { FuturePurchaseBalanceChart } from "@/pages/simulador/components/future-purchase-balance-chart";
+import { FuturePurchaseReceivableSelector } from "@/pages/simulador/components/future-purchase-receivable-selector";
 import {
   buildFuturePurchaseSimulation,
   canBuildFuturePurchaseSimulationInput,
@@ -49,6 +53,7 @@ import {
   type FuturePurchaseSimulationInput,
   type FuturePurchaseSimulationSuggestion,
 } from "@/pages/simulador/future-purchase-simulation";
+import { buildFuturePurchaseMonthlyEquation, buildFuturePurchaseReportData } from "@/pages/simulador/future-purchase-report";
 import { fetchDashboardOverview } from "@/services/api/dashboard";
 import {
   createFuturePurchaseSimulation,
@@ -57,6 +62,7 @@ import {
   listFuturePurchaseSimulations,
   updateFuturePurchaseSimulation,
 } from "@/services/api/simulador";
+import { fetchVacationPlans } from "@/services/api/vacation-plans";
 
 type FuturePurchaseTabProps = {
   resetSignal: number;
@@ -161,9 +167,13 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     queryKey: [...SAVED_SIMULATIONS_QUERY_KEY],
     queryFn: listFuturePurchaseSimulations,
   });
+  const vacationPlansQuery = useQuery<VacationPlan[]>({
+    queryKey: ["/api/vacation-plans"],
+    queryFn: fetchVacationPlans,
+  });
 
-  const isLoading = overviewQuery.isLoading || parcelasQuery.isLoading;
-  const error = overviewQuery.error ?? parcelasQuery.error;
+  const isLoading = overviewQuery.isLoading || parcelasQuery.isLoading || vacationPlansQuery.isLoading;
+  const error = overviewQuery.error ?? parcelasQuery.error ?? vacationPlansQuery.error;
 
   const [nomeSimulacao, setNomeSimulacao] = useState("");
   const [nomeCompra, setNomeCompra] = useState("");
@@ -179,10 +189,12 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
   const [includeExpectedReceivables, setIncludeExpectedReceivables] = useState(false);
   const [includePersonalReceivables, setIncludePersonalReceivables] = useState(true);
   const [includeCardReceivables, setIncludeCardReceivables] = useState(true);
+  const [includeVacationPlans, setIncludeVacationPlans] = useState(false);
   const [selectedReceivablePersonIds, setSelectedReceivablePersonIds] = useState<string[]>([]);
   const [savedSimulationsOpen, setSavedSimulationsOpen] = useState(false);
   const [activeSimulationId, setActiveSimulationId] = useState<string | null>(null);
   const [loadingSavedSimulationId, setLoadingSavedSimulationId] = useState<string | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const resetLocalScenario = (nextCardId?: string) => {
     setActiveSimulationId(null);
@@ -200,6 +212,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     setIncludeExpectedReceivables(false);
     setIncludePersonalReceivables(true);
     setIncludeCardReceivables(true);
+    setIncludeVacationPlans(false);
     setSelectedReceivablePersonIds([]);
   };
 
@@ -239,8 +252,9 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     includeExpectedReceivables,
     includePersonalReceivables,
     includeCardReceivables,
+    includeVacationPlans,
     selectedReceivablePersonIds,
-  }), [cartaoId, entradasExtrasNormalizadas, includeCardCommitments, includeCardReceivables, includeExpectedReceivables, includeLiquidAssets, includePersonalDebts, includePersonalReceivables, mesPrimeiraParcela, nomeCompra, parcelas, reservaMinima, selectedReceivablePersonIds, valorTotal]);
+  }), [cartaoId, entradasExtrasNormalizadas, includeCardCommitments, includeCardReceivables, includeExpectedReceivables, includeLiquidAssets, includePersonalDebts, includePersonalReceivables, includeVacationPlans, mesPrimeiraParcela, nomeCompra, parcelas, reservaMinima, selectedReceivablePersonIds, valorTotal]);
 
   const debouncedSimulationInput = useDebouncedValue(
     immediateSimulationInput,
@@ -262,37 +276,19 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
       rendas: overviewQuery.data.rendas,
       patrimonios: overviewQuery.data.patrimonios,
       pessoas: overviewQuery.data.pessoas,
+      vacationPlans: vacationPlansQuery.data ?? [],
     };
-  }, [overviewQuery.data, parcelasQuery.data]);
+  }, [overviewQuery.data, parcelasQuery.data, vacationPlansQuery.data]);
 
   const receivablePersonOptions = useMemo(
     () => simulationContext ? listFuturePurchaseReceivablePersonOptions(simulationContext) : [],
     [simulationContext],
   );
-  const consideredReceivablePeopleCount = useMemo(
-    () => receivablePersonOptions.filter((pessoa) => (
-      selectedReceivablePersonIds.includes(pessoa.id)
-      && (
-        (includePersonalReceivables && pessoa.hasPersonalReceivables)
-        || (includeCardReceivables && pessoa.hasCardReceivables)
-      )
-    )).length,
-    [includeCardReceivables, includePersonalReceivables, receivablePersonOptions, selectedReceivablePersonIds],
-  );
-
   const handleExpectedReceivablesToggle = (checked: boolean) => {
     setIncludeExpectedReceivables(checked);
     if (checked && selectedReceivablePersonIds.length === 0) {
       setSelectedReceivablePersonIds(receivablePersonOptions.map((pessoa) => pessoa.id));
     }
-  };
-
-  const handleReceivablePersonToggle = (personId: string, checked: boolean) => {
-    setSelectedReceivablePersonIds((current) => (
-      checked
-        ? Array.from(new Set([...current, personId]))
-        : current.filter((id) => id !== personId)
-    ));
   };
 
   const canSimulateImmediately = Boolean(simulationContext)
@@ -305,6 +301,10 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     if (!canSimulateDebounced || !simulationContext) return null;
     return buildFuturePurchaseSimulation(simulationContext, debouncedSimulationInput);
   }, [canSimulateDebounced, debouncedSimulationInput, simulationContext]);
+  const allSimulationMonthsReconciled = useMemo(
+    () => simulation?.months.every((month) => buildFuturePurchaseMonthlyEquation(month).reconciled) ?? false,
+    [simulation],
+  );
 
   const selectedCard = useMemo(
     () => overviewQuery.data?.cartoes.find((card) => card.id === cartaoId) ?? null,
@@ -328,6 +328,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
       includeExpectedReceivables,
       includePersonalReceivables,
       includeCardReceivables,
+      includeVacationPlans,
       selectedReceivablePersonIds,
       extraIncomes: entradasExtrasNormalizadas,
       resultStatus: simulation.status,
@@ -354,6 +355,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     setIncludeExpectedReceivables(savedSimulation.includeExpectedReceivables === true);
     setIncludePersonalReceivables(savedSimulation.includePersonalReceivables !== false);
     setIncludeCardReceivables(savedSimulation.includeCardReceivables !== false);
+    setIncludeVacationPlans(savedSimulation.includeVacationPlans === true);
     setSelectedReceivablePersonIds(
       savedSimulation.selectedReceivablePersonIds == null && savedSimulation.includeExpectedReceivables === true
         ? receivablePersonOptions.map((pessoa) => pessoa.id)
@@ -465,6 +467,34 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     await deleteSimulationMutation.mutateAsync(savedSimulation.id);
   };
 
+  const handleGeneratePdf = async () => {
+    if (!simulation) return;
+    setIsGeneratingPdf(true);
+    try {
+      const report = buildFuturePurchaseReportData({
+        simulationName: nomeSimulacao,
+        purchaseName: nomeCompra,
+        cardName: selectedCard?.nome ?? "Cartão não informado",
+        input: immediateSimulationInput,
+        result: simulation,
+      });
+      const { generateFuturePurchaseReportPdf } = await import("@/pages/simulador/future-purchase-report-pdf");
+      await generateFuturePurchaseReportPdf(report);
+      toast({
+        title: "PDF completo gerado",
+        description: "O arquivo inclui premissas, gráfico, fórmulas e todos os itens mês a mês.",
+      });
+    } catch (pdfError) {
+      toast({
+        title: "Não foi possível gerar o PDF",
+        description: pdfError instanceof Error ? pdfError.message : "Tente novamente em instantes.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   const savedCardName = (cardId: string | null) => {
     if (!cardId) return "Sem cartão";
     return overviewQuery.data?.cartoes.find((card) => card.id === cardId)?.nome ?? "Cartão removido";
@@ -505,6 +535,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
               onClick={() => {
                 void overviewQuery.refetch();
                 void parcelasQuery.refetch();
+                void vacationPlansQuery.refetch();
               }}
             >
               Recarregar
@@ -595,6 +626,9 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                   </span>
                   <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1">
                     Faturas atuais {includeCardCommitments ? "incluídas" : "ignoradas no orçamento"}
+                  </span>
+                  <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1">
+                    Modo Férias {includeVacationPlans ? "incluído" : "fora do cálculo"}
                   </span>
                   {selectedCard ? (
                     <span className="rounded-full border border-border/60 bg-background/80 px-3 py-1">
@@ -796,108 +830,33 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                     </div>
                     <Switch id="include-expected-receivables" checked={includeExpectedReceivables} onCheckedChange={handleExpectedReceivablesToggle} />
                   </div>
-                </div>
 
-                {includeExpectedReceivables && (
-                  <div className="space-y-4 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="space-y-1">
-                        <p className="text-sm font-semibold text-foreground">De quem você espera receber?</p>
-                        <p className="text-xs leading-5 text-muted-foreground">
-                          Selecione apenas pessoas em quem você quer confiar nesta projeção. Valores vencidos entram no primeiro mês.
-                        </p>
-                      </div>
-                      <p className="text-xs font-medium text-sky-600">
-                        {consideredReceivablePeopleCount} {consideredReceivablePeopleCount === 1 ? "pessoa considerada" : "pessoas consideradas"}
+                  <div className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-background/80 p-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="include-vacation-plans" className="flex cursor-pointer items-center gap-2 font-medium">
+                        <Umbrella className="h-4 w-4 text-sky-600" />
+                        Modo Férias
+                      </Label>
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        Pausa as rendas planejadas e inclui o adiantamento quando ele ainda não está no patrimônio.
+                        {` ${vacationPlansQuery.data?.length ?? 0} planejamento(s) cadastrado(s).`}
                       </p>
                     </div>
-
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-background/80 p-3">
-                        <div className="space-y-1">
-                          <Label htmlFor="include-personal-receivables" className="cursor-pointer text-sm font-medium">Dívidas pessoais</Label>
-                          <p className="text-xs text-muted-foreground">Inclui dívidas manuais com expectativa de recebimento.</p>
-                        </div>
-                        <Switch id="include-personal-receivables" checked={includePersonalReceivables} onCheckedChange={setIncludePersonalReceivables} />
-                      </div>
-                      <div className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-background/80 p-3">
-                        <div className="space-y-1">
-                          <Label htmlFor="include-card-receivables" className="cursor-pointer text-sm font-medium">Parcelas de cartão</Label>
-                          <p className="text-xs text-muted-foreground">Inclui reembolsos pendentes de compras vinculadas.</p>
-                        </div>
-                        <Switch id="include-card-receivables" checked={includeCardReceivables} onCheckedChange={setIncludeCardReceivables} />
-                      </div>
-                    </div>
-
-                    {receivablePersonOptions.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-border/70 bg-background/60 p-4 text-sm text-muted-foreground">
-                        Nenhuma pessoa possui dívida pessoal esperada ou reembolso de cartão pendente.
-                      </div>
-                    ) : (
-                      <div className="grid gap-2 md:grid-cols-2">
-                        {receivablePersonOptions.map((pessoa) => {
-                          const checked = selectedReceivablePersonIds.includes(pessoa.id);
-                          const personalReceivablesIncluded = checked
-                            && includePersonalReceivables
-                            && pessoa.hasPersonalReceivables;
-                          const cardReceivablesIncluded = checked
-                            && includeCardReceivables
-                            && pessoa.hasCardReceivables;
-                          return (
-                            <label
-                              key={pessoa.id}
-                              htmlFor={`receivable-person-${pessoa.id}`}
-                              className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/60 bg-background/80 p-3 transition-colors hover:border-sky-500/40 hover:bg-sky-500/5"
-                            >
-                              <Checkbox
-                                id={`receivable-person-${pessoa.id}`}
-                                checked={checked}
-                                onCheckedChange={(value) => handleReceivablePersonToggle(pessoa.id, value === true)}
-                              />
-                              <span className="min-w-0 space-y-2">
-                                <span className="block truncate text-sm font-medium text-foreground">{pessoa.nome}</span>
-                                <span className="flex flex-wrap gap-1.5">
-                                  {pessoa.hasPersonalReceivables && (
-                                    <Badge
-                                      variant="outline"
-                                      className={personalReceivablesIncluded
-                                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                                        : "text-muted-foreground"}
-                                    >
-                                      {personalReceivablesIncluded
-                                        ? "Dívidas incluídas"
-                                        : checked && !includePersonalReceivables
-                                          ? "Dívidas fora do cálculo"
-                                          : "Dívidas disponíveis"}
-                                    </Badge>
-                                  )}
-                                  {pessoa.hasCardReceivables && (
-                                    <Badge
-                                      variant="outline"
-                                      className={cardReceivablesIncluded
-                                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                                        : "text-muted-foreground"}
-                                    >
-                                      {cardReceivablesIncluded
-                                        ? "Cartão incluído"
-                                        : checked && !includeCardReceivables
-                                          ? "Cartão fora do cálculo"
-                                          : "Cartão disponível"}
-                                    </Badge>
-                                  )}
-                                </span>
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    <p className="text-xs leading-5 text-muted-foreground">
-                      Dívidas marcadas como “Sem expectativa” continuam fora do cálculo, mesmo quando a pessoa estiver selecionada.
-                    </p>
+                    <Switch id="include-vacation-plans" checked={includeVacationPlans} onCheckedChange={setIncludeVacationPlans} />
                   </div>
-                )}
+                </div>
+
+                {includeExpectedReceivables ? (
+                  <FuturePurchaseReceivableSelector
+                    options={receivablePersonOptions}
+                    selectedIds={selectedReceivablePersonIds}
+                    includePersonalReceivables={includePersonalReceivables}
+                    includeCardReceivables={includeCardReceivables}
+                    onIncludePersonalReceivablesChange={setIncludePersonalReceivables}
+                    onIncludeCardReceivablesChange={setIncludeCardReceivables}
+                    onSelectionChange={setSelectedReceivablePersonIds}
+                  />
+                ) : null}
               </div>
 
               {simulation ? (
@@ -1100,6 +1059,17 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                           </p>
                         )}
                       </div>
+                      <div className="rounded-xl border border-border/60 bg-muted/15 p-3 sm:col-span-2">
+                        <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+                          <Umbrella className="h-4 w-4 text-sky-600" />
+                          Modo Férias
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          {simulation.calculationBasis.includeVacationPlans
+                            ? `${simulation.calculationBasis.vacationPlansConsidered} planejamento(s): ${fc(simulation.calculationBasis.vacationSuspendedIncome)} de renda pausada e ${fc(simulation.calculationBasis.vacationPayIncome)} de adiantamento.`
+                            : "Não considerado nesta simulação; as rendas seguem normalmente."}
+                        </p>
+                      </div>
                     </div>
                   </div>
 
@@ -1201,6 +1171,10 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                       <FolderOpen className="mr-2 h-4 w-4" />
                       Ver simulações salvas
                     </Button>
+                    <Button variant="outline" disabled={!simulation || isGeneratingPdf} onClick={() => void handleGeneratePdf()}>
+                      {isGeneratingPdf ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4" />}
+                      Baixar PDF completo
+                    </Button>
                     <Button variant="ghost" onClick={() => resetLocalScenario(overviewQuery.data?.cartoes[0]?.id)}>
                       Cancelar
                     </Button>
@@ -1211,125 +1185,190 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
           </Card>
 
           <Card>
-            <CardHeader className="pb-4">
+            <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
-                <CalendarClock className="h-4 w-4" />
-                Linha do tempo mensal
+                <PiggyBank className="h-4 w-4 text-emerald-600" />
+                Veja de um jeito simples
               </CardTitle>
+              <p className="text-sm leading-6 text-muted-foreground">
+                Cada barra mostra quanto dinheiro sobraria no fim do mês. Quanto mais alta, mais folga você tem.
+              </p>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent>
               {!simulation ? (
-                <p className="text-sm text-muted-foreground">
-                  Assim que a compra for preenchida, esta área vai projetar entradas, saídas, faturas, parcela simulada e saldo final mês a mês.
-                </p>
-              ) : simulation.months.map((month) => (
-                <div key={month.monthReference} className="rounded-2xl border border-border/60 bg-background/85 p-4 shadow-sm">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="space-y-1">
-                      <p className="text-sm font-semibold text-foreground">{month.label}</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {month.simulatedInstallment > 0 ? (
-                          <Badge variant="outline" className="border-sky-500/30 bg-sky-500/10 text-sky-700">
-                            Parcela simulada
-                          </Badge>
-                        ) : null}
-                        {month.belowZero ? (
-                          <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-700">
-                            No vermelho
-                          </Badge>
-                        ) : month.belowReserve ? (
-                          <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700">
-                            Abaixo da reserva
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700">
-                            Saudável
-                          </Badge>
-                        )}
+                <p className="text-sm text-muted-foreground">Preencha a compra para ver o gráfico.</p>
+              ) : (
+                <div className="space-y-4">
+                  <FuturePurchaseBalanceChart
+                    months={simulation.months}
+                    minimumReserve={immediateSimulationInput.reservaMinima}
+                    formatCurrency={fc}
+                  />
+                  <div className={`rounded-xl border p-4 ${allSimulationMonthsReconciled ? "border-emerald-500/25 bg-emerald-500/5" : "border-red-500/25 bg-red-500/5"}`}>
+                    <div className="flex items-start gap-3">
+                      {allSimulationMonthsReconciled
+                        ? <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                        : <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />}
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-foreground">
+                          {allSimulationMonthsReconciled ? "Contas conferidas até o centavo" : "Há uma diferença que precisa ser revista"}
+                        </p>
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          Em {simulation.months.length} mês(es), conferimos: dinheiro que já havia + tudo que entra - tudo que sai = saldo final.
+                        </p>
                       </div>
-                    </div>
-
-                    <div className={`text-right ${month.endingBalance < 0 ? "text-red-600" : month.belowReserve ? "text-amber-600" : "text-emerald-600"}`}>
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Saldo final previsto</p>
-                      <p className="text-lg font-semibold">{fc(month.endingBalance)}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-6">
-                    <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Saldo inicial</p>
-                      <p className="mt-1 text-sm font-semibold text-foreground">{fc(month.startingBalance)}</p>
-                    </div>
-                    <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Dinheiro que entra</p>
-                      <p className="mt-1 text-sm font-semibold text-emerald-600">{fc(month.actualIncome)}</p>
-                    </div>
-                    <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Dinheiro extra</p>
-                      <p className="mt-1 text-sm font-semibold text-emerald-600">{fc(month.simulatedExtraIncome)}</p>
-                    </div>
-                    <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Contas fora do cartão</p>
-                      <p className="mt-1 text-sm font-semibold text-rose-600">{fc(month.actualNonCardExpenses)}</p>
-                    </div>
-                    <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Faturas existentes</p>
-                      <p className="mt-1 text-sm font-semibold text-rose-600">{fc(month.actualCardExpenses)}</p>
-                    </div>
-                    <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Parcela simulada</p>
-                      <p className="mt-1 text-sm font-semibold text-sky-700">{fc(month.simulatedInstallment)}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                    <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Entradas extras aplicadas</p>
-                      {month.extraIncomeEntries.length === 0 ? (
-                        <p className="mt-2 text-sm text-muted-foreground">Nenhuma entrada extra neste mês.</p>
-                      ) : (
-                        <div className="mt-2 space-y-2">
-                          {month.extraIncomeEntries.map((entry) => (
-                            <div key={entry.id} className="flex items-start justify-between gap-3 text-sm">
-                              <div className="min-w-0">
-                                <p className="truncate font-medium text-foreground">{entry.descricao || "Entrada extra"}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {entry.data} {entry.recorrente ? "· recorrente" : "· única"}
-                                </p>
-                              </div>
-                              <span className="shrink-0 font-semibold text-emerald-600">{fc(entry.valor)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Itens que mais pesaram</p>
-                      {month.heaviestItems.length === 0 ? (
-                        <p className="mt-2 text-sm text-muted-foreground">Nenhum item relevante além do fluxo padrão.</p>
-                      ) : (
-                        <div className="mt-2 space-y-2">
-                          {month.heaviestItems.map((item) => (
-                            <div key={`${month.monthReference}-${item.source}-${item.label}`} className="flex items-start justify-between gap-3 text-sm">
-                              <div className="min-w-0">
-                                <p className="break-words font-medium text-foreground">{item.label}</p>
-                                {item.subtitle ? (
-                                  <p className="text-xs text-muted-foreground">{item.subtitle}</p>
-                                ) : null}
-                              </div>
-                              <span className="shrink-0 font-semibold text-rose-600">{fc(item.amount)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
-              ))}
+              )}
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarClock className="h-4 w-4" />
+              Conferência mês a mês
+            </CardTitle>
+            <p className="text-sm leading-6 text-muted-foreground">
+              A lista começa fechada. Abra somente o mês que deseja conferir e veja a conta completa usada pelo sistema.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {!simulation ? (
+              <p className="text-sm text-muted-foreground">
+                Assim que a compra for preenchida, esta área mostrará a conta de cada mês.
+              </p>
+            ) : (
+              <Accordion type="single" collapsible className="space-y-2">
+                {simulation.months.map((month) => {
+                  const totalIncome = month.actualIncome + month.simulatedExtraIncome;
+                  const totalExpenses = month.actualExpenses + month.simulatedInstallment;
+                  return (
+                    <AccordionItem key={month.monthReference} value={month.monthReference} className="rounded-2xl border border-border/60 bg-background/85 px-4 shadow-sm">
+                      <AccordionTrigger className="gap-4 py-4 text-left hover:no-underline">
+                        <span className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold text-foreground">{month.label}</span>
+                            <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                              Entrou {fc(totalIncome)} · Saiu {fc(totalExpenses)}
+                            </span>
+                          </span>
+                          <span className="flex shrink-0 items-center gap-2">
+                            <Badge variant="outline" className={month.belowZero
+                              ? "border-red-500/30 bg-red-500/10 text-red-700"
+                              : month.belowReserve
+                                ? "border-amber-500/30 bg-amber-500/10 text-amber-700"
+                                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"}
+                            >
+                              {month.belowZero ? "Faltaria dinheiro" : month.belowReserve ? "Abaixo da reserva" : "Tudo certo"}
+                            </Badge>
+                            <span className={`text-sm font-semibold ${month.belowZero ? "text-red-600" : month.belowReserve ? "text-amber-600" : "text-emerald-600"}`}>
+                              {fc(month.endingBalance)}
+                            </span>
+                          </span>
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-4">
+                        <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm leading-6 text-foreground">
+                          <span className="font-semibold">A conta:</span> {fc(month.startingBalance)} que já havia + {fc(totalIncome)} que entrou - {fc(totalExpenses)} que saiu = <span className="font-semibold">{fc(month.endingBalance)}</span>.
+                        </div>
+
+                        {(month.vacationSuspendedIncome > 0 || month.vacationPayIncome > 0) ? (
+                          <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-3 text-xs leading-5 text-muted-foreground">
+                            <span className="font-semibold text-sky-700">Modo Férias:</span> renda normal reduzida em {fc(month.vacationSuspendedIncome)} e adiantamento somado em {fc(month.vacationPayIncome)}.
+                          </div>
+                        ) : null}
+
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Começou com</p>
+                            <p className="mt-1 font-semibold text-foreground">{fc(month.startingBalance)}</p>
+                          </div>
+                          <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Entrou</p>
+                            <p className="mt-1 font-semibold text-emerald-600">{fc(totalIncome)}</p>
+                          </div>
+                          <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Saiu</p>
+                            <p className="mt-1 font-semibold text-rose-600">{fc(totalExpenses)}</p>
+                          </div>
+                          <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Terminou com</p>
+                            <p className="mt-1 font-semibold text-foreground">{fc(month.endingBalance)}</p>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Tudo que entrou</p>
+                            <div className="mt-3 space-y-2">
+                              {month.actualIncomeBreakdown.length === 0 && month.extraIncomeEntries.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">Nenhuma entrada neste mês.</p>
+                              ) : (
+                                <>
+                                  {month.actualIncomeBreakdown.map((item) => (
+                                    <div key={item.id} className="flex items-start justify-between gap-3 text-sm">
+                                      <span className="min-w-0">
+                                        <span className="block break-words font-medium text-foreground">{item.title}</span>
+                                        {item.subtitle ? <span className="block text-xs text-muted-foreground">{item.subtitle}</span> : null}
+                                      </span>
+                                      <span className="shrink-0 font-semibold text-emerald-600">{fc(item.impactAmount)}</span>
+                                    </div>
+                                  ))}
+                                  {month.extraIncomeEntries.map((item) => (
+                                    <div key={item.id} className="flex items-start justify-between gap-3 text-sm">
+                                      <span className="min-w-0">
+                                        <span className="block break-words font-medium text-foreground">{item.descricao || "Entrada extra"}</span>
+                                        <span className="block text-xs text-muted-foreground">Entrada simulada</span>
+                                      </span>
+                                      <span className="shrink-0 font-semibold text-emerald-600">{fc(item.valor)}</span>
+                                    </div>
+                                  ))}
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Tudo que saiu</p>
+                            <div className="mt-3 space-y-2">
+                              {month.actualExpenseBreakdown.length === 0 && month.simulatedInstallment === 0 ? (
+                                <p className="text-sm text-muted-foreground">Nenhuma saída neste mês.</p>
+                              ) : (
+                                <>
+                                  {month.actualExpenseBreakdown.map((item) => (
+                                    <div key={item.id} className="flex items-start justify-between gap-3 text-sm">
+                                      <span className="min-w-0">
+                                        <span className="block break-words font-medium text-foreground">{item.title}</span>
+                                        {item.subtitle ? <span className="block text-xs text-muted-foreground">{item.subtitle}</span> : null}
+                                      </span>
+                                      <span className="shrink-0 font-semibold text-rose-600">{fc(item.impactAmount)}</span>
+                                    </div>
+                                  ))}
+                                  {month.simulatedInstallment > 0 ? (
+                                    <div className="flex items-start justify-between gap-3 text-sm">
+                                      <span>
+                                        <span className="block font-medium text-foreground">Parcela da compra simulada</span>
+                                        <span className="block text-xs text-muted-foreground">Ainda não foi criada no cartão</span>
+                                      </span>
+                                      <span className="shrink-0 font-semibold text-sky-700">{fc(month.simulatedInstallment)}</span>
+                                    </div>
+                                  ) : null}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  );
+                })}
+              </Accordion>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Sheet open={savedSimulationsOpen} onOpenChange={setSavedSimulationsOpen}>

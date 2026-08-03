@@ -38,6 +38,7 @@ function toInsertPayload(
     includeExpectedReceivables: payload.includeExpectedReceivables,
     includePersonalReceivables: payload.includePersonalReceivables,
     includeCardReceivables: payload.includeCardReceivables,
+    includeVacationPlans: payload.includeVacationPlans,
     selectedReceivablePersonIds: payload.selectedReceivablePersonIds,
     extraIncomes: payload.extraIncomes,
     resultStatus: payload.resultStatus,

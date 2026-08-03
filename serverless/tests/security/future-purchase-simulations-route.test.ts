@@ -36,6 +36,7 @@ type InMemorySimulation = {
   includeExpectedReceivables: boolean;
   includePersonalReceivables: boolean;
   includeCardReceivables: boolean;
+  includeVacationPlans: boolean;
   selectedReceivablePersonIds: string[];
   extraIncomes: Array<{
     id: string;
@@ -54,6 +55,8 @@ type InMemorySimulation = {
     label: string;
     startingBalance: number;
     actualIncome: number;
+    vacationSuspendedIncome: number;
+    vacationPayIncome: number;
     simulatedExtraIncome: number;
     actualExpenses: number;
     actualNonCardExpenses: number;
@@ -160,6 +163,7 @@ function createSimulationPayload() {
     includeExpectedReceivables: false,
     includePersonalReceivables: true,
     includeCardReceivables: true,
+    includeVacationPlans: true,
     selectedReceivablePersonIds: ["pessoa_elza"],
     extraIncomes: [{
       id: "extra-1",
@@ -178,6 +182,8 @@ function createSimulationPayload() {
       label: "set de 2026",
       startingBalance: 200,
       actualIncome: 1000,
+      vacationSuspendedIncome: 500,
+      vacationPayIncome: 0,
       simulatedExtraIncome: 0,
       actualExpenses: 1238.46,
       actualNonCardExpenses: 738.46,
@@ -261,6 +267,8 @@ test("simulações de compra futura: CRUD respeita ownership e preserva snapshot
     assert.equal(created.includeExpectedReceivables, false);
     assert.equal(created.includePersonalReceivables, true);
     assert.equal(created.includeCardReceivables, true);
+    assert.equal(created.includeVacationPlans, true);
+    assert.equal(created.monthlyTimelineSnapshot[0].vacationSuspendedIncome, 500);
     assert.deepEqual(created.selectedReceivablePersonIds, ["pessoa_elza"]);
     const createdId = created.id as string;
 

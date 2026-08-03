@@ -578,6 +578,8 @@ export type FuturePurchaseSimulationStoredTimelineSnapshot = {
   label: string;
   startingBalance: number;
   actualIncome: number;
+  vacationSuspendedIncome: number;
+  vacationPayIncome: number;
   simulatedExtraIncome: number;
   actualExpenses: number;
   actualNonCardExpenses: number;
@@ -608,6 +610,7 @@ export const futurePurchaseSimulations = pgTable("future_purchase_simulations", 
   includeExpectedReceivables: boolean("include_expected_receivables").notNull().default(false),
   includePersonalReceivables: boolean("include_personal_receivables").notNull().default(true),
   includeCardReceivables: boolean("include_card_receivables").notNull().default(true),
+  includeVacationPlans: boolean("include_vacation_plans").notNull().default(false),
   selectedReceivablePersonIds: jsonb("selected_receivable_person_ids").$type<string[]>(),
   extraIncomes: jsonb("extra_incomes")
     .$type<FuturePurchaseSimulationStoredExtraIncome[]>()

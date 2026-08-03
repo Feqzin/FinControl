@@ -61,6 +61,7 @@ import type {
   ServicoCobrancaPagamento,
   ServicoPagamento,
   ServicoPessoa,
+  VacationPlan,
 } from "@shared/schema";
 import {
   extractTextFromPdfBuffer,
@@ -164,6 +165,7 @@ import {
   projectFuturePurchaseCashflow,
   type FuturePurchaseSimulationInput,
 } from "../src/pages/simulador/future-purchase-simulation";
+import { buildFuturePurchaseReportData } from "../src/pages/simulador/future-purchase-report";
 import {
   canAutoRematerializeCompetency,
   diffParcelasCompetencySchedules,
@@ -6216,6 +6218,7 @@ function buildFuturePurchaseContextFixture(overrides: Partial<{
   rendas: Renda[];
   patrimonios: Patrimonio[];
   pessoas: Pessoa[];
+  vacationPlans: VacationPlan[];
 }> = {}) {
   return {
     cartoes: overrides.cartoes ?? [buildCartaoViewFixture({ id: "card-1", nome: "Cartão principal", diaVencimento: 10, limite: "5000.00" })],
@@ -6229,6 +6232,7 @@ function buildFuturePurchaseContextFixture(overrides: Partial<{
     rendas: overrides.rendas ?? [buildSimuladorRendaFixture()],
     patrimonios: overrides.patrimonios ?? [buildSimuladorPatrimonioFixture()],
     pessoas: overrides.pessoas ?? [],
+    vacationPlans: overrides.vacationPlans ?? [],
   };
 }
 
@@ -6456,6 +6460,82 @@ test("simulador compra futura: considera somente dívidas e reembolsos das pesso
   assert.deepEqual(completo.calculationBasis.selectedReceivablePeople, ["Elza"]);
   assert.equal(somenteCartao.months[0]?.actualIncome, 75);
   assert.equal(somentePessoal.months[0]?.actualIncome, 80);
+});
+
+test("simulador compra futura: Modo Férias pausa somente a renda planejada e inclui o adiantamento", () => {
+  const renda = buildSimuladorRendaFixture({ id: "renda-salario", valor: "3000.00" });
+  const context = buildFuturePurchaseContextFixture({
+    rendas: [renda],
+    patrimonios: [],
+    vacationPlans: [{
+      id: "ferias-1",
+      userId: "user-1",
+      rendaId: renda.id,
+      startDate: "2026-08-02",
+      durationDays: 30,
+      vacationPayReceived: false,
+      vacationPayDate: "2026-08-02",
+      vacationPayAmount: "4000.00",
+      includedInPatrimony: false,
+      createdAt: new Date("2026-07-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+    }],
+  });
+  const input = {
+    nomeCompra: "Compra teste",
+    valorTotal: 100,
+    parcelas: 1,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-08",
+    reservaMinima: 0,
+    entradasExtras: [],
+    includeLiquidAssets: false,
+    includePersonalDebts: false,
+    includeCardCommitments: false,
+  } satisfies FuturePurchaseSimulationInput;
+
+  const semFerias = withFakeNow("2026-08-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, input));
+  const comFerias = withFakeNow("2026-08-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, {
+    ...input,
+    includeVacationPlans: true,
+  }));
+
+  assert.equal(semFerias.months[0]?.actualIncome, 3000);
+  assert.equal(comFerias.months[0]?.actualIncome, 4000);
+  assert.equal(comFerias.months[0]?.vacationSuspendedIncome, 3000);
+  assert.equal(comFerias.months[0]?.vacationPayIncome, 4000);
+  assert.equal(comFerias.calculationBasis.vacationPlansConsidered, 1);
+  assert.equal(comFerias.calculationBasis.vacationSuspendedIncome, 3000);
+  assert.equal(comFerias.calculationBasis.vacationPayIncome, 4000);
+});
+
+test("simulador compra futura: relatório reconcilia a fórmula de todos os meses", () => {
+  const context = buildFuturePurchaseContextFixture({
+    rendas: [buildSimuladorRendaFixture({ valor: "2500.00" })],
+    patrimonios: [buildSimuladorPatrimonioFixture({ valorAtual: "800.00" })],
+  });
+  const input = {
+    nomeCompra: "Notebook",
+    valorTotal: 1200,
+    parcelas: 3,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-08",
+    reservaMinima: 500,
+    entradasExtras: [],
+  } satisfies FuturePurchaseSimulationInput;
+  const result = withFakeNow("2026-08-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, input));
+  const report = buildFuturePurchaseReportData({
+    simulationName: "Teste auditável",
+    purchaseName: input.nomeCompra,
+    cardName: "Cartão principal",
+    input,
+    result,
+    generatedAt: "2026-08-03T12:00:00.000Z",
+  });
+
+  assert.equal(report.monthlyEquations.length, 3);
+  assert.equal(report.allMonthsReconciled, true);
+  assert.equal(report.monthlyEquations.every((month) => month.reconciled), true);
 });
 
 test("simulador compra futura: sem saldo ou renda não sugere alguns centavos como compra segura", () => {

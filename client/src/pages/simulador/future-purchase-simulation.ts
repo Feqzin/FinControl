@@ -12,9 +12,11 @@ import type {
   Renda,
   Servico,
   ServicoCobrancaPagamento,
+  VacationPlan,
 } from "@shared/schema";
 import { resolveDueDateFromCompetencia } from "@shared/parcelas-compra-competency";
 import { buildCompraReembolsoBreakdown, getReembolsoParcelaByNumero } from "@shared/compra-reembolso";
+import { calculateVacationMonthImpact, calculateVacationPlanEstimate } from "@shared/vacation-planning";
 import type { FinancialCalendarEvent, FinancialCalendarEventSource } from "@/lib/financial-calendar";
 import { buildFinancialCalendarEvents, getFinancialCalendarEventImpactAmount } from "@/lib/financial-calendar";
 import { calculateCardLimitSummary, groupParcelasCompraByCompraId } from "@/lib/card-limit-usage";
@@ -42,6 +44,7 @@ export type FuturePurchaseSimulationContext = {
   rendas: Renda[];
   patrimonios: Patrimonio[];
   pessoas: Pessoa[];
+  vacationPlans?: VacationPlan[];
   referenceDate?: string;
 };
 
@@ -59,6 +62,7 @@ export type FuturePurchaseSimulationInput = {
   includeExpectedReceivables?: boolean;
   includePersonalReceivables?: boolean;
   includeCardReceivables?: boolean;
+  includeVacationPlans?: boolean;
   selectedReceivablePersonIds?: string[];
 };
 
@@ -76,6 +80,10 @@ export type FuturePurchaseSimulationCalculationBasis = {
   personalReceivablesConsidered: number;
   includeCardReceivables: boolean;
   cardReceivablesConsidered: number;
+  includeVacationPlans: boolean;
+  vacationPlansConsidered: number;
+  vacationSuspendedIncome: number;
+  vacationPayIncome: number;
   selectedReceivablePersonIds: string[];
   selectedReceivablePeople: string[];
 };
@@ -110,6 +118,8 @@ export type FuturePurchaseSimulationMonth = {
   label: string;
   startingBalance: number;
   actualIncome: number;
+  vacationSuspendedIncome: number;
+  vacationPayIncome: number;
   simulatedExtraIncome: number;
   actualExpenses: number;
   actualNonCardExpenses: number;
@@ -176,6 +186,8 @@ type StaticCashflowMonth = {
   monthReference: string;
   label: string;
   actualIncome: number;
+  vacationSuspendedIncome: number;
+  vacationPayIncome: number;
   actualExpenses: number;
   actualCardExpenses: number;
   actualNonCardExpenses: number;
@@ -262,6 +274,7 @@ function normalizeFuturePurchaseSimulationInput(
     includeExpectedReceivables: input.includeExpectedReceivables === true,
     includePersonalReceivables: input.includePersonalReceivables !== false,
     includeCardReceivables: input.includeCardReceivables !== false,
+    includeVacationPlans: input.includeVacationPlans === true,
     selectedReceivablePersonIds: input.selectedReceivablePersonIds == null
       ? undefined
       : Array.from(new Set(input.selectedReceivablePersonIds.map((id) => String(id).trim()).filter(Boolean))),
@@ -661,14 +674,64 @@ function buildStaticCashflowByMonthReference(
       return true;
     });
 
-    const actualIncomeBreakdown = events
+    const vacationImpact = input.includeVacationPlans === true
+      ? calculateVacationMonthImpact({
+        monthReference,
+        plans: context.vacationPlans ?? [],
+        incomes: context.rendas,
+      })
+      : {
+        monthReference,
+        affectedDays: 0,
+        suspendedIncome: 0,
+        vacationPayIncome: 0,
+        netAdjustment: 0,
+        plans: [],
+      };
+    const suspendedByIncome = new Map<string, number>();
+    vacationImpact.plans.forEach((impact) => {
+      suspendedByIncome.set(
+        impact.rendaId,
+        round2((suspendedByIncome.get(impact.rendaId) ?? 0) + impact.suspendedIncome),
+      );
+    });
+    const vacationAdjustedEvents = events.map((event): FinancialCalendarEvent => {
+      if (event.source !== "renda_prevista" || !event.entityId) return event;
+      const suspendedIncome = suspendedByIncome.get(event.entityId) ?? 0;
+      if (suspendedIncome <= 0) return event;
+      return {
+        ...event,
+        amount: round2(Math.max(0, getFinancialCalendarEventImpactAmount(event) - suspendedIncome)),
+        subtitle: "Renda fixa ajustada pelo Modo Férias",
+      };
+    });
+    const vacationPayBreakdown = vacationImpact.plans.flatMap((impact): FuturePurchaseSimulationBreakdownItem[] => {
+      if (impact.vacationPayIncome <= 0) return [];
+      const plan = (context.vacationPlans ?? []).find((item) => item.id === impact.planId);
+      const income = context.rendas.find((item) => item.id === impact.rendaId);
+      if (!plan || !income) return [];
+      const estimate = calculateVacationPlanEstimate(plan, income);
+      return [{
+        id: `vacation-pay-${plan.id}-${monthReference}`,
+        title: `Adiantamento de férias · ${income.descricao}`,
+        subtitle: "Pagamento antecipado considerado pelo Modo Férias",
+        source: "renda_prevista",
+        amount: impact.vacationPayIncome,
+        impactAmount: impact.vacationPayIncome,
+        date: estimate.vacationPayDate,
+        includedInInvoice: false,
+      }];
+    });
+
+    const actualIncomeBreakdown = vacationAdjustedEvents
       .filter((event) => event.direction === "entrada" && getFinancialCalendarEventImpactAmount(event) > 0)
       .map(toBreakdownItem)
       .concat(
+        vacationPayBreakdown,
         buildPersonalReceivableBreakdownForMonth(context, input, monthReference, projectionStartMonth),
         buildCardReceivableBreakdownForMonth(context, input, monthReference, projectionStartMonth),
       );
-    const actualExpenseBreakdown = events
+    const actualExpenseBreakdown = vacationAdjustedEvents
       .filter((event) => event.direction === "saida" && getFinancialCalendarEventImpactAmount(event) > 0)
       .map(toBreakdownItem);
 
@@ -689,6 +752,8 @@ function buildStaticCashflowByMonthReference(
       monthReference,
       label: formatMonthLabel(monthReference),
       actualIncome,
+      vacationSuspendedIncome: round2(vacationImpact.suspendedIncome),
+      vacationPayIncome: round2(vacationImpact.vacationPayIncome),
       actualExpenses,
       actualCardExpenses,
       actualNonCardExpenses,
@@ -787,6 +852,8 @@ function buildBaseCashflowMonthsFromPreparedBase(
       monthReference,
       label: staticCashflow?.label ?? formatMonthLabel(monthReference),
       actualIncome: staticCashflow?.actualIncome ?? 0,
+      vacationSuspendedIncome: staticCashflow?.vacationSuspendedIncome ?? 0,
+      vacationPayIncome: staticCashflow?.vacationPayIncome ?? 0,
       actualExpenses: staticCashflow?.actualExpenses ?? 0,
       actualCardExpenses: staticCashflow?.actualCardExpenses ?? 0,
       actualNonCardExpenses: staticCashflow?.actualNonCardExpenses ?? 0,
@@ -846,6 +913,8 @@ function applyInstallmentsToBaseMonths(
       label: month.label,
       startingBalance,
       actualIncome: month.actualIncome,
+      vacationSuspendedIncome: month.vacationSuspendedIncome,
+      vacationPayIncome: month.vacationPayIncome,
       simulatedExtraIncome: month.simulatedExtraIncome,
       actualExpenses: month.actualExpenses,
       actualNonCardExpenses: month.actualNonCardExpenses,
@@ -1260,6 +1329,24 @@ export function buildFuturePurchaseSimulation(
   const cardCommitmentsConsidered = round2(
     months.reduce((total, month) => total + month.actualCardExpenses, 0),
   );
+  const vacationSuspendedIncome = round2(
+    months.reduce((total, month) => total + month.vacationSuspendedIncome, 0),
+  );
+  const vacationPayIncome = round2(
+    months.reduce((total, month) => total + month.vacationPayIncome, 0),
+  );
+  const vacationPlanIdsConsidered = new Set<string>();
+  if (normalizedInput.includeVacationPlans === true) {
+    months.forEach((month) => {
+      calculateVacationMonthImpact({
+        monthReference: month.monthReference,
+        plans: context.vacationPlans ?? [],
+        incomes: context.rendas,
+      }).plans.forEach((impact) => {
+        if (impact.planId) vacationPlanIdsConsidered.add(impact.planId);
+      });
+    });
+  }
 
   return {
     status,
@@ -1294,6 +1381,10 @@ export function buildFuturePurchaseSimulation(
       personalReceivablesConsidered,
       includeCardReceivables: normalizedInput.includeCardReceivables !== false,
       cardReceivablesConsidered,
+      includeVacationPlans: normalizedInput.includeVacationPlans === true,
+      vacationPlansConsidered: vacationPlanIdsConsidered.size,
+      vacationSuspendedIncome,
+      vacationPayIncome,
       selectedReceivablePersonIds: normalizedInput.selectedReceivablePersonIds
         ?? listFuturePurchaseReceivablePersonOptions(context).map((pessoa) => pessoa.id),
       selectedReceivablePeople: context.pessoas
