@@ -6507,6 +6507,54 @@ test("simulador compra futura: Modo Férias pausa somente a renda planejada e in
   assert.equal(comFerias.calculationBasis.vacationPlansConsidered, 1);
   assert.equal(comFerias.calculationBasis.vacationSuspendedIncome, 3000);
   assert.equal(comFerias.calculationBasis.vacationPayIncome, 4000);
+  assert.equal(
+    comFerias.months[0]?.actualIncomeBreakdown.some((item) => item.title === renda.descricao),
+    false,
+  );
+  assert.deepEqual(
+    comFerias.months[0]?.actualIncomeBreakdown.map((item) => item.title),
+    [`Adiantamento de férias · ${renda.descricao}`],
+  );
+});
+
+test("simulador compra futura: Modo Férias mostra somente o saldo reduzido em mês parcial", () => {
+  const renda = buildSimuladorRendaFixture({ id: "renda-salario-parcial", valor: "3000.00" });
+  const context = buildFuturePurchaseContextFixture({
+    rendas: [renda],
+    patrimonios: [],
+    vacationPlans: [{
+      id: "ferias-parciais",
+      userId: "user-1",
+      rendaId: renda.id,
+      startDate: "2026-08-22",
+      durationDays: 10,
+      vacationPayReceived: true,
+      vacationPayDate: "2026-08-20",
+      vacationPayAmount: "1333.33",
+      includedInPatrimony: true,
+      createdAt: new Date("2026-07-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-01T00:00:00.000Z"),
+    }],
+  });
+  const result = withFakeNow("2026-08-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, {
+    nomeCompra: "Compra teste",
+    valorTotal: 100,
+    parcelas: 1,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-08",
+    reservaMinima: 0,
+    entradasExtras: [],
+    includeLiquidAssets: false,
+    includePersonalDebts: false,
+    includeCardCommitments: false,
+    includeVacationPlans: true,
+  }));
+
+  const salaryEntry = result.months[0]?.actualIncomeBreakdown.find((item) => item.title === renda.descricao);
+  assert.equal(result.months[0]?.actualIncome, 2000);
+  assert.equal(result.months[0]?.vacationSuspendedIncome, 1000);
+  assert.equal(salaryEntry?.impactAmount, 2000);
+  assert.equal(salaryEntry?.subtitle, "Renda fixa reduzida pelo Modo Férias");
 });
 
 test("simulador compra futura: relatório reconcilia a fórmula de todos os meses", () => {

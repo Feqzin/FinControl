@@ -409,6 +409,24 @@ function toBreakdownItem(event: FinancialCalendarEvent): FuturePurchaseSimulatio
   };
 }
 
+function applyVacationSuspensionToIncomeEvent(
+  event: FinancialCalendarEvent,
+  suspendedByIncome: Map<string, number>,
+): FinancialCalendarEvent {
+  if (event.source !== "renda_prevista" || !event.entityId) return event;
+  const suspendedIncome = suspendedByIncome.get(event.entityId) ?? 0;
+  if (suspendedIncome <= 0) return event;
+  const adjustedIncome = round2(Math.max(0, getFinancialCalendarEventImpactAmount(event) - suspendedIncome));
+  return {
+    ...event,
+    amount: adjustedIncome,
+    financialImpactAmount: adjustedIncome,
+    subtitle: adjustedIncome > 0
+      ? "Renda fixa reduzida pelo Modo Férias"
+      : "Renda fixa pausada pelo Modo Férias",
+  };
+}
+
 function isOutstandingReceivableStatus(value: string | null | undefined): boolean {
   const normalized = String(value ?? "").trim().toLowerCase();
   return normalized !== "pago" && normalized !== "cancelado";
@@ -695,16 +713,9 @@ function buildStaticCashflowByMonthReference(
         round2((suspendedByIncome.get(impact.rendaId) ?? 0) + impact.suspendedIncome),
       );
     });
-    const vacationAdjustedEvents = events.map((event): FinancialCalendarEvent => {
-      if (event.source !== "renda_prevista" || !event.entityId) return event;
-      const suspendedIncome = suspendedByIncome.get(event.entityId) ?? 0;
-      if (suspendedIncome <= 0) return event;
-      return {
-        ...event,
-        amount: round2(Math.max(0, getFinancialCalendarEventImpactAmount(event) - suspendedIncome)),
-        subtitle: "Renda fixa ajustada pelo Modo Férias",
-      };
-    });
+    const vacationAdjustedEvents = events.map((event) => (
+      applyVacationSuspensionToIncomeEvent(event, suspendedByIncome)
+    ));
     const vacationPayBreakdown = vacationImpact.plans.flatMap((impact): FuturePurchaseSimulationBreakdownItem[] => {
       if (impact.vacationPayIncome <= 0) return [];
       const plan = (context.vacationPlans ?? []).find((item) => item.id === impact.planId);

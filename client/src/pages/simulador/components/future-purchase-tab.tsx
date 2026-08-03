@@ -284,6 +284,19 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     () => simulationContext ? listFuturePurchaseReceivablePersonOptions(simulationContext) : [],
     [simulationContext],
   );
+  const vacationPlanCount = vacationPlansQuery.data?.length ?? 0;
+  const handleVacationPlansToggle = (checked: boolean) => {
+    if (checked && vacationPlanCount === 0) {
+      toast({
+        title: "Nenhum planejamento de férias cadastrado",
+        description: "Crie e salve o planejamento no Painel antes de ativá-lo no simulador.",
+        variant: "destructive",
+      });
+      setIncludeVacationPlans(false);
+      return;
+    }
+    setIncludeVacationPlans(checked);
+  };
   const handleExpectedReceivablesToggle = (checked: boolean) => {
     setIncludeExpectedReceivables(checked);
     if (checked && selectedReceivablePersonIds.length === 0) {
@@ -839,10 +852,14 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                       </Label>
                       <p className="text-xs leading-5 text-muted-foreground">
                         Pausa as rendas planejadas e inclui o adiantamento quando ele ainda não está no patrimônio.
-                        {` ${vacationPlansQuery.data?.length ?? 0} planejamento(s) cadastrado(s).`}
+                        {` ${vacationPlanCount} planejamento(s) cadastrado(s).`}
                       </p>
                     </div>
-                    <Switch id="include-vacation-plans" checked={includeVacationPlans} onCheckedChange={setIncludeVacationPlans} />
+                    <Switch
+                      id="include-vacation-plans"
+                      checked={includeVacationPlans}
+                      onCheckedChange={handleVacationPlansToggle}
+                    />
                   </div>
                 </div>
 
@@ -1066,7 +1083,9 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                         </p>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">
                           {simulation.calculationBasis.includeVacationPlans
-                            ? `${simulation.calculationBasis.vacationPlansConsidered} planejamento(s): ${fc(simulation.calculationBasis.vacationSuspendedIncome)} de renda pausada e ${fc(simulation.calculationBasis.vacationPayIncome)} de adiantamento.`
+                            ? simulation.calculationBasis.vacationPlansConsidered > 0
+                              ? `${simulation.calculationBasis.vacationPlansConsidered} planejamento(s): ${fc(simulation.calculationBasis.vacationSuspendedIncome)} de renda pausada e ${fc(simulation.calculationBasis.vacationPayIncome)} de adiantamento.`
+                              : "Ligado, mas nenhum planejamento alcança os meses desta simulação. As rendas não foram pausadas."
                             : "Não considerado nesta simulação; as rendas seguem normalmente."}
                         </p>
                       </div>
