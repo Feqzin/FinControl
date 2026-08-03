@@ -606,6 +606,9 @@ export const futurePurchaseSimulations = pgTable("future_purchase_simulations", 
   includePersonalDebts: boolean("include_personal_debts").notNull().default(true),
   includeCardCommitments: boolean("include_card_commitments").notNull().default(true),
   includeExpectedReceivables: boolean("include_expected_receivables").notNull().default(false),
+  includePersonalReceivables: boolean("include_personal_receivables").notNull().default(true),
+  includeCardReceivables: boolean("include_card_receivables").notNull().default(true),
+  selectedReceivablePersonIds: jsonb("selected_receivable_person_ids").$type<string[]>(),
   extraIncomes: jsonb("extra_incomes")
     .$type<FuturePurchaseSimulationStoredExtraIncome[]>()
     .notNull()

@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -43,6 +44,7 @@ import { parseMoney } from "@/lib/money";
 import {
   buildFuturePurchaseSimulation,
   canBuildFuturePurchaseSimulationInput,
+  listFuturePurchaseReceivablePersonOptions,
   type FuturePurchaseExtraReceivable,
   type FuturePurchaseSimulationInput,
   type FuturePurchaseSimulationSuggestion,
@@ -175,6 +177,9 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
   const [includePersonalDebts, setIncludePersonalDebts] = useState(true);
   const [includeCardCommitments, setIncludeCardCommitments] = useState(true);
   const [includeExpectedReceivables, setIncludeExpectedReceivables] = useState(false);
+  const [includePersonalReceivables, setIncludePersonalReceivables] = useState(true);
+  const [includeCardReceivables, setIncludeCardReceivables] = useState(true);
+  const [selectedReceivablePersonIds, setSelectedReceivablePersonIds] = useState<string[]>([]);
   const [savedSimulationsOpen, setSavedSimulationsOpen] = useState(false);
   const [activeSimulationId, setActiveSimulationId] = useState<string | null>(null);
   const [loadingSavedSimulationId, setLoadingSavedSimulationId] = useState<string | null>(null);
@@ -193,6 +198,9 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     setIncludePersonalDebts(true);
     setIncludeCardCommitments(true);
     setIncludeExpectedReceivables(false);
+    setIncludePersonalReceivables(true);
+    setIncludeCardReceivables(true);
+    setSelectedReceivablePersonIds([]);
   };
 
   useEffect(() => {
@@ -229,7 +237,10 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     includePersonalDebts,
     includeCardCommitments,
     includeExpectedReceivables,
-  }), [cartaoId, entradasExtrasNormalizadas, includeCardCommitments, includeExpectedReceivables, includeLiquidAssets, includePersonalDebts, mesPrimeiraParcela, nomeCompra, parcelas, reservaMinima, valorTotal]);
+    includePersonalReceivables,
+    includeCardReceivables,
+    selectedReceivablePersonIds,
+  }), [cartaoId, entradasExtrasNormalizadas, includeCardCommitments, includeCardReceivables, includeExpectedReceivables, includeLiquidAssets, includePersonalDebts, includePersonalReceivables, mesPrimeiraParcela, nomeCompra, parcelas, reservaMinima, selectedReceivablePersonIds, valorTotal]);
 
   const debouncedSimulationInput = useDebouncedValue(
     immediateSimulationInput,
@@ -250,8 +261,29 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
       servicoCobrancaPagamentos: overviewQuery.data.servicoCobrancaPagamentos,
       rendas: overviewQuery.data.rendas,
       patrimonios: overviewQuery.data.patrimonios,
+      pessoas: overviewQuery.data.pessoas,
     };
   }, [overviewQuery.data, parcelasQuery.data]);
+
+  const receivablePersonOptions = useMemo(
+    () => simulationContext ? listFuturePurchaseReceivablePersonOptions(simulationContext) : [],
+    [simulationContext],
+  );
+
+  const handleExpectedReceivablesToggle = (checked: boolean) => {
+    setIncludeExpectedReceivables(checked);
+    if (checked && selectedReceivablePersonIds.length === 0) {
+      setSelectedReceivablePersonIds(receivablePersonOptions.map((pessoa) => pessoa.id));
+    }
+  };
+
+  const handleReceivablePersonToggle = (personId: string, checked: boolean) => {
+    setSelectedReceivablePersonIds((current) => (
+      checked
+        ? Array.from(new Set([...current, personId]))
+        : current.filter((id) => id !== personId)
+    ));
+  };
 
   const canSimulateImmediately = Boolean(simulationContext)
     && canBuildFuturePurchaseSimulationInput(immediateSimulationInput);
@@ -284,6 +316,9 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
       includePersonalDebts,
       includeCardCommitments,
       includeExpectedReceivables,
+      includePersonalReceivables,
+      includeCardReceivables,
+      selectedReceivablePersonIds,
       extraIncomes: entradasExtrasNormalizadas,
       resultStatus: simulation.status,
       worstMonth: simulation.worstMonth?.monthReference ?? null,
@@ -307,6 +342,13 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
     setIncludePersonalDebts(savedSimulation.includePersonalDebts !== false);
     setIncludeCardCommitments(savedSimulation.includeCardCommitments !== false);
     setIncludeExpectedReceivables(savedSimulation.includeExpectedReceivables === true);
+    setIncludePersonalReceivables(savedSimulation.includePersonalReceivables !== false);
+    setIncludeCardReceivables(savedSimulation.includeCardReceivables !== false);
+    setSelectedReceivablePersonIds(
+      savedSimulation.selectedReceivablePersonIds == null && savedSimulation.includeExpectedReceivables === true
+        ? receivablePersonOptions.map((pessoa) => pessoa.id)
+        : savedSimulation.selectedReceivablePersonIds ?? [],
+    );
     setEntradasExtras((savedSimulation.extraIncomes ?? []).map((entry) => ({
       id: entry.id,
       descricao: entry.descricao,
@@ -742,9 +784,78 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                       <Label htmlFor="include-expected-receivables" className="cursor-pointer font-medium">Valores que outras pessoas devem</Label>
                       <p className="text-xs leading-5 text-muted-foreground">Fica desligado por padrão para não depender de um recebimento incerto.</p>
                     </div>
-                    <Switch id="include-expected-receivables" checked={includeExpectedReceivables} onCheckedChange={setIncludeExpectedReceivables} />
+                    <Switch id="include-expected-receivables" checked={includeExpectedReceivables} onCheckedChange={handleExpectedReceivablesToggle} />
                   </div>
                 </div>
+
+                {includeExpectedReceivables && (
+                  <div className="space-y-4 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-foreground">De quem você espera receber?</p>
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          Selecione apenas pessoas em quem você quer confiar nesta projeção. Valores vencidos entram no primeiro mês.
+                        </p>
+                      </div>
+                      <p className="text-xs font-medium text-sky-600">
+                        {selectedReceivablePersonIds.length} {selectedReceivablePersonIds.length === 1 ? "pessoa selecionada" : "pessoas selecionadas"}
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-background/80 p-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="include-personal-receivables" className="cursor-pointer text-sm font-medium">Dívidas pessoais</Label>
+                          <p className="text-xs text-muted-foreground">Inclui dívidas manuais com expectativa de recebimento.</p>
+                        </div>
+                        <Switch id="include-personal-receivables" checked={includePersonalReceivables} onCheckedChange={setIncludePersonalReceivables} />
+                      </div>
+                      <div className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-background/80 p-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="include-card-receivables" className="cursor-pointer text-sm font-medium">Parcelas de cartão</Label>
+                          <p className="text-xs text-muted-foreground">Inclui reembolsos pendentes de compras vinculadas.</p>
+                        </div>
+                        <Switch id="include-card-receivables" checked={includeCardReceivables} onCheckedChange={setIncludeCardReceivables} />
+                      </div>
+                    </div>
+
+                    {receivablePersonOptions.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-border/70 bg-background/60 p-4 text-sm text-muted-foreground">
+                        Nenhuma pessoa possui dívida pessoal esperada ou reembolso de cartão pendente.
+                      </div>
+                    ) : (
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {receivablePersonOptions.map((pessoa) => {
+                          const checked = selectedReceivablePersonIds.includes(pessoa.id);
+                          return (
+                            <label
+                              key={pessoa.id}
+                              htmlFor={`receivable-person-${pessoa.id}`}
+                              className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/60 bg-background/80 p-3 transition-colors hover:border-sky-500/40 hover:bg-sky-500/5"
+                            >
+                              <Checkbox
+                                id={`receivable-person-${pessoa.id}`}
+                                checked={checked}
+                                onCheckedChange={(value) => handleReceivablePersonToggle(pessoa.id, value === true)}
+                              />
+                              <span className="min-w-0 space-y-2">
+                                <span className="block truncate text-sm font-medium text-foreground">{pessoa.nome}</span>
+                                <span className="flex flex-wrap gap-1.5">
+                                  {pessoa.hasPersonalReceivables && <Badge variant="outline">Dívidas pessoais</Badge>}
+                                  {pessoa.hasCardReceivables && <Badge variant="outline">Cartão</Badge>}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Dívidas marcadas como “Sem expectativa” continuam fora do cálculo, mesmo quando a pessoa estiver selecionada.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {simulation ? (
@@ -936,9 +1047,16 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                         <p className="text-sm font-medium text-foreground">Valores a receber</p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {simulation.calculationBasis.includeExpectedReceivables
-                            ? `${fc(simulation.calculationBasis.expectedReceivablesConsidered)} somados no período`
+                            ? simulation.calculationBasis.selectedReceivablePeople.length > 0
+                              ? `${fc(simulation.calculationBasis.expectedReceivablesConsidered)} de ${simulation.calculationBasis.selectedReceivablePeople.join(", ")}`
+                              : "Nenhuma pessoa selecionada"
                             : "Não considerados, deixando a projeção mais conservadora"}
                         </p>
+                        {simulation.calculationBasis.includeExpectedReceivables && simulation.calculationBasis.selectedReceivablePeople.length > 0 && (
+                          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                            Dívidas pessoais: {fc(simulation.calculationBasis.personalReceivablesConsidered)} · Cartões: {fc(simulation.calculationBasis.cardReceivablesConsidered)}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -8,11 +8,13 @@ import type {
   Parcela,
   ParcelaCompra,
   Patrimonio,
+  Pessoa,
   Renda,
   Servico,
   ServicoCobrancaPagamento,
 } from "@shared/schema";
 import { resolveDueDateFromCompetencia } from "@shared/parcelas-compra-competency";
+import { buildCompraReembolsoBreakdown, getReembolsoParcelaByNumero } from "@shared/compra-reembolso";
 import type { FinancialCalendarEvent, FinancialCalendarEventSource } from "@/lib/financial-calendar";
 import { buildFinancialCalendarEvents, getFinancialCalendarEventImpactAmount } from "@/lib/financial-calendar";
 import { calculateCardLimitSummary, groupParcelasCompraByCompraId } from "@/lib/card-limit-usage";
@@ -39,6 +41,7 @@ export type FuturePurchaseSimulationContext = {
   servicoCobrancaPagamentos?: ServicoCobrancaPagamento[];
   rendas: Renda[];
   patrimonios: Patrimonio[];
+  pessoas: Pessoa[];
   referenceDate?: string;
 };
 
@@ -54,6 +57,9 @@ export type FuturePurchaseSimulationInput = {
   includePersonalDebts?: boolean;
   includeCardCommitments?: boolean;
   includeExpectedReceivables?: boolean;
+  includePersonalReceivables?: boolean;
+  includeCardReceivables?: boolean;
+  selectedReceivablePersonIds?: string[];
 };
 
 export type FuturePurchaseSimulationCalculationBasis = {
@@ -66,13 +72,26 @@ export type FuturePurchaseSimulationCalculationBasis = {
   cardCommitmentsConsidered: number;
   includeExpectedReceivables: boolean;
   expectedReceivablesConsidered: number;
+  includePersonalReceivables: boolean;
+  personalReceivablesConsidered: number;
+  includeCardReceivables: boolean;
+  cardReceivablesConsidered: number;
+  selectedReceivablePersonIds: string[];
+  selectedReceivablePeople: string[];
+};
+
+export type FuturePurchaseReceivablePersonOption = {
+  id: string;
+  nome: string;
+  hasPersonalReceivables: boolean;
+  hasCardReceivables: boolean;
 };
 
 export type FuturePurchaseSimulationBreakdownItem = {
   id: string;
   title: string;
   subtitle?: string;
-  source: FinancialCalendarEventSource;
+  source: FinancialCalendarEventSource | "reembolso_cartao";
   amount: number;
   impactAmount: number;
   date: string;
@@ -241,6 +260,11 @@ function normalizeFuturePurchaseSimulationInput(
     includePersonalDebts: input.includePersonalDebts !== false,
     includeCardCommitments: input.includeCardCommitments !== false,
     includeExpectedReceivables: input.includeExpectedReceivables === true,
+    includePersonalReceivables: input.includePersonalReceivables !== false,
+    includeCardReceivables: input.includeCardReceivables !== false,
+    selectedReceivablePersonIds: input.selectedReceivablePersonIds == null
+      ? undefined
+      : Array.from(new Set(input.selectedReceivablePersonIds.map((id) => String(id).trim()).filter(Boolean))),
     entradasExtras: (input.entradasExtras ?? []).map((entry) => ({
       id: String(entry.id ?? ""),
       descricao: String(entry.descricao ?? "").trim(),
@@ -372,11 +396,246 @@ function toBreakdownItem(event: FinancialCalendarEvent): FuturePurchaseSimulatio
   };
 }
 
+function isOutstandingReceivableStatus(value: string | null | undefined): boolean {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized !== "pago" && normalized !== "cancelado";
+}
+
+function resolveReceivableTargetMonth(dueDate: string, projectionStartMonth: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return null;
+  const dueMonth = dueDate.slice(0, 7);
+  return dueMonth < projectionStartMonth ? projectionStartMonth : dueMonth;
+}
+
+function isSelectedReceivablePerson(
+  input: FuturePurchaseSimulationInput,
+  pessoaId: string | null | undefined,
+): pessoaId is string {
+  if (!pessoaId) return false;
+  if (input.selectedReceivablePersonIds == null) return true;
+  return input.selectedReceivablePersonIds.includes(pessoaId);
+}
+
+function buildPersonalReceivableBreakdownForMonth(
+  context: FuturePurchaseSimulationContext,
+  input: FuturePurchaseSimulationInput,
+  monthReference: string,
+  projectionStartMonth: string,
+): FuturePurchaseSimulationBreakdownItem[] {
+  if (input.includeExpectedReceivables !== true || input.includePersonalReceivables === false) return [];
+
+  const pessoasById = new Map(context.pessoas.map((pessoa) => [pessoa.id, pessoa]));
+  const parcelasByDividaId = new Map<string, Parcela[]>();
+  context.parcelas.forEach((parcela) => {
+    const current = parcelasByDividaId.get(parcela.dividaId) ?? [];
+    current.push(parcela);
+    parcelasByDividaId.set(parcela.dividaId, current);
+  });
+
+  const items: FuturePurchaseSimulationBreakdownItem[] = [];
+
+  context.dividas.forEach((divida) => {
+    if (
+      divida.tipo !== "receber"
+      || divida.deletedAt
+      || divida.expectativaRecebimento === false
+      || !isSelectedReceivablePerson(input, divida.pessoaId)
+    ) {
+      return;
+    }
+
+    const pessoa = pessoasById.get(divida.pessoaId);
+    const linkedInstallments = parcelasByDividaId.get(divida.id) ?? [];
+    const title = divida.descricao?.trim() || `Valor a receber de ${pessoa?.nome ?? "pessoa"}`;
+
+    if (linkedInstallments.length > 0) {
+      linkedInstallments.forEach((parcela) => {
+        if (!isOutstandingReceivableStatus(parcela.status)) return;
+        const targetMonth = resolveReceivableTargetMonth(parcela.dataVencimento, projectionStartMonth);
+        if (targetMonth !== monthReference) return;
+
+        items.push({
+          id: `divida-${divida.id}-parcela-${parcela.id}`,
+          title,
+          subtitle: `${pessoa?.nome ?? "Pessoa"} · Parcela ${parcela.numero}/${linkedInstallments.length}`,
+          source: "divida_receber",
+          amount: round2(toMoneyNumber(parcela.valor)),
+          impactAmount: round2(toMoneyNumber(parcela.valor)),
+          date: parcela.dataVencimento,
+          includedInInvoice: false,
+        });
+      });
+      return;
+    }
+
+    if (!isOutstandingReceivableStatus(divida.status) || !divida.dataVencimento) return;
+    const targetMonth = resolveReceivableTargetMonth(divida.dataVencimento, projectionStartMonth);
+    if (targetMonth !== monthReference) return;
+
+    items.push({
+      id: `divida-${divida.id}`,
+      title,
+      subtitle: pessoa?.nome,
+      source: "divida_receber",
+      amount: round2(toMoneyNumber(divida.valor)),
+      impactAmount: round2(toMoneyNumber(divida.valor)),
+      date: divida.dataVencimento,
+      includedInInvoice: false,
+    });
+  });
+
+  return items;
+}
+
+function resolveLegacyInstallmentMonth(dataCompra: string, installmentNumber: number): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dataCompra)) return null;
+  return format(addMonths(parseISO(`${dataCompra.slice(0, 7)}-01`), Math.max(0, installmentNumber - 1)), "yyyy-MM");
+}
+
+function buildCardReceivableBreakdownForMonth(
+  context: FuturePurchaseSimulationContext,
+  input: FuturePurchaseSimulationInput,
+  monthReference: string,
+  projectionStartMonth: string,
+): FuturePurchaseSimulationBreakdownItem[] {
+  if (input.includeExpectedReceivables !== true || input.includeCardReceivables === false) return [];
+
+  const pessoasById = new Map(context.pessoas.map((pessoa) => [pessoa.id, pessoa]));
+  const cartoesById = new Map(context.cartoes.map((cartao) => [cartao.id, cartao]));
+  const parcelasByCompraId = groupParcelasCompraByCompraId(context.parcelasCompra);
+  const items: FuturePurchaseSimulationBreakdownItem[] = [];
+
+  context.compras.forEach((compra) => {
+    if (!isSelectedReceivablePerson(input, compra.pessoaId)) return;
+
+    const breakdown = buildCompraReembolsoBreakdown(compra);
+    if (breakdown.reembolsoPessoaCents <= 0) return;
+
+    const pessoa = pessoasById.get(compra.pessoaId);
+    const cartao = cartoesById.get(compra.cartaoId);
+    const installments = parcelasByCompraId.get(compra.id) ?? [];
+    const buildItem = (params: {
+      id: string;
+      installmentNumber: number;
+      dueDate: string;
+      statusPessoa: string | null | undefined;
+    }) => {
+      if (!isOutstandingReceivableStatus(params.statusPessoa)) return;
+      const targetMonth = resolveReceivableTargetMonth(params.dueDate, projectionStartMonth);
+      if (targetMonth !== monthReference) return;
+      const amount = getReembolsoParcelaByNumero(compra, params.installmentNumber);
+      if (amount <= 0) return;
+
+      items.push({
+        id: params.id,
+        title: `Reembolso: ${compra.descricao}`,
+        subtitle: `${pessoa?.nome ?? "Pessoa"}${cartao ? ` · ${cartao.nome}` : ""} · Parcela ${params.installmentNumber}/${breakdown.totalParcelas}`,
+        source: "reembolso_cartao",
+        amount: round2(amount),
+        impactAmount: round2(amount),
+        date: params.dueDate,
+        includedInInvoice: false,
+      });
+    };
+
+    if (installments.length > 0) {
+      installments.forEach((parcela) => {
+        const installmentMonth = parcela.dataVencimento?.slice(0, 7)
+          || resolveLegacyInstallmentMonth(compra.dataCompra, parcela.numero);
+        if (!installmentMonth) return;
+        const dueDate = parcela.dataVencimento || resolveDueDateFromCompetencia({
+          competencia: installmentMonth,
+          diaVencimento: cartao?.diaVencimento,
+          fallbackDataVencimento: compra.dataCompra,
+        });
+        if (!dueDate) return;
+        buildItem({
+          id: `reembolso-${compra.id}-parcela-${parcela.id}`,
+          installmentNumber: parcela.numero,
+          dueDate,
+          statusPessoa: parcela.statusPessoa,
+        });
+      });
+      return;
+    }
+
+    if (!isOutstandingReceivableStatus(compra.statusPessoa)) return;
+    for (let installmentNumber = breakdown.parcelaAtual; installmentNumber <= breakdown.totalParcelas; installmentNumber += 1) {
+      const installmentMonth = resolveLegacyInstallmentMonth(compra.dataCompra, installmentNumber);
+      if (!installmentMonth) continue;
+      const dueDate = resolveDueDateFromCompetencia({
+        competencia: installmentMonth,
+        diaVencimento: cartao?.diaVencimento,
+        fallbackDataVencimento: compra.dataCompra,
+      });
+      if (!dueDate) continue;
+      buildItem({
+        id: `reembolso-${compra.id}-legacy-${installmentNumber}`,
+        installmentNumber,
+        dueDate,
+        statusPessoa: compra.statusPessoa,
+      });
+    }
+  });
+
+  return items;
+}
+
+export function listFuturePurchaseReceivablePersonOptions(
+  context: FuturePurchaseSimulationContext,
+): FuturePurchaseReceivablePersonOption[] {
+  const parcelasByDividaId = new Map<string, Parcela[]>();
+  context.parcelas.forEach((parcela) => {
+    const current = parcelasByDividaId.get(parcela.dividaId) ?? [];
+    current.push(parcela);
+    parcelasByDividaId.set(parcela.dividaId, current);
+  });
+  const parcelasByCompraId = groupParcelasCompraByCompraId(context.parcelasCompra);
+
+  return context.pessoas
+    .filter((pessoa) => !pessoa.deletedAt)
+    .map((pessoa) => {
+      const hasPersonalReceivables = context.dividas.some((divida) => {
+        if (
+          divida.pessoaId !== pessoa.id
+          || divida.tipo !== "receber"
+          || divida.deletedAt
+          || divida.expectativaRecebimento === false
+        ) {
+          return false;
+        }
+        const installments = parcelasByDividaId.get(divida.id) ?? [];
+        return installments.length > 0
+          ? installments.some((parcela) => isOutstandingReceivableStatus(parcela.status))
+          : isOutstandingReceivableStatus(divida.status);
+      });
+      const hasCardReceivables = context.compras.some((compra) => {
+        if (compra.pessoaId !== pessoa.id || buildCompraReembolsoBreakdown(compra).reembolsoPessoaCents <= 0) {
+          return false;
+        }
+        const installments = parcelasByCompraId.get(compra.id) ?? [];
+        return installments.length > 0
+          ? installments.some((parcela) => isOutstandingReceivableStatus(parcela.statusPessoa))
+          : isOutstandingReceivableStatus(compra.statusPessoa);
+      });
+
+      return {
+        id: pessoa.id,
+        nome: pessoa.nome,
+        hasPersonalReceivables,
+        hasCardReceivables,
+      };
+    })
+    .filter((pessoa) => pessoa.hasPersonalReceivables || pessoa.hasCardReceivables)
+    .sort((left, right) => left.nome.localeCompare(right.nome, "pt-BR", { sensitivity: "base" }));
+}
+
 function buildStaticCashflowByMonthReference(
   context: FuturePurchaseSimulationContext,
   monthReferences: string[],
   input: FuturePurchaseSimulationInput,
 ): Map<string, StaticCashflowMonth> {
+  const projectionStartMonth = monthReferences[0] ?? getCurrentMonthReference(context.referenceDate);
   return new Map(monthReferences.map((monthReference) => {
     const events = buildFinancialCalendarEvents({
       monthReference,
@@ -386,7 +645,7 @@ function buildStaticCashflowByMonthReference(
       cartaoFaturaPagamentos: context.cartaoFaturaPagamentos,
       dividas: context.dividas,
       parcelas: context.parcelas,
-      pessoas: [],
+      pessoas: context.pessoas,
       servicos: context.servicos,
       servicoCobrancaPagamentos: context.servicoCobrancaPagamentos,
       rendas: context.rendas,
@@ -394,7 +653,7 @@ function buildStaticCashflowByMonthReference(
       referenceDate: context.referenceDate,
     }).filter((event) => {
       if (!CASHFLOW_SOURCES.has(event.source)) return false;
-      if (event.source === "divida_receber") return input.includeExpectedReceivables === true;
+      if (event.source === "divida_receber") return false;
       if (event.source === "divida_pagar") return input.includePersonalDebts !== false;
       if (event.source === "fatura_cartao" || event.source === "parcela_compra") {
         return input.includeCardCommitments !== false;
@@ -404,7 +663,11 @@ function buildStaticCashflowByMonthReference(
 
     const actualIncomeBreakdown = events
       .filter((event) => event.direction === "entrada" && getFinancialCalendarEventImpactAmount(event) > 0)
-      .map(toBreakdownItem);
+      .map(toBreakdownItem)
+      .concat(
+        buildPersonalReceivableBreakdownForMonth(context, input, monthReference, projectionStartMonth),
+        buildCardReceivableBreakdownForMonth(context, input, monthReference, projectionStartMonth),
+      );
     const actualExpenseBreakdown = events
       .filter((event) => event.direction === "saida" && getFinancialCalendarEventImpactAmount(event) > 0)
       .map(toBreakdownItem);
@@ -983,11 +1246,17 @@ export function buildFuturePurchaseSimulation(
       .filter((item) => item.source === "divida_pagar")
       .reduce((sum, item) => sum + item.impactAmount, 0)
   ), 0));
-  const expectedReceivablesConsidered = round2(months.reduce((total, month) => (
+  const personalReceivablesConsidered = round2(months.reduce((total, month) => (
     total + month.actualIncomeBreakdown
       .filter((item) => item.source === "divida_receber")
       .reduce((sum, item) => sum + item.impactAmount, 0)
   ), 0));
+  const cardReceivablesConsidered = round2(months.reduce((total, month) => (
+    total + month.actualIncomeBreakdown
+      .filter((item) => item.source === "reembolso_cartao")
+      .reduce((sum, item) => sum + item.impactAmount, 0)
+  ), 0));
+  const expectedReceivablesConsidered = round2(personalReceivablesConsidered + cardReceivablesConsidered);
   const cardCommitmentsConsidered = round2(
     months.reduce((total, month) => total + month.actualCardExpenses, 0),
   );
@@ -1021,6 +1290,19 @@ export function buildFuturePurchaseSimulation(
       cardCommitmentsConsidered,
       includeExpectedReceivables: normalizedInput.includeExpectedReceivables === true,
       expectedReceivablesConsidered,
+      includePersonalReceivables: normalizedInput.includePersonalReceivables !== false,
+      personalReceivablesConsidered,
+      includeCardReceivables: normalizedInput.includeCardReceivables !== false,
+      cardReceivablesConsidered,
+      selectedReceivablePersonIds: normalizedInput.selectedReceivablePersonIds
+        ?? listFuturePurchaseReceivablePersonOptions(context).map((pessoa) => pessoa.id),
+      selectedReceivablePeople: context.pessoas
+        .filter((pessoa) => (
+          normalizedInput.selectedReceivablePersonIds == null
+          || normalizedInput.selectedReceivablePersonIds.includes(pessoa.id)
+        ))
+        .map((pessoa) => pessoa.nome)
+        .sort((left, right) => left.localeCompare(right, "pt-BR", { sensitivity: "base" })),
     },
     suggestions,
   };

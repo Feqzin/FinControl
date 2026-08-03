@@ -17,6 +17,9 @@ export type FuturePurchaseSimulationPayload = {
   includePersonalDebts: boolean;
   includeCardCommitments: boolean;
   includeExpectedReceivables: boolean;
+  includePersonalReceivables: boolean;
+  includeCardReceivables: boolean;
+  selectedReceivablePersonIds: string[];
   extraIncomes: FuturePurchaseSimulationStoredExtraIncome[];
   resultStatus: "Pode comprar" | "Atenção" | "Não recomendado" | null;
   worstMonth: string | null;

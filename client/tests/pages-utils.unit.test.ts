@@ -6215,6 +6215,7 @@ function buildFuturePurchaseContextFixture(overrides: Partial<{
   servicoCobrancaPagamentos: ServicoCobrancaPagamento[];
   rendas: Renda[];
   patrimonios: Patrimonio[];
+  pessoas: Pessoa[];
 }> = {}) {
   return {
     cartoes: overrides.cartoes ?? [buildCartaoViewFixture({ id: "card-1", nome: "Cartão principal", diaVencimento: 10, limite: "5000.00" })],
@@ -6227,6 +6228,7 @@ function buildFuturePurchaseContextFixture(overrides: Partial<{
     servicoCobrancaPagamentos: overrides.servicoCobrancaPagamentos ?? [],
     rendas: overrides.rendas ?? [buildSimuladorRendaFixture()],
     patrimonios: overrides.patrimonios ?? [buildSimuladorPatrimonioFixture()],
+    pessoas: overrides.pessoas ?? [],
   };
 }
 
@@ -6344,6 +6346,116 @@ test("simulador compra futura: patrimônio, dívidas pessoais e valores a recebe
   assert.equal(alternativo.months[0]?.actualExpenses, 0);
   assert.equal(alternativo.months[0]?.actualIncome, 500);
   assert.equal(alternativo.calculationBasis.expectedReceivablesConsidered, 500);
+});
+
+test("simulador compra futura: considera somente dívidas e reembolsos das pessoas selecionadas", () => {
+  const context = buildFuturePurchaseContextFixture({
+    pessoas: [
+      buildPessoaFixture({ id: "pessoa-elza", nome: "Elza" }),
+      buildPessoaFixture({ id: "pessoa-rafael", nome: "Rafael" }),
+    ],
+    dividas: [
+      buildDividaFixture({
+        id: "divida-elza",
+        pessoaId: "pessoa-elza",
+        tipo: "receber",
+        valor: "80.00",
+        dataVencimento: "2026-05-20",
+      }),
+      buildDividaFixture({
+        id: "divida-rafael",
+        pessoaId: "pessoa-rafael",
+        tipo: "receber",
+        valor: "200.00",
+        dataVencimento: "2026-06-20",
+      }),
+    ],
+    compras: [
+      buildCompraCartaoViewFixture({
+        id: "compra-elza",
+        cartaoId: "card-1",
+        pessoaId: "pessoa-elza",
+        descricao: "Compra da Elza",
+        valorTotal: "300.00",
+        valorParcela: "150.00",
+        parcelas: 2,
+        parcelaAtual: 1,
+        dataCompra: "2026-05-01",
+        reembolsoModo: "metade",
+      }),
+      buildCompraCartaoViewFixture({
+        id: "compra-rafael",
+        cartaoId: "card-1",
+        pessoaId: "pessoa-rafael",
+        descricao: "Compra do Rafael",
+        valorTotal: "400.00",
+        valorParcela: "400.00",
+        parcelas: 1,
+        dataCompra: "2026-06-01",
+        reembolsoModo: "total",
+      }),
+    ],
+    parcelasCompra: [
+      buildParcelaCompraViewFixture({
+        id: "parcela-elza-1",
+        compraCartaoId: "compra-elza",
+        numero: 1,
+        valor: "150.00",
+        dataVencimento: "2026-05-10",
+        statusPessoa: "pago",
+      }),
+      buildParcelaCompraViewFixture({
+        id: "parcela-elza-2",
+        compraCartaoId: "compra-elza",
+        numero: 2,
+        valor: "150.00",
+        dataVencimento: "2026-06-10",
+        statusPessoa: "pendente",
+      }),
+      buildParcelaCompraViewFixture({
+        id: "parcela-rafael-1",
+        compraCartaoId: "compra-rafael",
+        numero: 1,
+        valor: "400.00",
+        dataVencimento: "2026-06-10",
+        statusPessoa: "pendente",
+      }),
+    ],
+    rendas: [buildSimuladorRendaFixture({ valor: "0.00" })],
+    patrimonios: [],
+  });
+  const baseInput = {
+    nomeCompra: "Compra teste",
+    valorTotal: 100,
+    parcelas: 1,
+    cartaoId: "card-1",
+    mesPrimeiraParcela: "2026-06",
+    reservaMinima: 0,
+    entradasExtras: [],
+    includeLiquidAssets: false,
+    includePersonalDebts: false,
+    includeCardCommitments: false,
+    includeExpectedReceivables: true,
+    selectedReceivablePersonIds: ["pessoa-elza"],
+  } satisfies FuturePurchaseSimulationInput;
+
+  const completo = withFakeNow("2026-06-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, baseInput));
+  const somenteCartao = withFakeNow("2026-06-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, {
+    ...baseInput,
+    includePersonalReceivables: false,
+  }));
+  const somentePessoal = withFakeNow("2026-06-01T12:00:00.000Z", () => buildFuturePurchaseSimulation(context, {
+    ...baseInput,
+    includeCardReceivables: false,
+  }));
+
+  assert.equal(completo.months[0]?.actualIncome, 155);
+  assert.equal(completo.calculationBasis.personalReceivablesConsidered, 80);
+  assert.equal(completo.calculationBasis.cardReceivablesConsidered, 75);
+  assert.equal(completo.calculationBasis.expectedReceivablesConsidered, 155);
+  assert.deepEqual(completo.calculationBasis.selectedReceivablePeople, ["Elza"]);
+  assert.equal(somenteCartao.months[0]?.actualIncome, 75);
+  assert.equal(somentePessoal.months[0]?.actualIncome, 80);
 });
 
 test("simulador compra futura: sem saldo ou renda não sugere alguns centavos como compra segura", () => {
