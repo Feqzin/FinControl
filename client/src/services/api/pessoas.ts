@@ -388,6 +388,13 @@ export async function createPessoaSaldoMovimentacao(
   return (await res.json()) as PessoaSaldoMovimentacao;
 }
 
+export async function deletePessoaSaldoMovimentacao(
+  pessoaId: string,
+  movimentacaoId: string,
+): Promise<void> {
+  await apiRequest("DELETE", `/api/pessoas/${pessoaId}/saldo-movimentacoes/${movimentacaoId}`);
+}
+
 export async function abaterSaldoDividaPessoa(
   pessoaId: string,
   dividaId: string,

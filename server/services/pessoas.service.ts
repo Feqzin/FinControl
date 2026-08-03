@@ -69,6 +69,12 @@ type CreatePessoaSaldoMovimentacaoResult =
   | { error: "SERVICO_PESSOA_NOT_LINKED_TO_PESSOA" }
   | { created: PessoaSaldoMovimentacao };
 
+type DeletePessoaSaldoMovimentacaoResult =
+  | { error: "PESSOA_NOT_FOUND" }
+  | { error: "MOVIMENTACAO_NOT_FOUND" }
+  | { error: "MOVIMENTACAO_VINCULADA" }
+  | { deleted: true };
+
 type AbaterSaldoDividaResult =
   | { error: "PESSOA_NOT_FOUND" }
   | { error: "DIVIDA_NOT_FOUND" }
@@ -823,6 +829,34 @@ export class PessoasService {
     });
 
     return { created };
+  }
+
+  async deleteSaldoMovimentacao(
+    pessoaId: string,
+    movimentacaoId: string,
+    userId: string,
+  ): Promise<DeletePessoaSaldoMovimentacaoResult> {
+    const pessoa = await this.storage.getPessoa(pessoaId, userId);
+    if (!pessoa) return { error: "PESSOA_NOT_FOUND" };
+
+    const movimentacao = await this.storage.getPessoaSaldoMovimentacao(movimentacaoId, userId);
+    if (!movimentacao || movimentacao.pessoaId !== pessoaId) {
+      return { error: "MOVIMENTACAO_NOT_FOUND" };
+    }
+
+    const origem = normalizeOptionalText(movimentacao.origem)?.toLowerCase() ?? "";
+    const vinculada = Boolean(
+      movimentacao.dividaId
+      || movimentacao.compraCartaoId
+      || movimentacao.parcelaCompraId
+      || movimentacao.servicoPessoaId
+      || origem.startsWith("abatimento_"),
+    );
+    if (vinculada) return { error: "MOVIMENTACAO_VINCULADA" };
+
+    const deleted = await this.storage.deletePessoaSaldoMovimentacao(movimentacaoId, userId);
+    if (!deleted) return { error: "MOVIMENTACAO_NOT_FOUND" };
+    return { deleted: true };
   }
 
   async abaterSaldoEmDivida(

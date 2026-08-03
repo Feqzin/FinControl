@@ -15,6 +15,7 @@ import "./vacation-plans-route.test";
 import "./comprovante-upload.test";
 import "./ownership.test";
 import "./pessoas-orphan-recovery.test";
+import "./pessoas-saldo-movimentacoes-route.test";
 import "./errors-sanitization.test";
 import "./backup-import-servicos-periodicidade.test";
 import "./servicos-categoria-validation.test";

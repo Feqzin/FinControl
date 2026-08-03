@@ -5,6 +5,7 @@ type PessoasController = {
   listSaldoMovimentacoesByUser: RequestHandler;
   listSaldoMovimentacoes: RequestHandler;
   createSaldoMovimentacao: RequestHandler;
+  deleteSaldoMovimentacao: RequestHandler;
   abaterSaldoEmDivida: RequestHandler;
   abaterSaldoEmServico: RequestHandler;
   abaterSaldoEmParcelaCompra: RequestHandler;
@@ -77,6 +78,7 @@ export function registerCoreDomainRoutes(app: Express, controllers: CoreDomainCo
   app.get("/api/pessoas/saldo-movimentacoes", requireAuth, pessoasController.listSaldoMovimentacoesByUser);
   app.get("/api/pessoas/:pessoaId/saldo-movimentacoes", requireAuth, pessoasController.listSaldoMovimentacoes);
   app.post("/api/pessoas/:pessoaId/saldo-movimentacoes", requireAuth, pessoasController.createSaldoMovimentacao);
+  app.delete("/api/pessoas/:pessoaId/saldo-movimentacoes/:movimentacaoId", requireAuth, pessoasController.deleteSaldoMovimentacao);
   app.post("/api/pessoas/:pessoaId/dividas/:dividaId/abater-saldo", requireAuth, pessoasController.abaterSaldoEmDivida);
   app.post("/api/pessoas/:pessoaId/servicos/:servicoPessoaId/abater-saldo", requireAuth, pessoasController.abaterSaldoEmServico);
   app.post("/api/pessoas/:pessoaId/parcelas/:parcelaId/abater-saldo", requireAuth, pessoasController.abaterSaldoEmParcelaCompra);

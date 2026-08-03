@@ -10,6 +10,17 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -213,6 +224,7 @@ export default function PessoasPage() {
     marcarServicoPagoMutation,
     reverterServicoPagoMutation,
     createSaldoMovimentacaoMutation,
+    deleteSaldoMovimentacaoMutation,
     abaterSaldoDividaMutation,
     abaterSaldoServicoMutation,
     desvincularCompraMutation,
@@ -1063,6 +1075,12 @@ export default function PessoasPage() {
                     <div className="space-y-2">
                       {historySaldoMovimentacoes.map((movimentacao) => {
                         const isCredito = movimentacao.tipo === "credito";
+                        const origemNormalizada = (movimentacao.origem ?? "").trim().toLowerCase();
+                        const canDelete = !movimentacao.dividaId
+                          && !movimentacao.compraCartaoId
+                          && !movimentacao.parcelaCompraId
+                          && !movimentacao.servicoPessoaId
+                          && !origemNormalizada.startsWith("abatimento_");
                         return (
                           <div
                             key={movimentacao.id}
@@ -1094,13 +1112,67 @@ export default function PessoasPage() {
                                   </p>
                                 )}
                               </div>
-                              <div className="text-right">
-                                <p className={`text-sm font-bold ${isCredito ? "text-emerald-600" : "text-red-600"}`}>
-                                  {isCredito ? "+" : "-"}{formatCurrencyBRL(Number(movimentacao.valor))}
-                                </p>
-                                <p className="text-[11px] text-muted-foreground">
-                                  Saldo: {formatCurrencyBRL(movimentacao.saldoAposMovimentacao ?? 0)}
-                                </p>
+                              <div className="flex items-start gap-2">
+                                <div className="text-right">
+                                  <p className={`text-sm font-bold ${isCredito ? "text-emerald-600" : "text-red-600"}`}>
+                                    {isCredito ? "+" : "-"}{formatCurrencyBRL(Number(movimentacao.valor))}
+                                  </p>
+                                  <p className="text-[11px] text-muted-foreground">
+                                    Saldo: {formatCurrencyBRL(movimentacao.saldoAposMovimentacao ?? 0)}
+                                  </p>
+                                </div>
+                                {canDelete && historyPessoa && (
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                        aria-label="Excluir movimentação de saldo"
+                                        title="Excluir movimentação"
+                                        data-testid={`button-delete-saldo-movimentacao-${movimentacao.id}`}
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent overlayClassName="z-[80]" className="z-[80]">
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Excluir movimentação de saldo?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          Esta ação removerá {isCredito ? "o crédito" : "o débito"} de {formatCurrencyBRL(Number(movimentacao.valor))} e recalculará todo o saldo da pessoa. Não é possível desfazer.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel disabled={deleteSaldoMovimentacaoMutation.isPending}>
+                                          Cancelar
+                                        </AlertDialogCancel>
+                                        <AlertDialogAction
+                                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                          disabled={deleteSaldoMovimentacaoMutation.isPending}
+                                          onClick={() => {
+                                            deleteSaldoMovimentacaoMutation.mutate(
+                                              {
+                                                pessoaId: historyPessoa.id,
+                                                movimentacaoId: movimentacao.id,
+                                              },
+                                              {
+                                                onSuccess: () => toast({ title: "Movimentação excluída e saldo recalculado" }),
+                                                onError: (err: Error) => toast({
+                                                  title: "Erro ao excluir movimentação",
+                                                  description: err.message,
+                                                  variant: "destructive",
+                                                }),
+                                              },
+                                            );
+                                          }}
+                                        >
+                                          {deleteSaldoMovimentacaoMutation.isPending ? "Excluindo..." : "Excluir movimentação"}
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                )}
                               </div>
                             </div>
                           </div>

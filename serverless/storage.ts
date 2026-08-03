@@ -305,7 +305,9 @@ export interface IStorage {
   deletePessoaPermanent(id: string, userId: string): Promise<boolean>;
   getPessoaSaldoMovimentacoes(userId: string): Promise<PessoaSaldoMovimentacao[]>;
   getPessoaSaldoMovimentacoesByPessoa(pessoaId: string, userId: string): Promise<PessoaSaldoMovimentacao[]>;
+  getPessoaSaldoMovimentacao(id: string, userId: string): Promise<PessoaSaldoMovimentacao | undefined>;
   createPessoaSaldoMovimentacao(movimentacao: InsertPessoaSaldoMovimentacao): Promise<PessoaSaldoMovimentacao>;
+  deletePessoaSaldoMovimentacao(id: string, userId: string): Promise<boolean>;
 
   getDividas(userId: string): Promise<Divida[]>;
   getDividasByStatus(userId: string, status: "active" | "removed" | "all"): Promise<Divida[]>;
@@ -783,9 +785,22 @@ export class DatabaseStorage implements IStorage {
       and(eq(pessoaSaldoMovimentacoes.pessoaId, pessoaId), eq(pessoaSaldoMovimentacoes.userId, userId)),
     );
   }
+  async getPessoaSaldoMovimentacao(id: string, userId: string) {
+    const [item] = await this.database.select().from(pessoaSaldoMovimentacoes).where(
+      and(eq(pessoaSaldoMovimentacoes.id, id), eq(pessoaSaldoMovimentacoes.userId, userId)),
+    );
+    return item;
+  }
   async createPessoaSaldoMovimentacao(movimentacao: InsertPessoaSaldoMovimentacao) {
     const [item] = await this.database.insert(pessoaSaldoMovimentacoes).values(movimentacao).returning();
     return item;
+  }
+  async deletePessoaSaldoMovimentacao(id: string, userId: string) {
+    const deleted = await this.database
+      .delete(pessoaSaldoMovimentacoes)
+      .where(and(eq(pessoaSaldoMovimentacoes.id, id), eq(pessoaSaldoMovimentacoes.userId, userId)))
+      .returning({ id: pessoaSaldoMovimentacoes.id });
+    return deleted.length > 0;
   }
 
   async getDividas(userId: string) {

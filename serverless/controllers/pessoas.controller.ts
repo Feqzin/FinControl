@@ -90,6 +90,27 @@ export function createPessoasController(service: PessoasService) {
       return res.status(201).json(result.created);
     },
 
+    deleteSaldoMovimentacao: async (req: Request, res: Response) => {
+      const userId = getUserId(req);
+      const pessoaId = getParam(req, "pessoaId");
+      const movimentacaoId = getParam(req, "movimentacaoId");
+      const result = await service.deleteSaldoMovimentacao(pessoaId, movimentacaoId, userId);
+
+      if ("error" in result) {
+        if (result.error === "PESSOA_NOT_FOUND") {
+          return sendNotFound(res, "Pessoa not found");
+        }
+        if (result.error === "MOVIMENTACAO_NOT_FOUND") {
+          return sendNotFound(res, "Movimentacao de saldo not found");
+        }
+        return res.status(409).json({
+          message: "Movimentacoes geradas por abatimentos automaticos nao podem ser excluidas por aqui.",
+        });
+      }
+
+      return res.status(204).send();
+    },
+
     abaterSaldoEmDivida: async (req: Request, res: Response) => {
       const userId = getUserId(req);
       const pessoaId = getParam(req, "pessoaId");
