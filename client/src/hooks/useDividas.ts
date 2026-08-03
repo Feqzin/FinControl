@@ -88,15 +88,28 @@ export function useDividas({ search, filterStatus, filterTipo }: UseDividasArgs)
         const isOverdue = (dateValue: string | null | undefined) => Boolean(dateValue && dateValue < todayIso);
         if (filterStatus === "todos") return true;
         if (filterStatus === "vencido") {
+          if (divida.tipo === "receber" && divida.expectativaRecebimento === false) return false;
           if (divida.parcelas.length > 0) {
             return divida.parcelas.some((parcela) => parcela.status === "pendente" && isOverdue(parcela.dataVencimento));
           }
           return divida.status === "pendente" && isOverdue(divida.dataVencimento);
         }
+        if (filterStatus === "sem_expectativa") {
+          const temPendencia = divida.parcelas.length > 0
+            ? divida.parcelas.some((parcela) => parcela.status === "pendente")
+            : divida.status === "pendente";
+          return divida.tipo === "receber"
+            && divida.expectativaRecebimento === false
+            && temPendencia;
+        }
         if (divida.parcelas.length > 0) {
-          if (filterStatus === "pendente") return divida.parcelas.some((parcela) => parcela.status === "pendente");
+          if (filterStatus === "pendente") {
+            return divida.expectativaRecebimento !== false
+              && divida.parcelas.some((parcela) => parcela.status === "pendente");
+          }
           if (filterStatus === "pago") return divida.parcelas.every((parcela) => parcela.status === "pago");
         }
+        if (filterStatus === "pendente" && divida.expectativaRecebimento === false) return false;
         return divida.status === filterStatus;
       })
       .filter((divida) => filterTipo === "todos" || divida.tipo === filterTipo)

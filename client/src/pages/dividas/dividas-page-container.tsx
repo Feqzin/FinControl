@@ -30,6 +30,7 @@ import { ImportarTextoPanel } from "@/components/importar/importar-texto-panel";
 import {
   buildDividasViewItems,
   filterDividasViewItems,
+  getDividasViewPendingTotals,
   FORMAS_PAGAMENTO_DIVIDA,
   type DividaOrigemFilter,
   type DividaSortBy,
@@ -160,28 +161,30 @@ export default function DividasPage() {
     [filterOrigem, filterStatus, filterTipo, getPessoaNome, search, viewItems, isRemovedFilter],
   );
 
+  const totalsViewItems = useMemo(
+    () => filterDividasViewItems({
+      items: viewItems,
+      search,
+      filterTipo,
+      filterStatus: "todos",
+      filterOrigin: isRemovedFilter ? "manual" : filterOrigem,
+      getPessoaNome,
+    }),
+    [filterOrigem, filterTipo, getPessoaNome, search, viewItems, isRemovedFilter],
+  );
+
   const sortedFiltered = useMemo(
     () => sortDividasViewItems(filteredViewItems, { sortBy, getPessoaNome }),
     [filteredViewItems, getPessoaNome, sortBy],
   );
 
-  const totalReceber = useMemo(
-    () => roundMoney(
-      sortedFiltered
-        .filter((item) => item.tipo === "receber" && item.status !== "pago")
-        .reduce((sum, item) => sum + item.valorPendente, 0),
-    ),
-    [sortedFiltered],
+  const pendingTotals = useMemo(
+    () => getDividasViewPendingTotals(totalsViewItems),
+    [totalsViewItems],
   );
-
-  const totalPagar = useMemo(
-    () => roundMoney(
-      sortedFiltered
-        .filter((item) => item.origin === "manual" && item.tipo === "pagar" && item.status !== "pago")
-        .reduce((sum, item) => sum + item.valorPendente, 0),
-    ),
-    [sortedFiltered],
-  );
+  const totalReceber = roundMoney(pendingTotals.receberEsperado);
+  const totalSemExpectativa = roundMoney(pendingTotals.semExpectativa);
+  const totalPagar = roundMoney(pendingTotals.pagar);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -191,7 +194,7 @@ export default function DividasPage() {
     const highlightParam = params.get("highlight");
     const importarParam = params.get("importar");
 
-    if (statusParam === "vencido" || statusParam === "pendente" || statusParam === "pago" || statusParam === "removidas") {
+    if (statusParam === "vencido" || statusParam === "pendente" || statusParam === "sem_expectativa" || statusParam === "pago" || statusParam === "removidas") {
       setFilterStatus(statusParam);
     }
 
@@ -625,6 +628,7 @@ export default function DividasPage() {
           <SelectContent>
             <SelectItem value="todos">Todos status</SelectItem>
             <SelectItem value="pendente">Pendente</SelectItem>
+            <SelectItem value="sem_expectativa">Sem expectativa</SelectItem>
             <SelectItem value="pago">Quitado</SelectItem>
             <SelectItem value="removidas">Removidas</SelectItem>
           </SelectContent>
@@ -648,10 +652,14 @@ export default function DividasPage() {
       </div>
 
       {sortedFiltered.length > 0 && !isRemovedFilter && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <div className="rounded-md bg-emerald-500/5 border border-emerald-500/10 p-3">
-            <p className="text-xs text-muted-foreground mb-1">Total a receber (pendente)</p>
+            <p className="text-xs text-muted-foreground mb-1">Total a receber esperado</p>
             <p className="fin-value-kpi text-emerald-600">{formatDividaCurrency(totalReceber)}</p>
+          </div>
+          <div className="rounded-md bg-amber-500/5 border border-amber-500/10 p-3">
+            <p className="text-xs text-muted-foreground mb-1">Total sem expectativa</p>
+            <p className="fin-value-kpi text-amber-600">{formatDividaCurrency(totalSemExpectativa)}</p>
           </div>
           <div className="rounded-md bg-red-500/5 border border-red-500/10 p-3">
             <p className="text-xs text-muted-foreground mb-1">Total a pagar (pendente)</p>

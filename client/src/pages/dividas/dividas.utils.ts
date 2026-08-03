@@ -52,6 +52,7 @@ export type DividaViewItem = {
   origin: DividaViewOrigin;
   pessoaId: string;
   tipo: "receber" | "pagar";
+  expectativaRecebimento: boolean;
   status: DividaViewStatus;
   descricao: string | null;
   dataReferencia: string | null;
@@ -305,6 +306,7 @@ export function buildDividasViewItems({
       origin: "manual",
       pessoaId: divida.pessoaId,
       tipo: divida.tipo === "pagar" ? "pagar" : "receber",
+      expectativaRecebimento: divida.expectativaRecebimento !== false,
       status,
       descricao: divida.descricao ?? null,
       dataReferencia: hasParcelas
@@ -427,6 +429,7 @@ export function buildDividasViewItems({
         origin: "cartao",
         pessoaId,
         tipo: "receber",
+        expectativaRecebimento: true,
         status,
         descricao: `${compra.descricao} · Cartão ${cartaoNome} · Reembolso parcial`,
         dataReferencia: proximaParcelaData ?? compra.dataCompra,
@@ -483,11 +486,44 @@ export function filterDividasViewItems({
     .filter((item) => tipoFilter === "todos" || item.tipo === tipoFilter)
     .filter((item) => {
       if (statusFilter === "todos") return true;
-      if (statusFilter === "vencido") return item.status === "vencido";
-      if (statusFilter === "pendente") return item.status === "pendente" || item.status === "vencido";
+      if (statusFilter === "sem_expectativa") {
+        return item.tipo === "receber"
+          && !item.expectativaRecebimento
+          && item.status !== "pago";
+      }
+      if (statusFilter === "vencido") {
+        return item.status === "vencido" && item.expectativaRecebimento;
+      }
+      if (statusFilter === "pendente") {
+        return (item.status === "pendente" || item.status === "vencido")
+          && item.expectativaRecebimento;
+      }
       if (statusFilter === "pago") return item.status === "pago";
       return true;
     });
+}
+
+export function getDividasViewPendingTotals(items: DividaViewItem[]) {
+  return items.reduce((totals, item) => {
+    if (item.status === "pago") return totals;
+
+    if (item.origin === "manual" && item.tipo === "pagar") {
+      totals.pagar += item.valorPendente;
+      return totals;
+    }
+
+    if (item.tipo !== "receber") return totals;
+    if (item.expectativaRecebimento) {
+      totals.receberEsperado += item.valorPendente;
+    } else {
+      totals.semExpectativa += item.valorPendente;
+    }
+    return totals;
+  }, {
+    receberEsperado: 0,
+    semExpectativa: 0,
+    pagar: 0,
+  });
 }
 
 type SortDividasViewItemsOptions = {

@@ -7,6 +7,7 @@ import { formatCurrencyBRL, formatIsoDateToBR } from "../src/utils/formatters";
 import {
   buildDividasViewItems,
   filterDividasViewItems,
+  getDividasViewPendingTotals,
   isOverdueDate,
   sortDividasForView,
   sortDividasViewItems,
@@ -536,6 +537,58 @@ test("dividas view: filtros de origem todos/manual/cartao", () => {
   assert.equal(manuais.length, 1);
   assert.equal(cartoes.length, 1);
   assert.equal(cartoes[0]?.origin, "cartao");
+});
+
+test("dividas view: sem expectativa tem filtro e total separados das pendências esperadas", () => {
+  const esperada = buildDividaFixture({
+    id: "d-esperada",
+    pessoaId: "pessoa-a",
+    tipo: "receber",
+    valor: "100.00",
+    status: "pendente",
+    expectativaRecebimento: true,
+  });
+  const semExpectativa = buildDividaFixture({
+    id: "d-sem-expectativa",
+    pessoaId: "pessoa-b",
+    tipo: "receber",
+    valor: "250.00",
+    status: "pendente",
+    expectativaRecebimento: false,
+  });
+  const items = buildDividasViewItems({
+    dividasManuais: [esperada, semExpectativa],
+    comprasCartaoVinculadas: [],
+    parcelasCompra: [],
+    cartoes: [],
+    getDividaStatus: getDividaStatusFixture,
+    getDividaValorPendente: (divida) => Number(divida.valor),
+    getDividaValorPago: () => 0,
+  });
+
+  const pendentes = filterDividasViewItems({
+    items,
+    search: "",
+    filterTipo: "receber",
+    filterStatus: "pendente",
+    filterOrigin: "todos",
+    getPessoaNome: getPessoaNomeFixture,
+  });
+  const semExpectativaFiltradas = filterDividasViewItems({
+    items,
+    search: "",
+    filterTipo: "receber",
+    filterStatus: "sem_expectativa",
+    filterOrigin: "todos",
+    getPessoaNome: getPessoaNomeFixture,
+  });
+  const totals = getDividasViewPendingTotals(items);
+
+  assert.deepEqual(pendentes.map((item) => item.sourceId), ["d-esperada"]);
+  assert.deepEqual(semExpectativaFiltradas.map((item) => item.sourceId), ["d-sem-expectativa"]);
+  assert.equal(totals.receberEsperado, 100);
+  assert.equal(totals.semExpectativa, 250);
+  assert.equal(totals.pagar, 0);
 });
 
 test("dividas view: status pago em compra vinculada não entra como pendente", () => {
