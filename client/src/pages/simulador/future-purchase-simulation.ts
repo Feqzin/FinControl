@@ -84,6 +84,9 @@ export type FuturePurchaseSimulationCalculationBasis = {
   vacationPlansConsidered: number;
   vacationSuspendedIncome: number;
   vacationPayIncome: number;
+  vacationGrossSalaryBase: number;
+  vacationGrossPayCalculated: number;
+  vacationPlansWithoutGrossSalary: number;
   selectedReceivablePersonIds: string[];
   selectedReceivablePeople: string[];
 };
@@ -422,8 +425,8 @@ function applyVacationSuspensionToIncomeEvent(
     amount: adjustedIncome,
     financialImpactAmount: adjustedIncome,
     subtitle: adjustedIncome > 0
-      ? "Renda fixa reduzida pelo Modo Férias"
-      : "Renda fixa pausada pelo Modo Férias",
+      ? "Depósito salarial ajustado pelo Modo Férias"
+      : "Depósito salarial pausado pela competência das férias",
   };
 }
 
@@ -1358,6 +1361,20 @@ export function buildFuturePurchaseSimulation(
       });
     });
   }
+  const consideredVacationPlans = (context.vacationPlans ?? []).filter((plan) => (
+    vacationPlanIdsConsidered.has(plan.id)
+  ));
+  const vacationGrossSalaryBase = round2(consideredVacationPlans.reduce((total, plan) => {
+    const income = context.rendas.find((item) => item.id === plan.rendaId);
+    return income ? total + calculateVacationPlanEstimate(plan, income).grossSalaryAmount : total;
+  }, 0));
+  const vacationGrossPayCalculated = round2(consideredVacationPlans.reduce((total, plan) => {
+    const income = context.rendas.find((item) => item.id === plan.rendaId);
+    return income ? total + calculateVacationPlanEstimate(plan, income).estimatedVacationPay : total;
+  }, 0));
+  const vacationPlansWithoutGrossSalary = consideredVacationPlans.filter((plan) => (
+    plan.grossSalaryAmount == null
+  )).length;
 
   return {
     status,
@@ -1396,6 +1413,9 @@ export function buildFuturePurchaseSimulation(
       vacationPlansConsidered: vacationPlanIdsConsidered.size,
       vacationSuspendedIncome,
       vacationPayIncome,
+      vacationGrossSalaryBase,
+      vacationGrossPayCalculated,
+      vacationPlansWithoutGrossSalary,
       selectedReceivablePersonIds: normalizedInput.selectedReceivablePersonIds
         ?? listFuturePurchaseReceivablePersonOptions(context).map((pessoa) => pessoa.id),
       selectedReceivablePeople: context.pessoas

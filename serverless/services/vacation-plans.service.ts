@@ -14,11 +14,21 @@ type CreateVacationPlansResult =
   | { created: VacationPlan[] }
   | { error: VacationPlanError };
 
+type VacationPlanCommonInput = {
+  startDate: string;
+  durationDays: number;
+  vacationPayReceived: boolean;
+  vacationPayDate: string | null;
+  includedInPatrimony: boolean;
+};
+
 function toInsertPayload(
   userId: string,
-  payload: Omit<VacationPlanCreateBodyInput, "rendaId">,
+  payload: VacationPlanCommonInput,
   rendaId: string,
   vacationPayAmount: number | null,
+  grossSalaryAmount: number | null,
+  incomeCompetencyOffsetMonths: -1 | 0,
 ): InsertVacationPlan {
   return {
     userId,
@@ -28,11 +38,13 @@ function toInsertPayload(
     vacationPayReceived: payload.vacationPayReceived,
     vacationPayDate: payload.vacationPayDate,
     vacationPayAmount: vacationPayAmount == null ? null : vacationPayAmount.toFixed(2),
+    grossSalaryAmount: grossSalaryAmount == null ? null : grossSalaryAmount.toFixed(2),
+    incomeCompetencyOffsetMonths,
     includedInPatrimony: payload.includedInPatrimony,
   };
 }
 
-function distributeVacationPay(totalAmount: number | null, incomes: Renda[]): Array<number | null> {
+function distributeAmount(totalAmount: number | null, incomes: Renda[]): Array<number | null> {
   if (totalAmount == null) return incomes.map(() => null);
   const totalCents = Math.round(totalAmount * 100);
   const incomeWeights = incomes.map((income) => Math.max(0, Number(income.valor) || 0));
@@ -74,7 +86,14 @@ export class VacationPlansService {
 
     return {
       created: await this.storage.createVacationPlan(
-        toInsertPayload(userId, payload, payload.rendaId, payload.vacationPayAmount),
+        toInsertPayload(
+          userId,
+          payload,
+          payload.rendaId,
+          payload.vacationPayAmount,
+          payload.grossSalaryAmount,
+          payload.incomeCompetencyOffsetMonths,
+        ),
       ),
     };
   }
@@ -100,12 +119,15 @@ export class VacationPlansService {
     ));
     if (overlaps) return { error: "OVERLAPPING_PLAN" };
 
-    const allocatedAmounts = distributeVacationPay(payload.vacationPayAmount, selectedIncomes);
+    const allocatedVacationPayAmounts = distributeAmount(payload.vacationPayAmount, selectedIncomes);
+    const allocatedGrossSalaryAmounts = distributeAmount(payload.grossSalaryAmount, selectedIncomes);
     const rows = selectedIncomes.map((income, index) => toInsertPayload(
       userId,
       payload,
       income.id,
-      allocatedAmounts[index] ?? null,
+      allocatedVacationPayAmounts[index] ?? null,
+      allocatedGrossSalaryAmounts[index] ?? null,
+      payload.competencyOffsetMonthsByIncomeId[income.id] ?? 0,
     ));
 
     return { created: await this.storage.createVacationPlans(rows) };

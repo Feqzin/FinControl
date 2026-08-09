@@ -700,6 +700,8 @@ export const vacationPlans = pgTable("vacation_plans", {
   vacationPayReceived: boolean("vacation_pay_received").notNull().default(false),
   vacationPayDate: date("vacation_pay_date", { mode: "string" }),
   vacationPayAmount: decimal("vacation_pay_amount", { precision: 12, scale: 2 }),
+  grossSalaryAmount: decimal("gross_salary_amount", { precision: 12, scale: 2 }),
+  incomeCompetencyOffsetMonths: integer("income_competency_offset_months").notNull().default(0),
   includedInPatrimony: boolean("included_in_patrimony").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

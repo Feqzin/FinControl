@@ -1084,10 +1084,15 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">
                           {simulation.calculationBasis.includeVacationPlans
                             ? simulation.calculationBasis.vacationPlansConsidered > 0
-                              ? `${simulation.calculationBasis.vacationPlansConsidered} planejamento(s): ${fc(simulation.calculationBasis.vacationSuspendedIncome)} de renda pausada e ${fc(simulation.calculationBasis.vacationPayIncome)} de adiantamento.`
+                              ? `${simulation.calculationBasis.vacationPlansConsidered} planejamento(s): base bruta de ${fc(simulation.calculationBasis.vacationGrossSalaryBase)}, férias brutas de ${fc(simulation.calculationBasis.vacationGrossPayCalculated)}, ${fc(simulation.calculationBasis.vacationSuspendedIncome)} em depósitos pausados por competência e ${fc(simulation.calculationBasis.vacationPayIncome)} entrando no caixa.`
                               : "Ligado, mas nenhum planejamento alcança os meses desta simulação. As rendas não foram pausadas."
                             : "Não considerado nesta simulação; as rendas seguem normalmente."}
                         </p>
+                        {simulation.calculationBasis.vacationPlansWithoutGrossSalary > 0 ? (
+                          <p className="mt-2 text-xs font-medium text-amber-700">
+                            {simulation.calculationBasis.vacationPlansWithoutGrossSalary} planejamento(s) antigo(s) ainda usam valor líquido como base. Recrie-os informando o salário bruto.
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -1296,7 +1301,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
 
                         {(month.vacationSuspendedIncome > 0 || month.vacationPayIncome > 0) ? (
                           <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-3 text-xs leading-5 text-muted-foreground">
-                            <span className="font-semibold text-sky-700">Modo Férias:</span> renda normal reduzida em {fc(month.vacationSuspendedIncome)} e adiantamento somado em {fc(month.vacationPayIncome)}.
+                            <span className="font-semibold text-sky-700">Modo Férias:</span> depósitos da competência foram pausados em {fc(month.vacationSuspendedIncome)} e o pagamento de férias somou {fc(month.vacationPayIncome)}. Nenhum valor foi dividido por dia.
                           </div>
                         ) : null}
 

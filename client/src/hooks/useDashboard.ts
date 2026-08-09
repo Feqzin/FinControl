@@ -793,7 +793,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     () => [
       "ENTRADAS",
       `• Renda mensal: ${mask(formatCurrencyBRL(totalRenda))}`,
-      ...(vacationImpact.suspendedIncome > 0 ? [`• Pausa Modo férias: -${mask(formatCurrencyBRL(vacationImpact.suspendedIncome))}`] : []),
+      ...(vacationImpact.suspendedIncome > 0 ? [`• Depósitos pausados por competência: -${mask(formatCurrencyBRL(vacationImpact.suspendedIncome))}`] : []),
       ...(vacationImpact.vacationPayIncome > 0 ? [`• Adiantamento de férias: +${mask(formatCurrencyBRL(vacationImpact.vacationPayIncome))}`] : []),
       ...(totalRecebidoMes > 0 ? [`• Recebimentos realizados: ${mask(formatCurrencyBRL(totalRecebidoMes))}`] : []),
       `Total confirmado: ${mask(formatCurrencyBRL(totalEntradas))}`,
@@ -815,7 +815,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     return [
       "Fontes de renda ativas:",
       ...items.map((r) => `• ${r.descricao} — ${mask(formatCurrencyBRL(toMoneyNumber(r.valor)))} (${r.tipo === "fixo" ? "Fixo" : "Variável"})`),
-      ...(vacationImpact.suspendedIncome > 0 ? ["---", `Modo férias reduz ${mask(formatCurrencyBRL(vacationImpact.suspendedIncome))} da renda normal deste mês.`] : []),
+      ...(vacationImpact.suspendedIncome > 0 ? ["---", `Modo férias pausa ${mask(formatCurrencyBRL(vacationImpact.suspendedIncome))} em depósitos ligados às competências do afastamento.`] : []),
       ...(vacationImpact.vacationPayIncome > 0 ? [`Adiantamento considerado: ${mask(formatCurrencyBRL(vacationImpact.vacationPayIncome))}.`] : []),
       "---",
       `Total: ${mask(formatCurrencyBRL(totalRenda))}`,

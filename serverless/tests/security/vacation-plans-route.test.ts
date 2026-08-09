@@ -91,16 +91,22 @@ function payload(overrides: Record<string, unknown> = {}) {
     vacationPayReceived: false,
     vacationPayDate: "2026-08-30",
     vacationPayAmount: null,
+    grossSalaryAmount: 3200,
+    incomeCompetencyOffsetMonths: -1,
     includedInPatrimony: false,
     ...overrides,
   };
 }
 
 function batchPayload(overrides: Record<string, unknown> = {}) {
-  const { rendaId: _rendaId, ...commonPayload } = payload();
+  const { rendaId: _rendaId, incomeCompetencyOffsetMonths: _offset, ...commonPayload } = payload();
   return {
     ...commonPayload,
     rendaIds: ["income-a", "income-a-2"],
+    competencyOffsetMonthsByIncomeId: {
+      "income-a": -1,
+      "income-a-2": 0,
+    },
     ...overrides,
   };
 }
@@ -139,13 +145,15 @@ test("Modo férias cria várias pausas atomicamente e divide o valor total", asy
     const createdResponse = await fetch(`${baseUrl}/api/vacation-plans/batch`, {
       method: "POST",
       headers,
-      body: JSON.stringify(batchPayload({ vacationPayAmount: 4800 })),
+      body: JSON.stringify(batchPayload({ vacationPayAmount: 4800, grossSalaryAmount: 4500 })),
     });
     assert.equal(createdResponse.status, 201);
     const created = await createdResponse.json();
     assert.equal(created.length, 2);
     assert.deepEqual(created.map((plan: any) => plan.rendaId), ["income-a", "income-a-2"]);
     assert.deepEqual(created.map((plan: any) => plan.vacationPayAmount), ["3200.00", "1600.00"]);
+    assert.deepEqual(created.map((plan: any) => plan.grossSalaryAmount), ["3000.00", "1500.00"]);
+    assert.deepEqual(created.map((plan: any) => plan.incomeCompetencyOffsetMonths), [-1, 0]);
     assert.equal(created.reduce((sum: number, plan: any) => sum + Number(plan.vacationPayAmount), 0), 4800);
 
     const invalidBatch = await fetch(`${baseUrl}/api/vacation-plans/batch`, {

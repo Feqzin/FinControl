@@ -24,12 +24,18 @@ const nullableMoneySchema = z.preprocess((value) => {
   return value;
 }, z.union([z.number().finite().min(0), z.null()]));
 
+const competencyOffsetMonthsSchema = z.preprocess((value) => {
+  if (typeof value === "string" && value.trim()) return Number(value);
+  return value;
+}, z.union([z.literal(-1), z.literal(0)]));
+
 const vacationPlanCommonBody = z.object({
   startDate: fullDateSchema,
   durationDays: durationDaysSchema,
   vacationPayReceived: z.boolean().default(false),
   vacationPayDate: z.union([fullDateSchema, z.null(), z.undefined()]).transform((value) => value ?? null),
   vacationPayAmount: nullableMoneySchema,
+  grossSalaryAmount: nullableMoneySchema,
   includedInPatrimony: z.boolean().default(false),
 });
 
@@ -48,6 +54,7 @@ function validatePatrimonyState(
 
 export const vacationPlanCreateBody = vacationPlanCommonBody.extend({
   rendaId: z.string().trim().min(1, "Selecione uma renda fixa."),
+  incomeCompetencyOffsetMonths: competencyOffsetMonthsSchema.default(0),
 }).superRefine(validatePatrimonyState);
 
 export const vacationPlansBatchCreateBody = vacationPlanCommonBody.extend({
@@ -55,7 +62,20 @@ export const vacationPlansBatchCreateBody = vacationPlanCommonBody.extend({
     .min(1, "Selecione pelo menos uma renda fixa.")
     .max(20, "Selecione no máximo 20 rendas fixas.")
     .refine((ids) => new Set(ids).size === ids.length, "Não repita a mesma renda fixa."),
-}).superRefine(validatePatrimonyState);
+  competencyOffsetMonthsByIncomeId: z.record(competencyOffsetMonthsSchema).default({}),
+}).superRefine((value, context) => {
+  validatePatrimonyState(value, context);
+  const selectedIds = new Set(value.rendaIds);
+  for (const incomeId of Object.keys(value.competencyOffsetMonthsByIncomeId)) {
+    if (!selectedIds.has(incomeId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["competencyOffsetMonthsByIncomeId", incomeId],
+        message: "A competência informada deve pertencer a uma renda selecionada.",
+      });
+    }
+  }
+});
 
 export type VacationPlanCreateBodyInput = z.infer<typeof vacationPlanCreateBody>;
 export type VacationPlansBatchCreateBodyInput = z.infer<typeof vacationPlansBatchCreateBody>;

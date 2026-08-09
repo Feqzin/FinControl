@@ -117,7 +117,8 @@ export default function PrevisaoPage() {
     return {
       ...event,
       amount: Math.max(0, (event.amount ?? 0) - suspendedIncome),
-      subtitle: "Renda fixa ajustada pelo Modo férias",
+      financialImpactAmount: Math.max(0, getFinancialCalendarEventImpactAmount(event) - suspendedIncome),
+      subtitle: "Depósito salarial pausado pela competência das férias",
     };
   });
   const vacationPayEvents: FinancialCalendarEvent[] = vacationImpact.plans.flatMap((impact) => {

@@ -8,11 +8,14 @@ export type CreateVacationPlanPayload = {
   vacationPayReceived: boolean;
   vacationPayDate: string | null;
   vacationPayAmount: number | null;
+  grossSalaryAmount: number | null;
+  incomeCompetencyOffsetMonths: -1 | 0;
   includedInPatrimony: boolean;
 };
 
-export type CreateVacationPlansPayload = Omit<CreateVacationPlanPayload, "rendaId"> & {
+export type CreateVacationPlansPayload = Omit<CreateVacationPlanPayload, "rendaId" | "incomeCompetencyOffsetMonths"> & {
   rendaIds: string[];
+  competencyOffsetMonthsByIncomeId: Record<string, -1 | 0>;
 };
 
 export async function fetchVacationPlans(): Promise<VacationPlan[]> {

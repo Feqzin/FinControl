@@ -129,8 +129,11 @@ export async function generateFuturePurchaseReportPdf(report: FuturePurchaseRepo
       ["Valores esperados de outras pessoas", formatBoolean(report.result.calculationBasis.includeExpectedReceivables), formatCurrency(report.result.calculationBasis.expectedReceivablesConsidered)],
       ["Pessoas consideradas", report.result.calculationBasis.selectedReceivablePeople.join(", ") || "Nenhuma", `${report.result.calculationBasis.selectedReceivablePeople.length}`],
       ["Modo Férias", formatBoolean(report.result.calculationBasis.includeVacationPlans), `${report.result.calculationBasis.vacationPlansConsidered} planejamento(s)`],
-      ["Renda pausada pelas férias", "Desconto", formatCurrency(report.result.calculationBasis.vacationSuspendedIncome)],
-      ["Adiantamento de férias", "Entrada", formatCurrency(report.result.calculationBasis.vacationPayIncome)],
+      ["Base salarial bruta das férias", "Cálculo trabalhista", formatCurrency(report.result.calculationBasis.vacationGrossSalaryBase)],
+      ["Férias brutas calculadas", "Salário + 1/3", formatCurrency(report.result.calculationBasis.vacationGrossPayCalculated)],
+      ["Depósitos pausados por competência", "Fluxo de caixa", formatCurrency(report.result.calculationBasis.vacationSuspendedIncome)],
+      ["Valor de férias que entrou", "Fluxo de caixa", formatCurrency(report.result.calculationBasis.vacationPayIncome)],
+      ["Planejamentos sem salário bruto", "Revisar", String(report.result.calculationBasis.vacationPlansWithoutGrossSalary)],
     ],
     theme: "striped",
   });

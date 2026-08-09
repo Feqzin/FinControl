@@ -2,6 +2,7 @@ export type VacationProjectionIncome = {
   id: string;
   descricao?: string | null;
   valor: string | number;
+  diaRecebimento?: number | null;
   ativo?: boolean | null;
 };
 
@@ -13,12 +14,17 @@ export type VacationProjectionPlan = {
   vacationPayReceived: boolean;
   vacationPayDate?: string | null;
   vacationPayAmount?: string | number | null;
+  grossSalaryAmount?: string | number | null;
+  incomeCompetencyOffsetMonths?: number | null;
   includedInPatrimony: boolean;
 };
 
 export type VacationPlanEstimate = {
   dailyIncome: number;
   suspendedIncome: number;
+  grossSalaryAmount: number;
+  vacationBaseAmount: number;
+  constitutionalThird: number;
   estimatedVacationPay: number;
   projectedVacationPay: number;
   vacationPayDate: string;
@@ -31,6 +37,8 @@ export type VacationMonthPlanImpact = {
   affectedDays: number;
   suspendedIncome: number;
   vacationPayIncome: number;
+  paymentDate: string | null;
+  competencyDate: string | null;
 };
 
 export type VacationMonthImpact = {
@@ -85,6 +93,77 @@ function addUtcDays(value: string, amount: number): string {
   return formatUtcDate(new Date(parsed.getTime() + amount * DAY_MS));
 }
 
+function addUtcMonths(value: string, amount: number): string {
+  const parsed = parseUtcDate(value);
+  if (!parsed) return value;
+  const targetMonth = new Date(Date.UTC(
+    parsed.getUTCFullYear(),
+    parsed.getUTCMonth() + amount,
+    1,
+  ));
+  const lastDay = new Date(Date.UTC(
+    targetMonth.getUTCFullYear(),
+    targetMonth.getUTCMonth() + 1,
+    0,
+  )).getUTCDate();
+  targetMonth.setUTCDate(Math.min(parsed.getUTCDate(), lastDay));
+  return formatUtcDate(targetMonth);
+}
+
+function resolveMonthlyPaymentDate(
+  monthReference: string,
+  income: VacationProjectionIncome,
+): string | null {
+  const monthBounds = getMonthBounds(monthReference);
+  if (!monthBounds) return null;
+  const requestedDay = Number(income.diaRecebimento);
+  const day = Number.isInteger(requestedDay) && requestedDay >= 1
+    ? Math.min(requestedDay, monthBounds.end.getUTCDate())
+    : 1;
+  return `${monthReference}-${String(day).padStart(2, "0")}`;
+}
+
+function getPlanEndDate(plan: Pick<VacationProjectionPlan, "startDate" | "durationDays">): string {
+  return addUtcDays(plan.startDate, Math.max(1, Math.trunc(plan.durationDays || 1)) - 1);
+}
+
+function isDateInsideVacationPlan(date: string, plan: VacationProjectionPlan): boolean {
+  const parsedDate = parseUtcDate(date);
+  const planStart = parseUtcDate(plan.startDate);
+  const planEnd = parseUtcDate(getPlanEndDate(plan));
+  if (!parsedDate || !planStart || !planEnd) return false;
+  return parsedDate.getTime() >= planStart.getTime() && parsedDate.getTime() <= planEnd.getTime();
+}
+
+function getIncomeCompetencyDate(
+  paymentDate: string,
+  plan: VacationProjectionPlan,
+): string {
+  const offset = Math.trunc(toFiniteNumber(plan.incomeCompetencyOffsetMonths) ?? 0);
+  return addUtcMonths(paymentDate, offset);
+}
+
+function listSuspendedPaymentDates(
+  plan: VacationProjectionPlan,
+  income: VacationProjectionIncome,
+): string[] {
+  const offset = Math.trunc(toFiniteNumber(plan.incomeCompetencyOffsetMonths) ?? 0);
+  const paymentWindowStart = addUtcMonths(plan.startDate, -offset);
+  const paymentWindowEnd = addUtcMonths(getPlanEndDate(plan), -offset);
+  const monthReferences = listMonthReferences(
+    paymentWindowStart.slice(0, 7),
+    paymentWindowEnd.slice(0, 7),
+  );
+
+  return monthReferences.flatMap((monthReference) => {
+    const paymentDate = resolveMonthlyPaymentDate(monthReference, income);
+    if (!paymentDate) return [];
+    return isDateInsideVacationPlan(getIncomeCompetencyDate(paymentDate, plan), plan)
+      ? [paymentDate]
+      : [];
+  });
+}
+
 function getMonthBounds(monthReference: string): { start: Date; end: Date } | null {
   if (!MONTH_PATTERN.test(monthReference)) return null;
   const [year, month] = monthReference.split("-").map(Number);
@@ -128,21 +207,32 @@ export function calculateVacationPlanEstimate(
   income: VacationProjectionIncome,
 ): VacationPlanEstimate {
   const monthlyIncome = Math.max(0, toFiniteNumber(income.valor) ?? 0);
+  const grossSalaryAmount = Math.max(
+    0,
+    toFiniteNumber(plan.grossSalaryAmount) ?? monthlyIncome,
+  );
   const durationDays = Math.max(1, Math.trunc(plan.durationDays || 1));
-  const dailyIncome = monthlyIncome / 30;
-  const suspendedIncome = roundMoney(dailyIncome * durationDays);
-  const estimatedVacationPay = roundMoney(suspendedIncome * (4 / 3));
+  const dailyIncome = grossSalaryAmount / 30;
+  const vacationBaseAmount = roundMoney(dailyIncome * durationDays);
+  const constitutionalThird = roundMoney(vacationBaseAmount / 3);
+  const estimatedVacationPay = roundMoney(vacationBaseAmount + constitutionalThird);
+  const suspendedIncome = roundMoney(
+    listSuspendedPaymentDates(plan, income).length * monthlyIncome,
+  );
   const informedPay = toFiniteNumber(plan.vacationPayAmount);
 
   return {
     dailyIncome: roundMoney(dailyIncome),
     suspendedIncome,
+    grossSalaryAmount: roundMoney(grossSalaryAmount),
+    vacationBaseAmount,
+    constitutionalThird,
     estimatedVacationPay,
     projectedVacationPay: roundMoney(Math.max(0, informedPay ?? estimatedVacationPay)),
     vacationPayDate: parseUtcDate(plan.vacationPayDate ?? "")
       ? String(plan.vacationPayDate)
       : addUtcDays(plan.startDate, -2),
-    endDate: addUtcDays(plan.startDate, durationDays - 1),
+    endDate: getPlanEndDate(plan),
   };
 }
 
@@ -184,19 +274,25 @@ export function calculateVacationMonthImpact(params: {
         monthBounds.end,
       );
       const monthlyIncome = Math.max(0, toFiniteNumber(income.valor) ?? 0);
-      const suspendedIncome = roundMoney(Math.min(monthlyIncome, (monthlyIncome / 30) * affectedDays));
+      const paymentDate = resolveMonthlyPaymentDate(params.monthReference, income);
+      const competencyDate = paymentDate ? getIncomeCompetencyDate(paymentDate, plan) : null;
+      const suspendedIncome = paymentDate && competencyDate && isDateInsideVacationPlan(competencyDate, plan)
+        ? roundMoney(monthlyIncome)
+        : 0;
       const vacationPayIncome = estimate.vacationPayDate.slice(0, 7) === params.monthReference
         && !(plan.vacationPayReceived && plan.includedInPatrimony)
         ? estimate.projectedVacationPay
         : 0;
 
-      if (affectedDays === 0 && vacationPayIncome === 0) continue;
+      if (affectedDays === 0 && suspendedIncome === 0 && vacationPayIncome === 0) continue;
       planImpacts.push({
         planId: plan.id ?? null,
         rendaId: plan.rendaId,
         affectedDays,
         suspendedIncome,
         vacationPayIncome,
+        paymentDate: suspendedIncome > 0 ? paymentDate : null,
+        competencyDate: suspendedIncome > 0 ? competencyDate : null,
       });
     }
   }
@@ -219,16 +315,42 @@ export function buildVacationPlanProjectionMonths(
   plan: VacationProjectionPlan,
   income: VacationProjectionIncome,
 ): VacationProjectionMonth[] {
-  const estimate = calculateVacationPlanEstimate(plan, income);
-  const firstReference = [plan.startDate.slice(0, 7), estimate.vacationPayDate.slice(0, 7)].sort()[0];
-  const lastReference = [estimate.endDate.slice(0, 7), estimate.vacationPayDate.slice(0, 7)].sort().at(-1) ?? firstReference;
-  const normalIncome = roundMoney(Math.max(0, toFiniteNumber(income.valor) ?? 0));
+  return buildVacationPlansProjectionMonths([plan], [income]);
+}
 
-  return listMonthReferences(firstReference, lastReference).map((monthReference) => {
+export function buildVacationPlansProjectionMonths(
+  plans: VacationProjectionPlan[],
+  incomes: VacationProjectionIncome[],
+): VacationProjectionMonth[] {
+  if (plans.length === 0 || incomes.length === 0) return [];
+  const incomeById = new Map(incomes.map((income) => [income.id, income] as const));
+  const estimates = plans.flatMap((plan) => {
+    const income = incomeById.get(plan.rendaId);
+    if (!income) return [];
+    return [{ plan, income, estimate: calculateVacationPlanEstimate(plan, income) }];
+  });
+  if (estimates.length === 0) return [];
+
+  const relevantReferences = estimates.flatMap(({ plan, income, estimate }) => [
+    plan.startDate.slice(0, 7),
+    estimate.endDate.slice(0, 7),
+    estimate.vacationPayDate.slice(0, 7),
+    ...listSuspendedPaymentDates(plan, income).map((date) => date.slice(0, 7)),
+  ]).sort();
+  const firstReference = relevantReferences[0];
+  const lastImpactReference = relevantReferences.at(-1) ?? firstReference;
+  const recoveryReference = addUtcMonths(`${lastImpactReference}-01`, 1).slice(0, 7);
+  const uniqueIncomes = new Map(estimates.map(({ income }) => [income.id, income] as const));
+  const normalIncome = roundMoney(Array.from(uniqueIncomes.values()).reduce(
+    (sum, income) => sum + Math.max(0, toFiniteNumber(income.valor) ?? 0),
+    0,
+  ));
+
+  return listMonthReferences(firstReference, recoveryReference).map((monthReference) => {
     const impact = calculateVacationMonthImpact({
       monthReference,
-      plans: [plan],
-      incomes: [income],
+      plans,
+      incomes,
     });
     return {
       ...impact,
