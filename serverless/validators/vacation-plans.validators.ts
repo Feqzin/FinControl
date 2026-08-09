@@ -13,7 +13,10 @@ const fullDateSchema = z.string()
 const durationDaysSchema = z.preprocess((value) => {
   if (typeof value === "string" && value.trim()) return Number(value);
   return value;
-}, z.number().int().min(1).max(90));
+}, z.number()
+  .int()
+  .min(5, "O período deve ter pelo menos 5 dias corridos.")
+  .max(30, "O período deve ter no máximo 30 dias corridos."));
 
 const nullableMoneySchema = z.preprocess((value) => {
   if (value == null || value === "") return null;

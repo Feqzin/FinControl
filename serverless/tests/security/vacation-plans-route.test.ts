@@ -138,6 +138,22 @@ test("Modo férias exige autenticação para criar", async () => {
   });
 });
 
+test("Modo férias aceita somente períodos entre 5 e 30 dias corridos", async () => {
+  const { app } = createApp();
+  await withTestServer(app, async (baseUrl) => {
+    const headers = { "x-test-auth": "user_a", "content-type": "application/json" };
+
+    for (const durationDays of [4, 31]) {
+      const response = await fetch(`${baseUrl}/api/vacation-plans`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload({ durationDays })),
+      });
+      assert.equal(response.status, 400);
+    }
+  });
+});
+
 test("Modo férias cria várias pausas atomicamente e divide o valor total", async () => {
   const { app, fixture } = createApp();
   await withTestServer(app, async (baseUrl) => {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarDays, Loader2, LockKeyhole, LockKeyholeOpen, Trash2, Umbrella, WalletCards } from "lucide-react";
+import { CalendarDays, Loader2, Trash2, Umbrella, WalletCards } from "lucide-react";
 import type { Renda, VacationPlan } from "@shared/schema";
 import {
   buildVacationPlansProjectionMonths,
@@ -68,6 +68,10 @@ function getErrorMessage(error: unknown): string {
   return error.message;
 }
 
+function getIncomeCompetencyOffset(income: Renda): -1 | 0 {
+  return income.diaRecebimento <= 10 ? -1 : 0;
+}
+
 export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
   const { toast } = useToast();
   const fixedIncomes = useMemo(
@@ -78,13 +82,10 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
   const [rendaIds, setRendaIds] = useState<string[]>([]);
   const [startDate, setStartDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [durationDays, setDurationDays] = useState("30");
-  const [vacationPayReceived, setVacationPayReceived] = useState(false);
   const [vacationPayDate, setVacationPayDate] = useState("");
   const [grossSalaryAmount, setGrossSalaryAmount] = useState("");
   const [vacationPayAmount, setVacationPayAmount] = useState("");
-  const [vacationPayAmountLocked, setVacationPayAmountLocked] = useState(true);
   const [includedInPatrimony, setIncludedInPatrimony] = useState(false);
-  const [competencyOffsets, setCompetencyOffsets] = useState<Record<string, -1 | 0>>({});
 
   useEffect(() => {
     setRendaIds((currentIds) => {
@@ -94,20 +95,6 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
       return fixedIncomes[0] ? [fixedIncomes[0].id] : [];
     });
   }, [fixedIncomes]);
-
-  useEffect(() => {
-    setCompetencyOffsets((current) => {
-      const next: Record<string, -1 | 0> = {};
-      fixedIncomes.forEach((income) => {
-        next[income.id] = current[income.id] ?? (income.diaRecebimento <= 10 ? -1 : 0);
-      });
-      return next;
-    });
-  }, [fixedIncomes]);
-
-  useEffect(() => {
-    if (!vacationPayReceived) setVacationPayDate("");
-  }, [startDate, vacationPayReceived]);
 
   const selectedIncomes = useMemo(
     () => fixedIncomes.filter((income) => rendaIds.includes(income.id)),
@@ -122,20 +109,21 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
       ativo: true,
     };
   }, [selectedIncomes]);
-  const normalizedDuration = Math.min(90, Math.max(1, Number.parseInt(durationDays, 10) || 1));
+  const parsedDuration = Number.parseInt(durationDays, 10);
+  const normalizedDuration = Math.min(30, Math.max(5, parsedDuration || 30));
   const normalizedGrossSalary = grossSalaryAmount.trim()
     ? Number(grossSalaryAmount.trim().replace(",", "."))
     : null;
-  const normalizedAmount = !vacationPayAmountLocked && vacationPayAmount.trim()
+  const normalizedAmount = vacationPayAmount.trim()
     ? Number(vacationPayAmount.trim().replace(",", "."))
     : null;
   const draftPlan = useMemo<VacationProjectionPlan>(() => ({
     rendaId: combinedIncome?.id ?? "",
     startDate,
     durationDays: normalizedDuration,
-    vacationPayReceived,
+    vacationPayReceived: includedInPatrimony,
     vacationPayDate: vacationPayDate || null,
-    vacationPayAmount: !vacationPayAmountLocked && Number.isFinite(normalizedAmount) ? normalizedAmount : null,
+    vacationPayAmount: Number.isFinite(normalizedAmount) ? normalizedAmount : null,
     grossSalaryAmount: Number.isFinite(normalizedGrossSalary) ? normalizedGrossSalary : null,
     incomeCompetencyOffsetMonths: 0,
     includedInPatrimony,
@@ -146,10 +134,7 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
     normalizedGrossSalary,
     normalizedAmount,
     startDate,
-    vacationPayAmount,
-    vacationPayAmountLocked,
     vacationPayDate,
-    vacationPayReceived,
   ]);
   const estimate = combinedIncome && normalizedGrossSalary != null && normalizedGrossSalary > 0
     ? calculateVacationPlanEstimate(draftPlan, combinedIncome)
@@ -158,7 +143,7 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
     if (!estimate || selectedIncomes.length === 0) return [];
     const totalIncome = selectedIncomes.reduce((sum, income) => sum + Math.max(0, Number(income.valor) || 0), 0);
     let remainingGrossCents = Math.round(estimate.grossSalaryAmount * 100);
-    const manualPayCents = !vacationPayAmountLocked && normalizedAmount != null && Number.isFinite(normalizedAmount)
+    const manualPayCents = normalizedAmount != null && Number.isFinite(normalizedAmount)
       ? Math.round(normalizedAmount * 100)
       : null;
     let remainingPayCents = manualPayCents;
@@ -181,10 +166,10 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
         rendaId: income.id,
         grossSalaryAmount: grossCents / 100,
         vacationPayAmount: payCents == null ? null : payCents / 100,
-        incomeCompetencyOffsetMonths: competencyOffsets[income.id] ?? 0,
+        incomeCompetencyOffsetMonths: getIncomeCompetencyOffset(income),
       };
     });
-  }, [competencyOffsets, draftPlan, estimate, normalizedAmount, selectedIncomes, vacationPayAmountLocked]);
+  }, [draftPlan, estimate, normalizedAmount, selectedIncomes]);
   const projection = draftPlans.length > 0
     ? buildVacationPlansProjectionMonths(draftPlans, selectedIncomes)
     : [];
@@ -225,30 +210,23 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
     },
   });
 
-  const handleReceivedChange = (checked: boolean) => {
-    setVacationPayReceived(checked);
+  const handleIncludedInPatrimonyChange = (checked: boolean) => {
+    setIncludedInPatrimony(checked);
     if (!checked) {
-      setIncludedInPatrimony(false);
       setVacationPayDate("");
-    }
-    if (checked && !vacationPayDate) setVacationPayDate(format(new Date(), "yyyy-MM-dd"));
-  };
-
-  const handleVacationPayAmountLock = () => {
-    if (vacationPayAmountLocked) {
-      setVacationPayAmount(estimate ? estimate.estimatedVacationPay.toFixed(2).replace(".", ",") : "");
-      setVacationPayAmountLocked(false);
       return;
     }
-
-    setVacationPayAmount("");
-    setVacationPayAmountLocked(true);
+    if (checked && !vacationPayDate) setVacationPayDate(format(new Date(), "yyyy-MM-dd"));
   };
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     if (selectedIncomes.length === 0 || !startDate) {
       toast({ title: "Selecione as rendas e informe a data das férias", variant: "destructive" });
+      return;
+    }
+    if (!Number.isInteger(parsedDuration) || parsedDuration < 5 || parsedDuration > 30) {
+      toast({ title: "Informe um período entre 5 e 30 dias corridos", variant: "destructive" });
       return;
     }
     if (normalizedAmount != null && (!Number.isFinite(normalizedAmount) || normalizedAmount < 0)) {
@@ -264,12 +242,12 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
       rendaIds: selectedIncomes.map((income) => income.id),
       startDate,
       durationDays: normalizedDuration,
-      vacationPayReceived,
+      vacationPayReceived: includedInPatrimony,
       vacationPayDate: vacationPayDate || estimate?.vacationPayDate || null,
       vacationPayAmount: normalizedAmount,
       grossSalaryAmount: normalizedGrossSalary,
       competencyOffsetMonthsByIncomeId: Object.fromEntries(
-        selectedIncomes.map((income) => [income.id, competencyOffsets[income.id] ?? 0]),
+        selectedIncomes.map((income) => [income.id, getIncomeCompetencyOffset(income)]),
       ),
       includedInPatrimony,
     });
@@ -294,7 +272,7 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
             Planejar Modo férias
           </DialogTitle>
           <DialogDescription>
-            Separe o cálculo trabalhista bruto dos depósitos líquidos que entram na sua conta.
+            Calcule as férias sobre o salário bruto e ajuste o fluxo dos depósitos líquidos sem contar o mesmo dinheiro duas vezes.
           </DialogDescription>
         </DialogHeader>
 
@@ -307,8 +285,8 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <div>
-                  <Label>Depósitos salariais que podem ficar pausados</Label>
-                  <p className="mt-1 text-xs text-muted-foreground">Selecione as parcelas do mesmo salário e informe a competência de cada depósito.</p>
+                  <Label>Parcelas líquidas do mesmo salário</Label>
+                  <p className="mt-1 text-xs text-muted-foreground">Selecione o salário e os adiantamentos que deixam de entrar normalmente durante as férias.</p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2" data-testid="vacation-income-options">
                   {fixedIncomes.map((income) => {
@@ -317,7 +295,7 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
                     return (
                       <div
                         key={income.id}
-                        className={`space-y-3 rounded-xl border p-3 transition-colors ${checked ? "border-sky-500/40 bg-sky-500/5" : "border-border/70 hover:bg-muted/45"}`}
+                        className={`rounded-xl border p-3 transition-colors ${checked ? "border-sky-500/40 bg-sky-500/5" : "border-border/70 hover:bg-muted/45"}`}
                       >
                         <label htmlFor={checkboxId} className="flex cursor-pointer items-center gap-3">
                           <Checkbox
@@ -338,22 +316,11 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
                           </span>
                         </label>
                         {checked ? (
-                          <div className="space-y-1.5 pl-7">
-                            <Label htmlFor={`vacation-competency-${income.id}`} className="text-xs">Este depósito paga qual mês?</Label>
-                            <select
-                              id={`vacation-competency-${income.id}`}
-                              value={competencyOffsets[income.id] ?? 0}
-                              onChange={(event) => setCompetencyOffsets((current) => ({
-                                ...current,
-                                [income.id]: Number(event.target.value) === -1 ? -1 : 0,
-                              }))}
-                              className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"
-                              data-testid={`select-vacation-competency-${income.id}`}
-                            >
-                              <option value={-1}>Saldo do mês anterior</option>
-                              <option value={0}>Adiantamento do mesmo mês</option>
-                            </select>
-                          </div>
+                          <p className="mt-2 pl-7 text-xs text-sky-700 dark:text-sky-300">
+                            {getIncomeCompetencyOffset(income) === -1
+                              ? "Tratado como saldo do mês anterior."
+                              : "Tratado como adiantamento do mesmo mês."}
+                          </p>
                         ) : null}
                       </div>
                     );
@@ -380,7 +347,7 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="vacation-start">Data de saída</Label>
+                <Label htmlFor="vacation-start">Primeiro dia das férias</Label>
                 <Input
                   id="vacation-start"
                   type="date"
@@ -388,92 +355,57 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
                   onChange={(event) => setStartDate(event.target.value)}
                   data-testid="input-vacation-start"
                 />
+                <p className="text-xs text-muted-foreground">O início não deve ocorrer nos dois dias anteriores a feriado ou repouso semanal.</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="vacation-days">Quantidade de dias</Label>
+                <Label htmlFor="vacation-days">Dias corridos</Label>
                 <Input
                   id="vacation-days"
                   type="number"
-                  min={1}
-                  max={90}
+                  min={5}
+                  max={30}
                   value={durationDays}
                   onChange={(event) => setDurationDays(event.target.value)}
                   data-testid="input-vacation-days"
                 />
+                <p className="text-xs text-muted-foreground">Use de 5 a 30 dias. No fracionamento, um período deve ter ao menos 14 dias.</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="vacation-payment-date">Data prevista ou recebida</Label>
+                <Label htmlFor="vacation-payment-date">Data do pagamento das férias</Label>
                 <Input
                   id="vacation-payment-date"
                   type="date"
                   value={vacationPayDate || estimate?.vacationPayDate || ""}
                   onChange={(event) => setVacationPayDate(event.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">Por padrão, dois dias antes do início.</p>
+                <p className="text-xs text-muted-foreground">A data sugerida respeita o pagamento até dois dias antes do início.</p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="vacation-payment-amount">Valor líquido pago ou esperado (opcional)</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="vacation-payment-amount"
-                    inputMode="decimal"
-                    readOnly={vacationPayAmountLocked}
-                    value={vacationPayAmountLocked
-                      ? (estimate?.estimatedVacationPay.toFixed(2).replace(".", ",") ?? "")
-                      : vacationPayAmount}
-                    onChange={(event) => setVacationPayAmount(event.target.value)}
-                    className={vacationPayAmountLocked ? "bg-muted/45 text-muted-foreground" : ""}
-                    data-testid="input-vacation-payment-amount"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="shrink-0"
-                    aria-label={vacationPayAmountLocked
-                      ? "Desbloquear valor calculado"
-                      : "Usar novamente o valor automático"}
-                    title={vacationPayAmountLocked
-                      ? "Desbloquear para alterar o valor"
-                      : "Bloquear e voltar ao cálculo automático"}
-                    onClick={handleVacationPayAmountLock}
-                    data-testid="button-vacation-payment-amount-lock"
-                  >
-                    {vacationPayAmountLocked
-                      ? <LockKeyhole className="h-4 w-4" />
-                      : <LockKeyholeOpen className="h-4 w-4" />}
-                  </Button>
-                </div>
+                <Label htmlFor="vacation-payment-amount">Valor líquido informado (opcional)</Label>
+                <Input
+                  id="vacation-payment-amount"
+                  inputMode="decimal"
+                  placeholder={estimate ? `Vazio usa o bruto de ${formatCurrencyBRL(estimate.estimatedVacationPay)}` : "Ex.: 4000,00"}
+                  value={vacationPayAmount}
+                  onChange={(event) => setVacationPayAmount(event.target.value)}
+                  data-testid="input-vacation-payment-amount"
+                />
                 <p className="text-xs text-muted-foreground">
-                  {vacationPayAmountLocked
-                    ? "Mostra as férias brutas. Abra o cadeado para informar o valor líquido que realmente entrará na conta."
-                    : selectedIncomes.length > 1
-                    ? "Se informado, será dividido proporcionalmente entre as rendas selecionadas."
-                    : "Valor manual ativo. Feche o cadeado para voltar ao cálculo automático."}
+                  Se ficar vazio, a projeção usa o total bruto. Informe o líquido real quando souber os descontos da folha.
                 </p>
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/70 p-3.5">
-                <div>
-                  <Label htmlFor="vacation-received">Valor já recebido</Label>
-                  <p className="mt-1 text-xs text-muted-foreground">Marca o adiantamento como já pago.</p>
-                </div>
-                <Switch id="vacation-received" checked={vacationPayReceived} onCheckedChange={handleReceivedChange} />
+            <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/70 p-3.5">
+              <div>
+                <Label htmlFor="vacation-patrimony">Pagamento já incluído no patrimônio atual</Label>
+                <p className="mt-1 text-xs text-muted-foreground">Ative somente se o valor já entrou na conta e o patrimônio cadastrado já foi atualizado.</p>
               </div>
-              <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/70 p-3.5">
-                <div>
-                  <Label htmlFor="vacation-patrimony">Já consta no patrimônio</Label>
-                  <p className="mt-1 text-xs text-muted-foreground">Evita somar o mesmo dinheiro novamente.</p>
-                </div>
-                <Switch
-                  id="vacation-patrimony"
-                  checked={includedInPatrimony}
-                  disabled={!vacationPayReceived}
-                  onCheckedChange={setIncludedInPatrimony}
-                />
-              </div>
+              <Switch
+                id="vacation-patrimony"
+                checked={includedInPatrimony}
+                onCheckedChange={handleIncludedInPatrimonyChange}
+              />
             </div>
 
             {estimate ? (
@@ -484,8 +416,12 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="rounded-xl bg-background/80 p-3">
-                    <p className="text-xs text-muted-foreground">Base salarial bruta</p>
+                    <p className="text-xs text-muted-foreground">Salário bruto mensal</p>
                     <p className="mt-1 font-semibold">{formatCurrencyBRL(estimate.grossSalaryAmount)}</p>
+                  </div>
+                  <div className="rounded-xl bg-background/80 p-3">
+                    <p className="text-xs text-muted-foreground">Remuneração do período</p>
+                    <p className="mt-1 font-semibold">{formatCurrencyBRL(estimate.vacationBaseAmount)}</p>
                   </div>
                   <div className="rounded-xl bg-background/80 p-3">
                     <p className="text-xs text-muted-foreground">1/3 constitucional</p>
@@ -495,15 +431,17 @@ export function VacationModeDialog({ rendas, plans }: VacationModeDialogProps) {
                     <p className="text-xs text-muted-foreground">Férias brutas calculadas</p>
                     <p className="mt-1 font-semibold text-emerald-600">{formatCurrencyBRL(estimate.estimatedVacationPay)}</p>
                   </div>
-                  <div className="rounded-xl bg-background/80 p-3">
-                    <p className="text-xs text-muted-foreground">Valor que entra na projeção</p>
-                    <p className="mt-1 font-semibold text-sky-600">
-                      {formatCurrencyBRL(vacationPayReceived && includedInPatrimony ? 0 : estimate.projectedVacationPay)}
-                    </p>
-                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-background/80 p-3">
+                  <p className="text-xs text-muted-foreground">
+                    Valor usado no fluxo {normalizedAmount == null ? "(bruto automático)" : "(líquido informado)"}
+                  </p>
+                  <p className="font-semibold text-sky-600">
+                    {includedInPatrimony ? "Já incluído no patrimônio" : formatCurrencyBRL(estimate.projectedVacationPay)}
+                  </p>
                 </div>
                 <p className="text-xs leading-relaxed text-muted-foreground">
-                  Depósitos líquidos pausados por competência: <strong>{formatCurrencyBRL(suspendedCashflow)}</strong>. Não há rateio diário. INSS e IRRF não são estimados automaticamente; para maior fidelidade, desbloqueie o valor e informe o líquido recebido. O 13º deve ser lançado separadamente.
+                  Depósitos líquidos ajustados por competência: <strong>{formatCurrencyBRL(suspendedCashflow)}</strong>. Não há rateio diário. INSS e IRRF não são estimados automaticamente; informe o líquido recebido para maior fidelidade. O 13º deve ser lançado separadamente.
                 </p>
               </div>
             ) : null}
