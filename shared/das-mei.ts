@@ -196,7 +196,8 @@ export function calculateDasMei(params: {
   let finePercentage = Math.min(20, roundMoney(daysLate * 0.33));
   let fineAmount = roundMoney(principal * finePercentage / 100);
 
-  const selicMonths = requiredSelicMonths(dueDate, calculationDate);
+  const officialTotalManual = params.override?.officialTotal != null;
+  const selicMonths = officialTotalManual ? [] : requiredSelicMonths(dueDate, calculationDate);
   const selicSnapshot: Record<string, number> = {};
   let interestPercentage = 0;
   for (const month of selicMonths) {
@@ -213,7 +214,6 @@ export function calculateDasMei(params: {
   interestPercentage = roundPercentage(interestPercentage);
   let interestAmount = roundMoney(principal * interestPercentage / 100);
   let total = roundMoney(principal + fineAmount + interestAmount);
-  const officialTotalManual = params.override?.officialTotal != null;
 
   if (officialTotalManual) {
     const officialTotal = roundMoney(Number(params.override?.officialTotal));

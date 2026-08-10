@@ -139,3 +139,17 @@ test("preserva exatamente o total oficial importado sem cobrar encargos novament
     { fine: 14.32, interest: 20.33 },
   );
 });
+
+test("não exige Selic futura quando o total oficial já veio do PGMEI", () => {
+  const calculation = calculateDasMei({
+    competencia: "2024-04-01",
+    activity: "comercio",
+    requestedCalculationDate: "2027-01-10",
+    selicRates: {},
+    override: { officialTotal: 106.25 },
+  });
+
+  assert.equal(calculation.total, 106.25);
+  assert.equal(calculation.officialTotalManual, true);
+  assert.deepEqual(calculation.selicSnapshot, {});
+});

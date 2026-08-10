@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { CnpjDasImportPanel } from "@/pages/dividas/components/cnpj-das-import-panel";
+import { CnpjDasPaymentGuidance } from "@/pages/dividas/components/cnpj-das-payment-guidance";
 import type { DasImportedItem } from "@/pages/dividas/cnpj-das-import.utils";
 import {
   listCnpjDas,
@@ -480,6 +481,7 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
                         <div className="rounded-lg bg-amber-500/5 p-3"><p className="text-xs text-muted-foreground">Multas + juros</p><p className="font-medium text-amber-700">+ {formatCurrency(additions)}</p></div>
                         <div className="rounded-lg bg-primary/5 p-3"><p className="text-xs text-muted-foreground">Leitura simples</p><p className="text-sm">A dívida cresceu {formatCurrency(additions)} desde os valores originais.</p></div>
                       </div>
+                      <CnpjDasPaymentGuidance obligations={company.obligations} />
                       {company.imports.length > 0 && (
                         <div className="mt-4 rounded-lg border bg-muted/20 p-3">
                           <p className="mb-2 text-sm font-medium">Lotes cadastrados e comprovantes</p>

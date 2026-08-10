@@ -27,8 +27,8 @@ testCnpjDasIntegration("cadastra CNPJ, cria dívida DAS, registra evolução e p
       nome: "Empresa de Teste",
       atividade: "comercio",
       competenciaInicial: "2026-06",
-      competenciaFinal: "2026-06",
-      dataCalculo: "2026-08-10",
+      competenciaFinal: "2026-07",
+      dataCalculo: "2027-01-10",
       competenciasSelecionadas: ["2026-06"],
       overrides: { "2026-06": { officialTotal: 88.5 } },
     });

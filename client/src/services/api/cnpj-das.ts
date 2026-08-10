@@ -20,6 +20,7 @@ export type CnpjDasHistoryItem = {
   id: string;
   dataCalculo: string;
   principal: string;
+  multaPercentual: string;
   multaValor: string;
   jurosValor: string;
   total: string;
@@ -33,6 +34,7 @@ export type CnpjDasObligationView = {
   dataVencimento: string;
   dataCalculo: string;
   principal: string;
+  multaPercentual: string;
   multaValor: string;
   jurosValor: string;
   total: string;

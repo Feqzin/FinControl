@@ -76,15 +76,20 @@ async function loadSelicRates(months: string[]): Promise<Record<string, number>>
   return rates;
 }
 
-async function calculatePreview(payload: CnpjDasPreviewInput): Promise<DasMeiCalculation[]> {
-  const competencies = listCompetencies(payload.competenciaInicial, payload.competenciaFinal);
+async function calculatePreview(
+  payload: CnpjDasPreviewInput,
+  selectedMonths?: Set<string>,
+): Promise<DasMeiCalculation[]> {
+  const competencies = listCompetencies(payload.competenciaInicial, payload.competenciaFinal)
+    .filter((competencia) => !selectedMonths || selectedMonths.has(competencia.slice(0, 7)));
   const preliminary = competencies.map((competencia) => ({
     competencia,
     dueDate: payload.overrides[competencia.slice(0, 7)]?.dueDate || getDasMeiDueDate(competencia),
   }));
-  const requiredMonths = preliminary.flatMap((item) => requiredSelicMonths(
-    item.dueDate,
-    payload.dataCalculo,
+  const requiredMonths = preliminary.flatMap((item) => (
+    payload.overrides[item.competencia.slice(0, 7)]?.officialTotal != null
+      ? []
+      : requiredSelicMonths(item.dueDate, payload.dataCalculo)
   ));
   const selicRates = await loadSelicRates(requiredMonths);
 
@@ -152,9 +157,8 @@ export class CnpjDasService {
   }
 
   async save(userId: string, payload: CnpjDasSaveInput) {
-    const allCalculations = await calculatePreview(payload);
     const selected = new Set(payload.competenciasSelecionadas);
-    const calculations = allCalculations.filter((item) => selected.has(item.competencia.slice(0, 7)));
+    const calculations = await calculatePreview(payload, selected);
     if (calculations.length === 0) throw new Error("Nenhuma competência válida foi selecionada.");
     const normalizedCnpj = normalizeCnpj(payload.cnpj);
 

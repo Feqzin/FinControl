@@ -14,6 +14,7 @@ import {
 } from "../src/pages/dividas/dividas.utils";
 import { sortPessoasForView } from "../src/pages/pessoas/pessoas-sort.utils";
 import { parseCnpjDasImportText } from "../src/pages/dividas/cnpj-das-import.utils";
+import { buildCnpjDasPaymentGuidance } from "../src/pages/dividas/cnpj-das-payment-guidance.utils";
 import {
   getPessoaFilterFinancialTotals,
   matchesPessoaTipoFilter,
@@ -8624,4 +8625,69 @@ DAS consolidado contendo os valores de todos os PA selecionados. R$ 143,20 R$ 28
   ]);
   assert.deepEqual(result.reportedTotals, [{ label: "Total consolidado do DAS", year: null, total: 211.94 }]);
   assert.deepEqual(result.warnings, []);
+});
+
+test("Orientação DAS prioriza multa diária e respeita o orçamento mensal", () => {
+  const obligations = [
+    {
+      id: "old-capped",
+      competencia: "2024-04-01",
+      dataVencimento: "2024-05-20",
+      dataCalculo: "2026-08-10",
+      principal: "71.60",
+      multaPercentual: "20.0000",
+      multaValor: "14.32",
+      jurosValor: "20.33",
+      total: "106.25",
+      totalOficialManual: true,
+      debtStatus: "pendente",
+      debtDeletedAt: null,
+      history: [],
+    },
+    {
+      id: "recent-growing",
+      competencia: "2026-06-01",
+      dataVencimento: "2026-07-20",
+      dataCalculo: "2026-08-10",
+      principal: "82.05",
+      multaPercentual: "6.9300",
+      multaValor: "5.69",
+      jurosValor: "0.82",
+      total: "88.56",
+      totalOficialManual: true,
+      debtStatus: "pendente",
+      debtDeletedAt: null,
+      history: [],
+    },
+  ];
+
+  const guidance = buildCnpjDasPaymentGuidance(obligations, 100, "2026-08-10");
+
+  assert.equal(guidance.priorities[0].id, "recent-growing");
+  assert.equal(guidance.dailyFineCount, 1);
+  assert.deepEqual(guidance.firstMonthPriorities.map((item) => item.id), ["recent-growing"]);
+  assert.equal(guidance.firstMonthTotal, 88.56);
+  assert.equal(guidance.estimatedMonths, 2);
+});
+
+test("Orientação DAS indica quando o orçamento não paga a menor guia", () => {
+  const guidance = buildCnpjDasPaymentGuidance([{
+    id: "das-1",
+    competencia: "2026-06-01",
+    dataVencimento: "2026-07-20",
+    dataCalculo: "2026-08-10",
+    principal: "82.05",
+    multaPercentual: "6.9300",
+    multaValor: "5.69",
+    jurosValor: "0.82",
+    total: "88.56",
+    totalOficialManual: true,
+    debtStatus: "pendente",
+    debtDeletedAt: null,
+    history: [],
+  }], 50, "2026-08-10");
+
+  assert.equal(guidance.budgetFitsGuide, false);
+  assert.equal(guidance.firstMonthPriorities.length, 0);
+  assert.equal(guidance.estimatedMonths, null);
 });
