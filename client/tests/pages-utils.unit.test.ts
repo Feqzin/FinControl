@@ -13,6 +13,7 @@ import {
   sortDividasViewItems,
 } from "../src/pages/dividas/dividas.utils";
 import { sortPessoasForView } from "../src/pages/pessoas/pessoas-sort.utils";
+import { parseCnpjDasImportText } from "../src/pages/dividas/cnpj-das-import.utils";
 import {
   getPessoaFilterFinancialTotals,
   matchesPessoaTipoFilter,
@@ -8564,4 +8565,63 @@ test("Modo férias identifica sobreposição na mesma renda", () => {
     { startDate: "2026-08-10", durationDays: 15 },
     { startDate: "2026-08-25", durationDays: 10 },
   ), false);
+});
+
+test("Importação DAS interpreta a lista oficial por competência e confere os totais", () => {
+  const text = `**04/2024:** R$ 106,25
+**05/2024:** R$ 105,69
+**06/2024:** R$ 105,04
+**07/2024:** R$ 104,42
+**08/2024:** R$ 103,81
+**09/2024:** R$ 103,15
+**10/2024:** R$ 102,58
+**11/2024:** R$ 101,91
+**12/2024:** R$ 101,19
+Total de 2024: R$ 934,04
+
+01/2025: R$ 107,92
+02/2025: R$ 107,18
+03/2025: R$ 106,36
+04/2025: R$ 105,49
+05/2025: R$ 104,64
+06/2025: R$ 103,66
+07/2025: R$ 102,77
+08/2025: R$ 101,83
+09/2025: R$ 100,85
+10/2025: R$ 100,04
+11/2025: R$ 99,10
+12/2025: R$ 98,21
+Total de 2025: R$ 1.238,05
+
+01/2026: R$ 103,97
+02/2026: R$ 102,98
+03/2026: R$ 102,07
+04/2026: R$ 101,20
+05/2026: R$ 97,14
+06/2026: R$ 88,56
+Total de 2026 ainda em aberto: R$ 595,92
+
+Total geral restante
+R$ 2.768,01`;
+
+  const result = parseCnpjDasImportText(text);
+
+  assert.equal(result.items.length, 27);
+  assert.deepEqual(result.yearlyTotals, { "2024": 934.04, "2025": 1238.05, "2026": 595.92 });
+  assert.equal(result.calculatedTotal, 2768.01);
+  assert.deepEqual(result.reportedTotals.map((item) => item.total), [934.04, 1238.05, 595.92, 2768.01]);
+  assert.deepEqual(result.warnings, []);
+});
+
+test("Importação DAS usa o último valor da linha completa do PGMEI", () => {
+  const result = parseCnpjDasImportText(`Abril/2024 Sim R$ 71,60 R$ 14,32 R$ 20,33 R$ 106,25 20/05/2024 10/08/2026
+Maio/2024 Sim R$ 71,60 R$ 14,32 R$ 19,77 R$ 105,69 20/06/2024 10/08/2026
+DAS consolidado contendo os valores de todos os PA selecionados. R$ 143,20 R$ 28,64 R$ 40,10 R$ 211,94 Diversos 10/08/2026`);
+
+  assert.deepEqual(result.items.map((item) => ({ competencia: item.competencia, total: item.total })), [
+    { competencia: "2024-04", total: 106.25 },
+    { competencia: "2024-05", total: 105.69 },
+  ]);
+  assert.deepEqual(result.reportedTotals, [{ label: "Total consolidado do DAS", year: null, total: 211.94 }]);
+  assert.deepEqual(result.warnings, []);
 });

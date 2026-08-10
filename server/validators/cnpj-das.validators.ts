@@ -9,6 +9,7 @@ const overrideSchema = z.object({
   principal: z.number().finite().min(0).nullable().optional(),
   dueDate: dateSchema.nullable().optional(),
   beneficioInss: z.boolean().optional(),
+  officialTotal: z.number().finite().positive().nullable().optional(),
 });
 
 const calculationFields = z.object({

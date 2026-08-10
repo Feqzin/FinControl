@@ -22,7 +22,7 @@ export type DividaPessoaPayload = {
   formaPagamento?: string;
 };
 
-export type PagamentoTimelineSourceType = "parcela" | "divida";
+export type PagamentoTimelineSourceType = "parcela" | "divida" | "cnpj_das_importacao";
 
 export type PagamentoTimelineEvent = {
   id: string;

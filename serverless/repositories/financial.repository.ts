@@ -2,6 +2,7 @@ import type {
   InsertCompraCartao,
   InsertCartaoFaturaPagamento,
   InsertCartaoFaturaPagamentoAlocacao,
+  InsertCnpjDasImportacao,
   InsertDivida,
   InsertParcela,
   InsertParcelaCompra,
@@ -42,6 +43,14 @@ function createFinancialRepositoryBase(targetStorage: IStorage) {
 
     async updateDivida(id: string, userId: string, data: Partial<InsertDivida>) {
       return targetStorage.updateDivida(id, userId, data);
+    },
+
+    async getCnpjDasImportacao(id: string, userId: string) {
+      return targetStorage.getCnpjDasImportacao(id, userId);
+    },
+
+    async updateCnpjDasImportacao(id: string, userId: string, data: Partial<InsertCnpjDasImportacao>) {
+      return targetStorage.updateCnpjDasImportacao(id, userId, data);
     },
 
     async deleteDivida(id: string, userId: string) {

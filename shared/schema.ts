@@ -128,6 +128,34 @@ export const insertCnpjSchema = createInsertSchema(cnpjs).omit({
 export type InsertCnpj = z.infer<typeof insertCnpjSchema>;
 export type Cnpj = typeof cnpjs.$inferSelect;
 
+export const cnpjDasImportacoes = pgTable("cnpj_das_importacoes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  cnpjId: varchar("cnpj_id").notNull().references(() => cnpjs.id, { onDelete: "cascade" }),
+  dataCalculo: date("data_calculo", { mode: "string" }).notNull(),
+  competenciaInicial: date("competencia_inicial", { mode: "string" }).notNull(),
+  competenciaFinal: date("competencia_final", { mode: "string" }).notNull(),
+  quantidadeCompetencias: integer("quantidade_competencias").notNull(),
+  total: decimal("total", { precision: 12, scale: 2 }).notNull(),
+  comprovantePath: text("comprovante_path"),
+  comprovanteNome: text("comprovante_nome"),
+  comprovanteMimeType: text("comprovante_mime_type"),
+  comprovanteTamanho: integer("comprovante_tamanho"),
+  comprovanteEnviadoEm: timestamp("comprovante_enviado_em"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  cnpjDasImportacoesUserIdIdx: index("idx_cnpj_das_importacoes_user_id").on(table.userId),
+  cnpjDasImportacoesCnpjIdIdx: index("idx_cnpj_das_importacoes_cnpj_id").on(table.cnpjId),
+  cnpjDasImportacoesCreatedAtIdx: index("idx_cnpj_das_importacoes_created_at").on(table.createdAt),
+}));
+
+export const insertCnpjDasImportacaoSchema = createInsertSchema(cnpjDasImportacoes).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertCnpjDasImportacao = z.infer<typeof insertCnpjDasImportacaoSchema>;
+export type CnpjDasImportacao = typeof cnpjDasImportacoes.$inferSelect;
+
 export const cnpjDasObrigacoes = pgTable("cnpj_das_obrigacoes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -145,6 +173,7 @@ export const cnpjDasObrigacoes = pgTable("cnpj_das_obrigacoes", {
   beneficioInss: boolean("beneficio_inss").notNull().default(false),
   principalManual: boolean("principal_manual").notNull().default(false),
   vencimentoManual: boolean("vencimento_manual").notNull().default(false),
+  totalOficialManual: boolean("total_oficial_manual").notNull().default(false),
   selicSnapshot: jsonb("selic_snapshot").$type<Record<string, number>>().notNull().default(sql`'{}'::jsonb`),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -170,6 +199,7 @@ export const cnpjDasCalculos = pgTable("cnpj_das_calculos", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   obrigacaoId: varchar("obrigacao_id").notNull().references(() => cnpjDasObrigacoes.id, { onDelete: "cascade" }),
+  importacaoId: varchar("importacao_id").references(() => cnpjDasImportacoes.id, { onDelete: "set null" }),
   dataCalculo: date("data_calculo", { mode: "string" }).notNull(),
   principal: decimal("principal", { precision: 12, scale: 2 }).notNull(),
   multaPercentual: decimal("multa_percentual", { precision: 8, scale: 4 }).notNull(),
@@ -177,6 +207,7 @@ export const cnpjDasCalculos = pgTable("cnpj_das_calculos", {
   jurosPercentual: decimal("juros_percentual", { precision: 8, scale: 4 }).notNull(),
   jurosValor: decimal("juros_valor", { precision: 12, scale: 2 }).notNull(),
   total: decimal("total", { precision: 12, scale: 2 }).notNull(),
+  totalOficialManual: boolean("total_oficial_manual").notNull().default(false),
   selicSnapshot: jsonb("selic_snapshot").$type<Record<string, number>>().notNull().default(sql`'{}'::jsonb`),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({

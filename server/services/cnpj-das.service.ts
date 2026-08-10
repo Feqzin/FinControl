@@ -8,8 +8,8 @@ import {
   type DasMeiCalculation,
   type MeiActivity,
 } from "../../shared/das-mei.js";
-import { cnpjDasCalculos, cnpjDasObrigacoes, cnpjs, dividas, pessoas } from "../../shared/schema.js";
-import type { Cnpj, CnpjDasCalculo, CnpjDasObrigacao, Divida } from "../../shared/schema.js";
+import { cnpjDasCalculos, cnpjDasImportacoes, cnpjDasObrigacoes, cnpjs, dividas, pessoas } from "../../shared/schema.js";
+import type { Cnpj, CnpjDasCalculo, CnpjDasImportacao, CnpjDasObrigacao, Divida } from "../../shared/schema.js";
 import type { CnpjDasPreviewInput, CnpjDasSaveInput } from "../validators/cnpj-das.validators.js";
 
 const OFFICIAL_SELIC_FALLBACK: Record<string, number> = {
@@ -100,6 +100,7 @@ async function calculatePreview(payload: CnpjDasPreviewInput): Promise<DasMeiCal
 function debtDescription(calculation: DasMeiCalculation): string {
   return [
     `DAS MEI ${formatCompetency(calculation.competencia)}`,
+    calculation.officialTotalManual ? "total oficial importado do PGMEI" : "estimativa calculada pelo sistema",
     `principal ${formatMoney(calculation.principal)}`,
     `multa ${formatMoney(calculation.fineAmount)}`,
     `juros ${formatMoney(calculation.interestAmount)}`,
@@ -130,9 +131,15 @@ export class CnpjDasService {
       .from(cnpjDasCalculos)
       .where(and(eq(cnpjDasCalculos.userId, userId), inArray(cnpjDasCalculos.obrigacaoId, obligationIds)))
       .orderBy(asc(cnpjDasCalculos.createdAt)) as CnpjDasCalculo[];
+    const importRows = await this.database
+      .select()
+      .from(cnpjDasImportacoes)
+      .where(eq(cnpjDasImportacoes.userId, userId))
+      .orderBy(desc(cnpjDasImportacoes.createdAt)) as CnpjDasImportacao[];
 
     return companyRows.map((company) => ({
       ...company,
+      imports: importRows.filter((item) => item.cnpjId === company.id),
       obligations: obligationRows
         .filter((row) => row.obligation.cnpjId === company.id)
         .map((row) => ({
@@ -186,6 +193,7 @@ export class CnpjDasService {
 
       let skippedPaid = 0;
       const saved = [];
+      const savedCalculations: Array<{ obligationId: string; calculation: DasMeiCalculation }> = [];
       for (const calculation of calculations) {
         const [existing] = await transaction
           .select({ obligation: cnpjDasObrigacoes, debt: dividas })
@@ -242,6 +250,7 @@ export class CnpjDasService {
           beneficioInss: calculation.beneficioInss,
           principalManual: calculation.principalManual,
           vencimentoManual: calculation.dueDateManual,
+          totalOficialManual: calculation.officialTotalManual,
           selicSnapshot: calculation.selicSnapshot,
         };
 
@@ -255,9 +264,32 @@ export class CnpjDasService {
           [obligation] = await transaction.insert(cnpjDasObrigacoes).values(obligationValues).returning();
         }
 
-        await transaction.insert(cnpjDasCalculos).values({
+        savedCalculations.push({ obligationId: obligation.id, calculation });
+        saved.push(obligation);
+      }
+
+      let importacao: CnpjDasImportacao | null = null;
+      if (savedCalculations.length > 0) {
+        const orderedCalculations = savedCalculations
+          .map((item) => item.calculation)
+          .sort((left, right) => left.competencia.localeCompare(right.competencia));
+        const total = orderedCalculations.reduce((sum, calculation) => sum + calculation.total, 0);
+        const [createdImportacao] = await transaction.insert(cnpjDasImportacoes).values({
           userId,
-          obrigacaoId: obligation.id,
+          cnpjId: company.id,
+          dataCalculo: payload.dataCalculo,
+          competenciaInicial: orderedCalculations[0].competencia,
+          competenciaFinal: orderedCalculations[orderedCalculations.length - 1].competencia,
+          quantidadeCompetencias: orderedCalculations.length,
+          total: total.toFixed(2),
+        }).returning();
+        importacao = createdImportacao;
+        const importacaoId = createdImportacao.id;
+
+        await transaction.insert(cnpjDasCalculos).values(savedCalculations.map(({ obligationId, calculation }) => ({
+          userId,
+          obrigacaoId: obligationId,
+          importacaoId,
           dataCalculo: calculation.calculationDate,
           principal: calculation.principal.toFixed(2),
           multaPercentual: calculation.finePercentage.toFixed(4),
@@ -265,12 +297,12 @@ export class CnpjDasService {
           jurosPercentual: calculation.interestPercentage.toFixed(4),
           jurosValor: calculation.interestAmount.toFixed(2),
           total: calculation.total.toFixed(2),
+          totalOficialManual: calculation.officialTotalManual,
           selicSnapshot: calculation.selicSnapshot,
-        });
-        saved.push(obligation);
+        })));
       }
 
-      return { company, obligations: saved, skippedPaid };
+      return { company, importacao, obligations: saved, skippedPaid };
     });
   }
 
@@ -318,6 +350,7 @@ export class CnpjDasService {
           jurosPercentual: calculation.interestPercentage.toFixed(4),
           jurosValor: calculation.interestAmount.toFixed(2),
           total: calculation.total.toFixed(2),
+          totalOficialManual: false,
           selicSnapshot: calculation.selicSnapshot,
           updatedAt: new Date(),
         }).where(eq(cnpjDasObrigacoes.id, row.obligation.id));
@@ -331,6 +364,7 @@ export class CnpjDasService {
           jurosPercentual: calculation.interestPercentage.toFixed(4),
           jurosValor: calculation.interestAmount.toFixed(2),
           total: calculation.total.toFixed(2),
+          totalOficialManual: false,
           selicSnapshot: calculation.selicSnapshot,
         });
       }

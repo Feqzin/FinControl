@@ -291,6 +291,23 @@ export class PagamentosTimelineService {
       };
     }
 
+    if (sourceType === "cnpj_das_importacao") {
+      const importacao = await this.repository.getCnpjDasImportacao(sourceId, userId);
+      if (!importacao) return null;
+      return {
+        source: {
+          sourceType,
+          sourceId: importacao.id,
+          observacaoPagamento: null,
+          comprovantePath: importacao.comprovantePath ?? null,
+          comprovanteNome: importacao.comprovanteNome ?? null,
+          comprovanteMimeType: importacao.comprovanteMimeType ?? null,
+          comprovanteTamanho: importacao.comprovanteTamanho ?? null,
+          comprovanteEnviadoEm: importacao.comprovanteEnviadoEm ?? null,
+        },
+      };
+    }
+
     const divida = await this.repository.getDivida(sourceId, userId);
     if (!divida) return null;
     return {
@@ -327,6 +344,9 @@ export class PagamentosTimelineService {
     if (sourceType === "parcela_compra") {
       return { error: "NOT_FOUND" };
     }
+    if (sourceType === "cnpj_das_importacao") {
+      return { error: "NOT_FOUND" };
+    }
 
     const updated = await this.repository.updateDivida(sourceId, userId, {
       observacaoPagamento: body.observacaoPagamento ?? null,
@@ -341,6 +361,9 @@ export class PagamentosTimelineService {
     userId: string,
     body: PagamentoComprovanteBodyInput,
   ): Promise<{ comprovante: ComprovanteResumo } | { error: "NOT_FOUND" | "INVALID_FILE_TYPE" | "INVALID_FILE_CONTENT" | "FILE_TOO_LARGE" }> {
+    if (sourceType === "cnpj_das_importacao" && body.mimeType !== "application/pdf") {
+      return { error: "INVALID_FILE_TYPE" };
+    }
     const source = await this.getSourceDetails(sourceType, sourceId, userId);
     if (!source) return { error: "NOT_FOUND" };
 
@@ -380,6 +403,15 @@ export class PagamentosTimelineService {
       if (!updated) return { error: "NOT_FOUND" };
     } else if (sourceType === "parcela_compra") {
       const updated = await this.repository.updateParcelaCompra(sourceId, userId, {
+        comprovantePath: persisted.relativePath,
+        comprovanteNome: persisted.fileName,
+        comprovanteMimeType: persisted.mimeType,
+        comprovanteTamanho: persisted.size,
+        comprovanteEnviadoEm: persisted.uploadedAt,
+      });
+      if (!updated) return { error: "NOT_FOUND" };
+    } else if (sourceType === "cnpj_das_importacao") {
+      const updated = await this.repository.updateCnpjDasImportacao(sourceId, userId, {
         comprovantePath: persisted.relativePath,
         comprovanteNome: persisted.fileName,
         comprovanteMimeType: persisted.mimeType,
@@ -437,6 +469,18 @@ export class PagamentosTimelineService {
 
     if (sourceType === "parcela_compra") {
       const updated = await this.repository.updateParcelaCompra(sourceId, userId, {
+        comprovantePath: null,
+        comprovanteNome: null,
+        comprovanteMimeType: null,
+        comprovanteTamanho: null,
+        comprovanteEnviadoEm: null,
+      });
+      if (!updated) return { error: "NOT_FOUND" };
+      return { ok: true };
+    }
+
+    if (sourceType === "cnpj_das_importacao") {
+      const updated = await this.repository.updateCnpjDasImportacao(sourceId, userId, {
         comprovantePath: null,
         comprovanteNome: null,
         comprovanteMimeType: null,

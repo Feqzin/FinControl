@@ -121,3 +121,21 @@ test("permite principal manual quando o ano automático ainda não existe", () =
   assert.equal(calculation.total, 90);
   assert.equal(calculation.principalManual, true);
 });
+
+test("preserva exatamente o total oficial importado sem cobrar encargos novamente", () => {
+  const calculation = calculateDasMei({
+    competencia: "2024-04-01",
+    activity: "comercio",
+    requestedCalculationDate: "2026-08-11",
+    selicRates: selic,
+    override: { officialTotal: 106.25 },
+  });
+
+  assert.equal(calculation.principal, 71.6);
+  assert.equal(calculation.total, 106.25);
+  assert.equal(calculation.officialTotalManual, true);
+  assert.deepEqual(
+    { fine: calculation.fineAmount, interest: calculation.interestAmount },
+    { fine: 14.32, interest: 20.33 },
+  );
+});

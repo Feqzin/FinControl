@@ -5,6 +5,7 @@ export type CnpjDasOverride = {
   principal?: number | null;
   dueDate?: string | null;
   beneficioInss?: boolean;
+  officialTotal?: number | null;
 };
 
 export type CnpjDasCalculationPayload = {
@@ -22,6 +23,7 @@ export type CnpjDasHistoryItem = {
   multaValor: string;
   jurosValor: string;
   total: string;
+  totalOficialManual: boolean;
   createdAt: string;
 };
 
@@ -34,9 +36,24 @@ export type CnpjDasObligationView = {
   multaValor: string;
   jurosValor: string;
   total: string;
+  totalOficialManual: boolean;
   debtStatus: string;
   debtDeletedAt: string | null;
   history: CnpjDasHistoryItem[];
+};
+
+export type CnpjDasImportView = {
+  id: string;
+  dataCalculo: string;
+  competenciaInicial: string;
+  competenciaFinal: string;
+  quantidadeCompetencias: number;
+  total: string;
+  comprovanteNome: string | null;
+  comprovanteMimeType: string | null;
+  comprovanteTamanho: number | null;
+  comprovanteEnviadoEm: string | null;
+  createdAt: string;
 };
 
 export type CnpjDasCompanyView = {
@@ -44,6 +61,7 @@ export type CnpjDasCompanyView = {
   cnpj: string;
   nome: string;
   atividadeMei: MeiActivity;
+  imports: CnpjDasImportView[];
   obligations: CnpjDasObligationView[];
 };
 
@@ -56,7 +74,7 @@ export async function saveCnpjDas(payload: CnpjDasCalculationPayload & {
   cnpj: string;
   nome: string;
   competenciasSelecionadas: string[];
-}): Promise<{ skippedPaid: number }> {
+}): Promise<{ importacao: CnpjDasImportView | null; skippedPaid: number }> {
   const response = await apiRequest("POST", "/api/cnpj-das", payload);
   return response.json();
 }

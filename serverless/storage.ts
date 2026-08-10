@@ -2,12 +2,13 @@ import { eq, and, sql, isNull, isNotNull, inArray } from "drizzle-orm";
 import { db } from "./db.js";
 import { writeTechnicalLog } from "./logger.js";
 import {
-  users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos,
+  users, pessoas, dividas, parcelas, cartoes, comprasCartao, servicos, cnpjDasImportacoes,
   servicoPessoas, servicoPagamentos, servicoCobrancaPagamentos, metas, parcelasCompra, cartaoFaturaPagamentos, cartaoFaturaPagamentoAlocacoes, futurePurchaseSimulations, vacationPlans, pessoaSaldoMovimentacoes, rendas, patrimonios, compraAliases,
   type User, type InsertUser,
   type Pessoa, type InsertPessoa,
   type PessoaSaldoMovimentacao, type InsertPessoaSaldoMovimentacao,
   type Divida, type InsertDivida,
+  type CnpjDasImportacao, type InsertCnpjDasImportacao,
   type Parcela, type InsertParcela,
   type Cartao, type InsertCartao,
   type CompraCartao, type InsertCompraCartao,
@@ -318,6 +319,12 @@ export interface IStorage {
   deleteDivida(id: string, userId: string): Promise<boolean>;
   restoreDivida(id: string, userId: string): Promise<Divida | undefined>;
   deleteDividaPermanent(id: string, userId: string): Promise<boolean>;
+  getCnpjDasImportacao(id: string, userId: string): Promise<CnpjDasImportacao | undefined>;
+  updateCnpjDasImportacao(
+    id: string,
+    userId: string,
+    data: Partial<InsertCnpjDasImportacao>,
+  ): Promise<CnpjDasImportacao | undefined>;
 
   getParcelas(userId: string): Promise<Parcela[]>;
   getParcela(id: string, userId: string): Promise<Parcela | undefined>;
@@ -841,6 +848,21 @@ export class DatabaseStorage implements IStorage {
   async updateDivida(id: string, userId: string, data: Partial<InsertDivida>) {
     const [d] = await this.database.update(dividas).set(data).where(and(eq(dividas.id, id), eq(dividas.userId, userId))).returning();
     return d;
+  }
+  async getCnpjDasImportacao(id: string, userId: string) {
+    const [item] = await this.database
+      .select()
+      .from(cnpjDasImportacoes)
+      .where(and(eq(cnpjDasImportacoes.id, id), eq(cnpjDasImportacoes.userId, userId)));
+    return item;
+  }
+  async updateCnpjDasImportacao(id: string, userId: string, data: Partial<InsertCnpjDasImportacao>) {
+    const [item] = await this.database
+      .update(cnpjDasImportacoes)
+      .set(data)
+      .where(and(eq(cnpjDasImportacoes.id, id), eq(cnpjDasImportacoes.userId, userId)))
+      .returning();
+    return item;
   }
   async deleteDivida(id: string, userId: string) {
     const [softDeleted] = await this.database

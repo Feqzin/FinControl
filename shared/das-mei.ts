@@ -4,6 +4,7 @@ export type DasMeiOverride = {
   principal?: number | null;
   dueDate?: string | null;
   beneficioInss?: boolean;
+  officialTotal?: number | null;
 };
 
 export type DasMeiCalculation = {
@@ -19,6 +20,7 @@ export type DasMeiCalculation = {
   beneficioInss: boolean;
   principalManual: boolean;
   dueDateManual: boolean;
+  officialTotalManual: boolean;
   selicSnapshot: Record<string, number>;
 };
 
@@ -66,6 +68,10 @@ function addUtcMonths(value: Date, months: number): Date {
 
 function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function roundPercentage(value: number): number {
+  return Math.round((value + Number.EPSILON) * 10_000) / 10_000;
 }
 
 function easterSunday(year: number): Date {
@@ -187,8 +193,8 @@ export function calculateDasMei(params: {
     : roundMoney(params.override.principal);
 
   const daysLate = Math.max(0, Math.floor((effectiveCalculationDate.getTime() - due.getTime()) / 86_400_000));
-  const finePercentage = Math.min(20, roundMoney(daysLate * 0.33));
-  const fineAmount = roundMoney(principal * finePercentage / 100);
+  let finePercentage = Math.min(20, roundMoney(daysLate * 0.33));
+  let fineAmount = roundMoney(principal * finePercentage / 100);
 
   const selicMonths = requiredSelicMonths(dueDate, calculationDate);
   const selicSnapshot: Record<string, number> = {};
@@ -204,9 +210,27 @@ export function calculateDasMei(params: {
   if (effectiveCalculationDate > due && toMonthKey(effectiveCalculationDate) !== toMonthKey(due)) {
     interestPercentage += 1;
   }
-  interestPercentage = Math.round((interestPercentage + Number.EPSILON) * 10_000) / 10_000;
-  const interestAmount = roundMoney(principal * interestPercentage / 100);
-  const total = roundMoney(principal + fineAmount + interestAmount);
+  interestPercentage = roundPercentage(interestPercentage);
+  let interestAmount = roundMoney(principal * interestPercentage / 100);
+  let total = roundMoney(principal + fineAmount + interestAmount);
+  const officialTotalManual = params.override?.officialTotal != null;
+
+  if (officialTotalManual) {
+    const officialTotal = roundMoney(Number(params.override?.officialTotal));
+    if (!Number.isFinite(officialTotal) || officialTotal <= 0) {
+      throw new Error("O total oficial importado deve ser maior que zero.");
+    }
+    if (officialTotal < principal) {
+      throw new Error("O total oficial importado não pode ser menor que o principal do DAS.");
+    }
+
+    const officialAdditions = roundMoney(officialTotal - principal);
+    fineAmount = Math.min(fineAmount, officialAdditions);
+    interestAmount = roundMoney(officialAdditions - fineAmount);
+    finePercentage = principal > 0 ? roundPercentage(fineAmount * 100 / principal) : 0;
+    interestPercentage = principal > 0 ? roundPercentage(interestAmount * 100 / principal) : 0;
+    total = officialTotal;
+  }
 
   return {
     competencia,
@@ -221,6 +245,7 @@ export function calculateDasMei(params: {
     beneficioInss,
     principalManual: params.override?.principal != null,
     dueDateManual: Boolean(params.override?.dueDate && params.override.dueDate !== automaticDueDate),
+    officialTotalManual,
     selicSnapshot,
   };
 }

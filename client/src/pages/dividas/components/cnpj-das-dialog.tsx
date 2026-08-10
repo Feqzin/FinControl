@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Building2, Calculator, CheckCircle2, RefreshCw } from "lucide-react";
+import { AlertCircle, Building2, Calculator, CheckCircle2, ExternalLink, FileText, RefreshCw } from "lucide-react";
 import type { DasMeiCalculation, MeiActivity } from "@shared/das-mei";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { CnpjDasImportPanel } from "@/pages/dividas/components/cnpj-das-import-panel";
+import type { DasImportedItem } from "@/pages/dividas/cnpj-das-import.utils";
 import {
   listCnpjDas,
   previewCnpjDas,
@@ -21,6 +23,7 @@ import {
   type CnpjDasCompanyView,
   type CnpjDasOverride,
 } from "@/services/api/cnpj-das";
+import { uploadTimelinePagamentoComprovante } from "@/services/api/pessoas";
 
 type Props = {
   open: boolean;
@@ -29,6 +32,7 @@ type Props = {
 
 const today = new Date().toISOString().slice(0, 10);
 const currentMonth = today.slice(0, 7);
+const MAX_PROOF_SIZE = 3 * 1024 * 1024;
 
 function formatCurrency(value: number | string): string {
   return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -67,6 +71,8 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
   const [saving, setSaving] = useState(false);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [dirtyAdjustments, setDirtyAdjustments] = useState(false);
+  const [importedMonths, setImportedMonths] = useState<Set<string> | null>(null);
+  const [proofFile, setProofFile] = useState<File | null>(null);
 
   const totals = useMemo(() => preview.reduce((result, item) => {
     if (!selected.has(item.competencia.slice(0, 7))) return result;
@@ -107,13 +113,73 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
         dataCalculo: form.dataCalculo,
         overrides,
       });
-      setPreview(result);
-      setSelected(new Set(result.map((item) => item.competencia.slice(0, 7))));
+      const visibleResult = importedMonths
+        ? result.filter((item) => importedMonths.has(item.competencia.slice(0, 7)))
+        : result;
+      setPreview(visibleResult);
+      setSelected(new Set(visibleResult.map((item) => item.competencia.slice(0, 7))));
       setDirtyAdjustments(false);
     } catch (error) {
       toast({
         title: "Não foi possível calcular o DAS",
         description: error instanceof Error ? error.message : "Confira os dados informados.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApplyImportedItems = async (items: DasImportedItem[]) => {
+    if (form.cnpj.replace(/\D/g, "").length !== 14 || form.nome.trim().length < 2) {
+      toast({
+        title: "Informe o CNPJ e o nome do negócio",
+        description: "Esses dados identificam a empresa dona dos DAS importados.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (items.length === 0) return;
+
+    const months = new Set(items.map((item) => item.competencia));
+    const nextOverrides = items.reduce<Record<string, CnpjDasOverride>>((result, item) => {
+      result[item.competencia] = {
+        ...overrides[item.competencia],
+        officialTotal: item.total,
+      };
+      return result;
+    }, { ...overrides });
+    const nextForm = {
+      ...form,
+      competenciaInicial: items[0].competencia,
+      competenciaFinal: items[items.length - 1].competencia,
+    };
+
+    setLoading(true);
+    try {
+      const result = await previewCnpjDas({
+        atividade: nextForm.atividade,
+        competenciaInicial: nextForm.competenciaInicial,
+        competenciaFinal: nextForm.competenciaFinal,
+        dataCalculo: nextForm.dataCalculo,
+        overrides: nextOverrides,
+      });
+      const importedPreview = result.filter((item) => months.has(item.competencia.slice(0, 7)));
+      setForm(nextForm);
+      setOverrides(nextOverrides);
+      setImportedMonths(months);
+      setPreview(importedPreview);
+      setSelected(new Set(importedPreview.map((item) => item.competencia.slice(0, 7))));
+      setDirtyAdjustments(false);
+      setTab("calcular");
+      toast({
+        title: "Valores oficiais aplicados",
+        description: `${importedPreview.length} competência(s) prontas para sua revisão final.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Não foi possível preparar a importação",
+        description: error instanceof Error ? error.message : "Revise os meses e valores.",
         variant: "destructive",
       });
     } finally {
@@ -138,6 +204,19 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
         overrides,
         competenciasSelecionadas: Array.from(selected),
       });
+      let proofUploadFailed = false;
+      if (proofFile && result.importacao) {
+        try {
+          await uploadTimelinePagamentoComprovante({
+            sourceType: "cnpj_das_importacao",
+            sourceId: result.importacao.id,
+            file: proofFile,
+          });
+          setProofFile(null);
+        } catch {
+          proofUploadFailed = true;
+        }
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/dividas"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] }),
@@ -145,10 +224,15 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
       await loadCompanies();
       setTab("acompanhar");
       toast({
-        title: "DAS incluído nas dívidas a pagar",
-        description: result.skippedPaid > 0
-          ? `${result.skippedPaid} competência(s) já paga(s) foram preservadas.`
-          : "As competências selecionadas foram vinculadas ao CNPJ.",
+        title: proofUploadFailed ? "DAS salvo; PDF pendente" : "DAS incluído nas dívidas a pagar",
+        description: proofUploadFailed
+          ? "As dívidas foram salvas, mas o PDF não foi anexado. Você pode tentar novamente em Acompanhar CNPJs."
+          : result.skippedPaid > 0
+            ? `${result.skippedPaid} competência(s) já paga(s) foram preservadas.`
+            : proofFile
+              ? "As competências e o comprovante foram vinculados ao CNPJ."
+              : "As competências selecionadas foram vinculadas ao CNPJ.",
+        variant: proofUploadFailed ? "destructive" : "default",
       });
     } catch (error) {
       toast({
@@ -182,6 +266,36 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
     }
   };
 
+  const handleUploadExistingProof = async (importId: string, file: File | null) => {
+    if (!file) return;
+    if ((file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) || file.size > MAX_PROOF_SIZE) {
+      toast({
+        title: "Comprovante inválido",
+        description: "Selecione um PDF de até 3 MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setLoadingCompanies(true);
+    try {
+      await uploadTimelinePagamentoComprovante({
+        sourceType: "cnpj_das_importacao",
+        sourceId: importId,
+        file,
+      });
+      await loadCompanies();
+      toast({ title: "Comprovante anexado", description: "O PDF ficou vinculado ao lote de competências." });
+    } catch (error) {
+      toast({
+        title: "Não foi possível anexar o PDF",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingCompanies(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1rem)] max-w-6xl flex-col overflow-hidden p-0 sm:w-full">
@@ -190,13 +304,14 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
             <Building2 className="h-5 w-5 text-primary" /> DAS do MEI por CNPJ
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Estime multa e juros, acompanhe a evolução e leve o total para suas dívidas a pagar.
+            Calcule, importe valores oficiais por texto ou imagem e leve o total para suas dívidas a pagar.
           </p>
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
-          <TabsList className="mx-6 mt-4 grid w-[calc(100%-3rem)] grid-cols-2 sm:w-[420px]">
+          <TabsList className="mx-6 mt-4 grid w-[calc(100%-3rem)] grid-cols-3 sm:w-[640px]">
             <TabsTrigger value="calcular">Calcular e cadastrar</TabsTrigger>
+            <TabsTrigger value="importar">Importar imagem/texto</TabsTrigger>
             <TabsTrigger value="acompanhar">Acompanhar CNPJs</TabsTrigger>
           </TabsList>
 
@@ -250,6 +365,15 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
 
             {preview.length > 0 && (
               <div className="mt-6 space-y-4">
+                {importedMonths && (
+                  <Alert className="border-emerald-500/30 bg-emerald-500/5">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    <AlertTitle>Totais oficiais importados</AlertTitle>
+                    <AlertDescription>
+                      Os valores abaixo serão gravados exatamente como revisados. Ao usar “Recalcular hoje” no acompanhamento, o sistema volta a atualizar multa e juros pela regra automática.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Principal</p><p className="font-semibold">{formatCurrency(totals.principal)}</p></div>
                   <div className="rounded-lg border p-3"><p className="text-xs text-muted-foreground">Multa</p><p className="font-semibold text-amber-600">{formatCurrency(totals.fine)}</p></div>
@@ -282,7 +406,12 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
                             <TableCell><Input className="min-w-28" type="number" min="0" step="0.01" value={overrides[month]?.principal ?? item.principal} onChange={(event) => updateOverride(month, { principal: Number(event.target.value) })} /></TableCell>
                             <TableCell className="text-amber-600">{formatCurrency(item.fineAmount)}</TableCell>
                             <TableCell className="text-orange-600">{formatCurrency(item.interestAmount)}</TableCell>
-                            <TableCell className="font-semibold">{formatCurrency(item.total)}</TableCell>
+                            <TableCell className="font-semibold">
+                              <div className="flex min-w-28 flex-col gap-1">
+                                <span>{formatCurrency(item.total)}</span>
+                                {item.officialTotalManual && <Badge variant="outline" className="w-fit border-emerald-500/30 text-emerald-700">Oficial importado</Badge>}
+                              </div>
+                            </TableCell>
                             <TableCell><Checkbox checked={overrides[month]?.beneficioInss ?? item.beneficioInss} onCheckedChange={(checked) => updateOverride(month, { beneficioInss: checked === true })} /></TableCell>
                           </TableRow>
                         );
@@ -292,9 +421,10 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    {selected.size} competência(s) selecionada(s). Ajustes de principal e vencimento existem para exceções do PGMEI.
-                  </p>
+                  <div className="space-y-1 text-sm text-muted-foreground">
+                    <p>{selected.size} competência(s) selecionada(s). Ajustes de principal e vencimento existem para exceções do PGMEI.</p>
+                    {proofFile && <p className="flex items-center gap-1 text-emerald-700"><FileText className="h-4 w-4" />PDF opcional selecionado: {proofFile.name}</p>}
+                  </div>
                   <div className="flex gap-2">
                     {dirtyAdjustments && <Button variant="outline" onClick={runPreview} disabled={loading}><RefreshCw className="mr-2 h-4 w-4" />Recalcular ajustes</Button>}
                     <Button onClick={handleSave} disabled={saving || selected.size === 0 || dirtyAdjustments}>{saving ? "Salvando..." : "Incluir em dívidas a pagar"}</Button>
@@ -302,6 +432,22 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
                 </div>
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="importar" className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
+            <CnpjDasImportPanel
+              form={{
+                cnpj: form.cnpj,
+                nome: form.nome,
+                atividade: form.atividade,
+                dataCalculo: form.dataCalculo,
+              }}
+              onFormChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+              onApply={handleApplyImportedItems}
+              applying={loading}
+              proofFile={proofFile}
+              onProofFileChange={setProofFile}
+            />
           </TabsContent>
 
           <TabsContent value="acompanhar" className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
@@ -334,6 +480,45 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
                         <div className="rounded-lg bg-amber-500/5 p-3"><p className="text-xs text-muted-foreground">Multas + juros</p><p className="font-medium text-amber-700">+ {formatCurrency(additions)}</p></div>
                         <div className="rounded-lg bg-primary/5 p-3"><p className="text-xs text-muted-foreground">Leitura simples</p><p className="text-sm">A dívida cresceu {formatCurrency(additions)} desde os valores originais.</p></div>
                       </div>
+                      {company.imports.length > 0 && (
+                        <div className="mt-4 rounded-lg border bg-muted/20 p-3">
+                          <p className="mb-2 text-sm font-medium">Lotes cadastrados e comprovantes</p>
+                          <div className="space-y-2">
+                            {company.imports.map((item) => (
+                              <div key={item.id} className="flex flex-col gap-2 rounded-md bg-background px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                  <p className="font-medium">{formatMonth(item.competenciaInicial)} a {formatMonth(item.competenciaFinal)}</p>
+                                  <p className="text-xs text-muted-foreground">{item.quantidadeCompetencias} competência(s) · {formatCurrency(item.total)} · cadastrado em {formatDate(item.dataCalculo)}</p>
+                                </div>
+                                {item.comprovanteNome ? (
+                                  <a
+                                    href={`/api/pagamentos/cnpj_das_importacao/${item.id}/comprovante`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-2 font-medium text-primary hover:underline"
+                                  >
+                                    <FileText className="h-4 w-4" />Abrir PDF<ExternalLink className="h-3 w-3" />
+                                  </a>
+                                ) : (
+                                  <Label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 font-medium hover:bg-muted">
+                                    <FileText className="h-4 w-4" />Anexar PDF
+                                    <Input
+                                      type="file"
+                                      accept="application/pdf,.pdf"
+                                      className="hidden"
+                                      disabled={loadingCompanies}
+                                      onChange={(event) => {
+                                        void handleUploadExistingProof(item.id, event.target.files?.[0] ?? null);
+                                        event.target.value = "";
+                                      }}
+                                    />
+                                  </Label>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <div className="mt-4 space-y-2">
                         {company.obligations.map((item) => {
                           const first = item.history[0];
@@ -345,6 +530,7 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
                                 {item.debtStatus === "pago" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <AlertCircle className="h-4 w-4 text-amber-600" />}
                                 <span className="font-medium">{formatMonth(item.competencia)}</span>
                                 <Badge variant={item.debtStatus === "pago" ? "secondary" : "outline"}>{item.debtStatus === "pago" ? "Pago" : "Em aberto"}</Badge>
+                                {item.totalOficialManual && <Badge variant="outline" className="border-emerald-500/30 text-emerald-700">Valor oficial</Badge>}
                               </div>
                               <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
                                 <span>Venc. {formatDate(item.dataVencimento)}</span>
