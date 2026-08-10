@@ -32,6 +32,8 @@
     "test:seed-policy": "tsx --test server/tests/seed-policy.test.ts",
     "test:startup": "tsx --test server/tests/server-startup.test.ts",
     "test:dividas-unit": "tsx --test server/tests/dividas.service.unit.test.ts",
+    "test:das-mei-unit": "tsx --test server/tests/das-mei.unit.test.ts",
+    "test:das-mei-integration": "tsx --test server/tests/cnpj-das.service.integration.test.ts",
     "test:dividas-integration": "tsx --test server/tests/dividas.service.integration.test.ts",
     "test:aggregate-consistency-unit": "tsx --test server/tests/financial-aggregate-consistency.unit.test.ts",
     "test:financial-transactions-unit": "tsx --test server/tests/financial-transactions.unit.test.ts",

@@ -81,6 +81,7 @@ export const dividas = pgTable("dividas", {
   comprovanteTamanho: integer("comprovante_tamanho"),
   comprovanteEnviadoEm: timestamp("comprovante_enviado_em"),
   descricao: text("descricao"),
+  origem: text("origem").notNull().default("manual"),
   expectativaRecebimento: boolean("expectativa_recebimento").notNull().default(true),
   totalParcelas: integer("total_parcelas"),
   valorTotal: decimal("valor_total", { precision: 12, scale: 2 }),
@@ -95,11 +96,100 @@ export const dividas = pgTable("dividas", {
       table.userId,
       table.expectativaRecebimento,
     ),
+    dividasUserOrigemIdx: index("idx_dividas_user_origem").on(table.userId, table.origem),
   }));
 
 export const insertDividaSchema = createInsertSchema(dividas).omit({ id: true });
 export type InsertDivida = z.infer<typeof insertDividaSchema>;
 export type Divida = typeof dividas.$inferSelect;
+
+export const cnpjs = pgTable("cnpjs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  pessoaId: varchar("pessoa_id").notNull().references(() => pessoas.id, { onDelete: "cascade" }),
+  cnpj: varchar("cnpj", { length: 14 }).notNull(),
+  nome: text("nome").notNull(),
+  regime: text("regime").notNull().default("mei"),
+  atividadeMei: text("atividade_mei").notNull(),
+  ativo: boolean("ativo").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  cnpjsUserIdIdx: index("idx_cnpjs_user_id").on(table.userId),
+  cnpjsPessoaIdIdx: index("idx_cnpjs_pessoa_id").on(table.pessoaId),
+  cnpjsUserCnpjUniqueIdx: uniqueIndex("idx_cnpjs_user_cnpj_unique").on(table.userId, table.cnpj),
+}));
+
+export const insertCnpjSchema = createInsertSchema(cnpjs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCnpj = z.infer<typeof insertCnpjSchema>;
+export type Cnpj = typeof cnpjs.$inferSelect;
+
+export const cnpjDasObrigacoes = pgTable("cnpj_das_obrigacoes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  cnpjId: varchar("cnpj_id").notNull().references(() => cnpjs.id, { onDelete: "cascade" }),
+  dividaId: varchar("divida_id").notNull().references(() => dividas.id, { onDelete: "cascade" }),
+  competencia: date("competencia", { mode: "string" }).notNull(),
+  dataVencimento: date("data_vencimento", { mode: "string" }).notNull(),
+  dataCalculo: date("data_calculo", { mode: "string" }).notNull(),
+  principal: decimal("principal", { precision: 12, scale: 2 }).notNull(),
+  multaPercentual: decimal("multa_percentual", { precision: 8, scale: 4 }).notNull().default("0"),
+  multaValor: decimal("multa_valor", { precision: 12, scale: 2 }).notNull().default("0"),
+  jurosPercentual: decimal("juros_percentual", { precision: 8, scale: 4 }).notNull().default("0"),
+  jurosValor: decimal("juros_valor", { precision: 12, scale: 2 }).notNull().default("0"),
+  total: decimal("total", { precision: 12, scale: 2 }).notNull(),
+  beneficioInss: boolean("beneficio_inss").notNull().default(false),
+  principalManual: boolean("principal_manual").notNull().default(false),
+  vencimentoManual: boolean("vencimento_manual").notNull().default(false),
+  selicSnapshot: jsonb("selic_snapshot").$type<Record<string, number>>().notNull().default(sql`'{}'::jsonb`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  cnpjDasObrigacoesUserIdIdx: index("idx_cnpj_das_obrigacoes_user_id").on(table.userId),
+  cnpjDasObrigacoesCnpjIdIdx: index("idx_cnpj_das_obrigacoes_cnpj_id").on(table.cnpjId),
+  cnpjDasObrigacoesDividaIdUniqueIdx: uniqueIndex("idx_cnpj_das_obrigacoes_divida_unique").on(table.dividaId),
+  cnpjDasObrigacoesCompetenciaUniqueIdx: uniqueIndex("idx_cnpj_das_obrigacoes_competencia_unique").on(
+    table.cnpjId,
+    table.competencia,
+  ),
+}));
+
+export const insertCnpjDasObrigacaoSchema = createInsertSchema(cnpjDasObrigacoes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCnpjDasObrigacao = z.infer<typeof insertCnpjDasObrigacaoSchema>;
+export type CnpjDasObrigacao = typeof cnpjDasObrigacoes.$inferSelect;
+
+export const cnpjDasCalculos = pgTable("cnpj_das_calculos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  obrigacaoId: varchar("obrigacao_id").notNull().references(() => cnpjDasObrigacoes.id, { onDelete: "cascade" }),
+  dataCalculo: date("data_calculo", { mode: "string" }).notNull(),
+  principal: decimal("principal", { precision: 12, scale: 2 }).notNull(),
+  multaPercentual: decimal("multa_percentual", { precision: 8, scale: 4 }).notNull(),
+  multaValor: decimal("multa_valor", { precision: 12, scale: 2 }).notNull(),
+  jurosPercentual: decimal("juros_percentual", { precision: 8, scale: 4 }).notNull(),
+  jurosValor: decimal("juros_valor", { precision: 12, scale: 2 }).notNull(),
+  total: decimal("total", { precision: 12, scale: 2 }).notNull(),
+  selicSnapshot: jsonb("selic_snapshot").$type<Record<string, number>>().notNull().default(sql`'{}'::jsonb`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  cnpjDasCalculosObrigacaoIdx: index("idx_cnpj_das_calculos_obrigacao_id").on(table.obrigacaoId),
+  cnpjDasCalculosUserDataIdx: index("idx_cnpj_das_calculos_user_data").on(table.userId, table.dataCalculo),
+}));
+
+export const insertCnpjDasCalculoSchema = createInsertSchema(cnpjDasCalculos).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertCnpjDasCalculo = z.infer<typeof insertCnpjDasCalculoSchema>;
+export type CnpjDasCalculo = typeof cnpjDasCalculos.$inferSelect;
 
 export const parcelas = pgTable("parcelas", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

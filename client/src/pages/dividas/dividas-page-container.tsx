@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Receipt, Search, Trash2, ChevronDown, ChevronUp,
   Check,
-  Pencil, FastForward, Calendar, AlertCircle, X, TrendingUp, TrendingDown, FileText, ExternalLink, RotateCcw,
+  Pencil, FastForward, Calendar, AlertCircle, X, TrendingUp, TrendingDown, FileText, ExternalLink, RotateCcw, Building2,
 } from "lucide-react";
 import { useUIPreferences } from "@/context/ui-preferences";
 import type { Parcela } from "@shared/schema";
@@ -27,6 +27,7 @@ import { useLocation } from "wouter";
 import { useDividas, type DividaWithParcelas } from "@/hooks/useDividas";
 import { ParcelaRow } from "@/pages/dividas/components/parcela-row";
 import { ImportarTextoPanel } from "@/components/importar/importar-texto-panel";
+import { CnpjDasDialog } from "@/pages/dividas/components/cnpj-das-dialog";
 import {
   buildDividasViewItems,
   filterDividasViewItems,
@@ -83,6 +84,7 @@ export default function DividasPage() {
   const [sortBy, setSortBy] = useState<DividaSortBy>("vencimento_mais_proximo");
   const [highlightDividaId, setHighlightDividaId] = useState<string | null>(null);
   const [importarTextoOpen, setImportarTextoOpen] = useState(false);
+  const [cnpjDasOpen, setCnpjDasOpen] = useState(false);
 
   const [createTab, setCreateTab] = useState<"simples" | "parcelado">("simples");
   const [simpleForm, setSimpleForm] = useState({
@@ -155,7 +157,7 @@ export default function DividasPage() {
       search,
       filterTipo,
       filterStatus,
-      filterOrigin: isRemovedFilter ? "manual" : filterOrigem,
+      filterOrigin: isRemovedFilter ? "todos" : filterOrigem,
       getPessoaNome,
     }),
     [filterOrigem, filterStatus, filterTipo, getPessoaNome, search, viewItems, isRemovedFilter],
@@ -167,7 +169,7 @@ export default function DividasPage() {
       search,
       filterTipo,
       filterStatus: "todos",
-      filterOrigin: isRemovedFilter ? "manual" : filterOrigem,
+      filterOrigin: isRemovedFilter ? "todos" : filterOrigem,
       getPessoaNome,
     }),
     [filterOrigem, filterTipo, getPessoaNome, search, viewItems, isRemovedFilter],
@@ -461,6 +463,11 @@ export default function DividasPage() {
             </DialogContent>
           </Dialog>
 
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => setCnpjDasOpen(true)} data-testid="button-cnpj-das">
+            <Building2 className="w-4 h-4 mr-2" /> DAS / CNPJ
+          </Button>
+          <CnpjDasDialog open={cnpjDasOpen} onOpenChange={setCnpjDasOpen} />
+
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button className="w-full sm:w-auto" data-testid="button-add-divida">
@@ -621,6 +628,7 @@ export default function DividasPage() {
             <SelectItem value="todos">Todas origens</SelectItem>
             <SelectItem value="manual">Dívidas pessoais</SelectItem>
             <SelectItem value="cartao">Cartões</SelectItem>
+            <SelectItem value="cnpj_das">DAS / CNPJ</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
@@ -796,6 +804,7 @@ export default function DividasPage() {
                           }`}>
                             {d.tipo === "receber" ? "Receber" : "Pagar"}
                           </span>
+                          {item.origin === "cnpj_das" && <Badge variant="outline">DAS / CNPJ</Badge>}
                           {parcelasVencidas > 0 && (
                             <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-600 font-medium">
                               {parcelasVencidas} atrasada{parcelasVencidas > 1 ? "s" : ""}
@@ -1021,6 +1030,7 @@ export default function DividasPage() {
                           <Badge variant={d.tipo === "receber" ? "default" : "destructive"}>
                             {d.tipo === "receber" ? "Receber" : "Pagar"}
                           </Badge>
+                          {item.origin === "cnpj_das" && <Badge variant="outline">DAS / CNPJ</Badge>}
                           {hasParce ? (
                             <Badge variant={status === "pago" ? "secondary" : "outline"}>
                               {parcelasPagas}/{d.parcelas.length} parcelas

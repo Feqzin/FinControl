@@ -37,6 +37,7 @@ import { createOfficialIconsController } from "./controllers/official-icons.cont
 import { createCommunityProfilesController } from "./controllers/community-profiles.controller.js";
 import { createFuturePurchaseSimulationsController } from "./controllers/future-purchase-simulations.controller.js";
 import { createVacationPlansController } from "./controllers/vacation-plans.controller.js";
+import { createCnpjDasController } from "./controllers/cnpj-das.controller.js";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes.js";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes.js";
 import { registerDebugDbPingRoute } from "./routes/debug-db-ping.route.js";
@@ -72,6 +73,8 @@ import { OfficialIconLibraryService } from "./services/official-icons.service.js
 import { CommunityProfilesService } from "./services/community-profiles.service.js";
 import { FuturePurchaseSimulationsService } from "./services/future-purchase-simulations.service.js";
 import { VacationPlansService } from "./services/vacation-plans.service.js";
+import { CnpjDasService } from "./services/cnpj-das.service.js";
+import { db } from "./db.js";
 
 function auditRoute(
   req: Request,
@@ -126,6 +129,7 @@ export function registerRoutes(app: Express): void {
   const communityProfilesController = createCommunityProfilesController(new CommunityProfilesService());
   const futurePurchaseSimulationsController = createFuturePurchaseSimulationsController(new FuturePurchaseSimulationsService(storage));
   const vacationPlansController = createVacationPlansController(new VacationPlansService(storage));
+  const cnpjDasController = createCnpjDasController(new CnpjDasService(db));
 
   registerFinancialDomainRoutes(app, {
     dividasController,
@@ -153,6 +157,10 @@ export function registerRoutes(app: Express): void {
   app.post("/api/vacation-plans/batch", requireAuth, vacationPlansController.createBatch);
   app.post("/api/vacation-plans", requireAuth, vacationPlansController.create);
   app.delete("/api/vacation-plans/:id", requireAuth, vacationPlansController.remove);
+  app.get("/api/cnpj-das", requireAuth, cnpjDasController.list);
+  app.post("/api/cnpj-das/preview", requireAuth, cnpjDasController.preview);
+  app.post("/api/cnpj-das", requireAuth, cnpjDasController.save);
+  app.post("/api/cnpj-das/:id/recalculate", requireAuth, cnpjDasController.recalculate);
 
   registerDebugDbPingRoute(app);
 

@@ -35,6 +35,7 @@ import { createOfficialIconsController } from "./controllers/official-icons.cont
 import { createCommunityProfilesController } from "./controllers/community-profiles.controller";
 import { createFuturePurchaseSimulationsController } from "./controllers/future-purchase-simulations.controller";
 import { createVacationPlansController } from "./controllers/vacation-plans.controller";
+import { createCnpjDasController } from "./controllers/cnpj-das.controller";
 import { getUserId } from "./controllers/controller-utils";
 import { registerFinancialDomainRoutes } from "./routes/financial-domain.routes";
 import { registerCoreDomainRoutes } from "./routes/core-domain.routes";
@@ -48,6 +49,8 @@ import { OfficialIconLibraryService } from "./services/official-icons.service";
 import { CommunityProfilesService } from "./services/community-profiles.service";
 import { FuturePurchaseSimulationsService } from "./services/future-purchase-simulations.service";
 import { VacationPlansService } from "./services/vacation-plans.service";
+import { CnpjDasService } from "./services/cnpj-das.service";
+import { db } from "./db";
 import { BillingService } from "../serverless/services/billing.service";
 import { calculateRemaining } from "../shared/subscription";
 import { requirePremiumFeature } from "./subscription-access";
@@ -113,6 +116,7 @@ export function registerRoutes(app: Express): void {
   const communityProfilesController = createCommunityProfilesController(new CommunityProfilesService());
   const futurePurchaseSimulationsController = createFuturePurchaseSimulationsController(new FuturePurchaseSimulationsService(storage));
   const vacationPlansController = createVacationPlansController(new VacationPlansService(storage));
+  const cnpjDasController = createCnpjDasController(new CnpjDasService(db));
   const billingService = new BillingService();
 
   registerFinancialDomainRoutes(app, {
@@ -141,6 +145,10 @@ export function registerRoutes(app: Express): void {
   app.post("/api/vacation-plans/batch", requireAuth, vacationPlansController.createBatch);
   app.post("/api/vacation-plans", requireAuth, vacationPlansController.create);
   app.delete("/api/vacation-plans/:id", requireAuth, vacationPlansController.remove);
+  app.get("/api/cnpj-das", requireAuth, cnpjDasController.list);
+  app.post("/api/cnpj-das/preview", requireAuth, cnpjDasController.preview);
+  app.post("/api/cnpj-das", requireAuth, cnpjDasController.save);
+  app.post("/api/cnpj-das/:id/recalculate", requireAuth, cnpjDasController.recalculate);
   app.get("/api/compra-aliases", requireAuth, compraAliasesController.list);
   app.post("/api/compra-aliases", requireAuth, compraAliasesController.create);
   app.delete("/api/compra-aliases/:id", requireAuth, compraAliasesController.remove);

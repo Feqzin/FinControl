@@ -42,8 +42,8 @@ export type DividaSortBy =
 
 export type DividaSortable = Divida & { parcelas: Parcela[] };
 
-export type DividaOrigemFilter = "todos" | "manual" | "cartao";
-export type DividaViewOrigin = "manual" | "cartao";
+export type DividaOrigemFilter = "todos" | "manual" | "cartao" | "cnpj_das";
+export type DividaViewOrigin = "manual" | "cartao" | "cnpj_das";
 export type DividaViewStatus = "pendente" | "pago" | "vencido";
 
 export type DividaViewItem = {
@@ -303,7 +303,7 @@ export function buildDividasViewItems({
     return {
       id: `manual:${divida.id}`,
       sourceId: divida.id,
-      origin: "manual",
+      origin: divida.origem === "cnpj_das" ? "cnpj_das" : "manual",
       pessoaId: divida.pessoaId,
       tipo: divida.tipo === "pagar" ? "pagar" : "receber",
       expectativaRecebimento: divida.expectativaRecebimento !== false,
@@ -480,7 +480,7 @@ export function filterDividasViewItems({
       if (!termo) return true;
       const pessoa = normalizeText(getPessoaNome(item.pessoaId));
       const descricao = normalizeText(item.descricao ?? "");
-      const origem = item.origin === "cartao" ? "cartao" : "divida";
+      const origem = item.origin === "cartao" ? "cartao" : item.origin === "cnpj_das" ? "das cnpj mei" : "divida";
       return pessoa.includes(termo) || descricao.includes(termo) || origem.includes(termo);
     })
     .filter((item) => tipoFilter === "todos" || item.tipo === tipoFilter)
@@ -507,7 +507,7 @@ export function getDividasViewPendingTotals(items: DividaViewItem[]) {
   return items.reduce((totals, item) => {
     if (item.status === "pago") return totals;
 
-    if (item.origin === "manual" && item.tipo === "pagar") {
+    if ((item.origin === "manual" || item.origin === "cnpj_das") && item.tipo === "pagar") {
       totals.pagar += item.valorPendente;
       return totals;
     }
