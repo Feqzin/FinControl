@@ -7,10 +7,10 @@ import {
   requiredSelicMonths,
   type DasMeiCalculation,
   type MeiActivity,
-} from "@shared/das-mei";
-import { cnpjDasCalculos, cnpjDasObrigacoes, cnpjs, dividas, pessoas } from "@shared/schema";
-import type { Cnpj, CnpjDasCalculo, CnpjDasObrigacao, Divida } from "@shared/schema";
-import type { CnpjDasPreviewInput, CnpjDasSaveInput } from "../validators/cnpj-das.validators";
+} from "../../shared/das-mei.js";
+import { cnpjDasCalculos, cnpjDasObrigacoes, cnpjs, dividas, pessoas } from "../../shared/schema.js";
+import type { Cnpj, CnpjDasCalculo, CnpjDasObrigacao, Divida } from "../../shared/schema.js";
+import type { CnpjDasPreviewInput, CnpjDasSaveInput } from "../validators/cnpj-das.validators.js";
 
 const OFFICIAL_SELIC_FALLBACK: Record<string, number> = {
   "2024-06": 0.79, "2024-07": 0.91, "2024-08": 0.87, "2024-09": 0.84,
