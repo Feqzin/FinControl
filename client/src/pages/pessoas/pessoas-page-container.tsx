@@ -57,6 +57,10 @@ import {
 } from "@/pages/pessoas/hooks";
 import { sortPessoasForView } from "@/pages/pessoas/pessoas-sort.utils";
 import {
+  buildCompactDebtDateLabel,
+  buildCompactDebtDisplay,
+} from "@/pages/dividas/divida-display.utils";
+import {
   Plus, Trash2, Receipt, Check,
   ArrowUpRight, ArrowDownRight, CreditCard, Repeat, ExternalLink, RotateCcw, Wallet, ArrowUpCircle, ArrowDownCircle,
 } from "lucide-react";
@@ -161,7 +165,7 @@ export default function PessoasPage() {
     listaNegra: false,
     listaNegraMotivo: "",
   });
-  const [historyFilter, setHistoryFilter] = useState<"todos" | "pendente">("todos");
+  const [historyFilter, setHistoryFilter] = useState<"todos" | "pendente">("pendente");
   const [historyTab, setHistoryTab] = useState<"visao_geral" | "pendencias" | "saldo" | "servicos" | "historico">("visao_geral");
   const [pdfReportOpen, setPdfReportOpen] = useState(false);
   const [historyVisible, setHistoryVisible] = useState({
@@ -838,7 +842,7 @@ export default function PessoasPage() {
       <Sheet open={!!historyPessoa} onOpenChange={(v) => {
         if (!v) {
           setHistoryPessoa(null);
-          setHistoryFilter("todos");
+          setHistoryFilter("pendente");
           setHistoryTab("visao_geral");
           setHistoryVisible({ dividas: 8, compras: 6, servicos: 6 });
           setAbaterSaldoOpen(false);
@@ -909,20 +913,20 @@ export default function PessoasPage() {
 
               <div className={`flex items-center gap-2 mb-5 flex-wrap ${historyTab === "pendencias" || historyTab === "historico" ? "" : "hidden"}`}>
                 <Button
-                  variant={historyFilter === "todos" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setHistoryFilter("todos")}
-                  data-testid="button-history-filter-todos"
-                >
-                  Todos
-                </Button>
-                <Button
                   variant={historyFilter === "pendente" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setHistoryFilter("pendente")}
                   data-testid="button-history-filter-pendente"
                 >
                   Pendentes
+                </Button>
+                <Button
+                  variant={historyFilter === "todos" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setHistoryFilter("todos")}
+                  data-testid="button-history-filter-todos"
+                >
+                  Todos
                 </Button>
               </div>
 
@@ -1431,6 +1435,18 @@ export default function PessoasPage() {
                     const isOverdue = d.status === "pendente"
                       && !!d.dataVencimento
                       && d.dataVencimento < format(new Date(), "yyyy-MM-dd");
+                    const display = buildCompactDebtDisplay({
+                      description: d.descricao,
+                      origin: d.origem,
+                      personName: historyPessoa?.nome,
+                      type: d.tipo,
+                    });
+                    const dateLabel = buildCompactDebtDateLabel({
+                      status: d.status,
+                      paymentDate: d.dataPagamento,
+                      dueDate: d.dataVencimento,
+                      overdue: isOverdue,
+                    });
                     return (
                       <div
                         key={d.id}
@@ -1444,14 +1460,11 @@ export default function PessoasPage() {
                               : <ArrowDownRight className="w-4 h-4 text-red-600 flex-shrink-0" />
                             }
                             <div className="min-w-0">
-                              <p className="text-sm font-medium break-words">
-                                {d.descricao || (d.tipo === "receber" ? "A receber" : "A pagar")}
+                              <p className="truncate text-sm font-medium" title={display.details}>
+                                {display.title}
                               </p>
-                              <p className="text-xs text-muted-foreground break-words">
-                                {d.status === "pago"
-                                  ? `Pago em ${d.dataPagamento}`
-                                  : `Venc: ${d.dataVencimento}${isOverdue ? " · Vencido" : ""}`
-                                }
+                              <p className={`text-xs ${isOverdue ? "font-medium text-red-600" : "text-muted-foreground"}`}>
+                                {dateLabel}
                               </p>
                               {d.observacaoPagamento && (
                                 <p className="text-[11px] text-blue-600 mt-1 line-clamp-2">
@@ -1467,8 +1480,8 @@ export default function PessoasPage() {
                             {d.status === "pago" ? (
                               <Button
                                 variant="outline"
-                                size="sm"
-                                className="h-8 px-2 text-xs"
+                                size="icon"
+                                className="h-8 w-8"
                                 onClick={() =>
                                   reverterDividaPagamentoMutation.mutate(d.id, {
                                     onSuccess: () => toast({ title: "Dívida marcada como pendente" }),
@@ -1476,11 +1489,11 @@ export default function PessoasPage() {
                                   })
                                 }
                                 disabled={reverterDividaPagamentoMutation.isPending}
-                                title="Marcar como não paga"
+                                aria-label="Desfazer pagamento"
+                                title="Desfazer pagamento"
                                 data-testid={`button-unpay-history-${d.id}`}
                               >
-                                <RotateCcw className="w-3 h-3 mr-1" />
-                                Pago
+                                <RotateCcw className="h-3.5 w-3.5" />
                               </Button>
                             ) : (
                               <>

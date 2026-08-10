@@ -1432,7 +1432,6 @@ export default function Dashboard() {
                   const isPast = item.dataVenc < today;
                   const isToday = item.dataVenc === today;
                   const isThisWeek = item.dataVenc > today && item.dataVenc <= in7Days;
-                  const dotColor = isPast ? "bg-red-500" : isToday ? "bg-red-500" : isThisWeek ? "bg-amber-400" : "bg-emerald-400";
                   const TipoIcon = item.tipo === "cartao" ? CreditCard : item.tipo === "servico" ? Receipt : ArrowDownRight;
                   const tipoBg = item.tipo === "cartao" ? "bg-blue-500/10 text-blue-600" : item.tipo === "servico" ? "bg-amber-500/10 text-amber-600" : "bg-red-500/10 text-red-600";
                   return (
@@ -1441,13 +1440,10 @@ export default function Dashboard() {
                         <TipoIcon className="w-3.5 h-3.5" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium break-words">{item.nome}</p>
-                        <div className="mt-0.5 flex items-start gap-1.5">
-                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`} />
-                          <p className={`text-xs break-words ${isPast || isToday ? "text-red-600 font-medium" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
-                            {item.subtitulo}
-                          </p>
-                        </div>
+                        <p className="truncate text-sm font-medium" title={item.detalhes}>{item.nome}</p>
+                        <p className={`mt-0.5 text-xs break-words ${isPast || isToday ? "text-red-600 font-medium" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
+                          {item.subtitulo}
+                        </p>
                         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                           <span className="text-sm font-semibold [overflow-wrap:anywhere]">
                             {maskValue(formatCurrencyBRL(item.valor), visible)}
@@ -1489,15 +1485,10 @@ export default function Dashboard() {
                 ) : sectionStatus.pagarSemana.isError ? (
                   <p className="text-xs text-muted-foreground">Resumo da semana indisponível no momento.</p>
                 ) : pagarSemana.length > 0 ? (
-                  <div className="flex flex-col gap-2 rounded-lg bg-amber-500/5 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-medium text-muted-foreground">A pagar em 7 dias</p>
-                      <p className="text-sm font-semibold text-red-600 [overflow-wrap:anywhere]">
-                        {maskValue(formatCurrencyBRL(pagarSemanaTotal), visible)}
-                      </p>
-                    </div>
-                    <span className="w-fit rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                      {pagarSemana.length} item(ns)
+                  <div className="flex items-center justify-between gap-3 px-1 text-xs">
+                    <span className="text-muted-foreground">Total dos próximos 7 dias</span>
+                    <span className="font-semibold text-foreground">
+                      {maskValue(formatCurrencyBRL(pagarSemanaTotal), visible)}
                     </span>
                   </div>
                 ) : (

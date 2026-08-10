@@ -827,7 +827,7 @@ export default function DividasPage() {
                               ? `Próx: ${formatDividaDate(proximaParcela.dataVencimento)} · ${formatDividaCurrency(Number(proximaParcela.valor))}`
                               : `${parcelasPagas}/${d.parcelas.length} parcelas pagas`
                             : status === "pago"
-                            ? `Pago em ${formatDividaDate(d.dataVencimento)}`
+                            ? `Pago em ${formatDividaDate(d.dataPagamento)}`
                             : `Venc: ${formatDividaDate(d.dataVencimento)}${simpleOverdue ? " · ATRASADO" : ""}`
                           }
                           {d.descricao ? ` · ${d.descricao}` : ""}
@@ -1063,7 +1063,7 @@ export default function DividasPage() {
                               ? `Proxima: ${formatDividaDate(proximaParcela.dataVencimento)} · ${formatDividaCurrency(Number(proximaParcela.valor))}`
                               : "Todas pagas"
                             : status === "pago"
-                            ? `Pago em ${d.dataPagamento}${d.formaPagamento ? ` via ${d.formaPagamento}` : ""}`
+                            ? `Pago em ${formatDividaDate(d.dataPagamento)}${d.formaPagamento ? ` via ${d.formaPagamento}` : ""}`
                             : `Venc: ${formatDividaDate(d.dataVencimento)}${simpleOverdue ? " · ATRASADO" : ""}`
                           }
                           {d.descricao && ` · ${d.descricao}`}

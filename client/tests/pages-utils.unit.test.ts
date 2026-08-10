@@ -150,6 +150,10 @@ import { buildDashboardBalanceView } from "../src/pages/dashboard/dashboard-bala
 import { resolveDashboardServicosMetrics } from "../src/pages/dashboard/dashboard-servicos-metrics.utils";
 import { getDashboardReceivablesForMonth } from "../src/pages/dashboard/dashboard-receivables.utils";
 import {
+  buildCompactDebtDateLabel,
+  buildCompactDebtDisplay,
+} from "../src/pages/dividas/divida-display.utils";
+import {
   FINANCIAL_QUERY_ROOTS,
   invalidateFinancialQueries,
 } from "../src/lib/financial-query-invalidation";
@@ -8210,6 +8214,45 @@ test("dashboard próximos vencimentos: remove parcelas individuais de cartão e 
   assert.equal(filtered[0]?.kind, "cartao_fatura");
   assert.equal(filtered[0]?.nome, "Fatura Nubank Mastercard · Junho de 2026");
   assert.equal(filtered[0]?.actionLabel, "Pagar fatura");
+});
+
+test("dashboard próximos vencimentos: resume DAS importado sem perder os detalhes técnicos", () => {
+  const display = buildCompactDebtDisplay({
+    description: "DAS MEI 06/2026 · total oficial importado do PGMEI · principal R$ 82,05 · multa R$ 6,51 · juros R$ 0,00 · calculado em 31/01/2027",
+    origin: "cnpj_das",
+    personName: "Receita Federal · DAS MEI · Discordia Urban",
+    type: "pagar",
+  });
+
+  assert.equal(display.title, "DAS MEI · 06/2026");
+  assert.equal(display.context, "Discordia Urban");
+  assert.match(display.details ?? "", /principal R\$ 82,05/);
+});
+
+test("dashboard próximos vencimentos: evita repetir a pessoa quando não há descrição", () => {
+  const display = buildCompactDebtDisplay({
+    description: null,
+    origin: "manual",
+    personName: "Elza",
+    type: "receber",
+  });
+
+  assert.equal(display.title, "Elza");
+  assert.equal(display.context, null);
+  assert.equal(display.details, undefined);
+});
+
+test("dívidas compactas: apresenta pagamento e vencimento no padrão brasileiro", () => {
+  assert.equal(buildCompactDebtDateLabel({
+    status: "pago",
+    paymentDate: "2026-08-10",
+    dueDate: "2026-07-20",
+  }), "Pago em 10/08/2026");
+  assert.equal(buildCompactDebtDateLabel({
+    status: "pendente",
+    dueDate: "2026-04-20",
+    overdue: true,
+  }), "Venceu em 20/04/2026");
 });
 
 test("dashboard próximos vencimentos: aplica janela de 30 dias para futuros e vencidos recentes", () => {

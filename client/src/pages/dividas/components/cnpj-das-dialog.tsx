@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Building2, Calculator, CheckCircle2, ExternalLink, FileText, RefreshCw } from "lucide-react";
+import { AlertCircle, Building2, Calculator, CheckCircle2, ExternalLink, FileText, RefreshCw, Unlink } from "lucide-react";
 import type { DasMeiCalculation, MeiActivity } from "@shared/das-mei";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,6 +27,7 @@ import { CnpjDasImportPanel } from "@/pages/dividas/components/cnpj-das-import-p
 import { CnpjDasPaymentGuidance } from "@/pages/dividas/components/cnpj-das-payment-guidance";
 import type { DasImportedItem } from "@/pages/dividas/cnpj-das-import.utils";
 import {
+  deleteCnpjDasImportProof,
   listCnpjDas,
   previewCnpjDas,
   recalculateCnpjDas,
@@ -74,6 +85,7 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
   const [dirtyAdjustments, setDirtyAdjustments] = useState(false);
   const [importedMonths, setImportedMonths] = useState<Set<string> | null>(null);
   const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofToDetach, setProofToDetach] = useState<{ id: string; period: string } | null>(null);
 
   const totals = useMemo(() => preview.reduce((result, item) => {
     if (!selected.has(item.competencia.slice(0, 7))) return result;
@@ -297,9 +309,32 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
     }
   };
 
+  const handleDetachExistingProof = async () => {
+    if (!proofToDetach) return;
+    setLoadingCompanies(true);
+    try {
+      await deleteCnpjDasImportProof(proofToDetach.id);
+      await loadCompanies();
+      setProofToDetach(null);
+      toast({
+        title: "PDF desanexado",
+        description: "O lote e as dívidas foram preservados; somente o comprovante foi removido.",
+      });
+    } catch (error) {
+      toast({
+        title: "Não foi possível desanexar o PDF",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingCompanies(false);
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1rem)] max-w-6xl flex-col overflow-hidden p-0 sm:w-full">
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1rem)] max-w-6xl flex-col overflow-hidden p-0 sm:w-full">
         <DialogHeader className="border-b px-6 py-5">
           <DialogTitle className="flex items-center gap-2 text-xl">
             <Building2 className="h-5 w-5 text-primary" /> DAS do MEI por CNPJ
@@ -493,14 +528,29 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
                                   <p className="text-xs text-muted-foreground">{item.quantidadeCompetencias} competência(s) · {formatCurrency(item.total)} · cadastrado em {formatDate(item.dataCalculo)}</p>
                                 </div>
                                 {item.comprovanteNome ? (
-                                  <a
-                                    href={`/api/pagamentos/cnpj_das_importacao/${item.id}/comprovante`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center gap-2 font-medium text-primary hover:underline"
-                                  >
-                                    <FileText className="h-4 w-4" />Abrir PDF<ExternalLink className="h-3 w-3" />
-                                  </a>
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <a
+                                      href={`/api/pagamentos/cnpj_das_importacao/${item.id}/comprovante`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-2 px-2 py-1 font-medium text-primary hover:underline"
+                                    >
+                                      <FileText className="h-4 w-4" />Abrir PDF<ExternalLink className="h-3 w-3" />
+                                    </a>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                      disabled={loadingCompanies}
+                                      onClick={() => setProofToDetach({
+                                        id: item.id,
+                                        period: `${formatMonth(item.competenciaInicial)} a ${formatMonth(item.competenciaFinal)}`,
+                                      })}
+                                    >
+                                      <Unlink className="mr-2 h-4 w-4" />Desanexar PDF
+                                    </Button>
+                                  </div>
                                 ) : (
                                   <Label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 font-medium hover:bg-muted">
                                     <FileText className="h-4 w-4" />Anexar PDF
@@ -550,8 +600,38 @@ export function CnpjDasDialog({ open, onOpenChange }: Props) {
               </div>
             )}
           </TabsContent>
-        </Tabs>
-      </DialogContent>
-    </Dialog>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={Boolean(proofToDetach)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !loadingCompanies) setProofToDetach(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desanexar este PDF?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O comprovante do lote {proofToDetach?.period} será removido. As competências, os valores e as dívidas cadastradas continuarão no sistema.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loadingCompanies}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={loadingCompanies}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDetachExistingProof();
+              }}
+            >
+              {loadingCompanies ? "Desanexando..." : "Desanexar PDF"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

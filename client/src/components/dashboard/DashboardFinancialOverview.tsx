@@ -103,19 +103,13 @@ export function DashboardFinancialOverview({
                 const isPast = item.dataVenc < today;
                 const isToday = item.dataVenc === today;
                 const isThisWeek = item.dataVenc > today && item.dataVenc <= in7Days;
-                const dotColor = isPast ? "bg-red-500" : isToday ? "bg-red-500" : isThisWeek ? "bg-amber-400" : "bg-emerald-400";
                 const TipoIcon = item.tipo === "cartao" ? CreditCard : item.tipo === "servico" ? Receipt : ArrowDownRight;
                 const tipoBg = item.tipo === "cartao" ? "bg-blue-500/10 text-blue-600" : item.tipo === "servico" ? "bg-amber-500/10 text-amber-600" : "bg-red-500/10 text-red-600";
-                const itemSurface = isPast || isToday
-                  ? "border-red-500/15 bg-red-500/[0.03]"
-                  : isThisWeek
-                    ? "border-amber-500/15 bg-amber-500/[0.03]"
-                    : "border-border/55 bg-muted/[0.16]";
 
                 return (
                   <div
                     key={item.id}
-                    className={`group flex items-start gap-3 rounded-2xl border p-3 transition-all duration-200 hover:border-border/80 hover:bg-muted/[0.24] ${itemSurface}`}
+                    className="group flex items-start gap-3 rounded-2xl border border-border/55 bg-muted/[0.12] p-3 transition-colors duration-200 hover:bg-muted/[0.2]"
                     data-testid={`vencimento-${item.id}`}
                   >
                     <div className={`mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-black/5 shadow-sm ${tipoBg}`}>
@@ -124,15 +118,12 @@ export function DashboardFinancialOverview({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0 flex-1">
-                          <p className="min-w-0 break-words pr-1 text-sm font-semibold text-foreground/95">
+                          <p className="min-w-0 truncate pr-1 text-sm font-semibold text-foreground/95" title={item.detalhes}>
                             {item.nome}
                           </p>
-                          <div className="mt-1.5 flex items-start gap-2">
-                            <div className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full shadow-[0_0_0_3px] shadow-background ${dotColor}`} />
-                            <p className={`text-xs leading-relaxed ${isPast || isToday ? "font-medium text-red-600" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
-                              {item.subtitulo}
-                            </p>
-                          </div>
+                          <p className={`mt-1 text-xs leading-relaxed ${isPast || isToday ? "font-medium text-red-600" : isThisWeek ? "text-amber-600" : "text-muted-foreground"}`}>
+                            {item.subtitulo}
+                          </p>
                         </div>
                         <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2 sm:w-auto sm:min-w-[146px] sm:flex-col sm:items-end">
                           <span className="text-sm font-semibold tracking-tight text-foreground/95 sm:text-right [overflow-wrap:anywhere]">
@@ -172,18 +163,9 @@ export function DashboardFinancialOverview({
               ) : pagarSemanaStatus.isError ? (
                 <p className="text-xs text-muted-foreground">Resumo da semana indisponível no momento.</p>
               ) : pagarSemana.length > 0 ? (
-                <div className="flex items-center justify-between rounded-2xl border border-amber-500/15 bg-amber-500/[0.06] px-3.5 py-3 shadow-sm">
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-muted-foreground">
-                      A pagar em 7 dias
-                    </p>
-                    <p className="mt-1 text-sm font-semibold tracking-tight text-red-600 [overflow-wrap:anywhere]">
-                      {formatMoney(pagarSemanaTotal)}
-                    </p>
-                  </div>
-                  <span className="rounded-full border border-border/50 bg-background/80 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                    {pagarSemana.length} item(ns)
-                  </span>
+                <div className="flex items-center justify-between gap-3 px-1 text-xs">
+                  <span className="text-muted-foreground">Total dos próximos 7 dias</span>
+                  <span className="font-semibold text-foreground">{formatMoney(pagarSemanaTotal)}</span>
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">Sem pagamentos críticos nos próximos 7 dias.</p>

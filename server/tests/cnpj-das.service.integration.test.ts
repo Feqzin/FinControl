@@ -103,6 +103,19 @@ testCnpjDasIntegration("cadastra CNPJ, cria dívida DAS, registra evolução e p
     assert.equal(listed[0].obligations[0].history.length, 2);
 
     assert.deepEqual(await timelineService.deleteComprovante("cnpj_das_importacao", saved.importacao.id, user.id), { ok: true });
+    const [detachedImportBatch] = await db
+      .select()
+      .from(cnpjDasImportacoes)
+      .where(eq(cnpjDasImportacoes.id, saved.importacao.id));
+    assert.equal(detachedImportBatch.comprovantePath, null);
+    assert.equal(detachedImportBatch.comprovanteNome, null);
+    assert.equal(detachedImportBatch.comprovanteMimeType, null);
+    assert.equal(detachedImportBatch.comprovanteTamanho, null);
+    assert.equal(detachedImportBatch.comprovanteEnviadoEm, null);
+    assert.deepEqual(
+      await timelineService.getComprovanteDownload("cnpj_das_importacao", saved.importacao.id, user.id),
+      { error: "NOT_FOUND" },
+    );
   } finally {
     await db.delete(users).where(eq(users.id, user.id));
   }

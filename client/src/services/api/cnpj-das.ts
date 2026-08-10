@@ -93,3 +93,7 @@ export async function recalculateCnpjDas(companyId: string, dataCalculo: string)
   const response = await apiRequest("POST", `/api/cnpj-das/${companyId}/recalculate`, { dataCalculo });
   return response.json();
 }
+
+export async function deleteCnpjDasImportProof(importId: string): Promise<void> {
+  await apiRequest("DELETE", `/api/pagamentos/cnpj_das_importacao/${importId}/comprovante`);
+}

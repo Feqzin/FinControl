@@ -40,6 +40,7 @@ import { fetchServicoCobrancaPagamentos } from "@/services/api/servicos";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { resolveDashboardServicosMetrics } from "@/pages/dashboard/dashboard-servicos-metrics.utils";
 import { getDashboardReceivablesForMonth } from "@/pages/dashboard/dashboard-receivables.utils";
+import { buildCompactDebtDisplay } from "@/pages/dividas/divida-display.utils";
 import { calculateVacationMonthImpact } from "@shared/vacation-planning";
 import { fetchVacationPlans } from "@/services/api/vacation-plans";
 
@@ -56,6 +57,7 @@ export interface VencimentoItem {
   kind: "cartao_fatura" | "cartao_parcela" | "divida_pagar" | "divida_receber" | "servico";
   nome: string;
   subtitulo: string;
+  detalhes?: string;
   valor: number;
   dataVenc: string;
   actionLabel: string;
@@ -556,7 +558,12 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
     dividas.forEach((d) => {
       if (d.tipo === "receber" && d.expectativaRecebimento === false) return;
       const pessoa = pessoasById.get(d.pessoaId);
-      const nome = d.descricao || pessoa?.nome || (d.tipo === "receber" ? "Recebimento" : "Pagamento");
+      const display = buildCompactDebtDisplay({
+        description: d.descricao,
+        origin: d.origem,
+        personName: pessoa?.nome,
+        type: d.tipo,
+      });
       const parcelasDaDivida = (parcelasByDividaId.get(d.id) ?? []).filter(
         (parcela) => parcela.status === "pendente" && Boolean(parcela.dataVencimento),
       );
@@ -568,8 +575,9 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
             id: `divida-${d.id}-parcela-${parcela.id}`,
             tipo: "divida",
             kind: d.tipo === "receber" ? "divida_receber" : "divida_pagar",
-            nome,
-            subtitulo: `${urgencyLabel} · Parcela ${parcela.numero}${pessoa ? ` · ${pessoa.nome}` : ""}`,
+            nome: display.title,
+            subtitulo: [urgencyLabel, `Parcela ${parcela.numero}`, display.context].filter(Boolean).join(" · "),
+            detalhes: display.details,
             valor: toMoneyNumber(parcela.valor),
             dataVenc: parcela.dataVencimento!,
             actionLabel: d.tipo === "receber" ? "Marcar recebido" : "Marcar pago",
@@ -586,8 +594,9 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
         id: `divida-${d.id}`,
         tipo: "divida",
         kind: d.tipo === "receber" ? "divida_receber" : "divida_pagar",
-        nome,
-        subtitulo: pessoa ? `${urgLabel} · ${pessoa.nome}` : urgLabel,
+        nome: display.title,
+        subtitulo: [urgLabel, display.context].filter(Boolean).join(" · "),
+        detalhes: display.details,
         valor: toMoneyNumber(d.valor),
         dataVenc: d.dataVencimento,
         actionLabel: d.tipo === "receber" ? "Marcar recebido" : "Marcar pago",
