@@ -4,6 +4,7 @@ export type DasPaymentPriority = {
   id: string;
   competencia: string;
   total: number;
+  remainingFinePotential: number;
   reason: string;
   urgency: "daily_fine" | "due_soon" | "selic" | "future";
 };
@@ -13,11 +14,13 @@ export type DasPaymentGuidance = {
   overdueTotal: number;
   dueSoonTotal: number;
   dailyFineCount: number;
+  totalPotentialAdditionalFine: number;
   minimumGuide: number;
   priorities: DasPaymentPriority[];
   firstMonthPriorities: DasPaymentPriority[];
   firstMonthTotal: number;
-  estimatedMonths: number | null;
+  firstMonthPotentialFineAvoided: number;
+  minimumEstimatedMonths: number | null;
   budgetFitsGuide: boolean;
 };
 
@@ -41,6 +44,8 @@ export function buildCnpjDasPaymentGuidance(
       const dueDate = parseIsoDate(item.dataVencimento);
       const daysUntilDue = Math.ceil((dueDate.getTime() - reference.getTime()) / 86_400_000);
       const finePercentage = Number(item.multaPercentual);
+      const principal = Number(item.principal);
+      const fineValue = Number(item.multaValor);
       const overdue = daysUntilDue < 0;
       const urgency: DasPaymentPriority["urgency"] = overdue && finePercentage < 20
         ? "daily_fine"
@@ -56,15 +61,19 @@ export function buildCnpjDasPaymentGuidance(
             ? "Vence hoje; pagar evita o início da multa por atraso."
             : `Vence em ${daysUntilDue} dia(s); reserve antes de quitar débitos antigos.`
           : urgency === "selic"
-            ? "A multa já chegou ou está próxima do teto; a Selic continua aumentando o débito."
+            ? "A multa já atingiu o teto; entre essas guias, priorizamos as mais antigas. A Selic continua aumentando o débito."
             : "Ainda não venceu; programe o valor para não criar um novo atraso.";
+      const remainingFinePotential = urgency === "daily_fine"
+        ? roundMoney(Math.max(0, principal * 0.2 - fineValue))
+        : 0;
 
       return {
         id: item.id,
         competencia: item.competencia,
         total: Number(item.total),
-        principal: Number(item.principal),
+        principal,
         daysUntilDue,
+        remainingFinePotential,
         urgency,
         reason,
       };
@@ -80,7 +89,7 @@ export function buildCnpjDasPaymentGuidance(
     const urgencyDifference = urgencyOrder[left.urgency] - urgencyOrder[right.urgency];
     if (urgencyDifference !== 0) return urgencyDifference;
     if (left.urgency === "daily_fine") return right.daysUntilDue - left.daysUntilDue;
-    if (left.urgency === "selic") return right.principal - left.principal || left.daysUntilDue - right.daysUntilDue;
+    if (left.urgency === "selic") return left.daysUntilDue - right.daysUntilDue || right.principal - left.principal;
     return left.daysUntilDue - right.daysUntilDue;
   });
 
@@ -100,6 +109,11 @@ export function buildCnpjDasPaymentGuidance(
   const totalOpen = roundMoney(open.reduce((sum, item) => sum + item.total, 0));
   const overdueTotal = roundMoney(open.filter((item) => item.daysUntilDue < 0).reduce((sum, item) => sum + item.total, 0));
   const dueSoonTotal = roundMoney(open.filter((item) => item.daysUntilDue >= 0 && item.daysUntilDue <= 30).reduce((sum, item) => sum + item.total, 0));
+  const totalPotentialAdditionalFine = roundMoney(open.reduce((sum, item) => sum + item.remainingFinePotential, 0));
+  const firstMonthPotentialFineAvoided = roundMoney(firstMonthPriorities.reduce(
+    (sum, item) => sum + item.remainingFinePotential,
+    0,
+  ));
   const minimumGuide = open.length > 0 ? Math.min(...open.map((item) => item.total)) : 0;
   const budgetFitsGuide = validBudget > 0 && minimumGuide > 0 && validBudget + 0.001 >= minimumGuide;
 
@@ -108,11 +122,13 @@ export function buildCnpjDasPaymentGuidance(
     overdueTotal,
     dueSoonTotal,
     dailyFineCount: open.filter((item) => item.urgency === "daily_fine").length,
+    totalPotentialAdditionalFine,
     minimumGuide: roundMoney(minimumGuide),
     priorities,
     firstMonthPriorities,
     firstMonthTotal: roundMoney(firstMonthTotal),
-    estimatedMonths: budgetFitsGuide ? Math.ceil(totalOpen / validBudget) : null,
+    firstMonthPotentialFineAvoided,
+    minimumEstimatedMonths: budgetFitsGuide ? Math.ceil(totalOpen / validBudget) : null,
     budgetFitsGuide,
   };
 }

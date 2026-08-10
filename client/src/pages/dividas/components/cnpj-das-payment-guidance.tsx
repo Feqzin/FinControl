@@ -78,6 +78,11 @@ export function CnpjDasPaymentGuidance({ obligations }: Props) {
         <div className="rounded-lg bg-background p-3">
           <p className="text-xs text-muted-foreground">Multa diária ainda crescendo</p>
           <p className="font-semibold">{guidance.dailyFineCount} guia(s)</p>
+          {guidance.totalPotentialAdditionalFine > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Até {formatCurrency(guidance.totalPotentialAdditionalFine)} ainda podem ser acrescentados até o teto.
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -89,7 +94,13 @@ export function CnpjDasPaymentGuidance({ obligations }: Props) {
             <AlertDescription className="space-y-2">
               <p>
                 Quite {guidance.firstMonthPriorities.length} guia(s), somando <strong>{formatCurrency(guidance.firstMonthTotal)}</strong>.
-                No ritmo informado, o principal atual levaria aproximadamente <strong>{guidance.estimatedMonths} mês(es)</strong>, sem considerar a Selic futura.
+                {guidance.firstMonthPotentialFineAvoided > 0
+                  ? <> Isso impede até <strong>{formatCurrency(guidance.firstMonthPotentialFineAvoided)}</strong> de multa adicional nessas guias, se elas permanecessem abertas até o teto.</>
+                  : null}
+              </p>
+              <p>
+                Dividindo o total atual pelo valor mensal, seriam necessários <strong>pelo menos {guidance.minimumEstimatedMonths} mês(es)</strong>.
+                Esse é um cenário otimista, não uma previsão: a Selic e o recálculo das guias podem exigir margem mensal ou meses adicionais.
               </p>
               <div className="flex flex-wrap gap-2">
                 {guidance.firstMonthPriorities.slice(0, 6).map((item) => (
@@ -118,6 +129,9 @@ export function CnpjDasPaymentGuidance({ obligations }: Props) {
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="rounded-lg bg-background p-3">
           <p className="mb-2 flex items-center gap-2 font-medium"><TrendingUp className="h-4 w-4 text-amber-600" />Ordem recomendada</p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Primeiro, quite as guias cuja multa diária ainda cresce. Depois, entre as que já chegaram ao teto, siga da mais antiga para a mais recente.
+          </p>
           <ol className="space-y-2 text-sm">
             {guidance.priorities.slice(0, 4).map((item, index) => (
               <li key={item.id} className="flex gap-2">
@@ -131,12 +145,13 @@ export function CnpjDasPaymentGuidance({ obligations }: Props) {
           <p className="mb-2 flex items-center gap-2 font-medium"><Landmark className="h-4 w-4 text-blue-600" />Regras usadas nas dicas</p>
           <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
             <li>Multa de 0,33% por dia de atraso, limitada a 20%.</li>
-            <li>Depois, os juros pela Selic continuam até o pagamento.</li>
+            <li>Juros pela Selic acumulada até o mês anterior, mais 1% no mês do pagamento.</li>
             <li>O parcelamento convencional do MEI pode chegar a 60 parcelas, com mínimo oficial de R$ 50.</li>
           </ul>
           <div className="mt-3 flex flex-wrap gap-3">
             <a className="inline-flex items-center gap-1 font-medium text-primary hover:underline" href="https://www.gov.br/pt-br/servicos/parcelar-imposto-mei" target="_blank" rel="noreferrer">Parcelamento oficial<ExternalLink className="h-3 w-3" /></a>
             <a className="inline-flex items-center gap-1 font-medium text-primary hover:underline" href="https://www.gov.br/empresas-e-negocios/pt-br/empreendedor/verificar-debitos-do-mei" target="_blank" rel="noreferrer">Consultar situação<ExternalLink className="h-3 w-3" /></a>
+            <a className="inline-flex items-center gap-1 font-medium text-primary hover:underline" href="https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/pagamentos-e-parcelamentos/pagamento-em-atraso/como-calcular-multa-de-mora-acrescimos-legais" target="_blank" rel="noreferrer">Regra dos acréscimos<ExternalLink className="h-3 w-3" /></a>
           </div>
         </div>
       </div>

@@ -8667,7 +8667,90 @@ test("Orientação DAS prioriza multa diária e respeita o orçamento mensal", (
   assert.equal(guidance.dailyFineCount, 1);
   assert.deepEqual(guidance.firstMonthPriorities.map((item) => item.id), ["recent-growing"]);
   assert.equal(guidance.firstMonthTotal, 88.56);
-  assert.equal(guidance.estimatedMonths, 2);
+  assert.equal(guidance.firstMonthPotentialFineAvoided, 10.72);
+  assert.equal(guidance.minimumEstimatedMonths, 2);
+});
+
+test("Orientação DAS quita multas crescentes antes e depois ordena o teto por antiguidade", () => {
+  const obligations = [
+    {
+      id: "capped-newer",
+      competencia: "2025-01-01",
+      dataVencimento: "2025-02-20",
+      dataCalculo: "2026-08-10",
+      principal: "76.90",
+      multaPercentual: "20.0000",
+      multaValor: "15.38",
+      jurosValor: "15.64",
+      total: "107.92",
+      totalOficialManual: true,
+      debtStatus: "pendente",
+      debtDeletedAt: null,
+      history: [],
+    },
+    {
+      id: "growing-may",
+      competencia: "2026-05-01",
+      dataVencimento: "2026-06-22",
+      dataCalculo: "2026-08-10",
+      principal: "82.05",
+      multaPercentual: "16.1731",
+      multaValor: "13.27",
+      jurosValor: "1.82",
+      total: "97.14",
+      totalOficialManual: true,
+      debtStatus: "pendente",
+      debtDeletedAt: null,
+      history: [],
+    },
+    {
+      id: "capped-oldest",
+      competencia: "2024-04-01",
+      dataVencimento: "2024-05-20",
+      dataCalculo: "2026-08-10",
+      principal: "71.60",
+      multaPercentual: "20.0000",
+      multaValor: "14.32",
+      jurosValor: "20.33",
+      total: "106.25",
+      totalOficialManual: true,
+      debtStatus: "pendente",
+      debtDeletedAt: null,
+      history: [],
+    },
+    {
+      id: "growing-june",
+      competencia: "2026-06-01",
+      dataVencimento: "2026-07-20",
+      dataCalculo: "2026-08-10",
+      principal: "82.05",
+      multaPercentual: "6.9348",
+      multaValor: "5.69",
+      jurosValor: "0.82",
+      total: "88.56",
+      totalOficialManual: true,
+      debtStatus: "pendente",
+      debtDeletedAt: null,
+      history: [],
+    },
+  ];
+
+  const guidance = buildCnpjDasPaymentGuidance(obligations, 200, "2026-08-10");
+
+  assert.deepEqual(guidance.priorities.map((item) => item.id), [
+    "growing-june",
+    "growing-may",
+    "capped-oldest",
+    "capped-newer",
+  ]);
+  assert.deepEqual(guidance.firstMonthPriorities.map((item) => item.id), [
+    "growing-june",
+    "growing-may",
+  ]);
+  assert.equal(guidance.firstMonthTotal, 185.7);
+  assert.equal(guidance.totalPotentialAdditionalFine, 13.86);
+  assert.equal(guidance.firstMonthPotentialFineAvoided, 13.86);
+  assert.equal(guidance.minimumEstimatedMonths, 2);
 });
 
 test("Orientação DAS indica quando o orçamento não paga a menor guia", () => {
@@ -8689,5 +8772,5 @@ test("Orientação DAS indica quando o orçamento não paga a menor guia", () =>
 
   assert.equal(guidance.budgetFitsGuide, false);
   assert.equal(guidance.firstMonthPriorities.length, 0);
-  assert.equal(guidance.estimatedMonths, null);
+  assert.equal(guidance.minimumEstimatedMonths, null);
 });
