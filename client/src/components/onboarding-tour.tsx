@@ -4,6 +4,7 @@ import {
   ChevronRight,
   X,
   LayoutDashboard,
+  LayoutGrid,
   Users,
   CreditCard,
   Repeat,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useUIPreferences } from "@/context/ui-preferences";
 
 type Placement = "top" | "bottom" | "left" | "right" | "center";
 
@@ -94,6 +96,16 @@ const steps: TourStep[] = [
   },
 ];
 
+const essentialMoreResourcesStep: TourStep = {
+  id: "mais-recursos",
+  type: "spotlight",
+  target: "[data-testid='nav-more-resources']",
+  preferredPlacement: "right",
+  title: "Passo 4 · Mais recursos",
+  description: "Abra Mais recursos para acessar Serviços, Metas, Calendário, Relatórios e outras áreas quando precisar.",
+  icon: LayoutGrid,
+};
+
 interface SpotlightRect {
   top: number;
   left: number;
@@ -154,6 +166,7 @@ function getTooltipPosition(
 }
 
 export function OnboardingTour() {
+  const { isEssentialMode } = useUIPreferences();
   const [stepIdx, setStepIdx] = useState(0);
   const [open, setOpen] = useState(false);
   const [spotlightRect, setSpotlightRect] = useState<SpotlightRect | null>(null);
@@ -168,7 +181,9 @@ export function OnboardingTour() {
     } catch {}
   }, []);
 
-  const currentStep = steps[stepIdx];
+  const currentStep = isEssentialMode && steps[stepIdx].id === "servicos"
+    ? essentialMoreResourcesStep
+    : steps[stepIdx];
 
   const measureTarget = useCallback(() => {
     if (!currentStep || currentStep.type !== "spotlight" || !currentStep.target) {
@@ -182,6 +197,7 @@ export function OnboardingTour() {
       setTooltipPos(null);
       return;
     }
+    el.scrollIntoView({ block: "nearest", inline: "nearest" });
     const r = el.getBoundingClientRect();
     const rect: SpotlightRect = {
       top: r.top - PADDING,
@@ -264,16 +280,6 @@ export function OnboardingTour() {
 
   return (
     <>
-      <style>{`
-        @keyframes tour-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(var(--primary-rgb, 99 102 241) / 0.5); }
-          50% { box-shadow: 0 0 0 8px rgba(var(--primary-rgb, 99 102 241) / 0); }
-        }
-        .tour-spotlight-ring {
-          animation: tour-pulse 2s ease-in-out infinite;
-        }
-      `}</style>
-
       <div
         className="fixed inset-0 z-[200]"
         style={{ pointerEvents: "all" }}
@@ -297,25 +303,17 @@ export function OnboardingTour() {
           </div>
         ) : (
           <>
-            <div
-              className="fixed inset-0 bg-black/65"
-              style={{
-                opacity: visible ? 1 : 0,
-                transition: "opacity 0.25s ease",
-              }}
-            />
-
             {spotlightRect && (
               <>
                 <div
-                  className="fixed rounded-xl tour-spotlight-ring"
+                  className="fixed rounded-xl"
                   style={{
                     top: spotlightRect.top,
                     left: spotlightRect.left,
                     width: spotlightRect.width,
                     height: spotlightRect.height,
                     boxShadow: "0 0 0 9999px rgba(0,0,0,0.65)",
-                    border: "2px solid hsl(var(--primary))",
+                    border: "3px solid hsl(var(--primary))",
                     pointerEvents: "none",
                     opacity: visible ? 1 : 0,
                     transition: "opacity 0.25s ease, top 0.3s ease, left 0.3s ease, width 0.3s ease, height 0.3s ease",
@@ -323,20 +321,6 @@ export function OnboardingTour() {
                   }}
                 />
 
-                <div
-                  className="fixed rounded-xl"
-                  style={{
-                    top: spotlightRect.top - 2,
-                    left: spotlightRect.left - 2,
-                    width: spotlightRect.width + 4,
-                    height: spotlightRect.height + 4,
-                    background: "transparent",
-                    pointerEvents: "none",
-                    zIndex: 202,
-                    opacity: visible ? 1 : 0,
-                    transition: "opacity 0.25s ease",
-                  }}
-                />
               </>
             )}
 
