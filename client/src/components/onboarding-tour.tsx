@@ -197,6 +197,7 @@ export function OnboardingTour() {
       setTooltipPos(null);
       return;
     }
+    el.scrollIntoView({ block: "nearest", inline: "nearest" });
     const r = el.getBoundingClientRect();
     const rect: SpotlightRect = {
       top: r.top - PADDING,
