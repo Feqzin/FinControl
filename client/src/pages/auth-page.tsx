@@ -101,7 +101,7 @@ export default function AuthPage() {
   const { setUsageMode } = useUIPreferences();
   const [loginData, setLoginData] = useState({ identifier: "", password: "" });
   const [registerData, setRegisterData] = useState({ nomeCompleto: "", username: "", password: "" });
-  const [registerUsageMode, setRegisterUsageMode] = useState<UsageMode>("guiado");
+  const [registerUsageMode, setRegisterUsageMode] = useState<UsageMode>("essencial");
   const [registerAge, setRegisterAge] = useState("");
   const [registerModeTouched, setRegisterModeTouched] = useState(false);
   const [tab, setTab] = useState("login");
