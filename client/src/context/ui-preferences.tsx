@@ -40,7 +40,7 @@ const defaultPrefs: UIPreferences = {
   dashboardCompact: false,
   mobileMode: false,
   mobileModePreference: "auto",
-  usageMode: "guiado",
+  usageMode: "essencial",
 };
 
 const UIPreferencesContext = createContext<UIPreferencesContextType | undefined>(undefined);
@@ -70,12 +70,13 @@ function normalizeStoredPrefs(
     ...merged,
     mobileModePreference,
     mobileMode,
+    // Preferências antigas sem modo explícito mantêm a experiência anterior.
     usageMode:
-      merged.usageMode === "essencial"
-      || merged.usageMode === "guiado"
-      || merged.usageMode === "completo"
-      || merged.usageMode === "pro"
-        ? merged.usageMode
+      parsed.usageMode === "essencial"
+      || parsed.usageMode === "guiado"
+      || parsed.usageMode === "completo"
+      || parsed.usageMode === "pro"
+        ? parsed.usageMode
         : "guiado",
   };
 }
