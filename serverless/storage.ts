@@ -67,70 +67,40 @@ type ParcelaCompraWithoutComprovante = {
 const USERNAME_LOOKUP_QUERY =
   `select * from "users" where lower("users"."username") = lower($1) limit 1`;
 
-function isMissingUsersOptionalColumnsError(error: unknown): boolean {
-  const messages: string[] = [];
+function databaseErrorCodes(error: unknown): string[] {
+  const codes: string[] = [];
+  let current = error;
+  for (let depth = 0; depth < 5 && current && typeof current === "object"; depth++) {
+    const candidate = current as { code?: unknown; cause?: unknown };
+    if (typeof candidate.code === "string") codes.push(candidate.code);
+    current = candidate.cause;
+  }
+  return codes;
+}
+
+export function isMissingUsersOptionalColumnsError(error: unknown): boolean {
   const queue: unknown[] = [error];
+  const optionalColumn = /\b(nome_completo|subscription_tier|trial_started_at|trial_ends_at|trial_used_at|reset_token|reset_token_expiry|public_code|full_name_visibility|email)\b/i;
 
   while (queue.length > 0) {
     const current = queue.shift();
     if (!current) continue;
 
-    if (typeof current === "string") {
-      messages.push(current.toLowerCase());
-      continue;
-    }
-
     if (typeof current === "object") {
       const maybeError = current as { message?: unknown; code?: unknown; cause?: unknown };
-      if (typeof maybeError.message === "string") {
-        messages.push(maybeError.message.toLowerCase());
-      }
-      if (typeof maybeError.code === "string") {
-        messages.push(maybeError.code.toLowerCase());
+      // Drizzle's "Failed query" text contains every selected column even when
+      // the real cause is a connection error. Only the PostgreSQL cause proves
+      // that an optional column is actually missing.
+      if (maybeError.code === "42703" &&
+          typeof maybeError.message === "string" && optionalColumn.test(maybeError.message)) {
+        return true;
       }
       if (maybeError.cause !== undefined) {
         queue.push(maybeError.cause);
       }
     }
   }
-
-  const combined = messages.join(" | ");
-  if (combined.includes("42703")) return true;
-
-  const referencesUsersOptionalColumnsInFailedQuery =
-    combined.includes("failed query") &&
-    combined.includes("\"users\"") &&
-    (
-      combined.includes("\"nome_completo\"") ||
-      combined.includes("\"subscription_tier\"") ||
-      combined.includes("\"trial_started_at\"") ||
-      combined.includes("\"trial_ends_at\"") ||
-      combined.includes("\"trial_used_at\"") ||
-      combined.includes("\"reset_token\"") ||
-      combined.includes("\"reset_token_expiry\"") ||
-      combined.includes("\"public_code\"") ||
-      combined.includes("\"full_name_visibility\"") ||
-      combined.includes("\"email\"")
-    );
-
-  if (referencesUsersOptionalColumnsInFailedQuery) return true;
-
-  const referencesMissingColumn =
-    combined.includes("does not exist") &&
-    (
-      combined.includes("nome_completo") ||
-      combined.includes("subscription_tier") ||
-      combined.includes("trial_started_at") ||
-      combined.includes("trial_ends_at") ||
-      combined.includes("trial_used_at") ||
-      combined.includes("reset_token") ||
-      combined.includes("reset_token_expiry") ||
-      combined.includes("public_code") ||
-      combined.includes("full_name_visibility") ||
-      combined.includes("email")
-    );
-
-  return referencesMissingColumn;
+  return false;
 }
 
 function toUserWithOptionalDefaults(user: {
@@ -566,6 +536,7 @@ export class DatabaseStorage implements IStorage {
             usernameReceived: normalizedUsername,
             reason: "unexpected_query_error",
             error: error instanceof Error ? error.message : String(error),
+            databaseErrorCodes: databaseErrorCodes(error),
           },
         });
         throw error;
@@ -638,6 +609,7 @@ export class DatabaseStorage implements IStorage {
             emailReceived: normalizedEmail,
             reason: "unexpected_query_error",
             error: error instanceof Error ? error.message : String(error),
+            databaseErrorCodes: databaseErrorCodes(error),
           },
         });
         throw error;
@@ -670,6 +642,7 @@ export class DatabaseStorage implements IStorage {
             usernameReceived: typeof insertUser.username === "string" ? insertUser.username : "",
             reason: "unexpected_query_error",
             error: error instanceof Error ? error.message : String(error),
+            databaseErrorCodes: databaseErrorCodes(error),
           },
         });
         throw error;
