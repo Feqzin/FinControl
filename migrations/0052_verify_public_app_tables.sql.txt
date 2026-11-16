@@ -1,0 +1,13 @@
+-- Read-only verification in Supabase SQL Editor after applying 0052.
+-- Every application table should show row_security_enabled=true and both
+-- anonymous_can_read=false and authenticated_can_read=false.
+SELECT
+  c.relname AS table_name,
+  c.relrowsecurity AS row_security_enabled,
+  has_table_privilege('anon', c.oid, 'SELECT') AS anonymous_can_read,
+  has_table_privilege('authenticated', c.oid, 'SELECT') AS authenticated_can_read
+FROM pg_class AS c
+JOIN pg_namespace AS n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public'
+  AND c.relkind IN ('r', 'p')
+ORDER BY c.relname;
