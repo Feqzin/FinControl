@@ -19,7 +19,7 @@ BEGIN
     'future_purchase_simulations', 'pessoa_saldo_movimentacoes',
     'rendas', 'vacation_plans', 'patrimonios', 'metas', 'import_logs',
     'user_cloud_backups', 'user_subscriptions', 'billing_webhook_events',
-    'session', 'schema_migrations'
+    'session', 'schema_migrations', 'audit_events'
   ] LOOP
     IF to_regclass(format('%I.%I', 'public', table_name)) IS NOT NULL THEN
       EXECUTE format('REVOKE ALL PRIVILEGES ON TABLE %I.%I FROM anon, authenticated', 'public', table_name);
