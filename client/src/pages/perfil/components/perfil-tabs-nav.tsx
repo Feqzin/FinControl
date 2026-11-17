@@ -1,6 +1,6 @@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type PerfilTabValue = "conta" | "planos" | "backup" | "ajuda";
+type PerfilTabValue = "conta" | "planos" | "backup" | "ajuda" | "personalizacao";
 
 type PerfilTabsNavProps = {
   value: PerfilTabValue;
@@ -14,6 +14,7 @@ export function PerfilTabsNav({ value, onValueChange }: PerfilTabsNavProps) {
         <TabsTrigger value="planos" data-testid="tab-perfil-planos">Planos</TabsTrigger>
         <TabsTrigger value="backup" data-testid="tab-perfil-backup">Backup</TabsTrigger>
         <TabsTrigger value="conta" data-testid="tab-perfil-conta">Conta</TabsTrigger>
+        <TabsTrigger value="personalizacao" data-testid="tab-perfil-personalizacao">Personalizar</TabsTrigger>
         <TabsTrigger value="ajuda" data-testid="tab-perfil-ajuda">Ajuda</TabsTrigger>
       </TabsList>
     </Tabs>

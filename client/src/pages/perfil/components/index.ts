@@ -14,3 +14,4 @@ export { PerfilBackupExportCard } from "./perfil-backup-export-card";
 export { PerfilBackupImportCard } from "./perfil-backup-import-card";
 export { PerfilBackupCloudCard } from "./perfil-backup-cloud-card";
 export { PerfilUsageModeCard } from "./perfil-usage-mode-card";
+export { PerfilShortcutsCard } from "./perfil-shortcuts-card";

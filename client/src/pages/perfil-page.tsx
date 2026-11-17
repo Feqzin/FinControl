@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -57,6 +57,7 @@ import {
   PerfilPlanStatusCard,
   PerfilPlanUsageCard,
   PerfilTabsNav,
+  PerfilShortcutsCard,
 } from "@/pages/perfil/components";
 import type {
   Cartao,
@@ -301,6 +302,7 @@ export default function PerfilPage() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const search = useSearch();
   const [nomeCompleto, setNomeCompleto] = useState(user?.nomeCompleto || "");
   const [publicUsername, setPublicUsername] = useState(user?.username || "");
   const [fullNameVisibility, setFullNameVisibility] = useState<"private" | "public">(
@@ -324,7 +326,12 @@ export default function PerfilPage() {
   const [restoreLocalBackupPayload, setRestoreLocalBackupPayload] = useState<unknown | null>(null);
   const [deleteCloudBackupTarget, setDeleteCloudBackupTarget] = useState<CloudBackupItem | null>(null);
   const [deleteCloudBackupConfirmText, setDeleteCloudBackupConfirmText] = useState("");
-  const [perfilTab, setPerfilTab] = useState<"conta" | "planos" | "backup" | "ajuda">("planos");
+  const [perfilTab, setPerfilTab] = useState<"conta" | "planos" | "backup" | "ajuda" | "personalizacao">(
+    () => new URLSearchParams(window.location.search).get("aba") === "personalizacao" ? "personalizacao" : "planos",
+  );
+  useEffect(() => {
+    if (new URLSearchParams(search).get("aba") === "personalizacao") setPerfilTab("personalizacao");
+  }, [search]);
   const inputImportacaoRef = useRef<HTMLInputElement | null>(null);
   const resolvedPublicUsername = resolvePublicUsernameForResponse(user?.username);
   const canDefinePublicUsername = resolvedPublicUsername === null;
@@ -1075,10 +1082,12 @@ export default function PerfilPage() {
     <div className="app-page-shell app-section-stack mx-auto max-w-2xl" data-testid="perfil-page">
       <PerfilPageHeader
         title="Meu Perfil"
-        subtitle="Gerencie sua conta, planos e backups"
+        subtitle="Gerencie sua conta, aparência, planos e backups"
       />
 
       <PerfilTabsNav value={perfilTab} onValueChange={setPerfilTab} />
+
+      {perfilTab === "personalizacao" && <PerfilShortcutsCard />}
 
       <PerfilPersonalInfoCard
         isVisible={perfilTab === "conta"}
