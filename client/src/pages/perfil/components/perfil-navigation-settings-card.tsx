@@ -1,3 +1,4 @@
+import { PerfilAppearanceSettings } from "./perfil-appearance-settings";
 import { lazy, Suspense, useState } from "react";
 import { AlertCircle, ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,10 +37,11 @@ export function PerfilNavigationSettingsCard() {
   return (
     <Card className="fintech-surface" data-testid="perfil-personalizar-navegacao">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">Navegação</CardTitle>
+        <CardTitle className="text-base">Aparência e navegação</CardTitle>
         <p className="text-sm text-muted-foreground">Ajuste quanto conteúdo aparece no menu.</p>
       </CardHeader>
       <CardContent className="space-y-4">
+        <PerfilAppearanceSettings />
         <div className="space-y-2">
           <label htmlFor="select-usage-mode" className="text-sm font-medium">Modo de uso</label>
           <Select value={prefs.usageMode} onValueChange={(value) => setUsageMode(value as UsageMode)}>
