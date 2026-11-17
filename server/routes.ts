@@ -50,7 +50,8 @@ import { CommunityProfilesService } from "./services/community-profiles.service"
 import { FuturePurchaseSimulationsService } from "./services/future-purchase-simulations.service";
 import { VacationPlansService } from "./services/vacation-plans.service";
 import { CnpjDasService } from "./services/cnpj-das.service";
-import { db } from "./db";
+import { db, pool } from "./db";
+import { registerDashboardShortcutsRoutes } from "./dashboard-shortcuts-routes";
 import { BillingService } from "../serverless/services/billing.service";
 import { calculateRemaining } from "../shared/subscription";
 import { requirePremiumFeature } from "./subscription-access";
@@ -93,6 +94,7 @@ function isBackupValidationError(error: unknown): error is Error {
 
 export function registerRoutes(app: Express): void {
   setupAuth(app);
+  registerDashboardShortcutsRoutes(app, pool, requireAuth);
 
   const dividasController = createDividasController(new DividasService(financialRepository));
   const parcelasController = createParcelasController(new ParcelasService(financialRepository));

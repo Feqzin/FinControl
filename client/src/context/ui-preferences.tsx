@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { DEFAULT_DASHBOARD_SHORTCUTS, isValidDashboardShortcuts } from "@shared/dashboard-shortcuts";
 
 type MobileModePreference = "auto" | "manual";
 export type UsageMode = "essencial" | "guiado" | "completo" | "pro";
@@ -11,6 +12,7 @@ interface UIPreferences {
   mobileMode: boolean;
   mobileModePreference: MobileModePreference;
   usageMode: UsageMode;
+  dashboardQuickActions: string[];
 }
 
 interface UIPreferencesContextType {
@@ -29,6 +31,8 @@ interface UIPreferencesContextType {
   setMobileModeManual: (enabled: boolean) => void;
   setMobileModeAuto: () => void;
   setUsageMode: (mode: UsageMode) => void;
+  setDashboardQuickActions: (urls: string[]) => void;
+  shortcutsSyncStatus: "loading" | "saved" | "error";
 }
 
 const STORAGE_KEY = "fincontrol_ui_prefs";
@@ -41,6 +45,7 @@ const defaultPrefs: UIPreferences = {
   mobileMode: false,
   mobileModePreference: "auto",
   usageMode: "essencial",
+  dashboardQuickActions: DEFAULT_DASHBOARD_SHORTCUTS,
 };
 
 const UIPreferencesContext = createContext<UIPreferencesContextType | undefined>(undefined);
@@ -78,6 +83,9 @@ function normalizeStoredPrefs(
       || parsed.usageMode === "pro"
         ? parsed.usageMode
         : "guiado",
+    dashboardQuickActions: isValidDashboardShortcuts(parsed.dashboardQuickActions)
+      ? parsed.dashboardQuickActions
+      : [...DEFAULT_DASHBOARD_SHORTCUTS],
   };
 }
 
@@ -117,6 +125,9 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
   };
 
   const [activeStorageKey, setActiveStorageKey] = useState(() => resolveStorageKey(null));
+  const [shortcutsSyncStatus, setShortcutsSyncStatus] = useState<"loading" | "saved" | "error">("loading");
+  const shortcutsRevision = useRef(0);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const [prefs, setPrefs] = useState<UIPreferences>(() => {
     return readStoredPrefs(STORAGE_KEY, detectMobileViewport) ?? buildDefaultPrefs(detectMobileViewport);
   });
@@ -154,6 +165,54 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
 
     setPrefs(buildDefaultPrefs(detectMobileViewport));
     setActiveStorageKey(nextStorageKey);
+  }, [activeStorageKey, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id || activeStorageKey !== resolveStorageKey(user.id)) return;
+    const controller = new AbortController();
+    const revisionAtStart = shortcutsRevision.current;
+    setShortcutsSyncStatus("loading");
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/dashboard/shortcuts", {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Não foi possível carregar os atalhos.");
+        const data = await response.json() as { shortcuts: unknown };
+        if (controller.signal.aborted || shortcutsRevision.current !== revisionAtStart) return;
+
+        if (isValidDashboardShortcuts(data.shortcuts)) {
+          setPrefs((current) => {
+            if (shortcutsRevision.current !== revisionAtStart) return current;
+            const updated = { ...current, dashboardQuickActions: data.shortcuts as string[] };
+            writeStoredPrefs(activeStorageKey, updated);
+            return updated;
+          });
+        } else {
+          const local = readStoredPrefs(activeStorageKey, detectMobileViewport)?.dashboardQuickActions
+            ?? DEFAULT_DASHBOARD_SHORTCUTS;
+          saveQueue.current = saveQueue.current.catch(() => {}).then(async () => {
+            if (controller.signal.aborted || shortcutsRevision.current !== revisionAtStart) return;
+            const saved = await fetch("/api/dashboard/shortcuts", {
+              method: "PUT",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ shortcuts: local }),
+              signal: controller.signal,
+            });
+            if (!saved.ok) throw new Error("Não foi possível salvar os atalhos.");
+          });
+          await saveQueue.current;
+        }
+        if (!controller.signal.aborted && shortcutsRevision.current === revisionAtStart) setShortcutsSyncStatus("saved");
+      } catch {
+        if (!controller.signal.aborted) setShortcutsSyncStatus("error");
+      }
+    })();
+
+    return () => controller.abort();
   }, [activeStorageKey, user?.id]);
 
   const togglePage = (url: string) => {
@@ -199,6 +258,30 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
       ...prefs,
       usageMode: mode,
     });
+  };
+
+  const setDashboardQuickActions = (urls: string[]) => {
+    if (!isValidDashboardShortcuts(urls)) return;
+    const next = [...urls];
+    updatePrefs({ ...prefs, dashboardQuickActions: next });
+    shortcutsRevision.current += 1;
+    const revision = shortcutsRevision.current;
+    setShortcutsSyncStatus("loading");
+    if (!user?.id || activeStorageKey !== resolveStorageKey(user.id)) return;
+
+    saveQueue.current = saveQueue.current.catch(() => {}).then(async () => {
+      const response = await fetch("/api/dashboard/shortcuts", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shortcuts: next }),
+      });
+      if (!response.ok) throw new Error("Não foi possível salvar os atalhos.");
+    });
+    void saveQueue.current.then(
+      () => { if (revision === shortcutsRevision.current) setShortcutsSyncStatus("saved"); },
+      () => { if (revision === shortcutsRevision.current) setShortcutsSyncStatus("error"); },
+    );
   };
 
   useEffect(() => {
@@ -249,6 +332,8 @@ export function UIPreferencesProvider({ children }: { children: ReactNode }) {
       setMobileModeManual,
       setMobileModeAuto,
       setUsageMode,
+      setDashboardQuickActions,
+      shortcutsSyncStatus,
     }),
     [prefs],
   );

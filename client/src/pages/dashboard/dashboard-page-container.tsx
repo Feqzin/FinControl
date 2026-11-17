@@ -965,7 +965,6 @@ export default function Dashboard() {
         )}
 
         <DashboardQuickActions
-          hiddenPages={prefs.hiddenPages}
           onNavigate={setLocation}
         />
 
