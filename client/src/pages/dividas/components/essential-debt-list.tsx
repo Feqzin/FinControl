@@ -1,6 +1,8 @@
-import { ArrowDownLeft, ArrowUpRight, ChevronDown, MoreHorizontal, Pencil, Trash2, FastForward, RotateCcw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, Users, Layers, ChevronRight, ArrowDownLeft, ArrowUpRight, ChevronDown, MoreHorizontal, Pencil, Trash2, FastForward, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Parcela } from "@shared/schema";
 import type { DividaWithParcelas } from "@/hooks/useDividas";
 import { formatDividaCurrency, formatDividaDate, type DividaViewItem } from "../dividas.utils";
@@ -22,9 +24,63 @@ type Props = {
   onOpenCard: (cardId: string, purchaseId: string) => void;
 };
 
+type GroupMode = "pessoa" | "tipo" | "origem";
+const ORIGIN_LABELS = { manual: "Dívidas pessoais", cartao: "Cartões", cnpj_das: "DAS / CNPJ" };
+
+function groupKey(item: DividaViewItem, mode: GroupMode) {
+  return mode === "pessoa" ? item.pessoaId : mode === "tipo" ? item.tipo : item.origin;
+}
+
 export function EssentialDebtList(props: Props) {
+  const [mode, setMode] = useState<GroupMode>("pessoa");
+  const [selected, setSelected] = useState<string | null>(null);
+  const { highlightedId, items } = props;
+  useEffect(() => {
+    if (!highlightedId) return;
+    const highlighted = items.find(item => item.sourceId === highlightedId);
+    if (highlighted) setSelected(groupKey(highlighted, mode));
+  }, [highlightedId, items, mode]);
+
+  const groups = new Map<string, { label: string; items: DividaViewItem[] }>();
+  for (const item of items) {
+    const key = groupKey(item, mode);
+    const label = mode === "pessoa" ? props.getName(item.pessoaId) : mode === "tipo" ? (item.tipo === "pagar" ? "A pagar" : "A receber") : ORIGIN_LABELS[item.origin];
+    const group = groups.get(key) ?? { label, items: [] };
+    group.items.push(item);
+    groups.set(key, group);
+  }
+  const current = selected === null ? null : groups.get(selected);
+  const visibleItems = selected === null ? [] : current?.items ?? [];
+
   return <div className="space-y-3" data-testid="dividas-essential-list">
-    {props.items.map(item => {
+    <div className="flex flex-wrap items-center justify-between gap-3 pb-1">
+      {selected !== null ? <Button variant="ghost" size="sm" onClick={() => setSelected(null)}><ArrowLeft className="mr-2 h-4 w-4" />Voltar aos grupos</Button> : <div><h2 className="font-semibold">Suas dívidas organizadas</h2><p className="mt-1 text-sm text-muted-foreground">Escolha um grupo para ver as dívidas.</p></div>}
+      <Select value={mode} onValueChange={(value) => { setMode(value as GroupMode); setSelected(null); }}>
+        <SelectTrigger className="w-full rounded-xl sm:w-[180px]" aria-label="Agrupar dívidas por"><SelectValue /></SelectTrigger>
+        <SelectContent><SelectItem value="pessoa">Por pessoa</SelectItem><SelectItem value="tipo">Por tipo</SelectItem><SelectItem value="origem">Por origem</SelectItem></SelectContent>
+      </Select>
+    </div>
+    {selected === null ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="debt-groups">
+      {Array.from(groups.entries()).sort(([, a], [, b]) => a.label.localeCompare(b.label, "pt-BR")).map(([key, group]) => {
+        const pending = group.items.filter(item => item.status !== "pago");
+        const pagar = pending.filter(item => item.tipo === "pagar").reduce((sum, item) => sum + item.valorPendente, 0);
+        const receber = pending.filter(item => item.tipo === "receber").reduce((sum, item) => sum + item.valorPendente, 0);
+        const overdue = pending.filter(item => item.status === "vencido" || item.parcelasVencidas > 0).length;
+        const Icon = mode === "pessoa" ? Users : Layers;
+        return <button key={key} type="button" onClick={() => setSelected(key)} className="group rounded-2xl border border-border/60 bg-card p-5 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid={`debt-group-${mode}-${key}`}>
+          <div className="flex items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon className="h-5 w-5" /></span><span className="min-w-0 flex-1 break-words font-semibold">{group.label}</span><ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" /></div>
+          <p className="mt-4 text-sm text-muted-foreground">{group.items.length} dívida{group.items.length === 1 ? "" : "s"} · {pending.length} em aberto</p>
+          <div className="mt-3 space-y-1 text-sm">
+            {pagar > 0 && <p className="flex flex-wrap justify-between gap-2"><span className="text-muted-foreground">A pagar</span><span className="font-semibold tabular-nums">{formatDividaCurrency(pagar)}</span></p>}
+            {receber > 0 && <p className="flex flex-wrap justify-between gap-2"><span className="text-muted-foreground">A receber</span><span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{formatDividaCurrency(receber)}</span></p>}
+            {pending.length === 0 && <p className="text-muted-foreground">Tudo quitado</p>}
+            {pending.some(item => item.tipo === "receber" && !item.expectativaRecebimento) && <p className="text-xs text-muted-foreground">Inclui valores sem previsão de recebimento.</p>}
+          </div>
+          {overdue > 0 && <p className="mt-3 text-xs font-medium text-red-600 dark:text-red-400">{overdue} dívida{overdue === 1 ? "" : "s"} em atraso</p>}
+        </button>;
+      })}
+    </div> : <div className="rounded-xl bg-muted/40 px-4 py-3"><h2 className="font-semibold">{current?.label ?? "Nenhuma dívida neste grupo"}</h2><p className="mt-1 text-sm text-muted-foreground">{visibleItems.length} dívida{visibleItems.length === 1 ? "" : "s"} encontrada{visibleItems.length === 1 ? "" : "s"}</p></div>}
+    {visibleItems.map(item => {
       const debt = item.manual;
       const paid = item.status === "pago";
       const overdue = item.status === "vencido" || item.parcelasVencidas > 0;
