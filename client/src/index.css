@@ -459,3 +459,70 @@
     inset: -1px;
   }
 }
+
+/* Essential visual language: quiet surfaces, one accent, clear financial hierarchy. */
+:root[data-usage-mode="essencial"] {
+  --font-sans: "Geist", "Segoe UI", system-ui, sans-serif;
+  --primary: 279 68% 50%;
+  --primary-foreground: 0 0% 100%;
+  --ring: 279 68% 50%;
+  --sidebar-primary: 279 68% 50%;
+  --sidebar-ring: 279 68% 50%;
+  --background: 250 15% 97%;
+  --card: 0 0% 100%;
+  --accent: 279 35% 95%;
+  --sidebar-accent: 279 30% 93%;
+  --chart-1: 279 68% 50%;
+}
+:root.dark[data-usage-mode="essencial"] {
+  --background: 252 19% 5%;
+  --card: 255 13% 9%;
+  --border: 255 10% 18%;
+  --card-border: 255 10% 18%;
+  --muted: 255 12% 13%;
+  --muted-foreground: 250 8% 70%;
+  --secondary: 255 12% 18%;
+  --accent: 279 22% 14%;
+  --sidebar: 252 19% 5%;
+  --sidebar-accent: 279 25% 15%;
+  --sidebar-border: 255 10% 16%;
+  --popover: 255 13% 11%;
+  --input: 255 10% 25%;
+  --chart-1: 279 76% 65%;
+}
+:root[data-usage-mode="essencial"] .essential-surface {
+  border: 1px solid hsl(var(--border) / .8);
+  border-radius: 20px;
+  background: linear-gradient(180deg, hsl(var(--card)), hsl(var(--card) / .96));
+  box-shadow: 0 8px 24px -18px hsl(250 30% 15% / .2), inset 0 1px 0 hsl(0 0% 100% / .08);
+}
+:root.dark[data-usage-mode="essencial"] .essential-surface {
+  background: linear-gradient(180deg, #1a1820, #121116);
+  box-shadow: 0 18px 36px -28px hsl(0 0% 0% / .8), inset 0 1px 0 hsl(0 0% 100% / .04);
+}
+.essential-icon {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: hsl(var(--primary) / .12);
+  color: hsl(var(--primary));
+}
+.dark .essential-icon { color: hsl(279 85% 80%); }
+.essential-icon svg { width: 20px; height: 20px; stroke-width: 1.8; }
+.essential-amount { font-variant-numeric: tabular-nums; letter-spacing: -.035em; }
+.essential-shortcut {
+  min-height: 100px;
+  border-radius: 20px;
+}
+@media (max-width: 480px) {
+  .essential-shortcut { min-height: 88px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .essential-shortcut, .essential-surface { transition: none !important; }
+}
+
+:root.dark[data-usage-mode="essencial"] .text-primary { color: #d9a9f7; }
