@@ -55,7 +55,7 @@ const ferramentasItems = [
   { title: "Perfil", url: "/perfil", icon: UserCircle },
 ];
 
-const essentialMainUrls = new Set(["/", "/pessoas", "/dividas", "/cartoes", "/renda"]);
+const essentialMainUrls = new Set(["/", "/dividas", "/cartoes"]);
 
 const usageModeItems: ReadonlyArray<{ value: UsageMode; title: string; description: string }> = [
   { value: "essencial", title: "Essencial", description: "Simples, fonte maior e foco no básico." },
