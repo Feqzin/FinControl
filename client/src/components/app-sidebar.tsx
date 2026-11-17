@@ -1,12 +1,12 @@
 import { useLocation, Link } from "wouter";
-import { lazy, Suspense, useState } from "react";
+import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/theme-provider";
-import { useUIPreferences, type UsageMode } from "@/context/ui-preferences";
+import { useUIPreferences } from "@/context/ui-preferences";
 import {
   LayoutDashboard, Users, Receipt, CreditCard, Calendar, CalendarDays,
   BarChart3, Repeat, LogOut, Target, History, Calculator,
-  Sun, Moon, UserCircle, Wallet, PiggyBank, Settings2, AlertCircle, ChevronDown, LayoutGrid,
+  Sun, Moon, UserCircle, Wallet, PiggyBank, Settings2, ChevronDown, LayoutGrid,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -14,23 +14,8 @@ import {
   SidebarFooter, SidebarHeader,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-
-const IconPicker = lazy(() =>
-  import("@/components/icon-picker").then((mod) => ({ default: mod.IconPicker })),
-);
 
 const mainItems = [
   { title: "Painel", url: "/", icon: LayoutDashboard },
@@ -57,20 +42,11 @@ const ferramentasItems = [
 
 const essentialMainUrls = new Set(["/", "/dividas", "/cartoes"]);
 
-const usageModeItems: ReadonlyArray<{ value: UsageMode; title: string; description: string }> = [
-  { value: "essencial", title: "Essencial", description: "Simples, fonte maior e foco no básico." },
-  { value: "guiado", title: "Guiado", description: "Equilíbrio com dicas contextuais." },
-  { value: "completo", title: "Completo", description: "Todos os filtros e análises visíveis." },
-  { value: "pro", title: "Pro", description: "Experiência avançada, foco total em produtividade." },
-];
-
 export function AppSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const { theme, toggle } = useTheme();
-  const { prefs, isEssentialMode, togglePage, setUsageMode } = useUIPreferences();
-  const [personalizarOpen, setPersonalizarOpen] = useState(false);
-  const [showManagePages, setShowManagePages] = useState(false);
+  const { prefs, isEssentialMode } = useUIPreferences();
   const [moreOpen, setMoreOpen] = useState(false);
 
   const filteredMainItems = mainItems.filter(item => item.url === "/" || !prefs.hiddenPages.includes(item.url));
@@ -83,29 +59,6 @@ export function AppSidebar() {
   const hasMoreItems = extraMainItems.length + filteredPlanejamentoItems.length + extraToolsItems.length > 0;
   const isMorePageActive = [...extraMainItems, ...filteredPlanejamentoItems, ...extraToolsItems]
     .some(item => item.url === location);
-
-  const allManageablePages = [
-    { title: "Pessoas", url: "/pessoas" },
-    { title: "Dívidas", url: "/dividas" },
-    { title: "Cartões", url: "/cartoes" },
-    { title: "Renda", url: "/renda" },
-    { title: "Patrimônio", url: "/patrimonio" },
-    { title: "Serviços", url: "/servicos" },
-    { title: "Metas", url: "/metas" },
-    { title: "Calendário", url: "/calendario" },
-    { title: "Previsão", url: "/previsao" },
-    { title: "Histórico", url: "/historico" },
-    { title: "Simulador", url: "/simulador" },
-    { title: "Relatórios", url: "/relatorios" },
-  ];
-
-  const usageModeSummary = prefs.usageMode === "essencial"
-    ? "Modo Essencial ativo: foco em pagar, receber e saldo, com leitura facilitada."
-    : prefs.usageMode === "guiado"
-      ? "Modo Guiado ativo: interface equilibrada com dicas e contexto."
-      : prefs.usageMode === "pro"
-        ? "Modo Pro ativo: máxima visibilidade para análise avançada."
-        : "Modo Completo ativo: todos os recursos e análises visíveis.";
 
   const renderGroup = (label: string, items: typeof mainItems) => {
     if (items.length === 0) return null;
@@ -132,13 +85,6 @@ export function AppSidebar() {
         </SidebarGroupContent>
       </SidebarGroup>
     );
-  };
-
-  const handlePersonalizarOpenChange = (open: boolean) => {
-    setPersonalizarOpen(open);
-    if (!open) {
-      setShowManagePages(false);
-    }
   };
 
   return (
@@ -191,113 +137,12 @@ export function AppSidebar() {
         )}
       </SidebarContent>
       <SidebarFooter className="p-4 space-y-2">
-        <Dialog open={personalizarOpen} onOpenChange={handlePersonalizarOpenChange}>
-          <DialogTrigger asChild>
-            <Button variant="outline" className="w-full justify-start gap-2" size="sm" data-testid="button-personalizar">
-              <Settings2 className="w-4 h-4" />
-              <span>Personalizar</span>
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="w-[calc(100vw-1rem)] max-w-[680px] max-h-[calc(100dvh-1rem)] gap-0 overflow-hidden p-0 sm:w-[calc(100vw-1.5rem)] sm:max-h-[calc(100dvh-1.5rem)]">
-            <DialogHeader className="border-b border-border/60 px-4 py-4 pr-12 sm:px-6 sm:py-5">
-              <DialogTitle>Personalizar</DialogTitle>
-              <DialogDescription>Ajuste rapidamente seu modo de uso, a biblioteca de ícones e o menu lateral.</DialogDescription>
-            </DialogHeader>
-
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-4 py-4 sm:px-6 sm:py-5">
-              <div className="fintech-surface-subtle space-y-3 rounded-xl border p-4">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">Modo de uso</p>
-                  <p className="text-xs text-muted-foreground">
-                    Escolha como prefere navegar no FinControl. Essa preferência fica salva para sua conta neste dispositivo.
-                  </p>
-                </div>
-
-                <Select
-                  value={prefs.usageMode}
-                  onValueChange={(value) => setUsageMode(value as UsageMode)}
-                >
-                  <SelectTrigger data-testid="select-usage-mode">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {usageModeItems.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <div className="rounded-lg border border-border/60 bg-background/80 px-3 py-2 text-xs text-muted-foreground">
-                  {usageModeSummary}
-                </div>
-              </div>
-
-              <Suspense fallback={<Skeleton className="h-14 w-full" />}>
-                <IconPicker
-                  mode="manage"
-                  triggerLabel="Biblioteca de ícones"
-                  triggerDescription="Upload, edição, exclusão e automação"
-                  triggerTestId="button-open-global-icon-library"
-                />
-              </Suspense>
-
-              <div className="space-y-3 rounded-xl border border-border/60 bg-card/70 p-3 sm:p-4">
-                <div className="space-y-2 border-b border-border/60 pb-3">
-                  <p className="text-sm font-medium">Atalhos do Painel</p>
-                  <p className="text-xs text-muted-foreground">Escolha os atalhos aqui; arraste os botões no Painel para ordená-los.</p>
-                  <Button asChild variant="outline" className="w-full" onClick={() => setPersonalizarOpen(false)}>
-                    <Link href="/perfil?aba=personalizacao">Abrir personalização</Link>
-                  </Button>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full justify-between gap-3 text-left"
-                  onClick={() => setShowManagePages((current) => !current)}
-                  data-testid="button-toggle-manage-pages"
-                >
-                  <span>{showManagePages ? "Ocultar gestão de telas" : "Mostrar gestão de telas"}</span>
-                  <span className="text-xs text-muted-foreground">{allManageablePages.length} telas</span>
-                </Button>
-
-                {showManagePages ? (
-                  <div className="space-y-3">
-                    <div className="rounded-xl border border-border/60 bg-background/80">
-                      <div className="border-b border-border/60 px-3 py-2.5 sm:px-4">
-                        <p className="text-sm font-medium">Telas do menu</p>
-                        <p className="text-xs text-muted-foreground">Mostre apenas o que você usa no dia a dia.</p>
-                      </div>
-
-                      <div className="p-2 sm:p-3">
-                        <div className="space-y-1">
-                          {allManageablePages.map((page) => (
-                            <div
-                              key={page.url}
-                              className="flex min-w-0 items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/40"
-                            >
-                              <span className="min-w-0 flex-1 text-sm font-medium">{page.title}</span>
-                              <Switch
-                                checked={!prefs.hiddenPages.includes(page.url)}
-                                onCheckedChange={() => togglePage(page.url)}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-amber-700 dark:text-amber-300">
-                      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                      <p className="text-xs font-medium">Ocultar uma tela não exclui seus dados.</p>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <Button asChild variant="outline" className="w-full justify-start gap-2" size="sm" data-testid="button-personalizar">
+          <Link href="/perfil?aba=personalizacao">
+            <Settings2 className="w-4 h-4" />
+            <span>Personalizar</span>
+          </Link>
+        </Button>
 
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm text-muted-foreground truncate">{user?.username ? `@${user.username}` : "Usuário"}</span>
