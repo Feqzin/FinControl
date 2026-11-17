@@ -64,6 +64,7 @@ import {
 } from "@/services/api/servicos";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { useLocation } from "wouter";
+import { DashboardQuickActions } from "@/components/dashboard/DashboardQuickActions";
 import { DashboardPageHeader } from "@/components/dashboard/DashboardPageHeader";
 import { VacationModeDialog } from "@/components/dashboard/VacationModeDialog";
 import { DashboardSummaryCards } from "@/components/dashboard/DashboardSummaryCards";
@@ -962,6 +963,11 @@ export default function Dashboard() {
             </Card>
           </DashboardBalanceModeTooltip>
         )}
+
+        <DashboardQuickActions
+          hiddenPages={prefs.hiddenPages}
+          onNavigate={setLocation}
+        />
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <Card className="flex flex-col shadow-sm" data-testid="essencial-proxima-conta">
