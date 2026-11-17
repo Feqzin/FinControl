@@ -27,7 +27,6 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { DashboardShortcutSettings } from "@/components/dashboard/DashboardQuickActions";
 
 const IconPicker = lazy(() =>
   import("@/components/icon-picker").then((mod) => ({ default: mod.IconPicker })),
@@ -247,8 +246,10 @@ export function AppSidebar() {
               <div className="space-y-3 rounded-xl border border-border/60 bg-card/70 p-3 sm:p-4">
                 <div className="space-y-2 border-b border-border/60 pb-3">
                   <p className="text-sm font-medium">Atalhos do Painel</p>
-                  <p className="text-xs text-muted-foreground">Escolha, ordene ou remova os atalhos da tela inicial.</p>
-                  <DashboardShortcutSettings />
+                  <p className="text-xs text-muted-foreground">Escolha, arraste ou remova os atalhos no Perfil.</p>
+                  <Button asChild variant="outline" className="w-full" onClick={() => setPersonalizarOpen(false)}>
+                    <Link href="/perfil?aba=personalizacao">Abrir personalização</Link>
+                  </Button>
                 </div>
                 <Button
                   type="button"
