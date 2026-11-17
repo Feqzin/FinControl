@@ -26,6 +26,7 @@ import type { Parcela } from "@shared/schema";
 import { format } from "date-fns";
 import { useLocation } from "wouter";
 import { useDividas, type DividaWithParcelas } from "@/hooks/useDividas";
+import { EssentialDebtList } from "@/pages/dividas/components/essential-debt-list";
 import { ParcelaRow } from "@/pages/dividas/components/parcela-row";
 import { ImportarTextoPanel } from "@/components/importar/importar-texto-panel";
 import { CnpjDasDialog } from "@/pages/dividas/components/cnpj-das-dialog";
@@ -74,7 +75,7 @@ function getCartaoReembolsoBadgeMeta(status: "pendente" | "pago" | "vencido"): {
 
 export default function DividasPage() {
   const { toast } = useToast();
-  const { prefs } = useUIPreferences();
+  const { prefs, isEssentialMode } = useUIPreferences();
   const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -437,7 +438,7 @@ export default function DividasPage() {
 
   return (
     <div className="app-page-shell app-section-stack" data-testid="dividas-page">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className={`flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between ${isEssentialMode ? "rounded-2xl border border-border/60 bg-card p-5 shadow-sm" : ""}`}>
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">Dívidas</h1>
           <p className="text-muted-foreground">Acompanhe o que você tem a pagar e a receber</p>
@@ -614,7 +615,37 @@ export default function DividasPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,_1fr)_160px_160px] sm:items-center">
+      {isEssentialMode && !isRemovedFilter && sortedFiltered.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2" data-testid="essential-debt-summary">
+          <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:p-5">
+            <p className="text-sm text-muted-foreground">A pagar</p>
+            <p className="mt-2 break-words text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{formatDividaCurrency(totalPagar)}</p>
+          </div>
+          <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:p-5">
+            <p className="text-sm text-muted-foreground">A receber</p>
+            <p className="mt-2 break-words text-2xl font-semibold tracking-tight tabular-nums text-emerald-600 dark:text-emerald-400 sm:text-3xl">{formatDividaCurrency(totalReceber)}</p>
+            {totalSemExpectativa > 0 && <p className="mt-2 text-xs text-muted-foreground">{formatDividaCurrency(totalSemExpectativa)} sem previsão, fora deste total</p>}
+          </div>
+        </div>
+      ) : !isEssentialMode && sortedFiltered.length > 0 && !isRemovedFilter && (
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="rounded-md bg-emerald-500/5 border border-emerald-500/10 p-3">
+            <p className="text-xs text-muted-foreground mb-1">Total a receber esperado</p>
+            <p className="fin-value-kpi text-emerald-600">{formatDividaCurrency(totalReceber)}</p>
+          </div>
+          <div className="rounded-md bg-amber-500/5 border border-amber-500/10 p-3">
+            <p className="text-xs text-muted-foreground mb-1">Total sem expectativa</p>
+            <p className="fin-value-kpi text-amber-600">{formatDividaCurrency(totalSemExpectativa)}</p>
+          </div>
+          <div className="rounded-md bg-red-500/5 border border-red-500/10 p-3">
+            <p className="text-xs text-muted-foreground mb-1">Total a pagar (pendente)</p>
+            <p className="fin-value-kpi text-red-600">{formatDividaCurrency(totalPagar)}</p>
+          </div>
+        </div>
+      )}
+
+      <div className={`grid grid-cols-1 gap-3 sm:items-center ${isEssentialMode ? "sm:grid-cols-[minmax(0,_1fr)_160px]" : "sm:grid-cols-[minmax(0,_1fr)_160px_160px]"}`}>
         <div className="relative w-full min-w-0 lg:max-w-none">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input data-testid="input-search-divida" className="pl-9" placeholder="Buscar pessoa ou descrição..."
@@ -628,6 +659,7 @@ export default function DividasPage() {
             <SelectItem value="pagar">A pagar</SelectItem>
           </SelectContent>
         </Select>
+        {!isEssentialMode && (
         <Select value={filterStatus} onValueChange={setFilterStatus}>
           <SelectTrigger className="w-full" aria-label="Filtrar por status"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -638,11 +670,25 @@ export default function DividasPage() {
             <SelectItem value="removidas">Removidas</SelectItem>
           </SelectContent>
         </Select>
-        <details className="group rounded-md border px-3 py-2 sm:col-span-3" data-testid="dividas-advanced-filters">
+        )}
+        <details className={`group rounded-xl border border-border/60 bg-card px-3 py-2.5 ${isEssentialMode ? "sm:col-span-2" : "sm:col-span-3"}`} data-testid="dividas-advanced-filters">
           <summary className="cursor-pointer text-sm font-medium">
-            Mais filtros e ordenação{(filterOrigem !== "todos" || sortBy !== "vencimento_mais_proximo") ? " · Personalizados" : ""}
+            Mais filtros{(filterOrigem !== "todos" || filterStatus !== "todos" || sortBy !== "vencimento_mais_proximo") ? " · Personalizados" : ""}
           </summary>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {isEssentialMode && <div className="space-y-2"><Label>Situação</Label>
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="w-full" aria-label="Filtrar por status"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos status</SelectItem>
+            <SelectItem value="pendente">Pendente</SelectItem>
+            <SelectItem value="sem_expectativa">Sem expectativa</SelectItem>
+            <SelectItem value="pago">Quitado</SelectItem>
+            <SelectItem value="removidas">Removidas</SelectItem>
+          </SelectContent>
+        </Select>
+            </div>}
+
             <div className="space-y-2">
               <Label>Origem da dívida</Label>
         <Select value={filterOrigem} onValueChange={(value) => setFilterOrigem(value as DividaOrigemFilter)}>
@@ -680,23 +726,6 @@ export default function DividasPage() {
         </details>
       </div>
 
-      {sortedFiltered.length > 0 && !isRemovedFilter && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <div className="rounded-md bg-emerald-500/5 border border-emerald-500/10 p-3">
-            <p className="text-xs text-muted-foreground mb-1">Total a receber esperado</p>
-            <p className="fin-value-kpi text-emerald-600">{formatDividaCurrency(totalReceber)}</p>
-          </div>
-          <div className="rounded-md bg-amber-500/5 border border-amber-500/10 p-3">
-            <p className="text-xs text-muted-foreground mb-1">Total sem expectativa</p>
-            <p className="fin-value-kpi text-amber-600">{formatDividaCurrency(totalSemExpectativa)}</p>
-          </div>
-          <div className="rounded-md bg-red-500/5 border border-red-500/10 p-3">
-            <p className="text-xs text-muted-foreground mb-1">Total a pagar (pendente)</p>
-            <p className="fin-value-kpi text-red-600">{formatDividaCurrency(totalPagar)}</p>
-          </div>
-        </div>
-      )}
-
       {sortedFiltered.length === 0 ? (
         <div className="text-center py-16" data-testid="empty-dividas">
           <Receipt className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
@@ -709,6 +738,38 @@ export default function DividasPage() {
               : "Registre uma nova dívida ou ajuste os filtros"}
           </p>
         </div>
+      ) : isEssentialMode ? (
+        <EssentialDebtList
+          items={sortedFiltered}
+          getName={getPessoaNome}
+          highlightedId={highlightDividaId}
+          removed={isRemovedFilter}
+          paying={payParcelaMutation.isPending}
+          onPay={(parcela) => {
+            setPayingParcela(parcela);
+            setPayParcelaForm({ formaPagamento: "pix", dataPagamento: format(new Date(), "yyyy-MM-dd") });
+          }}
+          onEditParcela={(parcela) => {
+            setEditingParcela(parcela);
+            setEditParcelaForm({ valor: String(parcela.valor), dataVencimento: parcela.dataVencimento });
+          }}
+          onEdit={(d) => {
+            setEditingDivida(d);
+            setEditDividaForm({
+              pessoaId: d.pessoaId, tipo: d.tipo,
+              valor: d.parcelas.length > 0 ? String(d.valorTotal || d.valor) : String(d.valor),
+              dataVencimento: d.dataVencimento || "", descricao: d.descricao || "",
+              formaPagamento: d.formaPagamento || "pix", expectativaRecebimento: d.expectativaRecebimento !== false,
+            });
+            setRecalcularForm({ novoTotal: String(d.totalParcelas || d.parcelas.length || ""), primeiroVencimento: "" });
+            setShowRecalcular(false);
+          }}
+          onAdvance={(d) => { setAnteciparDivida(d); setAnteciparOpen(true); }}
+          onRemove={handleDeleteDivida}
+          onRestore={handleRestoreDivida}
+          onDeletePermanent={handleDeleteDividaPermanent}
+          onOpenCard={handleOpenCompraNoCartao}
+        />
       ) : prefs.mobileMode ? (
         <div className="space-y-3" data-testid="dividas-mobile-list">
           {sortedFiltered.map((item) => {
