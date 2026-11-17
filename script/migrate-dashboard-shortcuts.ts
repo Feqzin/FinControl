@@ -18,6 +18,8 @@ if (process.env.VERCEL_ENV === "production") {
     await pool.query(groupsMigration);
     const appearanceMigration = await readFile(new URL("../migrations/0054_user_appearance.sql", import.meta.url), "utf8");
     await pool.query(appearanceMigration);
+    const blueDefaultMigration = await readFile(new URL("../migrations/0055_restore_blue_appearance_default.sql", import.meta.url), "utf8");
+    await pool.query(blueDefaultMigration);
     console.log("[migrate] preferências, grupos e aparência prontos");
   } finally {
     await pool.end();
