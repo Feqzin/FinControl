@@ -13,6 +13,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -438,16 +439,26 @@ export default function DividasPage() {
     <div className="app-page-shell app-section-stack" data-testid="dividas-page">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight">Dividas</h1>
-          <p className="text-muted-foreground">Controle parcelado de valores a receber e a pagar</p>
+          <h1 className="text-2xl font-bold tracking-tight">Dívidas</h1>
+          <p className="text-muted-foreground">Acompanhe o que você tem a pagar e a receber</p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end lg:w-auto">
-          <Dialog open={importarTextoOpen} onOpenChange={setImportarTextoOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="w-full sm:w-auto" data-testid="button-importar-texto-dividas">
-                <FileText className="w-4 h-4 mr-2" /> Importar por texto
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="w-full sm:w-auto" data-testid="button-dividas-more-actions">
+                Mais opções <ChevronDown className="ml-2 h-4 w-4" />
               </Button>
-            </DialogTrigger>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setImportarTextoOpen(true)} data-testid="button-importar-texto-dividas">
+                <FileText className="mr-2 h-4 w-4" /> Importar por texto
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setCnpjDasOpen(true)} data-testid="button-cnpj-das">
+                <Building2 className="mr-2 h-4 w-4" /> DAS / CNPJ
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Dialog open={importarTextoOpen} onOpenChange={setImportarTextoOpen}>
             <DialogContent className="w-[calc(100vw-1.5rem)] max-w-3xl p-0 sm:w-full">
               <div className="flex max-h-[88vh] flex-col overflow-hidden">
                 <DialogHeader className="px-4 pt-4 sm:px-6">
@@ -463,9 +474,6 @@ export default function DividasPage() {
             </DialogContent>
           </Dialog>
 
-          <Button variant="outline" className="w-full sm:w-auto" onClick={() => setCnpjDasOpen(true)} data-testid="button-cnpj-das">
-            <Building2 className="w-4 h-4 mr-2" /> DAS / CNPJ
-          </Button>
           <CnpjDasDialog open={cnpjDasOpen} onOpenChange={setCnpjDasOpen} />
 
           <Dialog open={open} onOpenChange={setOpen}>
@@ -474,14 +482,14 @@ export default function DividasPage() {
                 <Plus className="w-4 h-4 mr-2" /> Nova dívida
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md max-h-[90dvh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Registrar Dívida</DialogTitle>
+              <DialogTitle>Nova dívida</DialogTitle>
             </DialogHeader>
             <Tabs value={createTab} onValueChange={(v) => setCreateTab(v as any)}>
               <TabsList className="w-full">
-                <TabsTrigger value="simples" className="flex-1" data-testid="tab-simples">Simples</TabsTrigger>
-                <TabsTrigger value="parcelado" className="flex-1" data-testid="tab-parcelado">Parcelado</TabsTrigger>
+                <TabsTrigger value="simples" className="flex-1" data-testid="tab-simples">À vista</TabsTrigger>
+                <TabsTrigger value="parcelado" className="flex-1" data-testid="tab-parcelado">Em parcelas</TabsTrigger>
               </TabsList>
 
               <TabsContent value="simples" className="space-y-4 mt-4">
@@ -517,7 +525,7 @@ export default function DividasPage() {
                         onChange={(e) => setSimpleForm({ ...simpleForm, dataVencimento: e.target.value })} required />
                     </div>
                     <div className="space-y-2">
-                      <Label>Forma</Label>
+                      <Label>Forma de pagamento</Label>
                       <Select value={simpleForm.formaPagamento} onValueChange={(v) => setSimpleForm({ ...simpleForm, formaPagamento: v })}>
                         <SelectTrigger data-testid="select-divida-pagamento"><SelectValue /></SelectTrigger>
                         <SelectContent>{FORMAS_PAGAMENTO_DIVIDA.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
@@ -530,7 +538,7 @@ export default function DividasPage() {
                       onChange={(e) => setSimpleForm({ ...simpleForm, descricao: e.target.value })} placeholder="Descrição breve" />
                   </div>
                   <Button type="submit" className="w-full" data-testid="button-save-divida" disabled={createSimpleMutation.isPending}>
-                    {createSimpleMutation.isPending ? "Salvando..." : "Registrar"}
+                    {createSimpleMutation.isPending ? "Salvando..." : "Salvar dívida"}
                   </Button>
                 </form>
               </TabsContent>
@@ -566,12 +574,12 @@ export default function DividasPage() {
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label>Numero de parcelas</Label>
+                      <Label>Número de parcelas</Label>
                       <Input data-testid="input-parcelado-parcelas" type="number" min="2" max="360" value={parceladoForm.totalParcelas}
                         onChange={(e) => setParceladoForm({ ...parceladoForm, totalParcelas: e.target.value })} required />
                     </div>
                     <div className="space-y-2">
-                      <Label>1° vencimento</Label>
+                      <Label>Primeiro vencimento</Label>
                       <Input data-testid="input-parcelado-vencimento" type="date" value={parceladoForm.primeiroVencimento}
                         onChange={(e) => setParceladoForm({ ...parceladoForm, primeiroVencimento: e.target.value })} required />
                     </div>
@@ -584,7 +592,7 @@ export default function DividasPage() {
                   )}
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label>Forma</Label>
+                      <Label>Forma de pagamento</Label>
                       <Select value={parceladoForm.formaPagamento} onValueChange={(v) => setParceladoForm({ ...parceladoForm, formaPagamento: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>{FORMAS_PAGAMENTO_DIVIDA.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
@@ -596,7 +604,7 @@ export default function DividasPage() {
                     </div>
                   </div>
                   <Button type="submit" className="w-full" data-testid="button-save-parcelado" disabled={createParceladoMutation.isPending}>
-                    {createParceladoMutation.isPending ? "Gerando cronograma..." : "Gerar cronograma"}
+                    {createParceladoMutation.isPending ? "Salvando parcelas..." : "Salvar dívida parcelada"}
                   </Button>
                 </form>
               </TabsContent>
@@ -606,7 +614,7 @@ export default function DividasPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,_1fr)_140px_140px_160px_190px] lg:items-center">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,_1fr)_160px_160px] sm:items-center">
         <div className="relative w-full min-w-0 lg:max-w-none">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input data-testid="input-search-divida" className="pl-9" placeholder="Buscar pessoa ou descrição..."
@@ -620,6 +628,23 @@ export default function DividasPage() {
             <SelectItem value="pagar">A pagar</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="w-full" aria-label="Filtrar por status"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos status</SelectItem>
+            <SelectItem value="pendente">Pendente</SelectItem>
+            <SelectItem value="sem_expectativa">Sem expectativa</SelectItem>
+            <SelectItem value="pago">Quitado</SelectItem>
+            <SelectItem value="removidas">Removidas</SelectItem>
+          </SelectContent>
+        </Select>
+        <details className="group rounded-md border px-3 py-2 sm:col-span-3" data-testid="dividas-advanced-filters">
+          <summary className="cursor-pointer text-sm font-medium">
+            Mais filtros e ordenação{(filterOrigem !== "todos" || sortBy !== "vencimento_mais_proximo") ? " · Personalizados" : ""}
+          </summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Origem da dívida</Label>
         <Select value={filterOrigem} onValueChange={(value) => setFilterOrigem(value as DividaOrigemFilter)}>
           <SelectTrigger className="w-full" aria-label="Filtrar por origem">
             <SelectValue />
@@ -631,16 +656,9 @@ export default function DividasPage() {
             <SelectItem value="cnpj_das">DAS / CNPJ</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-full" aria-label="Filtrar por status"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos status</SelectItem>
-            <SelectItem value="pendente">Pendente</SelectItem>
-            <SelectItem value="sem_expectativa">Sem expectativa</SelectItem>
-            <SelectItem value="pago">Quitado</SelectItem>
-            <SelectItem value="removidas">Removidas</SelectItem>
-          </SelectContent>
-        </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Ordenar por</Label>
         <Select value={sortBy} onValueChange={(value) => setSortBy(value as DividaSortBy)}>
           <SelectTrigger className="w-full" aria-label="Ordenar por">
             <SelectValue placeholder="Ordenar por" />
@@ -657,6 +675,9 @@ export default function DividasPage() {
             <SelectItem value="status">Status</SelectItem>
           </SelectContent>
         </Select>
+            </div>
+          </div>
+        </details>
       </div>
 
       {sortedFiltered.length > 0 && !isRemovedFilter && (
@@ -1199,7 +1220,7 @@ export default function DividasPage() {
                     data-testid="input-pay-parcela-data" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Forma</Label>
+                  <Label>Forma de pagamento</Label>
                   <Select value={payParcelaForm.formaPagamento} onValueChange={(v) => setPayParcelaForm({ ...payParcelaForm, formaPagamento: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>{FORMAS_PAGAMENTO_DIVIDA.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
@@ -1341,7 +1362,7 @@ export default function DividasPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Forma</Label>
+                  <Label>Forma de pagamento</Label>
                   <Select value={editDividaForm.formaPagamento} onValueChange={(v) => setEditDividaForm({ ...editDividaForm, formaPagamento: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>{FORMAS_PAGAMENTO_DIVIDA.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
