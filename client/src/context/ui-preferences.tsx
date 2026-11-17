@@ -1,3 +1,4 @@
+import { useAppearanceTheme } from "@/hooks/use-appearance";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { DEFAULT_DASHBOARD_SHORTCUTS, isValidDashboardShortcuts } from "@shared/dashboard-shortcuts";
@@ -119,6 +120,7 @@ function resolveStorageKey(userId: string | null | undefined): string {
 
 export function UIPreferencesProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  useAppearanceTheme(user?.id);
   const detectMobileViewport = () => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
     return window.matchMedia(MOBILE_MEDIA_QUERY).matches;

@@ -31,6 +31,12 @@ export const userDashboardShortcuts = pgTable("user_dashboard_shortcuts", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const userAppearance = pgTable("user_appearance", {
+  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  accentColor: text("accent_color").notNull().default("#9b2bd6"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const userDebtGroups = pgTable("user_debt_groups", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()::text`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
