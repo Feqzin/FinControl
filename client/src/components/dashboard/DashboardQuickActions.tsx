@@ -16,7 +16,7 @@ const icons: Record<string, typeof Users> = {
 };
 
 export function DashboardQuickActions({ onNavigate }: { onNavigate: (url: string) => void }) {
-  const { prefs, setDashboardQuickActions } = useUIPreferences();
+  const { prefs, setDashboardQuickActions, isEssentialMode } = useUIPreferences();
   const [drag, setDrag] = useState<{ url: string; x: number; y: number; overUrl: string | null } | null>(null);
 
   const targetAt = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -69,19 +69,19 @@ export function DashboardQuickActions({ onNavigate }: { onNavigate: (url: string
           </Link>
         </Button>
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {prefs.dashboardQuickActions.map((url) => {
           const action = DASHBOARD_SHORTCUT_OPTIONS.find((item) => item.url === url);
           if (!action) return null;
           const Icon = icons[url];
           return (
             <div key={url} data-quick-action-url={url}
-              className={`relative rounded-xl border bg-card transition-colors ${drag?.overUrl === url && drag.url !== url ? "border-primary ring-2 ring-primary/50" : "border-border"} ${drag?.url === url ? "opacity-50" : ""}`}>
+              className={`relative rounded-xl border bg-card transition-colors ${isEssentialMode ? "essential-surface" : ""} ${drag?.overUrl === url && drag.url !== url ? "border-primary ring-2 ring-primary/50" : "border-border"} ${drag?.url === url ? "opacity-50" : ""}`}>
               <Button type="button" variant="ghost"
-                className="h-auto min-h-16 w-full flex-col gap-1.5 rounded-xl px-10 py-3 text-center"
+                className={`h-auto min-h-16 w-full flex-col gap-2 rounded-xl px-9 py-4 text-center ${isEssentialMode ? "essential-shortcut" : ""}`}
                 onClick={() => onNavigate(url)} data-testid={`quick-action-${url.slice(1)}`}>
-                <Icon className="h-5 w-5" aria-hidden="true" />
-                <span className="text-xs sm:text-sm">{action.title}</span>
+                <span className={isEssentialMode ? "essential-icon" : ""}><Icon className="h-5 w-5" aria-hidden="true" /></span>
+                <span className="text-sm font-medium">{action.title}</span>
               </Button>
               <button type="button"
                 className="absolute left-0 top-0 flex h-full w-10 cursor-grab touch-none items-center justify-center rounded-l-xl text-muted-foreground active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
