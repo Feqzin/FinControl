@@ -1,3 +1,5 @@
+import { useUIPreferences } from "@/context/ui-preferences";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Pessoa } from "@shared/schema";
 import type { PessoaResumoConsolidado } from "@/hooks/usePessoas";
 import { formatCurrencyBRL } from "@/utils/formatters";
@@ -13,6 +15,8 @@ import {
   RotateCcw,
   Trash2,
   Eye,
+  MoreHorizontal,
+  ArrowRight,
 } from "lucide-react";
 
 type PessoaCardProps = {
@@ -42,6 +46,7 @@ export function PessoaCard({
   onRestore,
   onPermanentDelete,
 }: PessoaCardProps) {
+  const { isEssentialMode } = useUIPreferences();
   if (showRemovedActions) {
     return (
       <Card
@@ -97,6 +102,29 @@ export function PessoaCard({
   const comprasPendentesValor = resumo.comprasVinculadas.pendentePessoa ?? 0;
   const servicosPendentesValor = resumo.servicosMesAtual.pendente ?? 0;
   const comprasVinculadas = resumo.comprasVinculadas.comprasComParcelasReais + resumo.comprasVinculadas.comprasEmFallbackLegado;
+
+  if (isEssentialMode) {
+    const overdue = hasAtraso || resumo.dividas.euDevo.vencidas > 0;
+    return <Card className="h-full rounded-2xl border-border/60 bg-card shadow-sm" data-testid={`card-pessoa-${pessoa.id}`}>
+      <CardContent className="flex h-full flex-col gap-4 p-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 font-semibold text-primary" aria-hidden="true">{pessoa.nome.charAt(0).toUpperCase()}</div>
+          <div className="min-w-0 flex-1"><p className="break-words font-semibold">{pessoa.nome}</p><p className="mt-1 text-xs text-muted-foreground">{pessoa.listaNegra ? "Pessoa sinalizada · ver detalhes" : overdue ? "Há pagamentos em atraso" : resumo.consolidadoPendente > 0 ? "Com pendências" : "Sem pendências"}</p></div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={`Mais ações para ${pessoa.nome}`}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => onAddDivida(pessoa)} data-testid={`button-add-divida-pessoa-${pessoa.id}`}><Plus className="mr-2 h-4 w-4" />Nova dívida</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onEdit(pessoa)} data-testid={`button-edit-pessoa-${pessoa.id}`}><Pencil className="mr-2 h-4 w-4" />Editar pessoa</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onDelete(pessoa)} className="text-destructive" data-testid={`button-delete-pessoa-${pessoa.id}`}><Trash2 className="mr-2 h-4 w-4" />Remover pessoa</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        <div className="flex-1"><p className="text-xs text-muted-foreground">Total em aberto</p><p className="mt-1 break-words text-2xl font-semibold tracking-tight tabular-nums">{formatCurrencyBRL(resumo.consolidadoPendente)}</p><p className="mt-2 text-xs text-muted-foreground">Dívidas, compras e serviços vinculados</p></div>
+        {overdue && <p className="text-xs font-medium text-red-600 dark:text-red-400">Confira os vencimentos nos detalhes</p>}
+        <Button variant="outline" className="w-full justify-between rounded-xl" onClick={() => onOpenHistory(pessoa)} data-testid={`button-history-pessoa-${pessoa.id}`}>Ver detalhes<ArrowRight className="h-4 w-4" /></Button>
+      </CardContent>
+    </Card>;
+  }
 
   if (mobileMode) {
     return (
