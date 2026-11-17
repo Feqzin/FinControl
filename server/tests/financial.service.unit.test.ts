@@ -2370,16 +2370,18 @@ test("pagamento de fatura cancelado é ignorado por resumo, cartões e relatóri
 
   const summary = await createService(fixture).getSummary(userId, currentMonth);
   const summaryServerless = await createServerlessService(fixture).getSummary(userId, currentMonth);
-  const cardSummary = (await createService(fixture).getCardSummaries(userId)).find((item) => item.cartaoId === "card-canceled");
-  const cardSummaryServerless = (await createServerlessService(fixture).getCardSummaries(userId)).find((item) => item.cartaoId === "card-canceled");
-  const reportsOverview = await createReportsService(fixture).getOverview(userId, {
+  const cardSummary = (await withFakeNow("2026-06-15T12:00:00.000Z", () =>
+    createService(fixture).getCardSummaries(userId))).find((item) => item.cartaoId === "card-canceled");
+  const cardSummaryServerless = (await withFakeNow("2026-06-15T12:00:00.000Z", () =>
+    createServerlessService(fixture).getCardSummaries(userId))).find((item) => item.cartaoId === "card-canceled");
+  const reportsOverview = await withFakeNow("2026-06-15T12:00:00.000Z", () => createReportsService(fixture).getOverview(userId, {
     startDate: "2026-06-01",
     endDate: "2026-06-30",
-  });
-  const reportsOverviewServerless = await createServerlessReportsService(fixture).getOverview(userId, {
+  }));
+  const reportsOverviewServerless = await withFakeNow("2026-06-15T12:00:00.000Z", () => createServerlessReportsService(fixture).getOverview(userId, {
     startDate: "2026-06-01",
     endDate: "2026-06-30",
-  });
+  }));
 
   assert.equal(summary.totalCartoesMes, 200);
   assert.equal(summaryServerless.totalCartoesMes, 200);
