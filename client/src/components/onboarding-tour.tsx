@@ -102,8 +102,18 @@ const essentialMoreResourcesStep: TourStep = {
   target: "[data-testid='nav-more-resources']",
   preferredPlacement: "right",
   title: "Passo 4 · Mais recursos",
-  description: "Abra Mais recursos para acessar Serviços, Metas, Calendário, Relatórios e outras áreas quando precisar.",
+  description: "No Painel, use o atalho Serviços. Em outras telas, abra Mais recursos para acessar Serviços, Metas e outras áreas.",
   icon: LayoutGrid,
+};
+
+const essentialPessoasStep: TourStep = {
+  id: "pessoas-atalho",
+  type: "spotlight",
+  target: "[data-testid='quick-action-pessoas']",
+  preferredPlacement: "bottom",
+  title: "Passo 2 · Pessoas",
+  description: "Acesse Pessoas pelo atalho no Painel. Em outras telas, abra Mais recursos.",
+  icon: Users,
 };
 
 interface SpotlightRect {
@@ -181,9 +191,11 @@ export function OnboardingTour() {
     } catch {}
   }, []);
 
-  const currentStep = isEssentialMode && steps[stepIdx].id === "servicos"
-    ? essentialMoreResourcesStep
-    : steps[stepIdx];
+  const currentStep = isEssentialMode && steps[stepIdx].id === "pessoas"
+    ? essentialPessoasStep
+    : isEssentialMode && steps[stepIdx].id === "servicos"
+      ? essentialMoreResourcesStep
+      : steps[stepIdx];
 
   const measureTarget = useCallback(() => {
     if (!currentStep || currentStep.type !== "spotlight" || !currentStep.target) {
@@ -191,7 +203,8 @@ export function OnboardingTour() {
       setTooltipPos(null);
       return;
     }
-    const el = document.querySelector(currentStep.target) as HTMLElement | null;
+    const el = (document.querySelector(currentStep.target) ||
+      (currentStep.id === "pessoas-atalho" && document.querySelector("[data-testid='nav-more-resources']"))) as HTMLElement | null;
     if (!el) {
       setSpotlightRect(null);
       setTooltipPos(null);
