@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { DebtGroupDialog, type DebtGroup } from "./debt-group-dialog";
 import { useEffect, useState } from "react";
-import { Plus, ArrowLeft, Users, Layers, ChevronRight, ArrowDownLeft, ArrowUpRight, ChevronDown, MoreHorizontal, Pencil, Trash2, FastForward, RotateCcw } from "lucide-react";
+import { Receipt, Wallet, FolderOpen, CreditCard, Plus, ArrowLeft, Users, Layers, ChevronRight, ArrowDownLeft, ArrowUpRight, ChevronDown, MoreHorizontal, Pencil, Trash2, FastForward, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -92,9 +92,9 @@ export function EssentialDebtList(props: Props) {
         const pagar = pending.filter(item => item.tipo === "pagar").reduce((sum, item) => sum + item.valorPendente, 0);
         const receber = pending.filter(item => item.tipo === "receber").reduce((sum, item) => sum + item.valorPendente, 0);
         const overdue = pending.filter(item => item.status === "vencido" || item.parcelasVencidas > 0).length;
-        const Icon = mode === "pessoa" ? Users : Layers;
-        return <button key={key} type="button" onClick={() => setSelected(key)} className="group rounded-2xl border border-border/60 bg-card p-5 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid={`debt-group-${mode}-${key}`}>
-          <div className="flex items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Icon className="h-5 w-5" /></span><span className="min-w-0 flex-1 break-words font-semibold">{group.label}</span><ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" /></div>
+        const Icon = mode === "pessoa" ? Users : mode === "custom" ? FolderOpen : mode === "origem" && key === "cartao" ? CreditCard : mode === "origem" ? Receipt : Layers;
+        return <button key={key} type="button" onClick={() => setSelected(key)} className="essential-surface group rounded-2xl border border-border/60 bg-card p-5 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" data-testid={`debt-group-${mode}-${key}`}>
+          <div className="flex items-center gap-3"><span className="essential-icon"><Icon className="h-5 w-5" /></span><span className="min-w-0 flex-1 break-words font-semibold">{group.label}</span><ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" /></div>
           <p className="mt-4 text-sm text-muted-foreground">{group.items.length} dívida{group.items.length === 1 ? "" : "s"} · {pending.length} em aberto</p>
           <div className="mt-3 space-y-1 text-sm">
             {pagar > 0 && <p className="flex flex-wrap justify-between gap-2"><span className="text-muted-foreground">A pagar</span><span className="font-semibold tabular-nums">{formatDividaCurrency(pagar)}</span></p>}
@@ -111,12 +111,12 @@ export function EssentialDebtList(props: Props) {
       const paid = item.status === "pago";
       const overdue = item.status === "vencido" || item.parcelasVencidas > 0;
       const receivable = item.tipo === "receber";
-      const Icon = receivable ? ArrowDownLeft : ArrowUpRight;
+      const Icon = receivable ? Wallet : Receipt;
       const next = debt?.parcelas.find(p => p.status === "pendente");
       const label = props.removed ? "Removida" : paid ? "Quitada" : !item.expectativaRecebimento && receivable ? "Sem previsão de recebimento" : overdue ? "Em atraso" : "Em aberto";
-      return <article key={item.id} className={`overflow-hidden rounded-2xl border bg-card shadow-sm ${props.highlightedId === item.sourceId ? "ring-2 ring-primary/40" : "border-border/60"}`} data-testid={`essential-debt-${item.id}`}>
+      return <article key={item.id} className={`essential-surface overflow-hidden rounded-2xl border bg-card shadow-sm ${props.highlightedId === item.sourceId ? "ring-2 ring-primary/40" : "border-border/60"}`} data-testid={`essential-debt-${item.id}`}>
         <div className="flex items-start gap-3 p-4 sm:p-5">
-          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${receivable ? "bg-emerald-500/10 text-emerald-600" : "bg-primary/10 text-primary"}`}><Icon className="h-5 w-5" /></div>
+          <div className="essential-icon"><Icon className="h-5 w-5" /></div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               <div className="min-w-0">
