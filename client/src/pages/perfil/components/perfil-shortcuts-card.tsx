@@ -1,6 +1,7 @@
-import { Plus, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUIPreferences } from "@/context/ui-preferences";
 import { DASHBOARD_SHORTCUT_OPTIONS, MAX_DASHBOARD_SHORTCUTS } from "@shared/dashboard-shortcuts";
 
@@ -42,14 +43,12 @@ export function PerfilShortcutsCard() {
         {selected.length < MAX_DASHBOARD_SHORTCUTS && available.length > 0 && (
           <div className="space-y-2 border-t pt-4">
             <p className="text-sm font-medium">Adicionar atalho <span className="font-normal text-muted-foreground">({selected.length}/{MAX_DASHBOARD_SHORTCUTS})</span></p>
-            <div className="flex flex-wrap gap-2">
-              {available.map(({ title, url }) => (
-                <Button key={url} type="button" variant="outline" size="sm"
-                  onClick={() => setDashboardQuickActions([...selected, url])}>
-                  <Plus className="mr-1 h-4 w-4" aria-hidden="true" />{title}
-                </Button>
-              ))}
-            </div>
+            <Select value="" onValueChange={(url) => setDashboardQuickActions([...selected, url])}>
+              <SelectTrigger aria-label="Escolher atalho para adicionar"><SelectValue placeholder="Escolher área..." /></SelectTrigger>
+              <SelectContent>
+                {available.map(({ title, url }) => <SelectItem key={url} value={url}>{title}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
         )}
 

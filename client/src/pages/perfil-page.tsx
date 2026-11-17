@@ -58,6 +58,7 @@ import {
   PerfilPlanUsageCard,
   PerfilTabsNav,
   PerfilShortcutsCard,
+  PerfilNavigationSettingsCard,
 } from "@/pages/perfil/components";
 import type {
   Cartao,
@@ -1087,7 +1088,12 @@ export default function PerfilPage() {
 
       <PerfilTabsNav value={perfilTab} onValueChange={setPerfilTab} />
 
-      {perfilTab === "personalizacao" && <PerfilShortcutsCard />}
+      {perfilTab === "personalizacao" && (
+        <>
+          <PerfilShortcutsCard />
+          <PerfilNavigationSettingsCard />
+        </>
+      )}
 
       <PerfilPersonalInfoCard
         isVisible={perfilTab === "conta"}
