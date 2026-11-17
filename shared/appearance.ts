@@ -1,7 +1,7 @@
-export const DEFAULT_ACCENT = "#9b2bd6";
+export const DEFAULT_ACCENT = "#1173d4";
 export const ACCENT_PRESETS = [
-  { name: "Roxo original", value: DEFAULT_ACCENT },
-  { name: "Azul", value: "#1776d2" },
+  { name: "Azul original", value: DEFAULT_ACCENT },
+  { name: "Roxo", value: "#9b2bd6" },
   { name: "Verde", value: "#168363" },
   { name: "Rosa", value: "#c42b77" },
   { name: "Âmbar", value: "#ad650b" },

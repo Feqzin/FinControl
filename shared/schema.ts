@@ -33,7 +33,7 @@ export const userDashboardShortcuts = pgTable("user_dashboard_shortcuts", {
 
 export const userAppearance = pgTable("user_appearance", {
   userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
-  accentColor: text("accent_color").notNull().default("#9b2bd6"),
+  accentColor: text("accent_color").notNull().default("#1173d4"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
