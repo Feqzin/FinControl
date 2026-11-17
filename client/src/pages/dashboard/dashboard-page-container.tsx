@@ -64,7 +64,6 @@ import {
 } from "@/services/api/servicos";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { useLocation } from "wouter";
-import { DashboardQuickActions } from "@/components/dashboard/DashboardQuickActions";
 import { DashboardPageHeader } from "@/components/dashboard/DashboardPageHeader";
 import { VacationModeDialog } from "@/components/dashboard/VacationModeDialog";
 import { DashboardSummaryCards } from "@/components/dashboard/DashboardSummaryCards";
@@ -855,8 +854,7 @@ export default function Dashboard() {
         <div className="fintech-page-header border border-border/60 bg-card/95 shadow-sm">
           <div className="fintech-page-header-row gap-2.5 sm:gap-3">
             <div className="min-w-0">
-              <h1 className="text-[1.8rem] font-semibold tracking-tight sm:text-3xl">Painel Essencial</h1>
-              <p className="text-[13px] leading-5 text-muted-foreground/90 sm:text-sm">Visão simplificada para decisões rápidas.</p>
+              <h1 className="text-[1.8rem] font-semibold tracking-tight sm:text-3xl">Resumo do mês</h1>
             </div>
             <div className="fintech-actions-wrap w-full lg:w-auto">
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
@@ -1061,19 +1059,6 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        <Card className="border-border/60 shadow-sm" data-testid="essencial-atalhos-uteis">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Atalhos úteis</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <DashboardQuickActions
-              onGoPessoas={() => setLocation("/pessoas")}
-              onGoCartoes={() => setLocation("/cartoes")}
-              onGoServicos={() => setLocation("/servicos")}
-              onGoPerfil={() => setLocation("/perfil")}
-            />
-          </CardContent>
-        </Card>
       </div>
     );
   }
