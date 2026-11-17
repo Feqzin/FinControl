@@ -6,6 +6,7 @@ import { DEFAULT_ACCENT, getAccentTokens, isAccentColor } from "../../shared/app
 import { registerDashboardShortcutsRoutes } from "../dashboard-shortcuts-routes";
 
 test("cores aceitam apenas hex completo e têm contraste adaptado", () => {
+  assert.equal(DEFAULT_ACCENT, "#1173d4");
   assert.equal(isAccentColor("#AABBCC"), true);
   for (const value of ["red", "#fff", "#gggggg", null, "var(--x)"]) assert.equal(isAccentColor(value), false);
   assert.equal(getAccentTokens("#ffffff").foreground, "0 0% 5%");
