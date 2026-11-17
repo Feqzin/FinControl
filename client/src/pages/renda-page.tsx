@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { invalidateFinancialQueries } from "@/lib/financial-query-invalidation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,8 +76,11 @@ export default function RendaPage() {
       const res = await apiRequest("POST", "/api/rendas", data);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/rendas"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/rendas"] }),
+        invalidateFinancialQueries(queryClient),
+      ]);
       setOpen(false);
       form.reset();
       toast({ title: "Renda adicionada com sucesso" });
@@ -91,8 +95,11 @@ export default function RendaPage() {
       const res = await apiRequest("PATCH", `/api/rendas/${id}`, data);
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/rendas"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/rendas"] }),
+        invalidateFinancialQueries(queryClient),
+      ]);
       setOpen(false);
       setEditingRenda(null);
       form.reset();
@@ -107,8 +114,11 @@ export default function RendaPage() {
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/rendas/${id}`);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/rendas"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/rendas"] }),
+        invalidateFinancialQueries(queryClient),
+      ]);
       toast({ title: "Renda removida com sucesso" });
     },
     onError: (error: Error) => {
