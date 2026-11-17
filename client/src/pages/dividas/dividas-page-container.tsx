@@ -438,7 +438,7 @@ export default function DividasPage() {
 
   return (
     <div className="app-page-shell app-section-stack" data-testid="dividas-page">
-      <div className={`flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between ${isEssentialMode ? "rounded-2xl border border-border/60 bg-card p-5 shadow-sm" : ""}`}>
+      <div className={`flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between ${isEssentialMode ? "essential-surface rounded-2xl border border-border/60 bg-card p-5 shadow-sm" : ""}`}>
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight">Dívidas</h1>
           <p className="text-muted-foreground">Acompanhe o que você tem a pagar e a receber</p>
@@ -617,11 +617,11 @@ export default function DividasPage() {
 
       {isEssentialMode && !isRemovedFilter && sortedFiltered.length > 0 ? (
         <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2" data-testid="essential-debt-summary">
-          <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:p-5">
+          <div className="essential-surface rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:p-5">
             <p className="text-sm text-muted-foreground">A pagar</p>
             <p className="mt-2 break-words text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{formatDividaCurrency(totalPagar)}</p>
           </div>
-          <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:p-5">
+          <div className="essential-surface rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:p-5">
             <p className="text-sm text-muted-foreground">A receber</p>
             <p className="mt-2 break-words text-2xl font-semibold tracking-tight tabular-nums text-emerald-600 dark:text-emerald-400 sm:text-3xl">{formatDividaCurrency(totalReceber)}</p>
             {totalSemExpectativa > 0 && <p className="mt-2 text-xs text-muted-foreground">{formatDividaCurrency(totalSemExpectativa)} sem previsão, fora deste total</p>}
