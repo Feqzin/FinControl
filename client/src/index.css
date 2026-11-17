@@ -20,16 +20,16 @@
   --sidebar: 0 0% 96%;
   --sidebar-foreground: 0 0% 9%;
   --sidebar-border: 0 0% 92%;
-  --sidebar-primary: 210 85% 45%;
-  --sidebar-primary-foreground: 0 0% 98%;
+  --sidebar-primary: var(--app-primary, 279 68% 50%);
+  --sidebar-primary-foreground: var(--app-primary-foreground, 0 0% 100%);
   --sidebar-accent: 210 12% 90%;
   --sidebar-accent-foreground: 0 0% 9%;
-  --sidebar-ring: 210 85% 45%;
+  --sidebar-ring: var(--app-primary, 279 68% 50%);
   --popover: 0 0% 97%;
   --popover-foreground: 0 0% 9%;
   --popover-border: 0 0% 94%;
-  --primary: 210 85% 45%;
-  --primary-foreground: 0 0% 98%;
+  --primary: var(--app-primary, 279 68% 50%);
+  --primary-foreground: var(--app-primary-foreground, 0 0% 100%);
   --secondary: 210 8% 92%;
   --secondary-foreground: 0 0% 9%;
   --muted: 210 10% 94%;
@@ -39,8 +39,8 @@
   --destructive: 0 84% 48%;
   --destructive-foreground: 0 0% 98%;
   --input: 0 0% 80%;
-  --ring: 210 85% 45%;
-  --chart-1: 210 85% 45%;
+  --ring: var(--app-primary, 279 68% 50%);
+  --chart-1: var(--app-primary, 279 68% 50%);
   --chart-2: 150 70% 35%;
   --chart-3: 25 85% 50%;
   --chart-4: 280 70% 45%;
@@ -104,16 +104,16 @@
   --sidebar: 0 0% 6%;
   --sidebar-foreground: 0 0% 95%;
   --sidebar-border: 0 0% 9%;
-  --sidebar-primary: 210 85% 55%;
-  --sidebar-primary-foreground: 0 0% 98%;
+  --sidebar-primary: var(--app-primary, 279 68% 50%);
+  --sidebar-primary-foreground: var(--app-primary-foreground, 0 0% 100%);
   --sidebar-accent: 210 15% 12%;
   --sidebar-accent-foreground: 0 0% 95%;
-  --sidebar-ring: 210 85% 55%;
+  --sidebar-ring: var(--app-primary, 279 68% 50%);
   --popover: 0 0% 12%;
   --popover-foreground: 0 0% 95%;
   --popover-border: 0 0% 15%;
-  --primary: 210 85% 50%;
-  --primary-foreground: 0 0% 98%;
+  --primary: var(--app-primary, 279 68% 50%);
+  --primary-foreground: var(--app-primary-foreground, 0 0% 100%);
   --secondary: 210 10% 16%;
   --secondary-foreground: 0 0% 95%;
   --muted: 210 12% 14%;
@@ -123,8 +123,8 @@
   --destructive: 0 75% 45%;
   --destructive-foreground: 0 0% 98%;
   --input: 0 0% 25%;
-  --ring: 210 85% 55%;
-  --chart-1: 210 85% 65%;
+  --ring: var(--app-primary, 279 68% 50%);
+  --chart-1: var(--app-primary, 279 68% 50%);
   --chart-2: 150 70% 60%;
   --chart-3: 25 90% 65%;
   --chart-4: 280 70% 65%;
@@ -463,16 +463,16 @@
 /* Essential visual language: quiet surfaces, one accent, clear financial hierarchy. */
 :root[data-usage-mode="essencial"] {
   --font-sans: "Geist", "Segoe UI", system-ui, sans-serif;
-  --primary: 279 68% 50%;
-  --primary-foreground: 0 0% 100%;
-  --ring: 279 68% 50%;
-  --sidebar-primary: 279 68% 50%;
-  --sidebar-ring: 279 68% 50%;
+  --primary: var(--app-primary, 279 68% 50%);
+  --primary-foreground: var(--app-primary-foreground, 0 0% 100%);
+  --ring: var(--app-primary, 279 68% 50%);
+  --sidebar-primary: var(--app-primary, 279 68% 50%);
+  --sidebar-ring: var(--app-primary, 279 68% 50%);
   --background: 250 15% 97%;
   --card: 0 0% 100%;
   --accent: 279 35% 95%;
   --sidebar-accent: 279 30% 93%;
-  --chart-1: 279 68% 50%;
+  --chart-1: var(--app-primary, 279 68% 50%);
 }
 :root.dark[data-usage-mode="essencial"] {
   --background: 252 19% 5%;
@@ -488,7 +488,7 @@
   --sidebar-border: 255 10% 16%;
   --popover: 255 13% 11%;
   --input: 255 10% 25%;
-  --chart-1: 279 76% 65%;
+  --chart-1: var(--app-primary, 279 68% 50%);
 }
 :root[data-usage-mode="essencial"] .essential-surface {
   border: 1px solid hsl(var(--border) / .8);
@@ -511,7 +511,7 @@
   background: hsl(var(--primary) / .12);
   color: hsl(var(--primary));
 }
-.dark .essential-icon { color: hsl(279 85% 80%); }
+.dark .essential-icon { color: hsl(var(--app-accent-soft-text, 279 85% 80%)); }
 .essential-icon svg { width: 20px; height: 20px; stroke-width: 1.8; }
 .essential-amount { font-variant-numeric: tabular-nums; letter-spacing: -.035em; }
 .essential-shortcut {
@@ -525,4 +525,7 @@
   .essential-shortcut, .essential-surface { transition: none !important; }
 }
 
-:root.dark[data-usage-mode="essencial"] .text-primary { color: #d9a9f7; }
+:root.dark[data-usage-mode="essencial"] .text-primary { color: hsl(var(--app-accent-soft-text, 279 85% 80%)); }
+
+:root .essential-icon, :root .text-primary { color: hsl(var(--app-accent-text, var(--primary))); }
+:root.dark .essential-icon, :root.dark .text-primary { color: hsl(var(--app-accent-soft-text, 279 85% 80%)); }
