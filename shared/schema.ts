@@ -31,6 +31,14 @@ export const userDashboardShortcuts = pgTable("user_dashboard_shortcuts", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const userDebtGroups = pgTable("user_debt_groups", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()::text`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  debtIds: jsonb("debt_ids").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => ({ userIdx: index("idx_user_debt_groups_user").on(table.userId) }));
+
 export const userPublicProfiles = pgTable("user_public_profiles", {
   userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
   bio: text("bio"),

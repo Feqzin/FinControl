@@ -726,7 +726,7 @@ export default function DividasPage() {
         </details>
       </div>
 
-      {sortedFiltered.length === 0 ? (
+      {sortedFiltered.length === 0 && !isEssentialMode ? (
         <div className="text-center py-16" data-testid="empty-dividas">
           <Receipt className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" />
           <p className="text-lg font-medium text-muted-foreground">
@@ -741,6 +741,7 @@ export default function DividasPage() {
       ) : isEssentialMode ? (
         <EssentialDebtList
           items={sortedFiltered}
+          allItems={viewItems}
           getName={getPessoaNome}
           highlightedId={highlightDividaId}
           removed={isRemovedFilter}

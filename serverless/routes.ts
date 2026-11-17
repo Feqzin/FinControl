@@ -75,6 +75,7 @@ import { FuturePurchaseSimulationsService } from "./services/future-purchase-sim
 import { VacationPlansService } from "./services/vacation-plans.service.js";
 import { CnpjDasService } from "./services/cnpj-das.service.js";
 import { db } from "./db.js";
+import { registerDebtGroupsRoutes } from "../server/debt-groups-routes.js";
 import { registerDashboardShortcutsRoutes } from "../server/dashboard-shortcuts-routes.js";
 
 function auditRoute(
@@ -106,6 +107,7 @@ function isBackupValidationError(error: unknown): error is Error {
 export function registerRoutes(app: Express): void {
   setupAuth(app);
   registerDashboardShortcutsRoutes(app, pool, requireAuth);
+  registerDebtGroupsRoutes(app, pool, requireAuth);
 
   const dividasController = createDividasController(new DividasService(financialRepository));
   const parcelasController = createParcelasController(new ParcelasService(financialRepository));

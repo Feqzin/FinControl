@@ -14,7 +14,9 @@ if (process.env.VERCEL_ENV === "production") {
   try {
     const migration = await readFile(new URL("../migrations/0052_user_dashboard_shortcuts.sql", import.meta.url), "utf8");
     await pool.query(migration);
-    console.log("[migrate] user_dashboard_shortcuts pronta");
+    const groupsMigration = await readFile(new URL("../migrations/0053_user_debt_groups.sql", import.meta.url), "utf8");
+    await pool.query(groupsMigration);
+    console.log("[migrate] preferências e grupos de dívidas prontos");
   } finally {
     await pool.end();
   }
