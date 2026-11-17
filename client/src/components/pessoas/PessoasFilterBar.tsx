@@ -1,4 +1,6 @@
+import { useUIPreferences } from "@/context/ui-preferences";
 import { Search } from "lucide-react";
+import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,6 +23,33 @@ export function PessoasFilterBar({
   onFilterChange,
   onSortChange,
 }: PessoasFilterBarProps) {
+  const { isEssentialMode } = useUIPreferences();
+  if (isEssentialMode) {
+    return <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]" data-testid="pessoas-essential-filters">
+      <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Buscar pessoa" data-testid="input-search-pessoa" className="rounded-xl pl-9" placeholder="Buscar pessoa..." value={search} onChange={event => onSearchChange(event.target.value)} /></div>
+      <Select value={filterTipo} onValueChange={onFilterChange}><SelectTrigger className="rounded-xl" aria-label="Filtrar pessoas"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todas as pessoas</SelectItem><SelectItem value="me_deve">Me devem</SelectItem><SelectItem value="eu_devo">Eu devo</SelectItem><SelectItem value="atrasados">Com atraso</SelectItem><SelectItem value="lista_negra">Sinalizadas</SelectItem><SelectItem value="removidas">Pessoas removidas</SelectItem></SelectContent></Select>
+      <details className="rounded-xl border border-border/60 bg-card px-4 py-3 sm:col-span-2"><summary className="cursor-pointer text-sm font-medium">Ordenar pessoas{sortBy !== "nome_az" ? " · Personalizado" : ""}</summary><div className="mt-3 space-y-2"><Label>Ordenar por</Label>
+        <Select value={sortBy} onValueChange={(value) => onSortChange(value as PessoaSortBy)}>
+          <SelectTrigger
+            className="h-10 w-full rounded-xl border-border/70 bg-background/95 text-sm shadow-sm 2xl:w-[240px]"
+            aria-label="Ordenar por"
+          >
+            <SelectValue placeholder="Ordenar por" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="nome_az">Nome A-Z</SelectItem>
+            <SelectItem value="nome_za">Nome Z-A</SelectItem>
+            <SelectItem value="maior_saldo">Maior saldo</SelectItem>
+            <SelectItem value="menor_saldo">Menor saldo</SelectItem>
+            <SelectItem value="maior_valor_receber">Maior valor a receber</SelectItem>
+            <SelectItem value="maior_valor_pagar">Maior valor a pagar</SelectItem>
+            <SelectItem value="mais_recente">Mais recente</SelectItem>
+            <SelectItem value="mais_antigo">Mais antigo</SelectItem>
+          </SelectContent>
+        </Select>
+      </div></details>
+    </div>;
+  }
   return (
     <div className="rounded-2xl border border-border/60 bg-card/95 p-3 shadow-sm sm:p-3.5">
       <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center">
