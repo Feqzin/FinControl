@@ -25,6 +25,12 @@ export const insertUserSchema = createInsertSchema(users).pick({ username: true,
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
+export const userDashboardShortcuts = pgTable("user_dashboard_shortcuts", {
+  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  shortcuts: jsonb("shortcuts").$type<string[]>().notNull().default(sql`'["/pessoas", "/renda", "/servicos"]'::jsonb`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const userPublicProfiles = pgTable("user_public_profiles", {
   userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
   bio: text("bio"),

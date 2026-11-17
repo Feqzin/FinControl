@@ -1,0 +1,44 @@
+import type { Express, RequestHandler } from "express";
+import type { Pool } from "pg";
+import { isValidDashboardShortcuts } from "../shared/dashboard-shortcuts.js";
+
+export function registerDashboardShortcutsRoutes(
+  app: Express,
+  pool: Pool,
+  requireAuth: RequestHandler,
+): void {
+  app.get("/api/dashboard/shortcuts", requireAuth, async (req, res, next) => {
+    try {
+      const userId = (req.user as { id: string }).id;
+      const result = await pool.query<{ shortcuts: unknown }>(
+        "SELECT shortcuts FROM user_dashboard_shortcuts WHERE user_id = $1",
+        [userId],
+      );
+      const shortcuts = result.rows[0]?.shortcuts ?? null;
+      return res.json({ shortcuts: isValidDashboardShortcuts(shortcuts) ? shortcuts : null });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.put("/api/dashboard/shortcuts", requireAuth, async (req, res, next) => {
+    const shortcuts: unknown = req.body?.shortcuts;
+    if (!isValidDashboardShortcuts(shortcuts)) {
+      return res.status(400).json({ message: "Escolha até seis atalhos válidos, sem repetição." });
+    }
+
+    try {
+      const userId = (req.user as { id: string }).id;
+      await pool.query(
+        `INSERT INTO user_dashboard_shortcuts (user_id, shortcuts)
+         VALUES ($1, $2::jsonb)
+         ON CONFLICT (user_id) DO UPDATE
+         SET shortcuts = EXCLUDED.shortcuts, updated_at = now()`,
+        [userId, JSON.stringify(shortcuts)],
+      );
+      return res.json({ shortcuts });
+    } catch (error) {
+      return next(error);
+    }
+  });
+}

@@ -21,6 +21,7 @@
     "check:encoding": "tsx script/check-encoding.ts",
     "db:push": "drizzle-kit push",
     "db:migrate": "tsx script/db-migrate.ts",
+    "db:migrate:dashboard-shortcuts": "node --import tsx script/migrate-dashboard-shortcuts.ts",
     "audit:ops": "tsx script/operational-audit.ts",
     "audit:ops:strict": "tsx script/operational-audit.ts --strict",
     "diagnose:domain": "tsx script/diagnose-domain-values.ts",
