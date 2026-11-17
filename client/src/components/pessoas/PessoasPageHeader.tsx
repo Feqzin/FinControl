@@ -20,13 +20,13 @@ export function PessoasPageHeader({
   const { isEssentialMode } = useUIPreferences();
   if (isEssentialMode) {
     return <div className="space-y-4" data-testid="pessoas-essential-header">
-      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-border/60 bg-card p-5 shadow-sm sm:flex-row sm:items-center">
+      <div className="essential-surface flex flex-col justify-between gap-4 rounded-2xl border border-border/60 bg-card p-5 shadow-sm sm:flex-row sm:items-center">
         <div><h1 className="text-2xl font-bold tracking-tight">Pessoas</h1><p className="mt-1 text-sm text-muted-foreground">Escolha uma pessoa para acompanhar seus valores.</p></div>
         <Button className="rounded-xl" onClick={onAddPessoa} data-testid="button-add-pessoa"><Plus className="mr-2 h-4 w-4" />Adicionar pessoa</Button>
       </div>
       <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2">
-        <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm"><p className="text-sm text-muted-foreground">Total em aberto</p><p className="mt-2 break-words text-2xl font-semibold tracking-tight tabular-nums">{formatCurrencyBRL(totalPendente)}</p><p className="mt-1 text-xs text-muted-foreground">{totalPessoas} pessoa{totalPessoas === 1 ? "" : "s"} nesta visualização</p></div>
-        <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm"><p className="text-sm text-muted-foreground">A receber</p><p className="mt-2 break-words text-2xl font-semibold tracking-tight tabular-nums text-emerald-600 dark:text-emerald-400">{formatCurrencyBRL(totalAReceber)}</p></div>
+        <div className="essential-surface rounded-2xl border border-border/60 bg-card p-4 shadow-sm"><p className="text-sm text-muted-foreground">Total em aberto</p><p className="mt-2 break-words text-2xl font-semibold tracking-tight tabular-nums">{formatCurrencyBRL(totalPendente)}</p><p className="mt-1 text-xs text-muted-foreground">{totalPessoas} pessoa{totalPessoas === 1 ? "" : "s"} nesta visualização</p></div>
+        <div className="essential-surface rounded-2xl border border-border/60 bg-card p-4 shadow-sm"><p className="text-sm text-muted-foreground">A receber</p><p className="mt-2 break-words text-2xl font-semibold tracking-tight tabular-nums text-emerald-600 dark:text-emerald-400">{formatCurrencyBRL(totalAReceber)}</p></div>
       </div>
     </div>;
   }

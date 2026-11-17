@@ -6,7 +6,7 @@ import {
   ArrowUpRight, ArrowDownRight, Receipt,
   AlertTriangle, CreditCard, Lightbulb,
   Trophy, Star, RotateCcw, Target, DollarSign, PiggyBank,
-  Settings2, Smartphone,
+  Settings2, Smartphone, Wallet,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -852,7 +852,7 @@ export default function Dashboard() {
   if (isEssentialMode) {
     return (
       <div className="app-page-shell app-section-stack" data-testid="dashboard-essencial">
-        <div className="fintech-page-header border border-border/60 bg-card/95 shadow-sm">
+        <div className="essential-surface fintech-page-header border border-border/60 bg-card/95 shadow-sm">
           <div className="fintech-page-header-row gap-2.5 sm:gap-3">
             <div className="min-w-0">
               <h1 className="text-[1.8rem] font-semibold tracking-tight sm:text-3xl">Resumo do mês</h1>
@@ -943,19 +943,19 @@ export default function Dashboard() {
           <DashboardBalanceModeTooltip mode={balanceMode}>
             <Card
               {...balanceCardInteractionProps}
-              className={`cursor-pointer select-none border-0 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${balanceView.value >= 0 ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}
+              className="essential-surface cursor-pointer select-none text-card-foreground transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               data-testid="essencial-hero"
             >
-              <CardContent className="p-4 sm:p-5">
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide opacity-90">{balanceView.title}</p>
-                <p className="fin-value-hero">{maskValue(formatCurrencyBRL(balanceView.value), visible)}</p>
-                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div className="rounded-xl bg-white/10 px-3 py-2">
-                    <p className="text-[12px] opacity-80">{balanceView.primaryLabel}</p>
+              <CardContent className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[1.15fr_1fr] lg:items-center">
+                <div><p className="mb-3 text-sm text-muted-foreground">{balanceView.title}</p>
+                <p className={`essential-amount break-words text-[clamp(2.25rem,6vw,4.25rem)] font-semibold leading-tight ${balanceView.value < 0 ? "text-red-600 dark:text-red-400" : ""}`}>{maskValue(formatCurrencyBRL(balanceView.value), visible)}</p><p className="mt-3 text-xs text-muted-foreground">Toque no resumo para alternar a visão.</p></div>
+                <div className="space-y-1 rounded-2xl bg-primary/[0.06] p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 py-3">
+                    <p className="text-sm text-muted-foreground">{balanceView.primaryLabel}</p>
                     <p className="text-base font-semibold">{maskValue(formatCurrencyBRL(balanceView.primaryValue), visible)}</p>
                   </div>
-                  <div className="rounded-xl bg-white/10 px-3 py-2">
-                    <p className="text-[12px] opacity-80">{balanceView.secondaryLabel}</p>
+                  <div className="flex flex-wrap items-center justify-between gap-2 py-3">
+                    <p className="text-sm text-muted-foreground">{balanceView.secondaryLabel}</p>
                     <p className="text-base font-semibold">{maskValue(formatCurrencyBRL(balanceView.secondaryValue), visible)}</p>
                   </div>
                 </div>
@@ -969,9 +969,9 @@ export default function Dashboard() {
         />
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <Card className="flex flex-col shadow-sm" data-testid="essencial-proxima-conta">
+          <Card className="essential-surface flex flex-col" data-testid="essencial-proxima-conta">
             <CardHeader className="pb-2">
-            <CardTitle className="text-base">Próxima conta</CardTitle>
+            <CardTitle className="flex items-center gap-3 text-base"><span className="essential-icon"><Receipt aria-hidden="true" /></span>Próxima conta</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-1 flex-col gap-2">
             {sectionStatus.proximosVencimentos.isLoading ? (
@@ -1035,9 +1035,9 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className="flex flex-col shadow-sm" data-testid="essencial-receber">
+          <Card className="essential-surface flex flex-col" data-testid="essencial-receber">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Dinheiro para receber</CardTitle>
+              <CardTitle className="flex items-center gap-3 text-base"><span className="essential-icon"><Wallet aria-hidden="true" /></span>Dinheiro para receber</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-1 flex-col gap-2">
               {totalReceber > 0 ? (
