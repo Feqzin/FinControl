@@ -11,6 +11,7 @@ import type {
   ServicoPessoa,
 } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
+import { invalidateFinancialQueries } from "@/lib/financial-query-invalidation";
 import {
   createServico,
   deleteServico,
@@ -38,33 +39,37 @@ export function useServicos() {
 
   const createMutation = useMutation({
     mutationFn: (payload: ServicoPayload) => createServico(payload),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servicos"] });
       queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const toggleStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       toggleServicoStatus(id, status),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servicos"] });
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteServico(id),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servicos"] });
       queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, ...payload }: { id: string } & Partial<ServicoPayload>) =>
       updateServico(id, payload),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servicos"] });
+      await invalidateFinancialQueries(queryClient);
     },
   });
 

@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { invalidateFinancialQueries } from "@/lib/financial-query-invalidation";
 import { formatCurrencyBRL } from "@/utils/formatters";
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { Pessoa, PessoaSaldoMovimentacao, Servico, ServicoPagamento, ServicoPessoa } from "@shared/schema";
@@ -77,10 +78,11 @@ export function DivisaoPanel({
   const updateValorMutation = useMutation({
     mutationFn: ({ id, valorDevido }: { id: string; valorDevido: string }) =>
       updateServicoPessoaValor(id, valorDevido),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servico-pessoas"] });
       setEditingValorId(null);
       toast({ title: "Valor atualizado" });
+      await invalidateFinancialQueries(queryClient);
     },
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
@@ -135,21 +137,23 @@ export function DivisaoPanel({
         pessoaId,
         valorDevido,
       }),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servico-pessoas"] });
       setOpenAdd(false);
       setAddForm({ pessoaId: "", valorDevido: "" });
       toast({ title: "Pessoa adicionada ao serviço" });
+      await invalidateFinancialQueries(queryClient);
     },
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
   const removeMutation = useMutation({
     mutationFn: (id: string) => removeServicoPessoa(id),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servico-pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/servico-pagamentos"] });
       toast({ title: "Pessoa removida" });
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
@@ -160,18 +164,20 @@ export function DivisaoPanel({
         mes,
         dataPagamento: format(new Date(), "yyyy-MM-dd"),
       }),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servico-pagamentos"] });
       toast({ title: "Pagamento registrado" });
+      await invalidateFinancialQueries(queryClient);
     },
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
   const marcarPendenteMutation = useMutation({
     mutationFn: (pagamentoId: string) => reverterServicoPessoaPago(pagamentoId),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servico-pagamentos"] });
       toast({ title: "Pagamento revertido" });
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
