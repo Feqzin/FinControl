@@ -81,15 +81,9 @@ export function CartoesFilterBar({
   };
 
   const getChipClasses = (status: ReturnType<typeof getInvoiceMonthStatus>, selected: boolean): string => {
-    if (selected) {
-      if (status === "atual") return "border-primary bg-primary/10 text-primary shadow-sm";
-      if (status === "futura") return "border-indigo-300 bg-indigo-100 text-indigo-700 shadow-sm";
-      return "border-slate-300 bg-slate-200 text-slate-800 shadow-sm";
-    }
-
-    if (status === "atual") return "border-primary/30 bg-primary/5 text-primary/90 hover:bg-primary/10";
-    if (status === "futura") return "border-indigo-200 bg-indigo-50/70 text-indigo-700 hover:bg-indigo-100";
-    return "border-border bg-muted/30 text-muted-foreground hover:bg-muted/50";
+    if (selected) return "border-primary bg-primary text-primary-foreground shadow-sm";
+    if (status === "atual") return "border-primary/40 bg-primary/10 text-foreground hover:bg-primary/15";
+    return "border-border/70 bg-muted/20 text-muted-foreground hover:border-primary/30 hover:bg-muted/50 hover:text-foreground";
   };
 
   return (
@@ -157,7 +151,7 @@ export function CartoesFilterBar({
                     data-testid={`chip-cartoes-invoice-month-${monthKey}`}
                   >
                     <p className="text-sm font-semibold leading-none">{shortLabel}</p>
-                    <p className="mt-1 text-[11px] leading-none opacity-80">{statusLabel}</p>
+                    <p className="mt-1 text-[11px] leading-none">{statusLabel}</p>
                   </button>
                 );
               })}
