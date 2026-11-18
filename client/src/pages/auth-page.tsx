@@ -70,7 +70,7 @@ export default function AuthPage() {
   const { login, register } = useAuth();
   const { toast } = useToast();
   const [loginData, setLoginData] = useState({ identifier: "", password: "" });
-  const [registerData, setRegisterData] = useState({ nomeCompleto: "", username: "", password: "" });
+  const [registerData, setRegisterData] = useState({ nomeCompleto: "", username: "", email: "", password: "" });
   const [tab, setTab] = useState("login");
 
   const [forgotMode, setForgotMode] = useState(false);
@@ -132,8 +132,8 @@ export default function AuthPage() {
         toast({ title: "Enviado", description: data.message });
         setForgotMode(false);
       }
-    } catch {
-      toast({ title: "Erro ao processar", variant: "destructive" });
+    } catch (error) {
+      toast({ title: "Não foi possível enviar", description: extractApiErrorDetails(error).message, variant: "destructive" });
     } finally {
       setForgotLoading(false);
     }
@@ -163,13 +163,13 @@ export default function AuthPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Redefinir senha</CardTitle>
-                <CardDescription>Informe seu usuario para gerar o link de redefinicao</CardDescription>
+                <CardDescription>Informe seu e-mail ou usuário para receber o link de redefinição.</CardDescription>
               </CardHeader>
               <CardContent>
                 {resetLink ? (
                   <div className="space-y-4">
                     <div className="p-3 rounded-md bg-emerald-500/5 border border-emerald-500/20 text-sm text-emerald-700">
-                      Link gerado. Em producao, este link seria enviado por email.
+                      Link gerado para teste local. Em produção, o envio é feito por e-mail.
                     </div>
                     <div className="flex gap-2">
                       <Input value={window.location.origin + resetLink} readOnly className="text-xs" />
@@ -197,7 +197,7 @@ export default function AuthPage() {
                 ) : (
                   <form onSubmit={handleForgot} className="space-y-4">
                     <div className="space-y-2">
-                      <Label>Usuario</Label>
+                      <Label>E-mail ou usuário</Label>
                       <Input
                         data-testid="input-forgot-username"
                         placeholder="seu@email.com"
@@ -207,7 +207,7 @@ export default function AuthPage() {
                       />
                     </div>
                     <Button type="submit" className="w-full" disabled={forgotLoading} data-testid="button-forgot-submit">
-                      {forgotLoading ? "Processando..." : "Gerar link"}
+                      {forgotLoading ? "Enviando..." : "Enviar link"}
                     </Button>
                     <Button variant="ghost" className="w-full" type="button" onClick={() => setForgotMode(false)}>
                       Voltar ao login
@@ -305,6 +305,12 @@ export default function AuthPage() {
                           <p className="text-xs text-muted-foreground">
                             Pode aparecer nos recursos que você compartilhar.
                           </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="reg-email">E-mail para recuperar a conta</Label>
+                          <Input id="reg-email" type="email" autoComplete="email" placeholder="voce@exemplo.com"
+                            value={registerData.email} onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })} required />
+                          <p className="text-xs text-muted-foreground">Usaremos este endereço para enviar o link caso você esqueça a senha.</p>
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="reg-password">Senha</Label>
