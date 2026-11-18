@@ -1,3 +1,4 @@
+import { replaceSessionCache } from "@/lib/session-cache";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -47,8 +48,8 @@ function getAuthErrorStatus(error: unknown): number | null {
     : null;
 }
 
-function resetSessionCache(nextUser: AuthUser | null): void {
-  queryClient.setQueryData(AUTH_ME_QUERY_KEY, nextUser);
+async function resetSessionCache(nextUser: AuthUser | null): Promise<void> {
+  await replaceSessionCache(queryClient, nextUser);
 }
 
 async function refreshAuthenticatedUser(): Promise<void> {
@@ -151,7 +152,7 @@ export function useAuth() {
       return res.json() as Promise<AuthUser>;
     },
     onSuccess: async (loggedUser) => {
-      resetSessionCache(loggedUser);
+      await resetSessionCache(loggedUser);
       await refreshAuthenticatedUser();
     },
   });
@@ -162,7 +163,7 @@ export function useAuth() {
       return res.json() as Promise<AuthUser>;
     },
     onSuccess: async (registeredUser) => {
-      resetSessionCache(registeredUser);
+      await resetSessionCache(registeredUser);
       await refreshAuthenticatedUser();
     },
   });
@@ -172,7 +173,7 @@ export function useAuth() {
       await apiRequest("POST", "/api/auth/logout");
     },
     onSuccess: async () => {
-      resetSessionCache(null);
+      await resetSessionCache(null);
       await refreshAuthenticatedUser();
     },
   });
@@ -186,7 +187,7 @@ export function useAuth() {
     } catch {
       // Melhor esforço: o objetivo aqui e limpar o estado local quando a sessao esta inconsistente.
     } finally {
-      resetSessionCache(null);
+      await resetSessionCache(null);
       await queryClient.invalidateQueries({
         queryKey: AUTH_ME_QUERY_KEY,
         refetchType: "none",
