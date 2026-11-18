@@ -1,3 +1,4 @@
+import { StartupDataGate, StartupLoadingScreen, StartupRouteReady } from "@/components/startup-loading";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -48,14 +49,7 @@ function RouteLoadingFallback() {
 }
 
 function FullscreenLoadingFallback() {
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="space-y-4 text-center">
-        <Skeleton className="h-12 w-12 rounded-md mx-auto" />
-        <Skeleton className="h-4 w-32 mx-auto" />
-      </div>
-    </div>
-  );
+  return <StartupLoadingScreen />;
 }
 
 function AuthSessionFallback({
@@ -137,6 +131,7 @@ class AppErrorBoundary extends React.Component<
 function Router() {
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
+      <>
       <Switch>
         <Route path="/">
           <DashboardPage />
@@ -190,6 +185,8 @@ function Router() {
           <NotFoundPage />
         </Route>
       </Switch>
+      <StartupRouteReady />
+      </>
     </Suspense>
   );
 }
@@ -229,6 +226,7 @@ function AuthenticatedLayout() {
   ];
 
   return (
+    <StartupDataGate>
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-dvh min-h-dvh w-full max-w-full overflow-hidden">
         <AppSidebar />
@@ -259,6 +257,7 @@ function AuthenticatedLayout() {
         </div>
       </div>
     </SidebarProvider>
+    </StartupDataGate>
   );
 }
 

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
@@ -11,7 +11,16 @@
     <meta name="description" content="Controle suas financas pessoais, dividas, cartoes de credito e assinaturas em um unico lugar." />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <style>
+        .boot-loading{position:fixed;inset:0;display:grid;place-items:center;background:#f6f6f8;color:#18181b;font:15px "Segoe UI",system-ui,sans-serif;text-align:center;padding:24px}
+        .boot-loading strong{display:block;font-size:26px;margin:20px 0 12px}.boot-loading p{color:#656570;margin:8px 0}.boot-spinner{display:inline-block;width:32px;height:32px;border:3px solid #1173d426;border-top-color:#1173d4;border-radius:50%;animation:boot-spin 1s linear infinite}
+        @keyframes boot-spin{to{transform:rotate(360deg)}}
+        @media(prefers-color-scheme:dark){.boot-loading{background:#0c0b10;color:#f4f4f5}.boot-loading p{color:#aaaab4}}
+        @media(prefers-reduced-motion:reduce){.boot-spinner{animation:none}}
+      </style>
+      <div class="boot-loading" role="status" aria-live="polite"><div><span class="boot-spinner" aria-hidden="true"></span><strong>FinControl</strong><p>Preparando suas finanças...</p><p>Aguarde enquanto carregamos o sistema.</p></div></div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
