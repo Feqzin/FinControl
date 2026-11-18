@@ -7,6 +7,7 @@ import { pool } from "./db";
 import connectPgSimple from "connect-pg-simple";
 import { scrypt, randomBytes, timingSafeEqual, createHash } from "crypto";
 import { promisify } from "util";
+import { passwordResetEmailConfigured, createPasswordResetUrl, sendPasswordResetEmail } from "./password-reset-email.js";
 import rateLimit from "express-rate-limit";
 import { ENV } from "./env";
 import { writeAuditLog } from "./audit-log";
@@ -1014,45 +1015,37 @@ export function setupAuth(app: Express) {
 
   app.post("/api/auth/forgot-password", loginLimiter, async (req, res) => {
     try {
-      const username = normalizeUsername(req.body?.username);
-      const genericMessage = "Se o usuario existir, o link de redefinicao foi gerado.";
-      if (!username) {
-        auditAuth(req, {
-          action: "auth",
-          status: "failure",
-          domain: "auth.forgot_password",
-          details: { reason: "missing_username" },
-        });
-        return res.status(400).json({ message: "Informe o usuario" });
+      const identifier = normalizeLoginIdentifier(req.body?.username);
+      const genericMessage = "Se houver um e-mail associado à conta, enviaremos um link para redefinir a senha.";
+      if (!identifier) return res.status(400).json({ message: "Informe seu e-mail ou usuário" });
+      // In production a missing provider must never generate an unusable token.
+      if (process.env.NODE_ENV === "production" && !passwordResetEmailConfigured()) {
+        writeTechnicalLog({ event: "auth.forgot_password.email_not_configured", source: "auth", level: "error", requestId: req.requestId ?? undefined });
+        return res.status(503).json({ message: "Recuperação de senha indisponível no momento. Tente novamente mais tarde." });
       }
-      const user = await storage.getUserByUsername(username);
-      if (!user) {
-        auditAuth(req, {
-          action: "auth",
-          status: "failure",
-          domain: "auth.forgot_password",
-          details: { username, reason: "user_not_found" },
-        });
-        return res.json({ message: genericMessage });
-      }
+      const user = isEmailLikeUsername(identifier)
+        ? (await storage.getUserByEmail(identifier)) ?? (await storage.getUserByUsername(identifier))
+        : await storage.getUserByUsername(identifier);
+      const email = user ? resolveStoredAccountEmail(user.email) ?? resolveStoredAccountEmail(user.username) : null;
+      if (!user || !email) return res.json({ message: genericMessage });
+
       const token = randomBytes(32).toString("hex");
       const tokenHash = hashResetToken(token);
       const expiry = new Date(Date.now() + 60 * 60 * 1000);
       await storage.updateUser(user.id, { resetToken: tokenHash, resetTokenExpiry: expiry });
-      auditAuth(req, {
-        action: "auth",
-        status: "success",
-        domain: "auth.forgot_password",
-        userId: user.id,
-        details: { username },
-      });
-
       if (process.env.NODE_ENV === "production") {
+        try {
+          await sendPasswordResetEmail(email, createPasswordResetUrl(token));
+        } catch (error) {
+          await storage.updateUser(user.id, { resetToken: null, resetTokenExpiry: null });
+          writeTechnicalLog({ event: "auth.forgot_password.email_failed", source: "auth", level: "error", requestId: req.requestId ?? undefined,
+            data: { error: error instanceof Error ? error.message : String(error) } });
+          return res.status(503).json({ message: "Recuperação de senha indisponível no momento. Tente novamente mais tarde." });
+        }
+        auditAuth(req, { action: "auth", status: "success", domain: "auth.forgot_password", userId: user.id });
         return res.json({ message: genericMessage });
       }
-
-      const resetLink = `/redefinir-senha?token=${token}`;
-      return res.json({ message: genericMessage, resetLink, _dev: "Em producao este link seria enviado por email" });
+      return res.json({ message: genericMessage, resetLink: `/redefinir-senha?token=${token}` });
     } catch (err) {
       auditAuth(req, {
         action: "auth",
