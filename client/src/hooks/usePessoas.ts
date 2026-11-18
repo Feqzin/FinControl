@@ -279,9 +279,10 @@ export function usePessoas({
 
   const createPessoaMutation = useMutation({
     mutationFn: (payload: PessoaPayload) => createPessoa(payload),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
@@ -313,22 +314,24 @@ export function usePessoas({
   const updatePessoaMutation = useMutation({
     mutationFn: ({ id, ...data }: { id: string } & Partial<PessoaPayload>) =>
       updatePessoa(id, data),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deletePessoa(id),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
+      await invalidateFinancialQueries(queryClient);
     },
   });
   const deletePessoaPermanentMutation = useMutation({
     mutationFn: (id: string) => deletePessoaPermanent(id),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/subscription/usage"] });
@@ -336,14 +339,16 @@ export function usePessoas({
       queryClient.invalidateQueries({ queryKey: ["/api/servico-pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
       queryClient.invalidateQueries({ queryKey: ["/api/financial/summary"] });
+      await invalidateFinancialQueries(queryClient);
     },
   });
   const restorePessoaMutation = useMutation({
     mutationFn: (id: string) => restorePessoa(id),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/orfas"] });
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
@@ -353,7 +358,7 @@ export function usePessoas({
       nome?: string | null;
       pessoaIdExistente?: string | null;
     }) => recoverPessoaOrphanLinks(payload),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/orfas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dividas"] });
@@ -361,34 +366,38 @@ export function usePessoas({
       queryClient.invalidateQueries({ queryKey: ["/api/servico-pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
       invalidateTimeline();
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const marcarServicoPagoMutation = useMutation({
     mutationFn: ({ servicoPessoaId, mes }: { servicoPessoaId: string; mes: string }) =>
       marcarServicoPessoaComoPago({ servicoPessoaId, mes }),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servico-pagamentos"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const reverterServicoPagoMutation = useMutation({
     mutationFn: (pagamentoId: string) => reverterServicoPessoaPago(pagamentoId),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/servico-pagamentos"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const createSaldoMovimentacaoMutation = useMutation({
     mutationFn: ({ pessoaId, payload }: { pessoaId: string; payload: PessoaSaldoMovimentacaoPayload }) =>
       createPessoaSaldoMovimentacao(pessoaId, payload),
-    onSuccess: (_data, variables) => {
+    onSuccess: async (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "saldo-movimentacoes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "resumo"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
@@ -444,13 +453,14 @@ export function usePessoas({
       data?: string | null;
       observacao?: string | null;
     }) => abaterSaldoServicoPessoa(pessoaId, servicoPessoaId, { mes, valor, data, observacao }),
-    onSuccess: (_data, variables) => {
+    onSuccess: async (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/servico-pagamentos"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "saldo-movimentacoes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "resumo"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
       invalidateTimeline();
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
@@ -468,7 +478,7 @@ export function usePessoas({
       data?: string | null;
       observacao?: string | null;
     }) => abaterSaldoParcelaPessoa(pessoaId, parcelaId, { valor, data, observacao }),
-    onSuccess: (_data, variables) => {
+    onSuccess: async (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/parcelas-compra"] });
       queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
@@ -477,26 +487,29 @@ export function usePessoas({
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas/saldo-movimentacoes"] });
       invalidateTimeline();
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const desvincularCompraMutation = useMutation({
     mutationFn: (id: string) => desvincularPessoaDeCompra(id),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
   const vincularCompraMutation = useMutation({
     mutationFn: ({ compraId, pessoaId }: { compraId: string; pessoaId: string }) =>
       vincularPessoaEmCompra(compraId, pessoaId),
-    onSuccess: (_data, variables) => {
+    onSuccess: async (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/compras-cartao"] });
       queryClient.invalidateQueries({ queryKey: ["/api/cartoes/resumo"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pessoas", variables.pessoaId, "resumo"] });
       invalidateTimeline();
+      await invalidateFinancialQueries(queryClient);
     },
   });
 
