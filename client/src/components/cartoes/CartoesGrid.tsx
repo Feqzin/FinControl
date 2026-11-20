@@ -20,6 +20,10 @@ type CartoesGridProps = {
   formatCartaoCurrency: (value: number) => string;
   onOpenCompras: (cartaoId: string) => void;
   onOpenServices: () => void;
+  invoiceMonthLabel: string;
+  canOpenInvoicePaymentDialog: (cartaoId: string) => boolean;
+  getInvoicePaymentActionLabel: (cartaoId: string) => string;
+  onOpenInvoicePaymentDialog: (cartaoId: string) => void;
   resolveCardIconId: (cartao: Cartao) => string | null;
 };
 
@@ -34,6 +38,10 @@ export function CartoesGrid({
   formatCartaoCurrency,
   onOpenCompras,
   onOpenServices,
+  invoiceMonthLabel,
+  canOpenInvoicePaymentDialog,
+  getInvoicePaymentActionLabel,
+  onOpenInvoicePaymentDialog,
   resolveCardIconId,
 }: CartoesGridProps) {
   const comprometidoTooltip =
@@ -68,11 +76,7 @@ export function CartoesGrid({
                   <BrandIconDisplay name={cartao.nome} iconeId={resolveCardIconId(cartao)} size="sm" />
                   <div className="min-w-0">
                     <p className="text-[15px] font-semibold leading-tight break-words sm:text-base">{cartao.nome}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <span className="inline-flex rounded-full border border-border/60 bg-muted/25 px-2 py-0.5 text-[11px] text-muted-foreground">
-                        {totalCompras} compra(s) parcelada(s)
-                      </span>
-                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">Vencimento: dia {cartao.diaVencimento}</p>
                   </div>
                 </div>
                 <Button
@@ -82,25 +86,26 @@ export function CartoesGrid({
                   onClick={() => onOpenCompras(cartao.id)}
                   data-testid={`button-open-cartao-compras-${cartao.id}`}
                 >
-                  Ver compras
+                  Ver detalhes
                 </Button>
               </div>
 
               <div className="rounded-[22px] border border-border/50 bg-muted/20 p-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="min-w-0 space-y-1">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Fatura atual</p>
-                    <p className="text-lg font-semibold leading-tight [overflow-wrap:anywhere] sm:text-xl">
-                      {formatCartaoCurrency(faturaAtual)}
-                    </p>
-                  </div>
-                  <div className="min-w-0 space-y-1 border-t border-border/60 pt-3 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0">
-                    <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Disponível estimado</p>
-                    <p className="text-lg font-semibold leading-tight text-emerald-600 [overflow-wrap:anywhere] sm:text-xl">
-                      {formatCartaoCurrency(limiteDisponivel)}
-                    </p>
-                  </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Fatura · {invoiceMonthLabel}</p>
+                  <p className="text-3xl font-semibold tracking-tight tabular-nums [overflow-wrap:anywhere]">
+                    {formatCartaoCurrency(faturaAtual)}
+                  </p>
                 </div>
+                <Button
+                  className="mt-4 min-h-11 w-full rounded-xl"
+                  disabled={!canOpenInvoicePaymentDialog(cartao.id)}
+                  onClick={() => onOpenInvoicePaymentDialog(cartao.id)}
+                  aria-label={`${getInvoicePaymentActionLabel(cartao.id)} — ${cartao.nome}`}
+                  data-testid={`button-pay-cartao-${cartao.id}`}
+                >
+                  {getInvoicePaymentActionLabel(cartao.id)}
+                </Button>
 
                 <ProjectedServicesNotice
                   amount={servicosPrevistos}
@@ -109,6 +114,13 @@ export function CartoesGrid({
                   testId={`projected-services-summary-${cartao.id}`}
                 />
 
+                <details className="mt-3 group">
+                  <summary className="cursor-pointer rounded-lg py-2 text-sm font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Limite e informações do cartão</summary>
+                  <div className="mt-2 flex justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">Disponível estimado</span>
+                    <span className="font-semibold tabular-nums">{formatCartaoCurrency(limiteDisponivel)}</span>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">{totalCompras} compra(s) parcelada(s)</p>
                 <div className="mt-3 space-y-2 rounded-2xl border border-border/50 bg-background/80 px-3 py-2.5">
                   <div className="flex items-center justify-between gap-2 text-xs">
                     <span className="text-muted-foreground">Uso do limite</span>
@@ -146,6 +158,7 @@ export function CartoesGrid({
                     </div>
                   </div>
                 </div>
+                </details>
               </div>
             </CartaoCard>
           );
