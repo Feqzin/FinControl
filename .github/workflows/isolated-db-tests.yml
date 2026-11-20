@@ -32,7 +32,7 @@ jobs:
       SESSION_SECRET: fincontrol_ci_session_secret_for_tests
       NODE_ENV: test
       ALLOW_LOCAL_FILESYSTEM_STORAGE_FALLBACK: 'true'
-      PAYMENT_PROOF_STORAGE_DIR: ${{ runner.temp }}/fincontrol-test-proofs
+      PAYMENT_PROOF_STORAGE_DIR: /tmp/fincontrol-test-proofs
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
