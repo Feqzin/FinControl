@@ -6,7 +6,7 @@ import { shouldRunDbIntegrationTests } from "./test-db-availability";
 
 const testParcelasCompraRoute = (await shouldRunDbIntegrationTests()) ? test : test.skip;
 
-testParcelasCompraRoute("GET /api/parcelas-compra/:compraId nao materializa parcelas ausentes", async () => {
+testParcelasCompraRoute("GET /api/parcelas-compra/:compraId materializa parcelas legadas ausentes uma vez", async () => {
   const expressModule = await import("express");
   const express = expressModule.default;
   const { db } = await import("../db");
@@ -74,13 +74,23 @@ testParcelasCompraRoute("GET /api/parcelas-compra/:compraId nao materializa parc
     assert.equal(response.status, 200);
 
     const body = await response.json() as Array<{ numero: number; valor: string; statusCartao: string }>;
-    assert.equal(body.length, 0);
+    assert.equal(body.length, 2);
+    assert.deepEqual(body.map((row) => row.numero), [1, 2]);
 
     const afterRows = await db.select().from(parcelasCompra).where(and(
       eq(parcelasCompra.userId, user.id),
       eq(parcelasCompra.compraCartaoId, compra.id),
     ));
-    assert.equal(afterRows.length, 0);
+    assert.equal(afterRows.length, 2);
+
+    const repeatResponse = await fetch(`${baseUrl}/api/parcelas-compra/${compra.id}`);
+    assert.equal(repeatResponse.status, 200);
+    assert.equal((await repeatResponse.json() as Array<unknown>).length, 2);
+    const repeatedRows = await db.select().from(parcelasCompra).where(and(
+      eq(parcelasCompra.userId, user.id),
+      eq(parcelasCompra.compraCartaoId, compra.id),
+    ));
+    assert.equal(repeatedRows.length, 2);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {

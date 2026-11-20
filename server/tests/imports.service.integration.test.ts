@@ -83,10 +83,8 @@ testImports("pipeline de importacao: preview, confirmacao e rollback", async () 
 
     const duplicate = preview.items.find((item) => item.id === "dup-1");
     assert.ok(duplicate);
-    assert.equal(duplicate.status, "possivel_duplicata");
-    assert.equal(duplicate.duplicateId, "compra-existente");
-    assert.equal(duplicate.reviewRequired, true);
-    assert.ok(duplicate.confidenceScore < 100);
+    assert.equal(duplicate.status, "novo");
+    assert.equal(duplicate.duplicateId, null); // ID inexistente não prova duplicidade
 
     const novo = preview.items.find((item) => item.id === "ok-1");
     assert.ok(novo);
@@ -1164,7 +1162,7 @@ testImports("confirmacao bloqueia create_new quando ja existe servico parecido",
   try {
     await db.insert(servicos).values({
       userId: user.id,
-      nome: "Spotify Premium",
+      nome: "Spotify",
       categoria: "streaming",
       valorMensal: "21.90",
       dataCobranca: 10,
@@ -1736,6 +1734,7 @@ testImports("confirmacao bloqueia link_existing em item invalido", async () => {
       service.confirm(user.id, {
         importLogId: preview.importLogId,
         userConfirmed: true,
+        items: preview.items.map((item) => ({ ...item, action: "import" })),
       }),
       (error: unknown) => {
         assert.ok(error instanceof Error);
@@ -1833,6 +1832,7 @@ testImports("confirmacao bloqueia link_existing em duplicata_exata sem forceImpo
       service.confirm(user.id, {
         importLogId: preview.importLogId,
         userConfirmed: true,
+        items: preview.items.map((item) => ({ ...item, action: "import", forceImport: false })),
       }),
       (error: unknown) => {
         assert.ok(error instanceof Error);

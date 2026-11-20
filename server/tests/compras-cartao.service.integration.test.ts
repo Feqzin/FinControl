@@ -167,7 +167,7 @@ testComprasIntegration("create retorna erro quando cartao informado nao existe",
   }
 });
 
-testComprasIntegration("update de compra com parcelas_compra recalcula agregado do pai", async () => {
+testComprasIntegration("update de parcela de compra sincroniza parcelas_compra e recalcula agregado do pai", async () => {
   const { db } = await import("../db");
   const { ComprasCartaoService } = await import("../services/compras-cartao.service");
   const { financialRepository } = await import("../repositories/financial.repository");
@@ -233,8 +233,8 @@ testComprasIntegration("update de compra com parcelas_compra recalcula agregado 
 
   try {
     const result = await service.update(compra.id, user.id, {
-      valorTotal: "999.99",
-      valorParcela: "999.99",
+      valorTotal: "140.00",
+      valorParcela: "70.00",
       parcelaAtual: 1,
     });
 
@@ -242,8 +242,8 @@ testComprasIntegration("update de compra com parcelas_compra recalcula agregado 
       assert.fail("Nao deveria retornar erro no update");
     }
 
-    assert.equal(result.updated.valorTotal, "100.00");
-    assert.equal(result.updated.valorParcela, "40.00");
+    assert.equal(result.updated.valorTotal, "140.00");
+    assert.equal(result.updated.valorParcela, "70.00");
     assert.equal(result.updated.parcelas, 2);
     assert.equal(result.updated.parcelaAtual, 2);
 
@@ -252,9 +252,14 @@ testComprasIntegration("update de compra com parcelas_compra recalcula agregado 
       eq(comprasCartao.id, compra.id),
     ));
     assert.ok(persisted);
-    assert.equal(persisted.valorTotal, "100.00");
-    assert.equal(persisted.valorParcela, "40.00");
+    assert.equal(persisted.valorTotal, "140.00");
+    assert.equal(persisted.valorParcela, "70.00");
     assert.equal(persisted.parcelaAtual, 2);
+    const rows = await db.select().from(parcelasCompra).where(and(
+      eq(parcelasCompra.userId, user.id),
+      eq(parcelasCompra.compraCartaoId, compra.id),
+    ));
+    assert.deepEqual(rows.map((row) => row.valor), ["70.00", "70.00"]);
   } finally {
     await db.delete(users).where(eq(users.id, user.id));
   }
@@ -279,7 +284,7 @@ testComprasIntegration("create/update de compra com reembolso parcial preserva c
   const [pessoa] = await db.insert(pessoas).values({
     userId: user.id,
     nome: "Elza",
-    tipo: "pessoa_fisica",
+    tipo: "me_deve",
     telefone: null,
     observacao: null,
   }).returning();

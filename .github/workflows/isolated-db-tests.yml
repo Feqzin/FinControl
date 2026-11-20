@@ -1,0 +1,44 @@
+name: Isolated database tests
+
+on:
+  push:
+    branches:
+      - codex/fix-dc-001-invoice-payment
+  pull_request:
+    branches:
+      - codex/fix-dc-001-invoice-payment
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: fincontrol_test
+          POSTGRES_PASSWORD: fincontrol_test
+          POSTGRES_DB: debt_control_test
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U fincontrol_test -d debt_control_test"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql://fincontrol_test:fincontrol_test@127.0.0.1:55432/debt_control_test
+      SESSION_SECRET: fincontrol_ci_session_secret_for_tests
+      NODE_ENV: test
+      ALLOW_LOCAL_FILESYSTEM_STORAGE_FALLBACK: 'true'
+      PAYMENT_PROOF_STORAGE_DIR: /tmp/fincontrol-test-proofs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:all:db

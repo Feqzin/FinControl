@@ -42,18 +42,30 @@ export async function shouldRunDbIntegrationTests(): Promise<boolean> {
   }
 
   cachedAvailabilityPromise = (async () => {
-    if (!hasRequiredDbEnv()) return false;
+    if (!hasRequiredDbEnv()) {
+      if (process.env.REQUIRE_TEST_DATABASE === "true") {
+        throw new Error("Testes de integração exigem TEST_DATABASE_URL e SESSION_SECRET.");
+      }
+      return false;
+    }
     const databaseUrl = resolveTestDatabaseUrl();
     if (!databaseUrl) return false;
 
     try {
-      return await Promise.race<boolean>([
+      const available = await Promise.race<boolean>([
         probeDatabaseConnection(databaseUrl),
         new Promise<boolean>((resolve) => {
           setTimeout(() => resolve(false), DB_PROBE_TIMEOUT_MS + 500);
         }),
       ]);
+      if (!available && process.env.REQUIRE_TEST_DATABASE === "true") {
+        throw new Error("Banco de teste inacessível; testes de integração não podem ser ignorados.");
+      }
+      return available;
     } catch {
+      if (process.env.REQUIRE_TEST_DATABASE === "true") {
+        throw new Error("Banco de teste inacessível; testes de integração não podem ser ignorados.");
+      }
       return false;
     }
   })();

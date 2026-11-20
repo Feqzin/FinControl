@@ -160,9 +160,9 @@ testFinancialIntegration("calculo financeiro integrado mantem consistencia entre
     assert.equal(summary.servicosNaoVinculadosCartaoEquivalenteMensalTotal, 120);
     assert.equal(summary.servicosNaoVinculadosCartaoCobrancaRealTotal, 120);
     assert.equal(summary.totalCartoesMes, 100);
-    assert.equal(summary.totalEntradas, 2200);
+    assert.equal(summary.totalEntradas, 1500); // dívida prevista não é receita recebida
     assert.equal(summary.totalSaidas, 520);
-    assert.equal(summary.saldo, 1680);
+    assert.equal(summary.saldo, 980);
     assert.equal(summary.dividaTotal, 1200);
     assert.equal(summary.dividaTotalPendente, 1100);
     assert.equal(summary.dividaTotalPaga, 100);

@@ -1,32 +1,14 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { getInstallmentInvoicePaymentStatus } from "@shared/card-invoice-payments";
 import { CartoesService } from "../services/cartoes.service";
 
 async function withFakeNow<T>(isoDate: string, run: () => Promise<T> | T): Promise<T> {
-  const RealDate = Date;
-  const fixedTime = new RealDate(isoDate).getTime();
-
-  class FakeDate extends RealDate {
-    constructor(value?: string | number | Date) {
-      if (arguments.length === 0) {
-        super(fixedTime);
-        return;
-      }
-      super(value as string | number | Date);
-    }
-
-    static now() {
-      return fixedTime;
-    }
-  }
-
-  // @ts-expect-error test-only Date override
-  globalThis.Date = FakeDate;
+  mock.timers.enable({ apis: ["Date"], now: new Date(isoDate) });
   try {
     return await run();
   } finally {
-    globalThis.Date = RealDate;
+    mock.timers.reset();
   }
 }
 

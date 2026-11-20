@@ -216,6 +216,7 @@ async function main(): Promise<void> {
     DATABASE_URL: testDatabaseUrl,
     TEST_DATABASE_URL: testDatabaseUrl,
     DATABASE_URL_TEST: testDatabaseUrl,
+    REQUIRE_TEST_DATABASE: process.argv.includes("--all") ? "true" : process.env.REQUIRE_TEST_DATABASE,
     SESSION_SECRET: process.env.SESSION_SECRET?.trim() || "fincontrol_test_session_secret",
   };
 
@@ -230,7 +231,7 @@ async function main(): Promise<void> {
   await runCommand("db:migrate", env);
 
   await assertEssentialTablesExist(testDatabaseUrl);
-  await runCommand("test:security", env);
+  await runCommand(process.argv.includes("--all") ? "test" : "test:security", env);
 }
 
 main().catch((error) => {

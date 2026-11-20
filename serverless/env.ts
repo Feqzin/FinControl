@@ -274,7 +274,7 @@ if (isProduction) {
 }
 
 const allowLocalFilesystemStorageFallback =
-  nodeEnv === "development" && allowLocalFilesystemStorageFallbackRaw === true;
+  (nodeEnv === "development" || nodeEnv === "test") && allowLocalFilesystemStorageFallbackRaw === true;
 
 const officialIconAdminIdentifiers = parseCsvEnv(process.env.OFFICIAL_ICON_ADMIN_IDENTIFIERS);
 

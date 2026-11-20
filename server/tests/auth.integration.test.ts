@@ -62,7 +62,7 @@ testAuth("fluxo de autenticacao: register -> me -> logout", async () => {
     const meAfterLogout = await fetch(`${baseUrl}/api/auth/me`, {
       headers: { cookie },
     });
-    assert.equal(meAfterLogout.status, 401);
+    assert.equal(meAfterLogout.status, 401, `Resposta após logout: ${await meAfterLogout.text()}`);
   } finally {
     await db.delete(users).where(eq(users.username, username));
     await new Promise<void>((resolve, reject) => {

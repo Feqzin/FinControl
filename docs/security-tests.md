@@ -40,6 +40,14 @@ Servico criado:
 npm run test:security:db
 ```
 
+Para executar também todos os testes financeiros e de integração contra o mesmo banco isolado:
+
+```bash
+npm run test:all:db
+```
+
+Este comando recria o schema `public` no banco de teste informado. Nunca use um banco com dados que deseja guardar. A suíte completa exige conexão com PostgreSQL: se ele estiver indisponível, falha em vez de ignorar os testes de integração. O workflow `Isolated database tests` executa esse comando em cada PR e push da branch de produção com PostgreSQL temporário.
+
 O script:
 1. carrega `.env.test` (se existir);
 2. exige `TEST_DATABASE_URL` ou `DATABASE_URL_TEST`;
