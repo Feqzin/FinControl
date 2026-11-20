@@ -13,6 +13,10 @@ type CartoesListSectionProps = {
   formatCartaoCurrency: (value: number) => string;
   onOpenCompras: (cartaoId: string) => void;
   onOpenServices: () => void;
+  invoiceMonthLabel: string;
+  canOpenInvoicePaymentDialog: (cartaoId: string) => boolean;
+  getInvoicePaymentActionLabel: (cartaoId: string) => string;
+  onOpenInvoicePaymentDialog: (cartaoId: string) => void;
   resolveCardIconId: (cartao: Cartao) => string | null;
 };
 
@@ -27,6 +31,10 @@ export function CartoesListSection({
   formatCartaoCurrency,
   onOpenCompras,
   onOpenServices,
+  invoiceMonthLabel,
+  canOpenInvoicePaymentDialog,
+  getInvoicePaymentActionLabel,
+  onOpenInvoicePaymentDialog,
   resolveCardIconId,
 }: CartoesListSectionProps) {
   return (
@@ -42,6 +50,10 @@ export function CartoesListSection({
         formatCartaoCurrency={formatCartaoCurrency}
         onOpenCompras={onOpenCompras}
         onOpenServices={onOpenServices}
+        invoiceMonthLabel={invoiceMonthLabel}
+        canOpenInvoicePaymentDialog={canOpenInvoicePaymentDialog}
+        getInvoicePaymentActionLabel={getInvoicePaymentActionLabel}
+        onOpenInvoicePaymentDialog={onOpenInvoicePaymentDialog}
         resolveCardIconId={resolveCardIconId}
       />
     </div>

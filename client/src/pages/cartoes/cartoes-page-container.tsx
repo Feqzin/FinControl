@@ -3175,6 +3175,10 @@ export default function CartoesPage() {
       />
 
       <CartoesListSection
+        invoiceMonthLabel={selectedInvoiceMonthLabel}
+        canOpenInvoicePaymentDialog={canOpenInvoicePaymentDialog}
+        getInvoicePaymentActionLabel={getInvoicePaymentActionLabel}
+        onOpenInvoicePaymentDialog={handleOpenInvoicePaymentDialog}
         activeCartoesTab={activeCartoesTab}
         cartoes={cartoes}
         getCardTotal={getCardTotalForSelectedMonth}
