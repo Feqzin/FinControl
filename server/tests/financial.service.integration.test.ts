@@ -1,5 +1,5 @@
 import "dotenv/config";
-import test, { mock } from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
 import { shouldRunDbIntegrationTests } from "./test-db-availability";
 
@@ -147,14 +147,7 @@ testFinancialIntegration("calculo financeiro integrado mantem consistencia entre
       dataPagamentoPessoa: null,
     });
 
-    // A entrada prevista só participa do fluxo enquanto ainda não venceu.
-    mock.timers.enable({ apis: ["Date"], now: new Date("2026-04-05T12:00:00.000Z") });
-    let summary: Awaited<ReturnType<typeof service.getSummary>>;
-    try {
-      summary = await service.getSummary(user.id, "2026-04");
-    } finally {
-      mock.timers.reset();
-    }
+    const summary = await service.getSummary(user.id, "2026-04");
 
     assert.equal(summary.totalRenda, 1500);
     assert.equal(summary.totalReceberMes, 700);
@@ -167,9 +160,9 @@ testFinancialIntegration("calculo financeiro integrado mantem consistencia entre
     assert.equal(summary.servicosNaoVinculadosCartaoEquivalenteMensalTotal, 120);
     assert.equal(summary.servicosNaoVinculadosCartaoCobrancaRealTotal, 120);
     assert.equal(summary.totalCartoesMes, 100);
-    assert.equal(summary.totalEntradas, 2200);
+    assert.equal(summary.totalEntradas, 1500); // dívida prevista não é receita recebida
     assert.equal(summary.totalSaidas, 520);
-    assert.equal(summary.saldo, 1680);
+    assert.equal(summary.saldo, 980);
     assert.equal(summary.dividaTotal, 1200);
     assert.equal(summary.dividaTotalPendente, 1100);
     assert.equal(summary.dividaTotalPaga, 100);
