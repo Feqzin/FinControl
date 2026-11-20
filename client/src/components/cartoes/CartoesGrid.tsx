@@ -86,7 +86,7 @@ export function CartoesGrid({
                   onClick={() => onOpenCompras(cartao.id)}
                   data-testid={`button-open-cartao-compras-${cartao.id}`}
                 >
-                  Ver detalhes
+                  Ver compras
                 </Button>
               </div>
 
@@ -114,8 +114,7 @@ export function CartoesGrid({
                   testId={`projected-services-summary-${cartao.id}`}
                 />
 
-                <details className="mt-3 group">
-                  <summary className="cursor-pointer rounded-lg py-2 text-sm font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Limite e informações do cartão</summary>
+                <div className="mt-3">
                   <div className="mt-2 flex justify-between gap-3 text-sm">
                     <span className="text-muted-foreground">Disponível estimado</span>
                     <span className="font-semibold tabular-nums">{formatCartaoCurrency(limiteDisponivel)}</span>
@@ -158,7 +157,7 @@ export function CartoesGrid({
                     </div>
                   </div>
                 </div>
-                </details>
+                </div>
               </div>
             </CartaoCard>
           );
