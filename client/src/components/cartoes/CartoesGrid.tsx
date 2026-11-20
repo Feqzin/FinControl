@@ -34,7 +34,6 @@ export function CartoesGrid({
   getCardProjectedServicesTotal,
   getCardUsedLimit,
   getCardAvailableLimit,
-  getCardCompras,
   formatCartaoCurrency,
   onOpenCompras,
   onOpenServices,
@@ -58,7 +57,6 @@ export function CartoesGrid({
           const servicosPrevistos = getCardProjectedServicesTotal(cartao.id);
           const comprometido = getCardUsedLimit(cartao.id);
           const limiteDisponivel = getCardAvailableLimit(cartao.id);
-          const totalCompras = getCardCompras(cartao.id).length;
           const percentualRaw = limite > 0 ? (comprometido / limite) * 100 : 0;
           const percentual = Math.max(0, Math.min(percentualRaw, 100));
           const isCritical = percentualRaw >= 90;
@@ -71,7 +69,7 @@ export function CartoesGrid({
 
           return (
             <CartaoCard key={cartao.id} className="rounded-[24px]" contentClassName="space-y-3 p-3.5 sm:p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex items-center gap-3">
                   <BrandIconDisplay name={cartao.nome} iconeId={resolveCardIconId(cartao)} size="sm" />
                   <div className="min-w-0">
@@ -82,7 +80,7 @@ export function CartoesGrid({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 self-start rounded-xl border-border/60 bg-background/80 px-3 text-xs shadow-sm touch-feedback sm:self-auto sm:px-3.5"
+                  className="h-9 shrink-0 rounded-xl px-3 text-xs"
                   onClick={() => onOpenCompras(cartao.id)}
                   data-testid={`button-open-cartao-compras-${cartao.id}`}
                 >
@@ -90,15 +88,16 @@ export function CartoesGrid({
                 </Button>
               </div>
 
-              <div className="rounded-[22px] border border-border/50 bg-muted/20 p-3">
-                <div className="space-y-1">
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 space-y-1">
                   <p className="text-xs text-muted-foreground">Fatura · {invoiceMonthLabel}</p>
-                  <p className="text-3xl font-semibold tracking-tight tabular-nums [overflow-wrap:anywhere]">
+                  <p className="text-2xl font-semibold tracking-tight tabular-nums [overflow-wrap:anywhere]">
                     {formatCartaoCurrency(faturaAtual)}
                   </p>
                 </div>
                 <Button
-                  className="mt-4 min-h-11 w-full rounded-xl"
+                  className="min-h-11 shrink-0 rounded-xl px-4"
                   disabled={!canOpenInvoicePaymentDialog(cartao.id)}
                   onClick={() => onOpenInvoicePaymentDialog(cartao.id)}
                   aria-label={`${getInvoicePaymentActionLabel(cartao.id)} — ${cartao.nome}`}
@@ -106,6 +105,7 @@ export function CartoesGrid({
                 >
                   {getInvoicePaymentActionLabel(cartao.id)}
                 </Button>
+                </div>
 
                 <ProjectedServicesNotice
                   amount={servicosPrevistos}
@@ -114,49 +114,33 @@ export function CartoesGrid({
                   testId={`projected-services-summary-${cartao.id}`}
                 />
 
-                <div className="mt-3">
-                  <div className="mt-2 flex justify-between gap-3 text-sm">
-                    <span className="text-muted-foreground">Disponível estimado</span>
-                    <span className="font-semibold tabular-nums">{formatCartaoCurrency(limiteDisponivel)}</span>
-                  </div>
-                  <p className="mt-2 text-xs text-muted-foreground">{totalCompras} compra(s) parcelada(s)</p>
-                <div className="mt-3 space-y-2 rounded-2xl border border-border/50 bg-background/80 px-3 py-2.5">
+                <div className="space-y-2 border-t border-border/60 pt-3">
                   <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="text-muted-foreground">Uso do limite</span>
-                    <span
-                      className={isCritical ? "font-semibold text-red-600" : isWarning ? "font-semibold text-amber-600" : "font-semibold text-foreground"}
-                    >
-                      {percentualRaw.toFixed(0)}%
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      Limite consumido
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button type="button" className="inline-flex h-6 w-6 items-center justify-center rounded-full hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Explicação do limite consumido">
+                            <CircleHelp className="h-3.5 w-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-56 text-xs">{comprometidoTooltip}</TooltipContent>
+                      </Tooltip>
                     </span>
+                    <span className={isCritical ? "font-semibold text-red-600 dark:text-red-400" : isWarning ? "font-semibold text-amber-600 dark:text-amber-400" : "font-semibold text-foreground"}>{percentualRaw.toFixed(0)}%</span>
                   </div>
-                  <Progress value={percentual} className={`h-1.5 ${barColorClass}`} />
-                  <div className="grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2">
+                  <Progress value={percentual} className={`h-1.5 ${barColorClass}`} aria-label="Percentual do limite consumido" />
+                  <div className="grid grid-cols-2 gap-3 text-xs">
                     <div className="min-w-0">
-                      <p className="text-muted-foreground leading-snug">Limite total cadastrado</p>
-                      <p className="font-semibold [overflow-wrap:anywhere]">{formatCartaoCurrency(limite)}</p>
+                      <p className="text-muted-foreground">Consumido</p>
+                      <p className="mt-1 font-semibold tabular-nums [overflow-wrap:anywhere]">{formatCartaoCurrency(comprometido)}</p>
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-1 text-muted-foreground">
-                        <p>Comprometido</p>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              type="button"
-                              className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:text-foreground"
-                              aria-label="Explicação do valor comprometido"
-                            >
-                              <CircleHelp className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="max-w-56 text-xs">
-                            {comprometidoTooltip}
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                      <p className="font-semibold [overflow-wrap:anywhere]">{formatCartaoCurrency(comprometido)}</p>
+                    <div className="min-w-0 text-right">
+                      <p className="text-muted-foreground">Disponível estimado</p>
+                      <p className="mt-1 font-semibold tabular-nums [overflow-wrap:anywhere]">{formatCartaoCurrency(limiteDisponivel)}</p>
                     </div>
                   </div>
-                </div>
+                  <p className="text-[11px] text-muted-foreground">Limite total: {formatCartaoCurrency(limite)}</p>
                 </div>
               </div>
             </CartaoCard>
