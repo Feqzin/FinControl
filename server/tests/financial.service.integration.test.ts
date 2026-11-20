@@ -1,5 +1,5 @@
 import "dotenv/config";
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { shouldRunDbIntegrationTests } from "./test-db-availability";
 
@@ -147,7 +147,14 @@ testFinancialIntegration("calculo financeiro integrado mantem consistencia entre
       dataPagamentoPessoa: null,
     });
 
-    const summary = await service.getSummary(user.id, "2026-04");
+    // A entrada prevista só participa do fluxo enquanto ainda não venceu.
+    mock.timers.enable({ apis: ["Date"], now: new Date("2026-04-05T12:00:00.000Z") });
+    let summary: Awaited<ReturnType<typeof service.getSummary>>;
+    try {
+      summary = await service.getSummary(user.id, "2026-04");
+    } finally {
+      mock.timers.reset();
+    }
 
     assert.equal(summary.totalRenda, 1500);
     assert.equal(summary.totalReceberMes, 700);
