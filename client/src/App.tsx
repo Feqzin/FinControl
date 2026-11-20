@@ -20,7 +20,8 @@ import { OnboardingTour } from "@/components/onboarding-tour";
 
 const NotFoundPage = lazy(() => import("@/pages/not-found"));
 const AuthPage = lazy(() => import("@/pages/auth-page"));
-const DashboardPage = lazy(() => import("@/pages/dashboard"));
+const loadDashboard = () => import("@/pages/dashboard");
+const DashboardPage = lazy(loadDashboard);
 const PessoasPage = lazy(() => import("@/pages/pessoas-page"));
 const DividasPage = lazy(() => import("@/pages/dividas-page"));
 const CartoesPage = lazy(() => import("@/pages/cartoes-page"));
@@ -272,6 +273,10 @@ function AppContent() {
   } = useAuth();
   const [location, setLocation] = useLocation();
   const [authLoadingTimedOut, setAuthLoadingTimedOut] = useState(false);
+  // Fetch route code alongside session verification, without requesting private data.
+  useEffect(() => {
+    if (location === "/") void loadDashboard().catch(() => {});
+  }, [location]);
   const isResetPage = location === "/redefinir-senha";
   const isAuthPage = location === "/auth";
   const hasRecoverableAuthError = Boolean(authError && authErrorStatus !== null && authErrorStatus >= 500);
