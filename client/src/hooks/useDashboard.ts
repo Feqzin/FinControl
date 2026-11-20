@@ -190,7 +190,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
 
   const dashboardOverviewQuery = useQuery<DashboardOverviewResponse>({
     queryKey: ["/api/dashboard/overview", selectedMonth],
-    queryFn: () => fetchDashboardOverview(selectedMonth),
+    queryFn: ({ signal }) => fetchDashboardOverview(selectedMonth, signal),
   });
 
   const shouldUseLegacyFallback = dashboardOverviewQuery.isError;
@@ -267,7 +267,7 @@ export function useDashboard({ selectedMonth, visible }: { selectedMonth: string
   });
   const financialSummaryQuery = useQuery<FinancialSummary>({
     queryKey: ["/api/financial/summary", selectedMonth],
-    queryFn: () => fetchFinancialSummary(selectedMonth),
+    queryFn: ({ signal }) => fetchFinancialSummary(selectedMonth, signal),
     enabled: shouldEnableLegacyQueries,
   });
 
