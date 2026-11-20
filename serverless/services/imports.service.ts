@@ -582,7 +582,8 @@ function normalizeImportItem(
     cartaoId: options?.cartaoId ?? "",
   }, options?.duplicateRows ?? []);
   const duplicateRow = duplicateRowFromInput ?? candidateMatch?.row ?? null;
-  const duplicateId = duplicateRow?.id ?? duplicateIdFromInput;
+  // Um ID sugerido pelo cliente só é válido se pertencer a uma compra deste usuário/cartão.
+  const duplicateId = duplicateRow?.id ?? null;
   const duplicateKind: "exact" | "possible" | null =
     candidateMatch?.kind
     ?? (duplicateRowFromInput
