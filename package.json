@@ -55,6 +55,7 @@
     "test:account-preferences": "node --import tsx --test server/tests/appearance.unit.test.ts server/tests/debt-groups.unit.test.ts server/tests/dashboard-shortcuts.unit.test.ts",
     "test:security": "tsx --test serverless/tests/security/index.test.ts",
     "test:security:db": "tsx scripts/test-security-db.ts",
+    "test:all:db": "tsx scripts/test-security-db.ts --all",
     "test:db:up": "docker compose -f docker-compose.test.yml --env-file .env.test up -d",
     "test:db:down": "docker compose -f docker-compose.test.yml --env-file .env.test down -v",
     "package:source": "powershell -ExecutionPolicy Bypass -File script/package-source.ps1"
