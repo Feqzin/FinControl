@@ -88,16 +88,16 @@ export function CartoesGrid({
                 </Button>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="rounded-[22px] border border-border/50 bg-muted/20 p-3">
+                <div className="space-y-3">
                 <div className="min-w-0 space-y-1">
                   <p className="text-xs text-muted-foreground">Fatura · {invoiceMonthLabel}</p>
-                  <p className="text-2xl font-semibold tracking-tight tabular-nums [overflow-wrap:anywhere]">
+                  <p className="text-3xl font-semibold tracking-tight tabular-nums [overflow-wrap:anywhere]">
                     {formatCartaoCurrency(faturaAtual)}
                   </p>
                 </div>
                 <Button
-                  className="min-h-11 shrink-0 rounded-xl px-4"
+                  className="min-h-11 w-full rounded-xl px-4"
                   disabled={!canOpenInvoicePaymentDialog(cartao.id)}
                   onClick={() => onOpenInvoicePaymentDialog(cartao.id)}
                   aria-label={`${getInvoicePaymentActionLabel(cartao.id)} — ${cartao.nome}`}
@@ -114,7 +114,7 @@ export function CartoesGrid({
                   testId={`projected-services-summary-${cartao.id}`}
                 />
 
-                <div className="space-y-2 border-t border-border/60 pt-3">
+                <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
                   <div className="flex items-center justify-between gap-2 text-xs">
                     <span className="flex items-center gap-1 text-muted-foreground">
                       Limite consumido
