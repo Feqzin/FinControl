@@ -585,22 +585,10 @@ export default function ServicosPage() {
     <div className="app-page-shell app-section-stack" data-testid="servicos-page">
       <FintechPageHeader
         title="Serviços e Assinaturas"
-        subtitle="Gerencie seus gastos recorrentes e divisões."
+        subtitle="Acompanhe suas assinaturas e cobranças."
         rowClassName="items-start gap-4 xl:items-center"
         contentClassName="space-y-2"
         titleClassName="sm:text-3xl"
-        badges={(
-          <>
-            <span className="rounded-full bg-muted/65 px-3 py-1.5 font-medium text-muted-foreground shadow-sm">
-              {servicos.length} serviço{servicos.length !== 1 ? "s" : ""}
-            </span>
-            {servicoPessoas.length > 0 && (
-              <span className="rounded-full border border-blue-500/10 bg-blue-500/10 px-3 py-1.5 font-medium text-blue-700 shadow-sm dark:text-blue-400">
-                {servicoPessoas.length} vínculo{servicoPessoas.length !== 1 ? "s" : ""}
-              </span>
-            )}
-          </>
-        )}
         actionsClassName="flex w-full justify-stretch sm:w-auto sm:justify-end"
         actions={(
           <Dialog
@@ -1037,10 +1025,10 @@ export default function ServicosPage() {
 
       <div className="fintech-grid-fluid-260">
         <Card className="hover-elevate overflow-hidden border border-border/60 bg-card/95 shadow-sm">
-          <CardContent className="p-5 sm:p-6">
+          <CardContent className="p-4">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <p className="text-sm text-muted-foreground/90">Total real do mês em serviços ativos</p>
+                <p className="text-sm text-muted-foreground/90">Serviços ativos · total do mês</p>
                 <p className="fin-value-kpi mt-2 tracking-tight">{formatCurrencyBRL(totalMensal)}</p>
               </div>
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-amber-500/10 bg-amber-500/10 shadow-sm">
@@ -1108,8 +1096,7 @@ export default function ServicosPage() {
                   const cartaoVinculado = compraVinculada ? cartaoById.get(compraVinculada.cartaoId) : null;
                   const origemMesAtual = getOrigemPagamentoMesAtual(s);
                   const billingView = resolveServicoBillingView(s);
-                  const categoriaLabel = categoriaLabelByValue.get(s.categoria) ?? formatCategoriaFallback(s.categoria);
-                  const periodicidadeLabel = SERVICO_PERIODICIDADE_OPTIONS.find(
+                                    const periodicidadeLabel = SERVICO_PERIODICIDADE_OPTIONS.find(
                     (option) => option.value === billingView.periodicidade,
                   )?.label ?? billingView.periodicidade;
                   return (
@@ -1118,8 +1105,8 @@ export default function ServicosPage() {
                       className="hover-elevate overflow-hidden rounded-2xl border border-border/60 bg-card/95 shadow-sm transition-all duration-200"
                       data-testid={`card-servico-${s.id}`}
                     >
-                      <CardContent className="space-y-3 p-3.5 sm:space-y-4 sm:p-5">
-                        <div className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-start md:gap-4">
+                      <CardContent className="space-y-3 p-3.5 sm:p-4">
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start">
                           <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/60 bg-muted/25 shadow-sm sm:h-12 sm:w-12">
                             <BrandIconDisplay name={s.nome} iconeId={resolveServiceIconId(s)} size="sm" />
                           </div>
@@ -1141,30 +1128,15 @@ export default function ServicosPage() {
                                 </span>
                               )}
                             </div>
-                            <div className="flex flex-wrap gap-2 text-[11px]">
-                              <span className="rounded-full bg-muted/65 px-2.5 py-1 font-medium text-muted-foreground shadow-sm">
-                                {categoriaLabel}
-                              </span>
-                              <span className="rounded-full bg-muted/65 px-2.5 py-1 font-medium text-muted-foreground shadow-sm">
-                                {periodicidadeLabel}
-                              </span>
-                              <span className="hidden rounded-full bg-muted/65 px-2.5 py-1 font-medium text-muted-foreground shadow-sm sm:inline-flex">
-                                {formatServicoBillingScheduleLabel(s)}
-                              </span>
-                              <span className="hidden rounded-full bg-muted/65 px-2.5 py-1 font-medium text-muted-foreground shadow-sm sm:inline-flex">
-                                {s.formaPagamento}
-                              </span>
-                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {periodicidadeLabel} · {formatServicoBillingScheduleLabel(s)}
+                            </p>
                             <span className={`inline-flex w-fit rounded-full border border-transparent bg-muted/45 px-2.5 py-1 text-[10px] font-medium sm:text-[11px] ${origemMesAtual.className}`}>
                               {origemMesAtual.label}
                             </span>
-                            {compraVinculada && (
-                              <div className="hidden rounded-xl border border-blue-500/10 bg-blue-500/5 px-3 py-2 text-xs text-blue-700/90 sm:block dark:text-blue-400">
-                                Vínculo de cartão: {cartaoVinculado?.nome ?? "Cartão"} · {compraVinculada.descricao}
-                              </div>
-                            )}
+
                           </div>
-                          <div className="flex w-full min-w-0 flex-col items-start gap-1.5 md:w-auto md:min-w-[136px] md:items-end md:gap-2">
+                          <div className="col-start-2 flex min-w-0 flex-col items-start gap-1.5 sm:col-start-3 sm:row-start-1 sm:items-end">
                             <span className="fin-value-person text-[clamp(18px,5vw,22px)] leading-none tracking-tight [overflow-wrap:anywhere] md:text-right">
                               {formatServicoBillingValue(s)}
                             </span>
@@ -1189,8 +1161,9 @@ export default function ServicosPage() {
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center justify-end">
-                            <div className="flex flex-wrap items-center justify-end gap-1.5 rounded-2xl border border-border/60 bg-muted/[0.16] px-1.5 py-1.5 shadow-sm sm:rounded-xl sm:px-2">
+                          <details className="min-w-0">
+                            <summary className="cursor-pointer rounded-lg px-2 py-1.5 text-sm font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Gerenciar</summary>
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -1300,7 +1273,7 @@ export default function ServicosPage() {
                                 <Trash2 className="h-4 w-4 text-muted-foreground" />
                               </Button>
                             </div>
-                          </div>
+                          </details>
                         </div>
                         {isDivisaoOpen && (
                           <DivisaoPanel
