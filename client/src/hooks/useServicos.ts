@@ -21,7 +21,7 @@ import {
   type ServicoPayload,
 } from "@/services/api/servicos";
 
-export function useServicos() {
+export function useServicos({ loadDivisionData = true }: { loadDivisionData?: boolean } = {}) {
   const { data: servicos = [], isLoading } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
   const { data: servicoPessoas = [] } = useQuery<ServicoPessoa[]>({ queryKey: ["/api/servico-pessoas"] });
   const { data: servicoPagamentos = [] } = useQuery<ServicoPagamento[]>({ queryKey: ["/api/servico-pagamentos"] });
@@ -29,12 +29,13 @@ export function useServicos() {
     queryKey: ["/api/servicos/cobranca-pagamentos"],
     queryFn: fetchServicoCobrancaPagamentos,
   });
-  const { data: pessoas = [] } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"] });
+  const { data: pessoas = [], isLoading: isPeopleLoading, isError: peopleError } = useQuery<Pessoa[]>({ queryKey: ["/api/pessoas"], enabled: loadDivisionData });
   const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
   const { data: compras = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
   const { data: parcelasCompra = [] } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"] });
-  const { data: pessoaSaldoMovimentacoes = [] } = useQuery<PessoaSaldoMovimentacao[]>({
+  const { data: pessoaSaldoMovimentacoes = [], isLoading: isBalanceLoading, isError: balanceError } = useQuery<PessoaSaldoMovimentacao[]>({
     queryKey: ["/api/pessoas/saldo-movimentacoes"],
+    enabled: loadDivisionData,
   });
 
   const createMutation = useMutation({
@@ -83,6 +84,9 @@ export function useServicos() {
     compras,
     parcelasCompra,
     pessoaSaldoMovimentacoes,
+    isDivisionLoading: isPeopleLoading || isBalanceLoading,
+    hasDivisionError: peopleError || balanceError,
+    retryDivision: () => Promise.all([["/api/pessoas"], ["/api/pessoas/saldo-movimentacoes"]].map(queryKey => queryClient.invalidateQueries({ queryKey }))),
     isLoading,
     createMutation,
     toggleStatusMutation,

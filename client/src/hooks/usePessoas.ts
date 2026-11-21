@@ -195,18 +195,22 @@ export function usePessoas({
   const isLoading = isRemovedFilter
     ? removedPessoasQuery.isLoading
     : (shouldUseLegacyPessoasList ? legacyPessoasQuery.isLoading : pessoasComResumoQuery.isLoading);
+  const loadDetailedData = Boolean(historyPessoa?.id) || shouldUseLegacyPessoasList
+    || Boolean(pessoasComResumoQuery.data?.some((pessoa) => !pessoa.resumo?.totais || !pessoa.resumo?.alertas));
+
   const { data: dividas = [] } = useQuery<Divida[]>({ queryKey: ["/api/dividas"] });
-  const { data: parcelas = [] } = useQuery<Parcela[]>({ queryKey: ["/api/parcelas"] });
-  const { data: comprasCartao = [] } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"] });
-  const { data: parcelasCompra = [] } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"] });
-  const { data: cartoes = [] } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"] });
-  const { data: cartoesResumo = [] } = useQuery<CartaoResumo[]>({
+  const { data: parcelas = [], isLoading: parcelasLoading, isError: parcelasError } = useQuery<Parcela[]>({ queryKey: ["/api/parcelas"], enabled: loadDetailedData });
+  const { data: comprasCartao = [], isLoading: comprasCartaoLoading, isError: comprasCartaoError } = useQuery<CompraCartao[]>({ queryKey: ["/api/compras-cartao"], enabled: loadDetailedData });
+  const { data: parcelasCompra = [], isLoading: parcelasCompraLoading, isError: parcelasCompraError } = useQuery<ParcelaCompra[]>({ queryKey: ["/api/parcelas-compra"], enabled: loadDetailedData });
+  const { data: cartoes = [], isLoading: cartoesLoading, isError: cartoesError } = useQuery<Cartao[]>({ queryKey: ["/api/cartoes"], enabled: loadDetailedData });
+  const { data: cartoesResumo = [], isLoading: cartoesResumoLoading, isError: cartoesResumoError } = useQuery<CartaoResumo[]>({
     queryKey: ["/api/cartoes/resumo"],
     queryFn: fetchCartoesResumo,
+    enabled: Boolean(historyPessoa?.id),
   });
-  const { data: servicoPessoas = [] } = useQuery<ServicoPessoa[]>({ queryKey: ["/api/servico-pessoas"] });
-  const { data: servicoPagamentos = [] } = useQuery<ServicoPagamento[]>({ queryKey: ["/api/servico-pagamentos"] });
-  const { data: servicos = [] } = useQuery<Servico[]>({ queryKey: ["/api/servicos"] });
+  const { data: servicoPessoas = [], isLoading: servicoPessoasLoading, isError: servicoPessoasError } = useQuery<ServicoPessoa[]>({ queryKey: ["/api/servico-pessoas"], enabled: loadDetailedData });
+  const { data: servicoPagamentos = [], isLoading: servicoPagamentosLoading, isError: servicoPagamentosError } = useQuery<ServicoPagamento[]>({ queryKey: ["/api/servico-pagamentos"], enabled: loadDetailedData });
+  const { data: servicos = [], isLoading: servicosLoading, isError: servicosError } = useQuery<Servico[]>({ queryKey: ["/api/servicos"], enabled: loadDetailedData });
   const { data: historyTimelineEvents = [], isLoading: isTimelineLoading } = useQuery<PagamentoTimelineEvent[]>({
     queryKey: ["/api/pessoas", historyPessoa?.id, "timeline-pagamentos"],
     enabled: Boolean(historyPessoa?.id),
@@ -804,6 +808,8 @@ export function usePessoas({
     servicoPagamentos,
     servicos,
     isLoading,
+    isDetailsLoading: parcelasLoading || comprasCartaoLoading || parcelasCompraLoading || cartoesLoading || cartoesResumoLoading || servicoPessoasLoading || servicoPagamentosLoading || servicosLoading,
+    hasDetailsError: parcelasError || comprasCartaoError || parcelasCompraError || cartoesError || cartoesResumoError || servicoPessoasError || servicoPagamentosError || servicosError,
     filtered,
     meAtual,
     historyDividas,

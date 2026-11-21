@@ -220,12 +220,15 @@ export default function ServicosPage() {
     compras,
     parcelasCompra,
     pessoaSaldoMovimentacoes,
+    isDivisionLoading,
+    hasDivisionError,
+    retryDivision,
     isLoading,
     createMutation,
     toggleStatusMutation,
     deleteMutation,
     updateMutation,
-  } = useServicos();
+  } = useServicos({ loadDivisionData: expandedDivisao.size > 0 });
   const { data: iconMatchRules = [] } = useQuery<IconMatchRuleApiModel[]>({
     queryKey: ["/api/icon-match-rules"],
     queryFn: fetchIconMatchRules,
@@ -1275,7 +1278,11 @@ export default function ServicosPage() {
                             </div>
                           </details>
                         </div>
-                        {isDivisaoOpen && (
+                        {isDivisaoOpen && (isDivisionLoading ? (
+                          <p className="py-3 text-sm text-muted-foreground" role="status">Carregando divisão...</p>
+                        ) : hasDivisionError ? (
+                          <div className="space-y-2 py-3" role="alert"><p className="text-sm">Não foi possível carregar a divisão.</p><Button variant="outline" size="sm" onClick={() => void retryDivision()}>Tentar novamente</Button></div>
+                        ) : (
                           <DivisaoPanel
                             servico={s}
                             servicoPessoas={servicoPessoas}
@@ -1283,7 +1290,7 @@ export default function ServicosPage() {
                             pessoas={pessoas}
                             pessoaSaldoMovimentacoes={pessoaSaldoMovimentacoes}
                           />
-                        )}
+                        ))}
                       </CardContent>
                     </Card>
                   );
