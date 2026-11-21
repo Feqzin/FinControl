@@ -39,4 +39,14 @@ export function registerDebtGroupsRoutes(app: Express, pool: Pool, requireAuth: 
   };
   app.post("/api/debt-groups", requireAuth, save);
   app.patch("/api/debt-groups/:id", requireAuth, save);
+  app.delete("/api/debt-groups/:id", requireAuth, async (req, res, next) => {
+    try {
+      const result = await pool.query(
+        "DELETE FROM user_debt_groups WHERE user_id = $1 AND id = $2 RETURNING id",
+        [(req.user as { id: string }).id, req.params.id],
+      );
+      if (!result.rows[0]) { res.status(404).json({ message: "Grupo não encontrado." }); return; }
+      res.sendStatus(204);
+    } catch (error) { next(error); }
+  });
 }

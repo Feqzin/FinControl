@@ -10,6 +10,7 @@ async function scenario(run: (base: string, calls: Array<{ sql: string; args: un
   const pool = { query: async (sql: string, args: unknown[]) => {
     calls.push({ sql, args });
     if (sql.startsWith("SELECT 'manual:'")) return { rows: (args[1] as string[]).filter(id => id === "manual:owned-1").map(id => ({ id })) };
+    if (sql.startsWith("DELETE")) { const index = rows.findIndex(row => row.userId === args[0] && row.id === args[1]); return { rows: index < 0 ? [] : rows.splice(index, 1) }; }
     if (sql.startsWith("INSERT")) { const row = { id: "group-1", userId: args[0] as string, name: args[1] as string, debtIds: JSON.parse(args[2] as string) }; rows.push(row); return { rows: [row] }; }
     if (sql.startsWith("UPDATE")) { const row = rows.find(row => row.userId === args[0] && row.id === args[3]); if (!row) return { rows: [] }; row.name = args[1] as string; row.debtIds = JSON.parse(args[2] as string); return { rows: [row] }; }
     return { rows: rows.filter(row => row.userId === args[0]) };
@@ -47,4 +48,16 @@ test("cria e edita grupo persistido isolando leitura e atualização por usuári
 test("valida nome e permite criar grupo vazio", async () => scenario(async (base) => {
   for (const name of [" ", "x".repeat(61)]) assert.equal((await fetch(`${base}/api/debt-groups`, { method: "POST", headers, body: JSON.stringify({ name, debtIds: [] }) })).status, 400);
   assert.equal((await fetch(`${base}/api/debt-groups`, { method: "POST", headers, body: JSON.stringify({ name: "Viagem", debtIds: [] }) })).status, 201);
+}));
+
+test("exclui apenas o grupo da conta autenticada e mantém as dívidas", async () => scenario(async (base, calls) => {
+  const created = await fetch(`${base}/api/debt-groups`, { method: "POST", headers, body: JSON.stringify({ name: "Casa", debtIds: ["manual:owned-1"] }) });
+  const group = await created.json();
+  assert.equal((await fetch(`${base}/api/debt-groups/${group.id}`, { method: "DELETE" })).status, 401);
+  assert.equal((await fetch(`${base}/api/debt-groups/${group.id}`, { method: "DELETE", headers: { ...headers, "x-test-user": "other" } })).status, 404);
+  assert.equal((await (await fetch(`${base}/api/debt-groups`, { headers })).json()).length, 1);
+  assert.equal((await fetch(`${base}/api/debt-groups/${group.id}`, { method: "DELETE", headers })).status, 204);
+  assert.deepEqual(await (await fetch(`${base}/api/debt-groups`, { headers })).json(), []);
+  assert.equal((await fetch(`${base}/api/debt-groups/${group.id}`, { method: "DELETE", headers })).status, 404);
+  assert.equal(calls.filter(call => call.sql.startsWith("DELETE")).every(call => call.sql.startsWith("DELETE FROM user_debt_groups WHERE user_id = $1 AND id = $2")), true);
 }));
