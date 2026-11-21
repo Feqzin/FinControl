@@ -21,7 +21,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { queryClient } from "@/lib/queryClient";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -215,6 +216,8 @@ export default function PessoasPage() {
     historySaldo,
     historyTimelineEvents,
     isTimelineLoading,
+    isDetailsLoading,
+    hasDetailsError,
     isSaldoLoading,
     createPessoaMutation,
     createDividaMutation,
@@ -871,7 +874,11 @@ export default function PessoasPage() {
         }
       }}>
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto px-4 sm:px-6">
-          {historyPessoa && historyStats && historyResumo && (
+          {historyPessoa && historyStats && historyResumo && (isDetailsLoading ? (
+            <div className="py-8 text-sm text-muted-foreground" role="status"><SheetTitle className="sr-only">Detalhes de {historyPessoa.nome}</SheetTitle>Carregando detalhes de {historyPessoa.nome}...</div>
+          ) : hasDetailsError ? (
+            <div className="space-y-3 py-8" role="alert"><SheetTitle className="sr-only">Detalhes de {historyPessoa.nome}</SheetTitle><p>Não foi possível carregar todos os detalhes.</p><Button variant="outline" onClick={() => void queryClient.invalidateQueries()}>Tentar novamente</Button></div>
+          ) : (
             <>
               <PessoasHistorySheetSummary
                 title={`Histórico de ${historyPessoa.nome}`}
@@ -1879,7 +1886,7 @@ export default function PessoasPage() {
                 )}
               </div>
             </>
-          )}
+          ))}
         </SheetContent>
       </Sheet>
 
