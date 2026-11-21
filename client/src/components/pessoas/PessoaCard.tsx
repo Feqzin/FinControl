@@ -106,7 +106,7 @@ export function PessoaCard({
   if (isEssentialMode) {
     const overdue = hasAtraso || resumo.dividas.euDevo.vencidas > 0;
     return <Card className="essential-surface h-full rounded-2xl border-border/60 bg-card shadow-sm" data-testid={`card-pessoa-${pessoa.id}`}>
-      <CardContent className="flex h-full flex-col gap-4 p-5">
+      <CardContent className="flex h-full flex-col gap-4 p-5 sm:p-5">
         <div className="flex items-start gap-3">
           <div className="essential-icon font-semibold" aria-hidden="true">{pessoa.nome.charAt(0).toUpperCase()}</div>
           <div className="min-w-0 flex-1"><p className="break-words font-semibold">{pessoa.nome}</p><p className="mt-1 text-xs text-muted-foreground">{pessoa.listaNegra ? "Pessoa sinalizada · ver detalhes" : overdue ? "Há pagamentos em atraso" : resumo.consolidadoPendente > 0 ? "Com pendências" : "Sem pendências"}</p></div>
@@ -231,7 +231,7 @@ export function PessoaCard({
       className="rounded-2xl border border-border/60 bg-card/95 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
       data-testid={`card-pessoa-${pessoa.id}`}
     >
-      <CardContent className="flex h-full min-h-[220px] flex-col gap-4 p-5">
+      <CardContent className="flex h-full min-h-[220px] flex-col gap-4 p-5 sm:p-5">
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-black/5 bg-muted/45 text-primary shadow-sm">
             <span className="text-sm font-semibold">
