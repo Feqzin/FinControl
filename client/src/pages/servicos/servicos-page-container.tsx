@@ -972,7 +972,7 @@ export default function ServicosPage() {
       />
 
       <div className="rounded-2xl border border-border/60 bg-card/95 p-3 shadow-sm sm:p-3.5">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <Tabs value={servicosTab} onValueChange={(value) => setServicosTab(value as typeof servicosTab)} className="w-full min-w-0 xl:flex-1">
             <TabsList className="mobile-tabs-scroll h-10 w-max min-w-full justify-start rounded-xl border border-border/60 bg-muted/25 p-1 xl:w-auto">
               <TabsTrigger value="ativos" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-ativos">Ativos</TabsTrigger>
