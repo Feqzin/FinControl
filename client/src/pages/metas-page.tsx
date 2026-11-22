@@ -288,7 +288,7 @@ export default function MetasPage() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <FintechSurfaceCard>
-          <CardContent className="space-y-4 p-5">
+          <CardContent className="space-y-4 p-5 sm:p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -307,7 +307,7 @@ export default function MetasPage() {
         </FintechSurfaceCard>
 
         <FintechSurfaceCard>
-          <CardContent className="space-y-4 p-5">
+          <CardContent className="space-y-4 p-5 sm:p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -326,7 +326,7 @@ export default function MetasPage() {
         </FintechSurfaceCard>
 
         <FintechSurfaceCard>
-          <CardContent className="space-y-4 p-5">
+          <CardContent className="space-y-4 p-5 sm:p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -372,7 +372,7 @@ export default function MetasPage() {
 
                   return (
                     <Card key={meta.id} className="hover-elevate rounded-[26px] border border-border/60 bg-card/95 shadow-sm" data-testid={`card-meta-${meta.id}`}>
-                      <CardContent className="p-5 space-y-4">
+                      <CardContent className="p-5 space-y-4 sm:p-5">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 shadow-sm">
@@ -492,7 +492,7 @@ export default function MetasPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {concluidas.map((meta) => (
                   <Card key={meta.id} className="rounded-[24px] border border-emerald-500/15 bg-emerald-500/[0.05] shadow-sm" data-testid={`card-meta-done-${meta.id}`}>
-                    <CardContent className="p-4">
+                    <CardContent className="p-4 sm:p-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex min-w-0 items-center gap-3">
                           <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-500/20 bg-background/80 shadow-sm">
