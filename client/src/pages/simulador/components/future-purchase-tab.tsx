@@ -532,7 +532,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
   if (error) {
     return (
       <Card className="border-red-500/25 bg-red-500/5">
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 sm:pt-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-red-600">
@@ -570,7 +570,7 @@ export function FuturePurchaseTab({ resetSignal }: FuturePurchaseTabProps) {
               : "border-emerald-500/30 bg-emerald-500/5"
         }
         >
-          <CardContent className="pt-6">
+          <CardContent className="pt-6 sm:pt-6">
             <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center gap-2">
