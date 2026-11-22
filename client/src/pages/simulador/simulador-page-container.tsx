@@ -556,25 +556,25 @@ export default function SimuladorPageContainer() {
             <div className="lg:col-span-2 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card>
-                  <CardContent className="pt-6">
+                  <CardContent className="pt-6 sm:pt-6">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Valor Investido</p>
                     <p className="text-xl font-bold text-primary">{fc(finalResult.investido)}</p>
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardContent className="pt-6">
+                  <CardContent className="pt-6 sm:pt-6">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Juros Ganhos</p>
                     <p className="text-xl font-bold text-emerald-600">+{fc(jurosGanhos)}</p>
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardContent className="pt-6">
+                  <CardContent className="pt-6 sm:pt-6">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Valor Final Bruto</p>
                     <p className="text-xl font-bold">{fc(finalResult.bruto)}</p>
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardContent className="pt-6">
+                  <CardContent className="pt-6 sm:pt-6">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">Valor Final Real</p>
                     <div className="flex items-center gap-2">
                       <p className="text-xl font-bold text-amber-600">{fc(finalResult.real)}</p>
@@ -668,7 +668,7 @@ export default function SimuladorPageContainer() {
             <div className="lg:col-span-2 space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card className={mesesParaAlcancar <= 180 ? "border-emerald-500/50 bg-emerald-500/5" : mesesParaAlcancar >= 480 ? "border-red-500/50 bg-red-500/5" : ""}>
-                  <CardContent className="pt-6 text-center">
+                  <CardContent className="pt-6 text-center sm:pt-6">
                     <p className="text-sm text-muted-foreground mb-1">Tempo para a Independência</p>
                     <p className="text-3xl font-bold">
                       {mesesParaAlcancar === Infinity ? "Nunca" : mesesParaAlcancar >= 600 ? "50+ anos" : `${Math.floor(mesesParaAlcancar / 12)} anos e ${mesesParaAlcancar % 12} meses`}
@@ -677,7 +677,7 @@ export default function SimuladorPageContainer() {
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardContent className="pt-6 text-center">
+                  <CardContent className="pt-6 text-center sm:pt-6">
                     <p className="text-sm text-muted-foreground mb-1">Patrimônio Necessário</p>
                     <p className="text-3xl font-bold text-primary">{fc(patrimonioNecessario)}</p>
                     <p className="text-xs text-muted-foreground mt-2">Para render {fc(gastosDesejados)}/mês</p>
