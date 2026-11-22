@@ -1,5 +1,7 @@
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useUIPreferences } from "@/context/ui-preferences";
-import { Search } from "lucide-react";
+import { Search, SlidersHorizontal } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -7,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { PessoaSortBy } from "@/pages/pessoas/pessoas-sort.utils";
 
 type PessoasFilterBarProps = {
+  compact?: boolean;
   search: string;
   filterTipo: string;
   sortBy: PessoaSortBy;
@@ -16,6 +19,7 @@ type PessoasFilterBarProps = {
 };
 
 export function PessoasFilterBar({
+  compact = false,
   search,
   filterTipo,
   sortBy,
@@ -24,11 +28,15 @@ export function PessoasFilterBar({
   onSortChange,
 }: PessoasFilterBarProps) {
   const { isEssentialMode } = useUIPreferences();
-  if (isEssentialMode) {
-    return <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]" data-testid="pessoas-essential-filters">
-      <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Buscar pessoa" data-testid="input-search-pessoa" className="rounded-xl pl-9" placeholder="Buscar pessoa..." value={search} onChange={event => onSearchChange(event.target.value)} /></div>
-      <Select value={filterTipo} onValueChange={onFilterChange}><SelectTrigger className="rounded-xl" aria-label="Filtrar pessoas"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todas as pessoas</SelectItem><SelectItem value="me_deve">Me devem</SelectItem><SelectItem value="eu_devo">Eu devo</SelectItem><SelectItem value="atrasados">Com atraso</SelectItem><SelectItem value="lista_negra">Sinalizadas</SelectItem><SelectItem value="removidas">Pessoas removidas</SelectItem></SelectContent></Select>
-      <details className="rounded-xl border border-border/60 bg-card px-4 py-3 sm:col-span-2"><summary className="cursor-pointer text-sm font-medium">Ordenar pessoas{sortBy !== "nome_az" ? " · Personalizado" : ""}</summary><div className="mt-3 space-y-2"><Label>Ordenar por</Label>
+  if (isEssentialMode || compact) {
+    return <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_160px_auto]" data-testid="pessoas-essential-filters">
+      <div className="relative col-span-2 min-w-0 sm:col-span-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Buscar pessoa" data-testid="input-search-pessoa" className="h-10 rounded-xl pl-9" placeholder="Buscar pessoa..." value={search} onChange={event => onSearchChange(event.target.value)} /></div>
+      <Select value={filterTipo} onValueChange={onFilterChange}><SelectTrigger className="h-10 rounded-xl" aria-label="Filtrar pessoas"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todas as pessoas</SelectItem><SelectItem value="me_deve">Me devem</SelectItem><SelectItem value="eu_devo">Eu devo</SelectItem><SelectItem value="atrasados">Com atraso</SelectItem><SelectItem value="lista_negra">Sinalizadas</SelectItem><SelectItem value="removidas">Pessoas removidas</SelectItem></SelectContent></Select>
+      <Popover>
+        <PopoverTrigger asChild><Button variant="outline" size="icon" className={`h-10 w-10 rounded-xl ${sortBy !== "nome_az" ? "border-primary text-primary" : ""}`} aria-label="Ordenar pessoas" title="Ordenar pessoas"><SlidersHorizontal className="h-4 w-4" /></Button></PopoverTrigger>
+        <PopoverContent align="end" className="w-[min(300px,calc(100vw-2rem))] rounded-xl p-4">
+        <p className="font-semibold">Ordenar pessoas</p>
+<div className="mt-3 space-y-2"><Label>Ordenar por</Label>
         <Select value={sortBy} onValueChange={(value) => onSortChange(value as PessoaSortBy)}>
           <SelectTrigger
             className="h-10 w-full rounded-xl border-border/70 bg-background/95 text-sm shadow-sm 2xl:w-[240px]"
@@ -47,7 +55,7 @@ export function PessoasFilterBar({
             <SelectItem value="mais_antigo">Mais antigo</SelectItem>
           </SelectContent>
         </Select>
-      </div></details>
+      </div></PopoverContent></Popover>
     </div>;
   }
   return (

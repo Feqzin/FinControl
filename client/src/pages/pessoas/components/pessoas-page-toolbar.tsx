@@ -30,13 +30,8 @@ export function PessoasPageToolbar({
   return (
     <>
       <PessoasPageHeader
-        onAddPessoa={onAddPessoa}
-        totalPessoas={totalPessoas}
-        totalPendente={totalPendente}
-        totalAReceber={totalAReceber}
-      />
-
-      <PessoasFilterBar
+        filters={(
+      <PessoasFilterBar compact
         search={search}
         filterTipo={filterTipo}
         sortBy={sortBy}
@@ -44,6 +39,14 @@ export function PessoasPageToolbar({
         onFilterChange={onFilterChange}
         onSortChange={onSortChange}
       />
+        )}
+        onAddPessoa={onAddPessoa}
+        totalPessoas={totalPessoas}
+        totalPendente={totalPendente}
+        totalAReceber={totalAReceber}
+      />
+
+
     </>
   );
 }
