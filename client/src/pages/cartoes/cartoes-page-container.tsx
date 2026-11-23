@@ -2832,6 +2832,9 @@ export default function CartoesPage() {
   return (
     <div className="app-page-shell app-section-stack" data-testid="cartoes-page">
       <CartoesPageToolbar
+        view={activeCartoesTab}
+        onViewChange={handleCartoesTabChange}
+        onClearSearch={() => setCompraSearch("")}
         smartImportLiberado={smartImportLiberado}
         cartoesCount={cartoes.length}
         lastImportLogId={lastImportLogId}
