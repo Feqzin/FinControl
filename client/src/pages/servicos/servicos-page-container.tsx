@@ -1,3 +1,6 @@
+import { FilterChoiceGroup, FilterToggle } from "@/components/filter-options";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Search, SlidersHorizontal } from "lucide-react";
 import { useState, lazy, Suspense, useMemo } from "react";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
@@ -10,7 +13,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FintechPageHeader } from "@/components/layout/fintech-page-header";
 import { FintechEmptyState } from "@/components/layout/fintech-empty-state";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -173,7 +175,11 @@ export default function ServicosPage() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [expandedDivisao, setExpandedDivisao] = useState<Set<string>>(new Set());
-  const [servicosTab, setServicosTab] = useState<"ativos" | "pendentes" | "pagos" | "divisao" | "vinculos" | "pausados">("ativos");
+  const [servicosTab, setServicosTab] = useState("ativos");
+  const [serviceSearch, setServiceSearch] = useState("");
+  const [paymentFilter, setPaymentFilter] = useState("todos");
+  const [onlyShared, setOnlyShared] = useState(false);
+  const [onlyLinked, setOnlyLinked] = useState(false);
   const [mesReferencia, setMesReferencia] = useState(format(new Date(), "yyyy-MM"));
   const [sortBy, setSortBy] = useState<ServicoSortBy>("dia_cobranca_mais_proximo");
   const [form, setForm] = useState({
@@ -494,26 +500,14 @@ export default function ServicosPage() {
   const servicosFiltradosPorAba = servicos.filter((servico) => {
     const resumoMes = getResumoServicoMes(servico);
     const isAtivo = servico.status === "ativo";
-    switch (servicosTab) {
-      case "ativos":
-        return isAtivo;
-      case "pendentes":
-        return isAtivo && (resumoMes.totalVinculos > 0 ? resumoMes.pendentes > 0 : (resumoMes.cobrancaDoMes > 0 && !resumoMes.cobrancaPaga));
-      case "pagos":
-        return isAtivo && (
-          resumoMes.totalVinculos > 0
-            ? (resumoMes.totalVinculos > 0 && resumoMes.pendentes === 0)
-            : resumoMes.cobrancaPaga
-        );
-      case "divisao":
-        return resumoMes.totalVinculos > 0;
-      case "vinculos":
-        return Boolean(servico.compraCartaoId);
-      case "pausados":
-        return !isAtivo;
-      default:
-        return true;
-    }
+    if (servicosTab === "ativos" && !isAtivo) return false;
+    if (servicosTab === "pausados" && isAtivo) return false;
+    if (onlyShared && resumoMes.totalVinculos === 0) return false;
+    if (onlyLinked && !servico.compraCartaoId) return false;
+    if (paymentFilter === "pendentes" && !(isAtivo && (resumoMes.totalVinculos > 0 ? resumoMes.pendentes > 0 : resumoMes.cobrancaDoMes > 0 && !resumoMes.cobrancaPaga))) return false;
+    if (paymentFilter === "pagos" && !(isAtivo && (resumoMes.totalVinculos > 0 ? resumoMes.pendentes === 0 : resumoMes.cobrancaPaga))) return false;
+    const term = serviceSearch.trim().toLocaleLowerCase("pt-BR");
+    return !term || `${servico.nome} ${categoriaLabelByValue.get(servico.categoria) ?? servico.categoria}`.toLocaleLowerCase("pt-BR").includes(term);
   });
 
   const servicosOrdenados = sortServicosForView(servicosFiltradosPorAba, {
@@ -974,56 +968,25 @@ export default function ServicosPage() {
         )}
       />
 
-      <div className="rounded-2xl border border-border/60 bg-card/95 p-3 shadow-sm sm:p-3.5">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-          <Tabs value={servicosTab} onValueChange={(value) => setServicosTab(value as typeof servicosTab)} className="w-full min-w-0 xl:flex-1">
-            <TabsList className="mobile-tabs-scroll h-10 w-max min-w-full justify-start rounded-xl border border-border/60 bg-muted/25 p-1 xl:w-auto">
-              <TabsTrigger value="ativos" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-ativos">Ativos</TabsTrigger>
-              <TabsTrigger value="pendentes" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-pendentes">Pendentes</TabsTrigger>
-              <TabsTrigger value="pagos" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-pagos">Pagos</TabsTrigger>
-              <TabsTrigger value="divisao" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-divisao">Divisão</TabsTrigger>
-              <TabsTrigger value="vinculos" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-vinculos">Vínculos cartão</TabsTrigger>
-              <TabsTrigger value="pausados" className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium" data-testid="tab-servicos-pausados">Pausados</TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end xl:w-auto">
-            <div className="space-y-1">
-              <Label htmlFor="servicos-mes-referencia" className="text-xs font-medium text-muted-foreground">
-                Mês referência
-              </Label>
-              <Input
-                id="servicos-mes-referencia"
-                type="month"
-                value={mesReferencia}
-                onChange={(event) => setMesReferencia(event.target.value)}
-                className="h-10 w-full rounded-xl border-border/70 bg-background/95 shadow-sm sm:w-[190px]"
-                data-testid="input-servicos-mes-referencia"
-              />
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/60 bg-card/95 p-3 shadow-sm">
+        <div className="relative min-w-[160px] flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="h-10 rounded-xl pl-9" aria-label="Buscar serviços" placeholder="Buscar serviço ou categoria..." value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} /></div>
+        <Input id="servicos-mes-referencia" type="month" aria-label="Mês de referência dos serviços" value={mesReferencia} onChange={event => setMesReferencia(event.target.value)} className="h-10 w-auto max-w-full rounded-xl" data-testid="input-servicos-mes-referencia" />
+        <Popover>
+          <PopoverTrigger asChild><Button variant="outline" className="h-10 gap-2 rounded-xl"><SlidersHorizontal className="h-4 w-4" />Filtros{[servicosTab !== "ativos", paymentFilter !== "todos", onlyShared, onlyLinked, sortBy !== "dia_cobranca_mais_proximo"].filter(Boolean).length > 0 && <span className="rounded-full bg-primary/10 px-1.5 text-xs text-primary">{[servicosTab !== "ativos", paymentFilter !== "todos", onlyShared, onlyLinked, sortBy !== "dia_cobranca_mais_proximo"].filter(Boolean).length}</span>}</Button></PopoverTrigger>
+          <PopoverContent align="end" className="max-h-[75dvh] w-[min(400px,calc(100vw-2rem))] space-y-4 overflow-y-auto rounded-xl p-4">
+            <p className="font-semibold">Filtros e ordenação</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FilterChoiceGroup label="Situação" value={servicosTab} onChange={setServicosTab} options={[{value:"ativos",label:"Ativos"},{value:"pausados",label:"Pausados"},{value:"todos",label:"Todos"}]} />
+              <FilterChoiceGroup label="Pagamentos" value={paymentFilter} onChange={setPaymentFilter} options={[{value:"todos",label:"Todos"},{value:"pendentes",label:"Pendentes"},{value:"pagos",label:"Pagos"}]} />
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="servicos-sort-by" className="text-xs font-medium text-muted-foreground">
-                Ordenar por
-              </Label>
-              <Select value={sortBy} onValueChange={(value) => setSortBy(value as ServicoSortBy)}>
-                <SelectTrigger
-                  id="servicos-sort-by"
-                  className="h-10 w-full rounded-xl border-border/70 bg-background/95 text-sm shadow-sm sm:w-[250px]"
-                  data-testid="select-servicos-sort-by"
-                  aria-label="Ordenar serviços por"
-                >
-                  <SelectValue placeholder="Ordenar por" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SERVICO_SORT_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
+            <fieldset><legend className="mb-1 text-sm font-medium">Condições adicionais</legend>
+              <FilterToggle label="Com divisão entre pessoas" checked={onlyShared} onChange={setOnlyShared} />
+              <FilterToggle label="Vinculados a compra de cartão" checked={onlyLinked} onChange={setOnlyLinked} />
+            </fieldset>
+            <div className="space-y-2"><Label htmlFor="servicos-sort-by">Ordenar por</Label><Select value={sortBy} onValueChange={value => setSortBy(value as ServicoSortBy)}><SelectTrigger id="servicos-sort-by" aria-label="Ordenar serviços por" data-testid="select-servicos-sort-by"><SelectValue /></SelectTrigger><SelectContent>{SERVICO_SORT_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div>
+            <Button variant="ghost" className="w-full" onClick={() => { setServicosTab("ativos"); setPaymentFilter("todos"); setOnlyShared(false); setOnlyLinked(false); setSortBy("dia_cobranca_mais_proximo"); }}>Limpar filtros</Button>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="fintech-grid-fluid-260">
@@ -1070,7 +1033,7 @@ export default function ServicosPage() {
           title="Nenhum serviço encontrado"
           description={
             <>
-              Nenhum serviço encontrado para a aba <span className="font-medium">{servicosTab}</span> no mês {mesReferencia}.
+              Nenhum serviço encontrado no mês {mesReferencia}. Ajuste a busca ou os filtros.
             </>
           }
           size="compact"
