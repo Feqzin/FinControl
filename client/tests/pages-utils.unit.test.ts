@@ -18,6 +18,7 @@ import { buildCnpjDasPaymentGuidance } from "../src/pages/dividas/cnpj-das-payme
 import {
   getPessoaFilterFinancialTotals,
   matchesPessoaTipoFilter,
+  hasPessoaOverdue,
 } from "../src/pages/pessoas/pessoas-filter.utils";
 import { sortServicosForView } from "../src/pages/servicos/servicos-sort.utils";
 import {
@@ -8816,4 +8817,25 @@ test("Orientação DAS indica quando o orçamento não paga a menor guia", () =>
   assert.equal(guidance.budgetFitsGuide, false);
   assert.equal(guidance.firstMonthPriorities.length, 0);
   assert.equal(guidance.minimumEstimatedMonths, null);
+});
+
+test("pessoas: condições combinadas preservam o sentido dos valores", () => {
+  const resumo = {
+    dividas: { comigo: { pendente: 0 }, euDevo: { pendente: 75 } },
+    comprasVinculadas: { pendentePessoa: 0 },
+    servicosMesAtual: { pendente: 0 },
+  };
+  assert.equal(matchesPessoaTipoFilter("me_deve|atrasados", resumo), false);
+  assert.equal(matchesPessoaTipoFilter("eu_devo|atrasados|lista_negra", resumo), true);
+  assert.equal(matchesPessoaTipoFilter("atrasados|lista_negra", resumo), true);
+  assert.equal(matchesPessoaTipoFilter("removidas", resumo), false);
+});
+
+test("pessoas: atraso inclui valores a pagar e a receber", () => {
+  const resumo = { alertas: { comprasAtrasadas: 0 }, dividas: { comigo: { vencidas: 0 }, euDevo: { vencidas: 1 } } };
+  assert.equal(hasPessoaOverdue(resumo), true);
+  resumo.dividas.euDevo.vencidas = 0;
+  assert.equal(hasPessoaOverdue(resumo), false);
+  resumo.dividas.comigo.vencidas = 1;
+  assert.equal(hasPessoaOverdue(resumo), true);
 });

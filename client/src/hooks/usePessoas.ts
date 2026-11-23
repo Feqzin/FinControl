@@ -567,7 +567,7 @@ export function usePessoas({
         })
         .filter((pessoa) => {
           if (isRemovedFilter) return true;
-          if (filterTipo === "lista_negra") return pessoa.listaNegra === true;
+          if (filterTipo.split("|").includes("lista_negra") && pessoa.listaNegra !== true) return false;
           const resumo = (() => {
             try {
               return getPessoaResumoConsolidado(pessoa.id);

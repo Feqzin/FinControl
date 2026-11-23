@@ -1,3 +1,4 @@
+import { hasPessoaOverdue } from "@/pages/pessoas/pessoas-filter.utils";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -340,7 +341,7 @@ export default function PessoasPage() {
             : "Acompanhe as pendências por origem para priorizar os próximos pagamentos.";
   const filteredByStatus = isRemovedFilter
     ? filtered
-    : filterTipo === "atrasados"
+    : filterTipo.split("|").includes("atrasados")
     ? filtered.filter((pessoa) => {
       const resumoPessoa = (() => {
         try {
@@ -349,7 +350,7 @@ export default function PessoasPage() {
           return EMPTY_PESSOA_RESUMO;
         }
       })();
-      return resumoPessoa.alertas.comprasAtrasadas > 0 || resumoPessoa.dividas.comigo.vencidas > 0;
+      return hasPessoaOverdue(resumoPessoa);
     })
     : filtered;
   const sortedFilteredByStatus = sortPessoasForView(filteredByStatus, {

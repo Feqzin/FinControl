@@ -28,14 +28,16 @@ export function matchesPessoaTipoFilter(
   filterTipo: string,
   resumo: PessoaResumoParaFiltro,
 ): boolean {
-  if (filterTipo === "todos" || filterTipo === "atrasados") return true;
+  const filters = filterTipo.split("|");
+  const relation = filters.find(value => value === "me_deve" || value === "eu_devo");
+  if (!relation && filters.every(value => ["todos", "atrasados", "lista_negra"].includes(value))) return true;
 
   const { valorMeDevem, valorEuDevo } = getPessoaFilterFinancialTotals(resumo);
 
-  if (filterTipo === "me_deve") {
+  if (relation === "me_deve") {
     return valorMeDevem > 0;
   }
-  if (filterTipo === "eu_devo") {
+  if (relation === "eu_devo") {
     return valorEuDevo > 0;
   }
 
@@ -43,3 +45,10 @@ export function matchesPessoaTipoFilter(
 }
 
 export type { PessoaFilterTipo, PessoaResumoParaFiltro };
+
+export function hasPessoaOverdue(resumo: {
+  alertas: { comprasAtrasadas: number };
+  dividas: { comigo: { vencidas: number }; euDevo: { vencidas: number } };
+}): boolean {
+  return resumo.alertas.comprasAtrasadas > 0 || resumo.dividas.comigo.vencidas > 0 || resumo.dividas.euDevo.vencidas > 0;
+}
