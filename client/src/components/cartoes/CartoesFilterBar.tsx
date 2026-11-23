@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 import {
@@ -27,8 +26,6 @@ type CartoesFilterBarProps = {
 };
 
 export function CartoesFilterBar({
-  cartoesTab,
-  onTabChange,
   compraSearch,
   onCompraSearchChange,
   showSearch,
@@ -88,14 +85,6 @@ export function CartoesFilterBar({
 
   return (
     <div className="space-y-2.5">
-      <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
-        <Tabs value={cartoesTab} onValueChange={(value) => onTabChange(value as CartoesTab)}>
-          <TabsList className="mobile-tabs-scroll h-10 w-full justify-start rounded-2xl border border-border/60 bg-muted/25 p-1">
-            <TabsTrigger value="resumo" data-testid="tab-cartoes-resumo">Resumo</TabsTrigger>
-            <TabsTrigger value="compras" data-testid="tab-cartoes-compras">Compras</TabsTrigger>
-          </TabsList>
-        </Tabs>
-
         {showSearch ? (
           <div className="relative w-full max-w-md min-w-0">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -108,7 +97,6 @@ export function CartoesFilterBar({
             />
           </div>
         ) : null}
-      </div>
 
       <div className="rounded-[22px] border border-border/60 bg-card/80 p-2 shadow-sm">
         <div className="flex items-center gap-1.5 sm:gap-2">

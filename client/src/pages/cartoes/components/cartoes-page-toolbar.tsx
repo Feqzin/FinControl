@@ -1,3 +1,6 @@
+import { FilterChoiceGroup } from "@/components/filter-options";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -11,7 +14,12 @@ import {
 import { EllipsisVertical, Plus, Trash2, Upload, RefreshCw } from "lucide-react";
 import { CartoesPageHeader } from "@/components/cartoes/CartoesPageHeader";
 
+type CardView = "resumo" | "compras";
+
 type CartoesPageToolbarProps = {
+  view: CardView;
+  onViewChange: (view: CardView) => void;
+  onClearSearch: () => void;
   smartImportLiberado: boolean;
   cartoesCount: number;
   lastImportLogId: string | null;
@@ -22,7 +30,25 @@ type CartoesPageToolbarProps = {
   onOpenNewCardDialog: () => void;
 };
 
+function CardViewOptions({ view, onViewChange, onClearSearch }: {
+  view: CardView;
+  onViewChange: (view: CardView) => void;
+  onClearSearch: () => void;
+}) {
+  return <Popover>
+    <PopoverTrigger asChild><Button variant="outline" className="h-10 gap-2 rounded-xl" aria-label="Opções de visualização dos cartões"><SlidersHorizontal className="h-4 w-4" />Filtros{view === "compras" && <span className="rounded-full bg-primary/10 px-1.5 text-xs text-primary">1</span>}</Button></PopoverTrigger>
+    <PopoverContent align="end" className="w-[min(300px,calc(100vw-2rem))] space-y-3 rounded-xl p-4">
+      <p className="font-semibold">Visualização dos cartões</p>
+      <FilterChoiceGroup label="Mostrar" value={view} onChange={value => onViewChange(value as CardView)} options={[{value:"resumo",label:"Resumo"},{value:"compras",label:"Compras"}]} />
+      <Button variant="ghost" className="w-full" onClick={() => { onViewChange("resumo"); onClearSearch(); }}>Voltar ao padrão</Button>
+    </PopoverContent>
+  </Popover>;
+}
+
 export function CartoesPageToolbar({
+  view,
+  onViewChange,
+  onClearSearch,
   smartImportLiberado,
   cartoesCount,
   lastImportLogId,
@@ -38,8 +64,8 @@ export function CartoesPageToolbar({
 
   return (
     <CartoesPageHeader
-      title="Cartoes de Credito"
-      subtitle="Gerencie seus cartoes e compras parceladas"
+      title="Cartões de Crédito"
+      subtitle="Gerencie seus cartões e compras parceladas"
       actions={(
         <div className="w-full space-y-2 md:space-y-2.5">
           <div className="flex flex-col gap-2 md:hidden">
@@ -49,7 +75,8 @@ export function CartoesPageToolbar({
             >
               <Plus className="mr-2 h-4 w-4" /> Novo cartao
             </Button>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <CardViewOptions view={view} onViewChange={onViewChange} onClearSearch={onClearSearch} />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -102,7 +129,8 @@ export function CartoesPageToolbar({
             </div>
           </div>
 
-          <div className="hidden items-center justify-end gap-2 md:flex">
+          <div className="hidden flex-wrap items-center justify-end gap-2 md:flex">
+            <CardViewOptions view={view} onViewChange={onViewChange} onClearSearch={onClearSearch} />
             <div className="flex min-w-0 items-center gap-1.5 rounded-[22px] border border-border/60 bg-background/80 p-1.5 shadow-sm backdrop-blur">
               <Button
                 className="h-10 rounded-xl px-4 shadow-none touch-feedback"
