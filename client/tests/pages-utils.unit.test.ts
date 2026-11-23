@@ -8817,3 +8817,15 @@ test("Orientação DAS indica quando o orçamento não paga a menor guia", () =>
   assert.equal(guidance.firstMonthPriorities.length, 0);
   assert.equal(guidance.minimumEstimatedMonths, null);
 });
+
+test("pessoas: condições combinadas preservam o sentido dos valores", () => {
+  const resumo = {
+    dividas: { comigo: { pendente: 0 }, euDevo: { pendente: 75 } },
+    comprasVinculadas: { pendentePessoa: 0 },
+    servicosMesAtual: { pendente: 0 },
+  };
+  assert.equal(matchesPessoaTipoFilter("me_deve|atrasados", resumo), false);
+  assert.equal(matchesPessoaTipoFilter("eu_devo|atrasados|lista_negra", resumo), true);
+  assert.equal(matchesPessoaTipoFilter("atrasados|lista_negra", resumo), true);
+  assert.equal(matchesPessoaTipoFilter("removidas", resumo), false);
+});
