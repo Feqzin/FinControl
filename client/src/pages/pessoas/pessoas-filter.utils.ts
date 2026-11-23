@@ -45,3 +45,10 @@ export function matchesPessoaTipoFilter(
 }
 
 export type { PessoaFilterTipo, PessoaResumoParaFiltro };
+
+export function hasPessoaOverdue(resumo: {
+  alertas: { comprasAtrasadas: number };
+  dividas: { comigo: { vencidas: number }; euDevo: { vencidas: number } };
+}): boolean {
+  return resumo.alertas.comprasAtrasadas > 0 || resumo.dividas.comigo.vencidas > 0 || resumo.dividas.euDevo.vencidas > 0;
+}
