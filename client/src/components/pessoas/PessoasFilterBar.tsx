@@ -1,10 +1,8 @@
-import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useUIPreferences } from "@/context/ui-preferences";
 import { Search, SlidersHorizontal } from "lucide-react";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { FilterChoiceGroup, FilterToggle } from "@/components/filter-options";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { PessoaSortBy } from "@/pages/pessoas/pessoas-sort.utils";
 
@@ -18,88 +16,40 @@ type PessoasFilterBarProps = {
   onSortChange: (value: PessoaSortBy) => void;
 };
 
-export function PessoasFilterBar({
-  compact = false,
-  search,
-  filterTipo,
-  sortBy,
-  onSearchChange,
-  onFilterChange,
-  onSortChange,
-}: PessoasFilterBarProps) {
-  const { isEssentialMode } = useUIPreferences();
-  if (isEssentialMode || compact) {
-    return <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_160px_auto]" data-testid="pessoas-essential-filters">
-      <div className="relative col-span-2 min-w-0 sm:col-span-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Buscar pessoa" data-testid="input-search-pessoa" className="h-10 rounded-xl pl-9" placeholder="Buscar pessoa..." value={search} onChange={event => onSearchChange(event.target.value)} /></div>
-      <Select value={filterTipo} onValueChange={onFilterChange}><SelectTrigger className="h-10 rounded-xl" aria-label="Filtrar pessoas"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="todos">Todas as pessoas</SelectItem><SelectItem value="me_deve">Me devem</SelectItem><SelectItem value="eu_devo">Eu devo</SelectItem><SelectItem value="atrasados">Com atraso</SelectItem><SelectItem value="lista_negra">Sinalizadas</SelectItem><SelectItem value="removidas">Pessoas removidas</SelectItem></SelectContent></Select>
-      <Popover>
-        <PopoverTrigger asChild><Button variant="outline" size="icon" className={`h-10 w-10 rounded-xl ${sortBy !== "nome_az" ? "border-primary text-primary" : ""}`} aria-label="Ordenar pessoas" title="Ordenar pessoas"><SlidersHorizontal className="h-4 w-4" /></Button></PopoverTrigger>
-        <PopoverContent align="end" className="w-[min(300px,calc(100vw-2rem))] rounded-xl p-4">
-        <p className="font-semibold">Ordenar pessoas</p>
-<div className="mt-3 space-y-2"><Label>Ordenar por</Label>
-        <Select value={sortBy} onValueChange={(value) => onSortChange(value as PessoaSortBy)}>
-          <SelectTrigger
-            className="h-10 w-full rounded-xl border-border/70 bg-background/95 text-sm shadow-sm 2xl:w-[240px]"
-            aria-label="Ordenar por"
-          >
-            <SelectValue placeholder="Ordenar por" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="nome_az">Nome A-Z</SelectItem>
-            <SelectItem value="nome_za">Nome Z-A</SelectItem>
-            <SelectItem value="maior_saldo">Maior saldo</SelectItem>
-            <SelectItem value="menor_saldo">Menor saldo</SelectItem>
-            <SelectItem value="maior_valor_receber">Maior valor a receber</SelectItem>
-            <SelectItem value="maior_valor_pagar">Maior valor a pagar</SelectItem>
-            <SelectItem value="mais_recente">Mais recente</SelectItem>
-            <SelectItem value="mais_antigo">Mais antigo</SelectItem>
-          </SelectContent>
-        </Select>
-      </div></PopoverContent></Popover>
-    </div>;
-  }
-  return (
-    <div className="rounded-2xl border border-border/60 bg-card/95 p-3 shadow-sm sm:p-3.5">
-      <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-center">
-        <div className="relative w-full min-w-0 2xl:max-w-md 2xl:flex-1">
-          <Search className="absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            data-testid="input-search-pessoa"
-            className="h-10 rounded-xl border-border/70 bg-background/95 pl-9 text-sm shadow-sm"
-            placeholder="Buscar por nome..."
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-          />
-        </div>
-        <Tabs value={filterTipo} onValueChange={onFilterChange} className="w-full min-w-0 2xl:flex-1">
-          <TabsList className="grid h-auto w-full grid-cols-3 gap-1 rounded-xl border border-border/60 bg-muted/25 p-1 sm:grid-cols-6 2xl:h-10">
-            <TabsTrigger value="todos" className="h-8 rounded-lg px-2 text-xs font-medium" data-testid="filter-pessoas-todos">Todos</TabsTrigger>
-            <TabsTrigger value="me_deve" className="h-8 rounded-lg px-2 text-xs font-medium" data-testid="filter-pessoas-me-devem">Me devem</TabsTrigger>
-            <TabsTrigger value="eu_devo" className="h-8 rounded-lg px-2 text-xs font-medium" data-testid="filter-pessoas-eu-devo">Eu devo</TabsTrigger>
-            <TabsTrigger value="atrasados" className="h-8 rounded-lg px-2 text-xs font-medium" data-testid="filter-pessoas-atrasados">Atrasados</TabsTrigger>
-            <TabsTrigger value="lista_negra" className="h-8 rounded-lg px-2 text-xs font-medium" data-testid="filter-pessoas-lista-negra">Lista negra</TabsTrigger>
-            <TabsTrigger value="removidas" className="h-8 rounded-lg px-2 text-xs font-medium" data-testid="filter-pessoas-removidas">Removidas</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <Select value={sortBy} onValueChange={(value) => onSortChange(value as PessoaSortBy)}>
-          <SelectTrigger
-            className="h-10 w-full rounded-xl border-border/70 bg-background/95 text-sm shadow-sm 2xl:w-[240px]"
-            aria-label="Ordenar por"
-          >
-            <SelectValue placeholder="Ordenar por" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="nome_az">Nome A-Z</SelectItem>
-            <SelectItem value="nome_za">Nome Z-A</SelectItem>
-            <SelectItem value="maior_saldo">Maior saldo</SelectItem>
-            <SelectItem value="menor_saldo">Menor saldo</SelectItem>
-            <SelectItem value="maior_valor_receber">Maior valor a receber</SelectItem>
-            <SelectItem value="maior_valor_pagar">Maior valor a pagar</SelectItem>
-            <SelectItem value="mais_recente">Mais recente</SelectItem>
-            <SelectItem value="mais_antigo">Mais antigo</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  );
+export function PessoasFilterBar({ search, filterTipo, sortBy, onSearchChange, onFilterChange, onSortChange }: PessoasFilterBarProps) {
+  const selected = filterTipo.split("|").filter(value => value !== "todos");
+  const removed = selected.includes("removidas");
+  const relation = selected.find(value => value === "me_deve" || value === "eu_devo") ?? "todos";
+  const count = selected.length + (sortBy !== "nome_az" ? 1 : 0);
+  const changeRelation = (value: string) => {
+    const next = selected.filter(item => item !== "me_deve" && item !== "eu_devo" && item !== "removidas");
+    if (value !== "todos") next.push(value);
+    onFilterChange(next.join("|") || "todos");
+  };
+  const toggle = (value: string, checked: boolean) => {
+    const next = selected.filter(item => item !== value && item !== "removidas");
+    if (checked) next.push(value);
+    onFilterChange(next.join("|") || "todos");
+  };
+  return <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2" data-testid="pessoas-essential-filters">
+    <div className="relative min-w-0"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Buscar pessoa" data-testid="input-search-pessoa" className="h-10 rounded-xl pl-9" placeholder="Buscar pessoa..." value={search} onChange={event => onSearchChange(event.target.value)} /></div>
+    <Popover>
+      <PopoverTrigger asChild><Button variant="outline" className="h-10 gap-2 rounded-xl" aria-label="Filtros de pessoas"><SlidersHorizontal className="h-4 w-4" />Filtros{count > 0 && <span className="rounded-full bg-primary/10 px-1.5 text-xs text-primary">{count}</span>}</Button></PopoverTrigger>
+      <PopoverContent align="end" className="max-h-[75dvh] w-[min(360px,calc(100vw-2rem))] space-y-4 overflow-y-auto rounded-xl p-4">
+        <p className="font-semibold">Filtros e ordenação</p>
+        <FilterChoiceGroup label="Mostrar" value={removed ? "removidas" : "ativas"} onChange={value => onFilterChange(value === "removidas" ? value : "todos")} options={[{value:"ativas",label:"Pessoas ativas"},{value:"removidas",label:"Pessoas removidas"}]} />
+        {!removed && <>
+          <FilterChoiceGroup label="Valores" value={relation} onChange={changeRelation} options={[{value:"todos",label:"Todas as pessoas"},{value:"me_deve",label:"Me devem"},{value:"eu_devo",label:"Eu devo"}]} />
+          <fieldset><legend className="mb-1 text-sm font-medium">Condições adicionais</legend>
+            <FilterToggle label="Somente com atraso" checked={selected.includes("atrasados")} onChange={checked => toggle("atrasados", checked)} />
+            <FilterToggle label="Somente sinalizadas" checked={selected.includes("lista_negra")} onChange={checked => toggle("lista_negra", checked)} />
+          </fieldset>
+        </>}
+        <div className="space-y-2"><p className="text-sm font-medium">Ordenar por</p><Select value={sortBy} onValueChange={value => onSortChange(value as PessoaSortBy)}><SelectTrigger aria-label="Ordenar pessoas"><SelectValue /></SelectTrigger><SelectContent>
+          <SelectItem value="nome_az">Nome A-Z</SelectItem><SelectItem value="nome_za">Nome Z-A</SelectItem><SelectItem value="maior_saldo">Maior saldo</SelectItem><SelectItem value="menor_saldo">Menor saldo</SelectItem><SelectItem value="maior_valor_receber">Maior valor a receber</SelectItem><SelectItem value="maior_valor_pagar">Maior valor a pagar</SelectItem><SelectItem value="mais_recente">Mais recente</SelectItem><SelectItem value="mais_antigo">Mais antigo</SelectItem>
+        </SelectContent></Select></div>
+        <Button variant="ghost" className="w-full" onClick={() => { onFilterChange("todos"); onSortChange("nome_az"); }}>Limpar filtros</Button>
+      </PopoverContent>
+    </Popover>
+  </div>;
 }
