@@ -1,3 +1,4 @@
+import { FilterChoiceGroup } from "@/components/filter-options";
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -446,52 +447,20 @@ export default function DividasPage() {
           <p className="text-muted-foreground">Acompanhe o que você tem a pagar e a receber</p>
         </div>
       <div className="col-span-2 min-w-0 xl:col-span-1 xl:col-start-2 xl:row-start-1">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_150px_auto]">
-        <div className="relative col-span-2 min-w-0 sm:col-span-1">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="relative min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input data-testid="input-search-divida" className="h-10 rounded-xl pl-9" aria-label="Buscar pessoa ou descrição" placeholder="Buscar pessoa ou descrição..."
             value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <Select value={filterTipo} onValueChange={setFilterTipo}>
-          <SelectTrigger className="h-10 w-full rounded-xl" aria-label="Filtrar por tipo"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos tipos</SelectItem>
-            <SelectItem value="receber">A receber</SelectItem>
-            <SelectItem value="pagar">A pagar</SelectItem>
-          </SelectContent>
-        </Select>
         <Popover>
-          <PopoverTrigger asChild><Button variant="outline" size="icon" className={`h-10 w-10 rounded-xl ${filterOrigem !== "todos" || filterStatus !== "todos" || sortBy !== "vencimento_mais_proximo" ? "border-primary text-primary" : ""}`} aria-label="Mais filtros de dívidas" title="Mais filtros" data-testid="dividas-advanced-filters"><SlidersHorizontal className="h-4 w-4" /></Button></PopoverTrigger>
-          <PopoverContent align="end" className="w-[min(360px,calc(100vw-2rem))] rounded-xl p-4">
+          <PopoverTrigger asChild><Button variant="outline" className="h-10 gap-2 rounded-xl" aria-label="Filtros de dívidas" data-testid="dividas-advanced-filters"><SlidersHorizontal className="h-4 w-4" />Filtros{[filterTipo !== "todos", filterStatus !== "todos", filterOrigem !== "todos", sortBy !== "vencimento_mais_proximo"].filter(Boolean).length > 0 && <span className="rounded-full bg-primary/10 px-1.5 text-xs text-primary">{[filterTipo !== "todos", filterStatus !== "todos", filterOrigem !== "todos", sortBy !== "vencimento_mais_proximo"].filter(Boolean).length}</span>}</Button></PopoverTrigger>
+          <PopoverContent align="end" className="max-h-[min(75dvh,640px)] w-[min(440px,calc(100vw-2rem))] overflow-y-auto rounded-xl p-4">
           <p className="font-semibold">Filtros e ordenação</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <div className="space-y-2"><Label>Situação</Label>
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-full" aria-label="Filtrar por status"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos status</SelectItem>
-            <SelectItem value="pendente">Pendente</SelectItem>
-            <SelectItem value="sem_expectativa">Sem expectativa</SelectItem>
-            <SelectItem value="pago">Quitado</SelectItem>
-            <SelectItem value="removidas">Removidas</SelectItem>
-          </SelectContent>
-        </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Origem da dívida</Label>
-        <Select value={filterOrigem} onValueChange={(value) => setFilterOrigem(value as DividaOrigemFilter)}>
-          <SelectTrigger className="w-full" aria-label="Filtrar por origem">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todas origens</SelectItem>
-            <SelectItem value="manual">Dívidas pessoais</SelectItem>
-            <SelectItem value="cartao">Cartões</SelectItem>
-            <SelectItem value="cnpj_das">DAS / CNPJ</SelectItem>
-          </SelectContent>
-        </Select>
-            </div>
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            <FilterChoiceGroup label="Tipo" value={filterTipo} onChange={setFilterTipo} options={[{value:"todos",label:"Todos os tipos"},{value:"receber",label:"A receber"},{value:"pagar",label:"A pagar"}]} />
+            <FilterChoiceGroup label="Situação" value={filterStatus} onChange={setFilterStatus} options={[{value:"todos",label:"Todas as situações"},{value:"pendente",label:"Pendente"},{value:"vencido",label:"Em atraso"},{value:"sem_expectativa",label:"Sem expectativa"},{value:"pago",label:"Quitado"},{value:"removidas",label:"Removidas"}]} />
+            <FilterChoiceGroup label="Origem" value={filterOrigem} onChange={value => setFilterOrigem(value as DividaOrigemFilter)} options={[{value:"todos",label:"Todas as origens"},{value:"manual",label:"Dívidas pessoais"},{value:"cartao",label:"Cartões"},{value:"cnpj_das",label:"DAS / CNPJ"}]} />
             <div className="space-y-2">
               <Label>Ordenar por</Label>
         <Select value={sortBy} onValueChange={(value) => setSortBy(value as DividaSortBy)}>
@@ -512,6 +481,7 @@ export default function DividasPage() {
         </Select>
             </div>
           </div>
+          <Button variant="ghost" className="mt-3 w-full" onClick={() => { setFilterTipo("todos"); setFilterStatus("todos"); setFilterOrigem("todos"); setSortBy("vencimento_mais_proximo"); }}>Limpar filtros</Button>
           </PopoverContent>
         </Popover>
       </div>
