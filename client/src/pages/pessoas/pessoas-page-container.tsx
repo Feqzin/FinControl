@@ -340,7 +340,7 @@ export default function PessoasPage() {
             : "Acompanhe as pendências por origem para priorizar os próximos pagamentos.";
   const filteredByStatus = isRemovedFilter
     ? filtered
-    : filterTipo === "atrasados"
+    : filterTipo.split("|").includes("atrasados")
     ? filtered.filter((pessoa) => {
       const resumoPessoa = (() => {
         try {
