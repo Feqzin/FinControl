@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "fluid": true,
   "buildCommand": "npm run db:migrate:dashboard-shortcuts && npm run check:serverless && npm run build:client",
   "outputDirectory": "dist/public",
   "routes": [
