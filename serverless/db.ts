@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
+import { attachDatabasePool } from "@vercel/functions";
 import * as schema from "../shared/schema.js";
 import { ENV } from "./env.js";
 
@@ -9,11 +10,13 @@ const shouldConfigureSsl =
 
 const poolConfig: PoolConfig = {
   connectionString,
-  max: 1,
+  // Bound concurrency while allowing overview queries and session reads to run together.
+  max: 3,
   min: 0,
   idleTimeoutMillis: 5000,
   connectionTimeoutMillis: 15000,
   allowExitOnIdle: true,
+  keepAlive: true,
   ...(shouldConfigureSsl
     ? {
       ssl: {
@@ -45,18 +48,9 @@ if (!globalWithPgPool.__debtControlPgPool) {
 }
 
 if (!globalWithPgPool.__debtControlPgPoolAttached) {
+  // Register synchronously before serving requests; release idle clients on suspension.
+  attachDatabasePool(pool);
   globalWithPgPool.__debtControlPgPoolAttached = true;
-  void (async () => {
-    try {
-      // @ts-ignore: dependencia opcional em ambiente local.
-      const { attachDatabasePool } = await import("@vercel/functions");
-      if (typeof attachDatabasePool === "function") {
-        attachDatabasePool(pool);
-      }
-    } catch {
-      // Ignora quando @vercel/functions nao estiver instalado localmente.
-    }
-  })();
 }
 
 export const db = drizzle(pool, { schema });
