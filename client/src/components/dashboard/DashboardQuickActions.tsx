@@ -95,7 +95,11 @@ export function DashboardQuickActions({ onNavigate }: { onNavigate: (url: string
                 onKeyDown={(event) => onArrowKey(url, event)}>
                 <GripVertical className="h-5 w-5" aria-hidden="true" />
               </button>}
-              {editing && <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1 h-8 w-8 rounded-lg text-muted-foreground hover:text-destructive" aria-label={`Remover atalho ${action.title}`} title={`Remover ${action.title}`} onClick={() => setDashboardQuickActions(prefs.dashboardQuickActions.filter(item => item !== url))}><X className="h-4 w-4" /></Button>}
+              {editing && (
+                <div className="absolute right-2 top-2">
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label={`Remover atalho ${action.title}`} title={`Remover ${action.title}`} onClick={() => setDashboardQuickActions(prefs.dashboardQuickActions.filter(item => item !== url))}><X className="h-4 w-4" aria-hidden="true" /></Button>
+                </div>
+              )}
             </div>
           );
         })}
